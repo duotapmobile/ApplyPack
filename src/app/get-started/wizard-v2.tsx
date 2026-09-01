@@ -1,0 +1,347 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, Check, LockKeyhole } from "lucide-react";
+
+type Draft = {
+  email: string;
+  fullName: string;
+  city: string;
+  state: string;
+  timezone: string;
+  linkedin: string;
+  resumeFormat: string;
+  coverLetterPreference: string;
+  backgroundTypes: string[];
+  backgroundDetails: string;
+  tools: string;
+  credentials: string;
+  resumeCorrections: string;
+  remoteRequirement: string;
+  hybridPolicy: string;
+  onSitePolicy: string;
+  remoteDetail: string;
+  minimumSalary: string;
+  preferredSalary: string;
+  minimumHourly: string;
+  preferredHourly: string;
+  unknownSalaryPolicy: string;
+  employmentTypes: string[];
+  schedulePreferences: string[];
+  requiredBenefits: string[];
+  preferredBenefits: string[];
+  unknownBenefitsPolicy: string;
+  neverInclude: string[];
+  tryAvoid: string[];
+  previousDislikes: string;
+  excludedIndustries: string;
+  directionChoice: string;
+  targetTitles: string;
+  searchDistance: string;
+  oldCareerExclusion: string;
+  workAuthorization: string;
+  needsSponsorship: string;
+  travelPreference: string;
+  commuteDistance: string;
+  eligibilityRestrictions: string;
+  criteriaApproved: boolean;
+  researchAcknowledged: boolean;
+  noGuaranteeAcknowledged: boolean;
+  listingChangesAcknowledged: boolean;
+  termsAccepted: boolean;
+  accuracyConfirmed: boolean;
+};
+
+const emptyDraft: Draft = {
+  email: "", fullName: "", city: "", state: "", timezone: "",
+  linkedin: "", resumeFormat: "", coverLetterPreference: "not_uploaded",
+  backgroundTypes: [], backgroundDetails: "", tools: "", credentials: "", resumeCorrections: "",
+  remoteRequirement: "", hybridPolicy: "", onSitePolicy: "", remoteDetail: "",
+  minimumSalary: "", preferredSalary: "", minimumHourly: "", preferredHourly: "",
+  unknownSalaryPolicy: "", employmentTypes: [], schedulePreferences: [],
+  requiredBenefits: [], preferredBenefits: [], unknownBenefitsPolicy: "",
+  neverInclude: [], tryAvoid: [], previousDislikes: "", excludedIndustries: "",
+  directionChoice: "", targetTitles: "", searchDistance: "", oldCareerExclusion: "",
+  workAuthorization: "", needsSponsorship: "", travelPreference: "", commuteDistance: "",
+  eligibilityRestrictions: "", criteriaApproved: false, researchAcknowledged: false,
+  noGuaranteeAcknowledged: false, listingChangesAcknowledged: false,
+  termsAccepted: false, accuracyConfirmed: false,
+};
+
+const groups = {
+  background: ["Paid work", "Business ownership", "Freelance or contract", "Education", "Volunteer work", "Caregiving or life experience"],
+  employment: ["Full-time", "Part-time", "Contract", "Temporary"],
+  schedule: ["Weekdays", "Evenings", "Weekends", "Flexible hours", "No weekends"],
+  benefits: ["Health insurance", "Paid time off", "Retirement benefits"],
+  exclusions: ["Sales", "Cold calling", "Commission-only pay", "Heavy phone work", "People management", "Travel", "On-call work", "Physical labor"],
+};
+
+const STORAGE_KEY = "applypack-intake-draft-v2";
+const DRAFT_TTL_MS = 2 * 60 * 60 * 1000;
+
+export function IntakeWizard() {
+  const [step, setStep] = useState(0);
+  const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [resume, setResume] = useState<File | null>(null);
+  const [coverLetter, setCoverLetter] = useState<File | null>(null);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [estimatedDeadline, setEstimatedDeadline] = useState("");
+  const panelRef = useRef<HTMLElement>(null);
+  const previousStep = useRef(step);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const saved = window.sessionStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved) as { savedAt?: number; draft?: Partial<Draft> };
+          if (parsed.savedAt && Date.now() - parsed.savedAt < DRAFT_TTL_MS && parsed.draft) {
+            setDraft({ ...emptyDraft, ...parsed.draft });
+          } else {
+            window.sessionStorage.removeItem(STORAGE_KEY);
+          }
+        }
+      } catch {
+        window.sessionStorage.removeItem(STORAGE_KEY);
+      } finally {
+        setEstimatedDeadline(new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short",
+        }).format(new Date(Date.now() + DRAFT_TTL_MS * 12)) + " ET");
+        setReady(true);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (ready) {
+      window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ savedAt: Date.now(), draft }));
+    }
+  }, [draft, ready]);
+
+  useEffect(() => {
+    if (previousStep.current !== step) {
+      panelRef.current?.querySelector<HTMLHeadingElement>("h2")?.focus();
+      previousStep.current = step;
+    }
+  }, [step]);
+
+  const validSteps = useMemo(() => [
+    draft.email.includes("@") && draft.fullName.trim().length >= 2 && draft.city.trim().length >= 2 && draft.state.trim().length >= 2 && draft.timezone.length >= 2,
+    Boolean(resume) && Boolean(draft.resumeFormat) && Boolean(draft.coverLetterPreference),
+    draft.backgroundTypes.length > 0 && draft.backgroundDetails.trim().length >= 20,
+    Boolean(draft.remoteRequirement) && Boolean(draft.hybridPolicy) && Boolean(draft.onSitePolicy) && Boolean(draft.unknownSalaryPolicy) && draft.employmentTypes.length > 0 && Boolean(draft.unknownBenefitsPolicy),
+    draft.neverInclude.length > 0,
+    Boolean(draft.directionChoice) && Boolean(draft.searchDistance) && draft.workAuthorization.trim().length >= 2 && Boolean(draft.needsSponsorship) && draft.travelPreference.trim().length >= 2,
+    draft.criteriaApproved && draft.researchAcknowledged && draft.noGuaranteeAcknowledged && draft.listingChangesAcknowledged && draft.termsAccepted && draft.accuracyConfirmed,
+  ], [draft, resume]);
+
+  const validationMessages = [
+    "Add your name, email, city, state, and time zone before continuing.",
+    "Attach your resume and choose how we should handle its format.",
+    "Choose at least one background type and give us at least a few sentences about your experience.",
+    "Complete the work-setting, employment-type, salary, and benefits choices.",
+    "Choose at least one thing that must never appear in your matches.",
+    "Complete the direction, search distance, work authorization, sponsorship, and travel fields.",
+    "Review and check all six acknowledgments before checkout.",
+  ];
+
+
+  function field<K extends keyof Draft>(name: K, value: Draft[K]) {
+    setDraft((current) => ({ ...current, [name]: value }));
+    setMessage("");
+  }
+
+  function toggle(name: "backgroundTypes" | "employmentTypes" | "schedulePreferences" | "requiredBenefits" | "preferredBenefits" | "neverInclude" | "tryAvoid", value: string) {
+    const current = draft[name];
+    field(name, (current.includes(value) ? current.filter((item) => item !== value) : [...current, value]) as Draft[typeof name]);
+  }
+
+  function advance() {
+    if (!validSteps[step]) {
+      setMessage(validationMessages[step]);
+      return;
+    }
+    setMessage("");
+    setStep((value) => Math.min(6, value + 1));
+  }
+
+  async function requestSignIn() {
+    const response = await fetch("/api/auth/magic-link", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: draft.email }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "The secure link could not be sent.");
+    setMessage("Check your email for a secure sign-in link. Return in this browser, reattach your files, and continue.");
+  }
+
+  async function submit() {
+    if (!validSteps[6] || !resume) {
+      setMessage(validationMessages[6]);
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    try {
+      const form = new FormData();
+      Object.entries(draft).forEach(([key, value]) => {
+        form.set(key, Array.isArray(value) ? JSON.stringify(value) : String(value));
+      });
+      form.set("resume", resume);
+      if (coverLetter) form.set("coverLetter", coverLetter);
+      const response = await fetch("/api/intake", { method: "POST", body: form });
+      const result = await response.json();
+      if (response.status === 401 && result.authRequired) {
+        await requestSignIn();
+        return;
+      }
+      if (!response.ok) throw new Error(result.error || "Your intake could not be saved.");
+      const checkout = await fetch("/api/checkout/search", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ intakeId: result.intakeId }),
+      });
+      const checkoutResult = await checkout.json();
+      if (!checkout.ok) throw new Error(checkoutResult.error || "Checkout could not be opened.");
+      window.sessionStorage.removeItem(STORAGE_KEY);
+      window.location.assign(checkoutResult.url);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!ready) return <main id="main-content" className="auth-page"><section className="auth-card"><p className="eyebrow">SECURE INTAKE</p><h1>Loading your intake.</h1></section></main>;
+
+  return (
+    <main id="main-content" className="wizard-page">
+      <div className="page-frame wizard-layout">
+        <aside className="wizard-aside">
+          <p className="eyebrow eyebrow--light">YOUR 24-HOUR SEARCH</p>
+          <h1>Let&apos;s find what fits next.</h1>
+          <p>10 researched job matches for $20. Your firm 24-hour deadline appears after both intake and payment are complete.</p>
+          <div className="wizard-price"><strong>$20</strong><span>one search<br />no subscription</span></div>
+          <p className="wizard-security"><LockKeyhole aria-hidden="true" /> Files stay in private account storage and are never saved in this browser draft.</p>
+        </aside>
+        <section ref={panelRef} className="wizard-panel" aria-labelledby="wizard-title">
+          <div className="wizard-progress" role="progressbar" aria-label="Intake progress" aria-valuemin={1} aria-valuemax={7} aria-valuenow={step + 1} aria-valuetext={"Step " + (step + 1) + " of 7"}>
+            <span>STEP {step + 1} OF 7</span><div><i style={{ width: ((step + 1) / 7 * 100) + "%" }} /></div>
+          </div>
+
+          {step === 0 && <WizardStep title="First, where are you?" help="These details secure your account and help us evaluate location and schedule fit.">
+            <div className="field-grid">
+              <label>Full name <Required /><input autoComplete="name" value={draft.fullName} onChange={(e) => field("fullName", e.target.value)} /></label>
+              <label>Email address <Required /><input autoComplete="email" inputMode="email" type="email" value={draft.email} onChange={(e) => field("email", e.target.value)} /></label>
+              <label>City <Required /><input autoComplete="address-level2" value={draft.city} onChange={(e) => field("city", e.target.value)} /></label>
+              <label>State or region <Required /><input autoComplete="address-level1" value={draft.state} onChange={(e) => field("state", e.target.value)} /></label>
+            </div>
+            <label>Time zone <Required /><select value={draft.timezone} onChange={(e) => field("timezone", e.target.value)}><option value="">Choose one</option><option>Eastern Time</option><option>Central Time</option><option>Mountain Time</option><option>Pacific Time</option><option>Alaska Time</option><option>Hawaii Time</option><option>Outside the United States</option></select></label>
+          </WizardStep>}
+
+          {step === 1 && <WizardStep title="Share the documents we should work from." help="PDF or DOCX, up to 10 MB each. Please remove Social Security numbers, birth dates, and other unnecessary sensitive details.">
+            <label className="file-drop">Current resume <Required /><input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(e) => setResume(e.target.files?.[0] || null)} /><span>{resume ? resume.name : "Choose your resume"}</span></label>
+            <label className="file-drop">Existing cover letter <span>(optional)</span><input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(e) => { const file = e.target.files?.[0] || null; setCoverLetter(file); field("coverLetterPreference", file ? "voice" : "not_uploaded"); }} /><span>{coverLetter ? coverLetter.name : "No cover letter selected"}</span></label>
+            <label>LinkedIn profile <span>(optional)</span><input type="url" placeholder="https://www.linkedin.com/in/..." value={draft.linkedin} onChange={(e) => field("linkedin", e.target.value)} /></label>
+            <label>Resume formatting <Required /><select value={draft.resumeFormat} onChange={(e) => field("resumeFormat", e.target.value)}><option value="">Choose one</option><option value="keep">Keep my current format where practical</option><option value="applypack">Use ApplyPack&apos;s clean format</option><option value="decide">Use your judgment</option></select></label>
+            {coverLetter && <label>How should we use it? <Required /><select value={draft.coverLetterPreference} onChange={(e) => field("coverLetterPreference", e.target.value)}><option value="voice">Preserve its voice where useful</option><option value="facts">Use it only as a fact source</option><option value="fresh">Start fresh</option></select></label>}
+          </WizardStep>}
+
+          {step === 2 && <WizardStep title="Help us understand your full background." help="We only use claims you provide. We do not invent credentials, results, employers, or skills.">
+            <CheckGroup legend="Which experiences should count?" required options={groups.background} values={draft.backgroundTypes} onToggle={(value) => toggle("backgroundTypes", value)} />
+            <label>Experience, accomplishments, and responsibilities <Required /><textarea className="textarea-large" value={draft.backgroundDetails} onChange={(e) => field("backgroundDetails", e.target.value)} placeholder="Tell us what you did, who it helped, and any results you can support." /></label>
+            <label>Tools and systems <span>(optional)</span><textarea value={draft.tools} onChange={(e) => field("tools", e.target.value)} /></label>
+            <label>Credentials or training <span>(optional)</span><textarea value={draft.credentials} onChange={(e) => field("credentials", e.target.value)} /></label>
+            <label>Anything on the resume that needs correction? <span>(optional)</span><textarea value={draft.resumeCorrections} onChange={(e) => field("resumeCorrections", e.target.value)} /></label>
+          </WizardStep>}
+
+          {step === 3 && <WizardStep title="What needs to fit your life?" help="Required choices are hard constraints. Preferences guide ranking when a listing provides enough information.">
+            <div className="field-grid">
+              <label>Remote work <Required /><select value={draft.remoteRequirement} onChange={(e) => field("remoteRequirement", e.target.value)}><option value="">Choose one</option><option value="required">Required</option><option value="preferred">Preferred</option><option value="not_important">Not important</option></select></label>
+              <label>Hybrid roles <Required /><select value={draft.hybridPolicy} onChange={(e) => field("hybridPolicy", e.target.value)}><option value="">Choose one</option><option value="open">Include</option><option value="exclude">Exclude</option></select></label>
+              <label>On-site roles <Required /><select value={draft.onSitePolicy} onChange={(e) => field("onSitePolicy", e.target.value)}><option value="">Choose one</option><option value="open">Include</option><option value="exclude">Exclude</option></select></label>
+              <label>Listings without salary <Required /><select value={draft.unknownSalaryPolicy} onChange={(e) => field("unknownSalaryPolicy", e.target.value)}><option value="">Choose one</option><option value="exclude">Exclude</option><option value="include_mark_unknown">Include and mark unknown</option></select></label>
+            </div>
+            <label>Location details <span>(optional)</span><input value={draft.remoteDetail} onChange={(e) => field("remoteDetail", e.target.value)} placeholder="Remote in the U.S. or within 25 miles of..." /></label>
+            <div className="field-grid">
+              <label>Minimum annual salary <span>(optional)</span><input value={draft.minimumSalary} onChange={(e) => field("minimumSalary", e.target.value)} placeholder="$70,000" /></label>
+              <label>Preferred annual salary <span>(optional)</span><input value={draft.preferredSalary} onChange={(e) => field("preferredSalary", e.target.value)} placeholder="$85,000" /></label>
+              <label>Minimum hourly rate <span>(optional)</span><input value={draft.minimumHourly} onChange={(e) => field("minimumHourly", e.target.value)} placeholder="$30" /></label>
+              <label>Preferred hourly rate <span>(optional)</span><input value={draft.preferredHourly} onChange={(e) => field("preferredHourly", e.target.value)} placeholder="$40" /></label>
+            </div>
+            <CheckGroup legend="Employment types" required options={groups.employment} values={draft.employmentTypes} onToggle={(value) => toggle("employmentTypes", value)} />
+            <CheckGroup legend="Schedule preferences" options={groups.schedule} values={draft.schedulePreferences} onToggle={(value) => toggle("schedulePreferences", value)} />
+            <CheckGroup legend="Required benefits" options={groups.benefits} values={draft.requiredBenefits} onToggle={(value) => toggle("requiredBenefits", value)} />
+            <CheckGroup legend="Preferred benefits" options={groups.benefits} values={draft.preferredBenefits} onToggle={(value) => toggle("preferredBenefits", value)} />
+            <label>Listings without benefit details <Required /><select value={draft.unknownBenefitsPolicy} onChange={(e) => field("unknownBenefitsPolicy", e.target.value)}><option value="">Choose one</option><option value="exclude">Exclude</option><option value="include_mark_unknown">Include and mark unknown</option></select></label>
+          </WizardStep>}
+
+          {step === 4 && <WizardStep title="What should never show up again?" help="We use this to filter out roles that may look relevant on paper but are wrong for you.">
+            <CheckGroup legend="Never include" required options={groups.exclusions} values={draft.neverInclude} onToggle={(value) => toggle("neverInclude", value)} />
+            <CheckGroup legend="Try to avoid" options={groups.exclusions} values={draft.tryAvoid} onToggle={(value) => toggle("tryAvoid", value)} />
+            <label>What did you dislike in previous work? <span>(optional)</span><textarea value={draft.previousDislikes} onChange={(e) => field("previousDislikes", e.target.value)} /></label>
+            <label>Industries or employers to exclude <span>(optional)</span><textarea value={draft.excludedIndustries} onChange={(e) => field("excludedIndustries", e.target.value)} /></label>
+          </WizardStep>}
+
+          {step === 5 && <WizardStep title="How far should this search stretch?" help="We will explain why each delivered job connects to your background and flag unknowns.">
+            <div className="field-grid">
+              <label>Search direction <Required /><select value={draft.directionChoice} onChange={(e) => field("directionChoice", e.target.value)}><option value="">Choose one</option><option value="exact">Stay close to my current work</option><option value="ideas">Show me adjacent ideas</option><option value="different">Help me make a bigger change</option><option value="unknown">I am not sure yet</option></select></label>
+              <label>How far from your background? <Required /><select value={draft.searchDistance} onChange={(e) => field("searchDistance", e.target.value)}><option value="">Choose one</option><option value="close">Close match</option><option value="adjacent">Adjacent skills</option><option value="bigger_change">Bigger change</option></select></label>
+            </div>
+            <label>Target titles or directions <span>(optional)</span><textarea value={draft.targetTitles} onChange={(e) => field("targetTitles", e.target.value)} /></label>
+            <label>Old-career work to exclude <span>(optional)</span><textarea value={draft.oldCareerExclusion} onChange={(e) => field("oldCareerExclusion", e.target.value)} /></label>
+            <label>Work authorization <Required /><input value={draft.workAuthorization} onChange={(e) => field("workAuthorization", e.target.value)} placeholder="Authorized to work in the U.S." /></label>
+            <div className="field-grid">
+              <label>Need sponsorship? <Required /><select value={draft.needsSponsorship} onChange={(e) => field("needsSponsorship", e.target.value)}><option value="">Choose one</option><option value="no">No</option><option value="yes">Yes</option><option value="unsure">Unsure</option></select></label>
+              <label>Travel preference <Required /><input value={draft.travelPreference} onChange={(e) => field("travelPreference", e.target.value)} placeholder="No travel, or up to 10%" /></label>
+              <label>Maximum commute <span>(optional)</span><input value={draft.commuteDistance} onChange={(e) => field("commuteDistance", e.target.value)} /></label>
+            </div>
+            <label>Other eligibility restrictions <span>(optional)</span><textarea value={draft.eligibilityRestrictions} onChange={(e) => field("eligibilityRestrictions", e.target.value)} /></label>
+          </WizardStep>}
+
+          {step === 6 && <WizardStep title="Review the boundary before payment." help="Your exact contractual deadline will be recorded after successful Stripe payment.">
+            <div className="review-list">
+              <p><strong>Non-negotiables</strong>{draft.neverInclude.join(", ") || "None selected"}</p>
+              <p><strong>Work fit</strong>{[draft.remoteRequirement, ...draft.employmentTypes, ...draft.requiredBenefits].filter(Boolean).join(", ")}</p>
+              <p><strong>Experience</strong>{draft.backgroundTypes.join(", ")}</p>
+              <p><strong>Search direction</strong>{[draft.directionChoice, draft.searchDistance, draft.targetTitles].filter(Boolean).join(" ú ")}</p>
+              <p><strong>Resume</strong>{resume?.name}</p>
+            </div>
+            <div className="deadline-note"><strong>Estimated delivery if payment succeeds now:</strong> {estimatedDeadline}. The final timestamp shown in My ApplyPack controls.</div>
+            <label className="confirm"><input type="checkbox" checked={draft.criteriaApproved} onChange={(e) => field("criteriaApproved", e.target.checked)} />These criteria accurately separate my requirements from my preferences.</label>
+            <label className="confirm"><input type="checkbox" checked={draft.researchAcknowledged} onChange={(e) => field("researchAcknowledged", e.target.checked)} />I understand ApplyPack researches public listings but does not contact employers or submit applications.</label>
+            <label className="confirm"><input type="checkbox" checked={draft.noGuaranteeAcknowledged} onChange={(e) => field("noGuaranteeAcknowledged", e.target.checked)} />I understand ApplyPack does not guarantee interviews, offers, or hiring outcomes.</label>
+            <label className="confirm"><input type="checkbox" checked={draft.listingChangesAcknowledged} onChange={(e) => field("listingChangesAcknowledged", e.target.checked)} />I understand listings can change or close after they are checked.</label>
+            <label className="confirm"><input type="checkbox" checked={draft.accuracyConfirmed} onChange={(e) => field("accuracyConfirmed", e.target.checked)} />I confirm the information and documents I provided are accurate and mine to use.</label>
+            <label className="confirm"><input type="checkbox" checked={draft.termsAccepted} onChange={(e) => field("termsAccepted", e.target.checked)} /><span>I agree to the <Link href="/terms">Terms</Link> and acknowledge the <Link href="/privacy">Privacy Policy</Link>.</span></label>
+          </WizardStep>}
+
+          <div className="wizard-actions">
+            <button className="wizard-back" type="button" onClick={() => { setMessage(""); setStep((value) => Math.max(0, value - 1)); }} disabled={step === 0 || busy}><ArrowLeft aria-hidden="true" />Back</button>
+            {step < 6
+              ? <button className="wizard-next" type="button" aria-describedby="step-help form-message" onClick={advance}>Continue<ArrowRight aria-hidden="true" /></button>
+              : <button className="wizard-next" type="button" aria-describedby="step-help form-message" disabled={busy} onClick={submit}>{busy ? "Preparing..." : "Continue to Secure Checkout"}<ArrowRight aria-hidden="true" /></button>}
+          </div>
+          <p id="form-message" className={message ? "form-message" : "sr-only"} role="status" aria-live="polite">{message || "Complete the required fields before continuing."}</p>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function WizardStep({ title, help, children }: { title: string; help: string; children: React.ReactNode }) {
+  return <div className="wizard-step"><h2 id="wizard-title" tabIndex={-1}>{title}</h2><p id="step-help">{help}</p><div className="wizard-fields">{children}</div></div>;
+}
+
+function Required() {
+  return <span className="required-hint" aria-hidden="true">required</span>;
+}
+
+function CheckGroup({ legend, required = false, options, values, onToggle }: { legend: string; required?: boolean; options: string[]; values: string[]; onToggle: (value: string) => void }) {
+  return <fieldset><legend>{legend} {required && <Required />}</legend><div className="choice-grid">{options.map((item) => <label className="choice" key={item}><input type="checkbox" checked={values.includes(item)} onChange={() => onToggle(item)} /><span><Check aria-hidden="true" />{item}</span></label>)}</div></fieldset>;
+}
