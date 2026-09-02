@@ -24,14 +24,8 @@ export default function Home() {
               Get 10 jobs matched around your experience, priorities, and
               dealbreakers within 24 hours.
             </p>
-            <p className="hero-secondary"><strong>See one you want?</strong></p>
-            <p className="hero-secondary">
-              Get a resume and cover letter tailored specifically for that job
-              within the next 24 hours.
-            </p>
-            <div className="hero-price-row">
+            <div className="hero-price-row hero-price-row--compact">
               <span>10 matched jobs: <strong>$20</strong></span>
-              <span>Tailored resume + cover letter: <strong>$8 per selected job</strong></span>
             </div>
             <div className="button-row">
               <ButtonLink href="/get-started">Get My 10 Jobs in 24 Hours</ButtonLink>
@@ -43,7 +37,22 @@ export default function Home() {
               No subscription. No mass applying. No fake experience.
             </p>
           </div>
-          <DocumentVisual />
+          <div className="hero-application-column">
+            <div className="hero-application-copy">
+              <p><strong>See one you want?</strong></p>
+              <p>
+                Get a resume and cover letter tailored specifically for that job
+                within the next 24 hours.
+              </p>
+              <div className="hero-price-row hero-price-row--compact">
+                <span>
+                  Tailored resume + cover letter:
+                  <strong>$8 per selected job</strong>
+                </span>
+              </div>
+            </div>
+            <DocumentVisual />
+          </div>
         </div>
       </section>
 

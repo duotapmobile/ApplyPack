@@ -2745,3 +2745,220 @@ a {
     width: 100%;
   }
 }
+
+/* Hero composition: large search promise on the left, compact application offer on the right. */
+.hero-grid {
+  grid-template-columns: minmax(0, 1.14fr) minmax(20rem, 0.86fr);
+  align-items: center;
+  gap: clamp(2.5rem, 5vw, 5rem);
+}
+
+.hero-copy h1 {
+  max-width: 11.5ch;
+  font-size: clamp(4.25rem, 7vw, 6.75rem);
+}
+
+.hero-lede {
+  max-width: 39rem;
+  font-size: clamp(1.3rem, 1.8vw, 1.55rem);
+}
+
+.hero-application-column {
+  display: grid;
+  min-width: 0;
+  gap: 0.75rem;
+}
+
+.hero-application-copy {
+  width: min(100%, 31rem);
+  margin-left: auto;
+  color: var(--ink);
+}
+
+.hero-application-copy > p {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.hero-application-copy > p:first-child {
+  margin-top: 0;
+  color: var(--ink);
+  font-family: var(--font-heading);
+  font-size: clamp(1.45rem, 2vw, 1.9rem);
+  line-height: 1.15;
+}
+
+.hero-price-row--compact {
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+
+.hero-price-row--compact span {
+  border-radius: 12px;
+  padding: 0.42rem 0.65rem;
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
+
+.hero-price-row--compact strong {
+  margin-left: 0.25rem;
+}
+
+.hero-application-column .document-visual {
+  min-height: 29rem;
+}
+
+.hero-application-column .job-card-preview {
+  width: 62%;
+  padding: 1.1rem;
+}
+
+.hero-application-column .job-card-preview h2 {
+  font-size: 1.08rem;
+}
+
+.hero-application-column .paper {
+  min-height: 13rem;
+  gap: 0.45rem;
+  padding: 1.1rem;
+}
+
+.hero-application-column .paper--resume {
+  width: 46%;
+}
+
+.hero-application-column .paper--letter {
+  width: 43%;
+}
+
+.hero-application-column .delivery-chip {
+  right: 8%;
+  padding: 0.48rem 0.65rem;
+  font-size: 0.7rem;
+}
+
+@media (min-width: 781px) and (max-width: 1080px) {
+  .hero-grid {
+    grid-template-columns: minmax(0, 1.06fr) minmax(18rem, 0.94fr);
+    gap: 2rem;
+  }
+
+  .hero-copy h1 {
+    font-size: clamp(3.65rem, 6.3vw, 4.75rem);
+  }
+
+  .hero-lede {
+    font-size: 1.15rem;
+  }
+
+  .hero-application-column .document-visual {
+    min-height: 25rem;
+  }
+
+  .hero-application-column .paper {
+    min-height: 11.5rem;
+    padding: 0.9rem;
+  }
+
+  .hero-application-column .job-card-preview {
+    width: 70%;
+    padding: 0.9rem;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 780px) {
+  .hero-section {
+    padding-block: 5rem;
+  }
+
+  .hero-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(16.5rem, 0.86fr);
+    gap: 1.5rem;
+  }
+
+  .hero-copy h1 {
+    font-size: clamp(3.25rem, 7vw, 3.9rem);
+  }
+
+  .hero-lede {
+    font-size: 1.05rem;
+  }
+
+  .hero-application-copy > p:first-child {
+    font-size: 1.35rem;
+  }
+
+  .hero-application-copy > p {
+    font-size: 0.9rem;
+  }
+
+  .hero-application-column .document-visual {
+    min-height: 22rem;
+  }
+
+  .hero-application-column .job-card-preview {
+    width: 74%;
+    padding: 0.75rem;
+  }
+
+  .hero-application-column .job-card-preview h2 {
+    font-size: 0.9rem;
+  }
+
+  .hero-application-column .job-card-preview ul {
+    gap: 0.25rem;
+    margin-top: 0.65rem;
+  }
+
+  .hero-application-column .job-card-preview li {
+    padding: 0.25rem 0.4rem;
+    font-size: 0.62rem;
+  }
+
+  .hero-application-column .paper {
+    min-height: 10.5rem;
+    gap: 0.35rem;
+    padding: 0.75rem;
+  }
+
+  .hero-application-column .paper strong {
+    font-size: 0.82rem;
+  }
+
+  .hero-application-column .delivery-chip {
+    right: 1%;
+    font-size: 0.62rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero-grid {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+  }
+
+  .hero-copy h1 {
+    font-size: clamp(3rem, 14vw, 4.25rem);
+  }
+
+  .hero-application-copy {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .hero-application-column .document-visual {
+    min-height: clamp(24rem, 112vw, 30rem);
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-price-row--compact {
+    align-items: flex-start;
+  }
+
+  .hero-price-row--compact span {
+    width: auto;
+  }
+}

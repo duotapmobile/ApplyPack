@@ -96,4 +96,14 @@ describe("approved site copy and navigation", () => {
       expect(home, copy).toContain(copy);
     }
   });
+
+  it("keeps the application offer in the right hero column through tablet widths", () => {
+    const home = readFileSync("src/app/page.tsx", "utf8");
+    const styles = readFileSync("src/app/globals.css", "utf8");
+
+    expect(home).toContain('className="hero-application-column"');
+    expect(styles).toContain("@media (min-width: 641px) and (max-width: 780px)");
+    expect(styles).toContain("grid-template-columns: minmax(0, 1fr) minmax(16.5rem, 0.86fr)");
+    expect(styles).toContain("@media (max-width: 640px)");
+  });
 });
