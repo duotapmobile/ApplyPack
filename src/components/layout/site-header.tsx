@@ -54,7 +54,7 @@ export function SiteHeader() {
             height={521}
             priority
             src="/applypack-logo-transparent.png"
-            width={606}
+            width={609}
           />
         </Link>
         <nav className="desktop-nav" aria-label="Primary navigation">
@@ -87,7 +87,7 @@ export function SiteHeader() {
                 className="brand-logo brand-logo--mobile"
                 height={521}
                 src="/applypack-logo-transparent.png"
-                width={606}
+                width={609}
               />
             </Link>
             <button aria-label="Close navigation" className="menu-trigger" onClick={() => setOpen(false)} ref={closeRef} type="button">

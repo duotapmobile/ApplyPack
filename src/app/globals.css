@@ -4,24 +4,24 @@
 
 :root {
   --logo-navy: #030b20;
-  --logo-blue: #2a5eba;
-  --logo-cyan: #67bef7;
-  --logo-violet: #494695;
-  --logo-green: #29a866;
-  --logo-gold: #f3b941;
-  --canvas: #f7fbff;
+  --logo-blue: #2c5fc8;
+  --logo-cyan: #81cbfa;
+  --logo-violet: #484e9c;
+  --logo-green: #306b3f;
+  --logo-gold: #f3bd41;
+  --canvas: #f6f9ff;
   --surface: #ffffff;
   --ink: var(--logo-navy);
   --muted: #536277;
-  --border: #cbd9ea;
+  --border: #bdcde0;
   --deep: var(--logo-navy);
   --primary: var(--logo-blue);
-  --primary-dark: #17136f;
-  --lavender: #e4e5ff;
-  --mint: #d9f4e5;
+  --primary-dark: #050746;
+  --lavender: #e0e3ff;
+  --mint: #dcece1;
   --sky: #d9f3ff;
   --gold: var(--logo-gold);
-  --rose: #ece8ff;
+  --rose: #e7e4f4;
   --focus: var(--logo-blue);
   --error: #b42318;
   --success: #176b4d;
@@ -110,6 +110,21 @@ a {
   position: absolute;
 }
 
+.site-header--overlay .desktop-nav a,
+.site-header--overlay .account-link {
+  color: #edf7ff;
+}
+
+.site-header--overlay .desktop-nav a:hover,
+.site-header--overlay .account-link:hover {
+  color: var(--logo-cyan);
+}
+
+.site-header--overlay .header-cta {
+  background: var(--logo-cyan);
+  color: var(--logo-navy);
+}
+
 .header-inner {
   display: flex;
   min-height: 128px;
@@ -135,13 +150,19 @@ a {
   object-fit: contain;
 }
 
-.brand-logo--header,
+.brand-logo--header {
+  width: clamp(10rem, 14vw, 12rem);
+  height: auto;
+}
+
 .brand-logo--mobile {
-  height: 7rem;
+  width: 9rem;
+  height: auto;
 }
 
 .brand-logo--footer {
-  height: 8.5rem;
+  width: 14rem;
+  height: auto;
 }
 
 .desktop-nav {
@@ -278,10 +299,11 @@ a {
   overflow: hidden;
   padding-block: clamp(9rem, 14vw, 12rem) clamp(5.5rem, 10vw, 9rem);
   background:
-    radial-gradient(circle at 8% 14%, rgba(243, 185, 65, 0.34), transparent 24rem),
-    radial-gradient(circle at 84% 24%, rgba(103, 190, 247, 0.42), transparent 27rem),
-    radial-gradient(circle at 70% 78%, rgba(73, 70, 149, 0.2), transparent 24rem),
-    var(--canvas);
+    radial-gradient(circle at 82% 18%, rgba(129, 203, 250, 0.26), transparent 28rem),
+    radial-gradient(circle at 62% 76%, rgba(72, 78, 156, 0.42), transparent 30rem),
+    radial-gradient(circle at 8% 88%, rgba(48, 107, 63, 0.18), transparent 24rem),
+    var(--logo-navy);
+  color: white;
 }
 
 .hero-grid {
@@ -328,6 +350,11 @@ a {
   line-height: 1.55;
 }
 
+.hero-section .hero-secondary,
+.hero-section .trust-line {
+  color: #c5d5e8;
+}
+
 .hero-secondary {
   max-width: 38rem;
   margin: 0.8rem 0 0;
@@ -343,15 +370,33 @@ a {
 }
 
 .hero-price-row span {
-  border: 1px solid var(--border);
+  border: 1px solid rgba(129, 203, 250, 0.34);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.08);
   padding: 0.58rem 0.85rem;
   font-size: 0.9rem;
 }
 
 .hero-price-row strong {
-  color: var(--primary);
+  color: var(--logo-gold);
+}
+
+.hero-section .button-link--primary {
+  background: var(--logo-cyan);
+  color: var(--logo-navy);
+}
+
+.hero-section .button-link--primary:hover {
+  background: white;
+}
+
+.hero-section .button-link--secondary {
+  border-color: rgba(255, 255, 255, 0.8);
+  color: white;
+}
+
+.hero-section .button-link--secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .button-row {
@@ -562,7 +607,7 @@ a {
 }
 
 .section-shell--tinted {
-  background: #f2eff7;
+  background: #edf4fb;
 }
 
 .section-heading {
@@ -1575,7 +1620,8 @@ a {
 
   .brand-logo--header,
   .brand-logo--mobile {
-    height: 5rem;
+    width: 7.75rem;
+    height: auto;
   }
 
   .hero-grid {

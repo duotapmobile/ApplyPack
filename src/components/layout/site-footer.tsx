@@ -40,7 +40,7 @@ export function SiteFooter() {
               className="brand-logo brand-logo--footer"
               height={521}
               src="/applypack-logo-transparent.png"
-              width={606}
+              width={609}
             />
           </Link>
           <p>{siteConfig.promise}</p>
