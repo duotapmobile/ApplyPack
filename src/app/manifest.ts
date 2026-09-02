@@ -7,7 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "We find the jobs. We get you ready to apply.",
     start_url: "/",
     display: "standalone",
-    background_color: "#fbfafc",
-    theme_color: "#5637d7",
+    background_color: "#f7fbff",
+    theme_color: "#030b20",
   };
 }

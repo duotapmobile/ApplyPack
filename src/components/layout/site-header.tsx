@@ -3,11 +3,13 @@
 import { Menu, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { siteConfig } from "@/config/site";
 
 export function SiteHeader() {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -43,16 +45,16 @@ export function SiteHeader() {
   }, [open]);
 
   return (
-    <header className="site-header">
+    <header className={pathname === "/" ? "site-header site-header--overlay" : "site-header"}>
       <div className="page-frame header-inner">
         <Link className="brand" href="/" aria-label="ApplyPack home">
           <Image
             alt=""
             className="brand-logo brand-logo--header"
-            height={354}
+            height={521}
             priority
-            src="/applypack-wordmark-transparent.png"
-            width={992}
+            src="/applypack-logo-transparent.png"
+            width={606}
           />
         </Link>
         <nav className="desktop-nav" aria-label="Primary navigation">
@@ -83,9 +85,9 @@ export function SiteHeader() {
               <Image
                 alt=""
                 className="brand-logo brand-logo--mobile"
-                height={354}
-                src="/applypack-wordmark-transparent.png"
-                width={992}
+                height={521}
+                src="/applypack-logo-transparent.png"
+                width={606}
               />
             </Link>
             <button aria-label="Close navigation" className="menu-trigger" onClick={() => setOpen(false)} ref={closeRef} type="button">

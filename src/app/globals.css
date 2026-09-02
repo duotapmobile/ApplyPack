@@ -3,20 +3,26 @@
 @import "tailwindcss";
 
 :root {
-  --canvas: #fbfafc;
+  --logo-navy: #030b20;
+  --logo-blue: #2a5eba;
+  --logo-cyan: #67bef7;
+  --logo-violet: #494695;
+  --logo-green: #29a866;
+  --logo-gold: #f3b941;
+  --canvas: #f7fbff;
   --surface: #ffffff;
-  --ink: #17131f;
-  --muted: #5d5868;
-  --border: #dcd8e3;
-  --deep: #12102e;
-  --primary: #5637d7;
-  --primary-dark: #3f26b6;
-  --lavender: #ddd4ff;
-  --mint: #c8f1df;
-  --sky: #cdebfa;
-  --gold: #f6d36f;
-  --rose: #f3d5e5;
-  --focus: #4b2fc4;
+  --ink: var(--logo-navy);
+  --muted: #536277;
+  --border: #cbd9ea;
+  --deep: var(--logo-navy);
+  --primary: var(--logo-blue);
+  --primary-dark: #17136f;
+  --lavender: #e4e5ff;
+  --mint: #d9f4e5;
+  --sky: #d9f3ff;
+  --gold: var(--logo-gold);
+  --rose: #ece8ff;
+  --focus: var(--logo-blue);
   --error: #b42318;
   --success: #176b4d;
   --font-heading: "Manrope Variable", "Manrope", ui-sans-serif, system-ui, sans-serif;
@@ -92,17 +98,21 @@ a {
 }
 
 .site-header {
-  position: sticky;
+  position: relative;
   z-index: 100;
   top: 0;
-  border-bottom: 1px solid rgba(220, 216, 227, 0.82);
-  background: rgba(251, 250, 252, 0.94);
-  backdrop-filter: blur(16px);
+  width: 100%;
+  border-bottom: 0;
+  background: transparent;
+}
+
+.site-header--overlay {
+  position: absolute;
 }
 
 .header-inner {
   display: flex;
-  min-height: 76px;
+  min-height: 128px;
   align-items: center;
   gap: 1.75rem;
 }
@@ -127,11 +137,11 @@ a {
 
 .brand-logo--header,
 .brand-logo--mobile {
-  height: 3.25rem;
+  height: 7rem;
 }
 
 .brand-logo--footer {
-  height: 4.6rem;
+  height: 8.5rem;
 }
 
 .desktop-nav {
@@ -266,10 +276,11 @@ a {
 .hero-section {
   position: relative;
   overflow: hidden;
-  padding-block: clamp(5.5rem, 10vw, 9rem);
+  padding-block: clamp(9rem, 14vw, 12rem) clamp(5.5rem, 10vw, 9rem);
   background:
-    radial-gradient(circle at 8% 14%, rgba(246, 211, 111, 0.36), transparent 24rem),
-    radial-gradient(circle at 85% 35%, rgba(221, 212, 255, 0.72), transparent 26rem),
+    radial-gradient(circle at 8% 14%, rgba(243, 185, 65, 0.34), transparent 24rem),
+    radial-gradient(circle at 84% 24%, rgba(103, 190, 247, 0.42), transparent 27rem),
+    radial-gradient(circle at 70% 78%, rgba(73, 70, 149, 0.2), transparent 24rem),
     var(--canvas);
 }
 
@@ -368,7 +379,7 @@ a {
   z-index: -1;
   inset: 8% 0 0 8%;
   border-radius: 42% 58% 45% 55%;
-  background: linear-gradient(145deg, var(--gold), var(--lavender) 48%, var(--mint));
+  background: linear-gradient(145deg, var(--logo-gold), var(--logo-cyan) 34%, var(--logo-violet) 66%, var(--logo-green));
   content: "";
   filter: blur(1px);
   opacity: 0.8;
@@ -722,8 +733,9 @@ a {
   overflow: hidden;
   border-radius: var(--radius-panel);
   background:
-    radial-gradient(circle at 12% 0%, rgba(86, 55, 215, 0.5), transparent 24rem),
-    radial-gradient(circle at 100% 100%, rgba(246, 211, 111, 0.22), transparent 30rem),
+    radial-gradient(circle at 12% 0%, rgba(103, 190, 247, 0.34), transparent 24rem),
+    radial-gradient(circle at 58% 110%, rgba(73, 70, 149, 0.52), transparent 30rem),
+    radial-gradient(circle at 100% 100%, rgba(243, 185, 65, 0.2), transparent 30rem),
     var(--deep);
   color: white;
   padding: clamp(2rem, 6vw, 5.5rem);
@@ -1554,11 +1566,16 @@ a {
   }
 
   .header-inner {
-    min-height: 68px;
+    min-height: 88px;
   }
 
   .hero-section {
-    padding-block: 4.5rem 5rem;
+    padding-block: 8rem 5rem;
+  }
+
+  .brand-logo--header,
+  .brand-logo--mobile {
+    height: 5rem;
   }
 
   .hero-grid {
