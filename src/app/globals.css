@@ -2373,3 +2373,375 @@ a {
     padding-inline: 1rem;
   }
 }
+
+/* Copy and design authority: persistent top navigation and approved high-resolution logo. */
+.site-header {
+  position: sticky;
+  top: 0;
+  border-bottom: 1px solid rgba(189, 205, 224, 0.86);
+  background: rgba(246, 249, 255, 0.96);
+  backdrop-filter: blur(12px);
+}
+
+.header-inner {
+  min-height: 108px;
+}
+
+.brand-logo--header,
+.brand-logo--mobile,
+.brand-logo--footer {
+  object-fit: contain;
+  border-radius: 16px;
+}
+
+.brand-logo--header {
+  width: 9rem;
+  height: 6rem;
+}
+
+.brand-logo--mobile {
+  width: 6.75rem;
+  height: 4.5rem;
+}
+
+.desktop-nav {
+  justify-content: flex-end;
+}
+
+.desktop-nav a[aria-current="page"],
+.mobile-menu nav a[aria-current="page"] {
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.38rem;
+}
+
+.hero-section {
+  padding-block: clamp(4.5rem, 8vw, 7rem) clamp(5rem, 9vw, 8rem);
+  background:
+    radial-gradient(circle at 92% 4%, rgba(243, 189, 65, 0.25), transparent 25rem),
+    radial-gradient(circle at 72% 62%, rgba(72, 78, 156, 0.16), transparent 31rem),
+    radial-gradient(circle at 4% 94%, rgba(48, 107, 63, 0.1), transparent 24rem),
+    var(--canvas);
+  color: var(--ink);
+}
+
+.hero-section .hero-secondary,
+.hero-section .trust-line {
+  color: var(--muted);
+}
+
+.hero-section .button-link--primary {
+  background: var(--ink);
+  color: white;
+}
+
+.hero-section .button-link--primary:hover {
+  background: var(--primary-dark);
+}
+
+.hero-section .button-link--secondary {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.hero-section .button-link--secondary:hover {
+  background: white;
+}
+
+.hero-price-row span {
+  border-color: rgba(44, 95, 200, 0.25);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+@media (min-width: 941px) and (max-width: 1080px) {
+  .desktop-nav,
+  .header-actions {
+    display: flex;
+  }
+
+  .desktop-nav {
+    gap: 0.75rem;
+  }
+
+  .desktop-nav a {
+    font-size: 0.8rem;
+  }
+
+  .account-link {
+    display: none;
+  }
+
+  .header-cta {
+    padding-inline: 0.9rem;
+    font-size: 0.8rem;
+  }
+
+  .menu-trigger {
+    display: none;
+  }
+
+  .brand-logo--header {
+    width: 7.5rem;
+    height: 5rem;
+  }
+}
+
+@media (max-width: 780px) {
+  .page-frame {
+    margin-left: max(1.125rem, env(safe-area-inset-left));
+    margin-right: max(1.125rem, env(safe-area-inset-right));
+  }
+
+  .header-inner {
+    min-height: 84px;
+  }
+
+  .brand-logo--header,
+  .brand-logo--mobile {
+    width: 6.75rem;
+    height: 4.5rem;
+  }
+
+  .hero-section {
+    padding-block: 4rem 4.5rem;
+  }
+}
+
+@media (max-width: 390px) {
+  .page-frame {
+    margin-left: max(1.125rem, env(safe-area-inset-left));
+    margin-right: max(1.125rem, env(safe-area-inset-right));
+  }
+}
+
+/* Homepage sections mapped one-to-one to the approved copy and page map. */
+.compact-showcase {
+  display: grid;
+  gap: clamp(2rem, 5vw, 4rem);
+}
+
+.overlap-grid,
+.pricing-cards,
+.comparison-grid,
+.truth-grid {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.overlap-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.overlap-card,
+.comparison-card {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  background: white;
+  padding: clamp(1.35rem, 3vw, 2rem);
+  box-shadow: 0 1rem 2.5rem rgba(22, 32, 72, 0.07);
+}
+
+.overlap-card h3 {
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
+}
+
+.overlap-card p {
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.overlap-card strong {
+  display: block;
+  margin-top: 1.15rem;
+  color: var(--primary-dark);
+}
+
+.process-list--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.comparison-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 58rem;
+  margin-inline: auto;
+}
+
+.comparison-card {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.85rem;
+  text-align: center;
+}
+
+.comparison-card svg {
+  width: 1.35rem;
+  color: var(--primary);
+}
+
+.comparison-card--brand {
+  border-color: rgba(44, 95, 200, 0.35);
+  background:
+    linear-gradient(145deg, rgba(54, 217, 255, 0.12), rgba(125, 83, 255, 0.12)),
+    white;
+}
+
+.centered-trust-copy,
+.pricing-close {
+  max-width: 52rem;
+  margin: 2rem auto 0;
+  color: var(--muted);
+  font-weight: 700;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.callout-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.callout-list span {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  border: 1px solid rgba(100, 219, 255, 0.3);
+  border-radius: 999px;
+  padding: 0.7rem 0.9rem;
+  color: white;
+  font-weight: 750;
+}
+
+.callout-list svg {
+  width: 1rem;
+  flex: 0 0 auto;
+  color: var(--logo-cyan);
+}
+
+.pricing-cards {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 64rem;
+  margin-inline: auto;
+}
+
+.price-card {
+  min-width: 0;
+}
+
+.price-card > b {
+  display: block;
+  margin-top: 1.25rem;
+  color: var(--primary-dark);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+}
+
+.price-card .button-link {
+  margin-top: auto;
+}
+
+.outcome-close {
+  grid-column: 1 / -1;
+  max-width: 62rem;
+  margin-inline: auto;
+  color: var(--muted);
+  line-height: 1.7;
+  text-align: center;
+}
+
+.trust-authority-section {
+  background:
+    radial-gradient(circle at 10% 15%, rgba(54, 217, 255, 0.12), transparent 22rem),
+    radial-gradient(circle at 90% 80%, rgba(45, 202, 111, 0.1), transparent 24rem),
+    #f6f9ff;
+}
+
+.truth-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 58rem;
+  margin-inline: auto;
+}
+
+.truth-grid p {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.75rem;
+  border: 1px solid rgba(44, 95, 200, 0.18);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 1rem;
+  font-weight: 700;
+}
+
+.truth-grid svg {
+  width: 1.25rem;
+  flex: 0 0 auto;
+  color: var(--logo-green);
+}
+
+.trust-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+.trust-badges span {
+  border: 1px solid rgba(44, 95, 200, 0.22);
+  border-radius: 999px;
+  background: white;
+  padding: 0.65rem 0.9rem;
+  color: var(--primary-dark);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.faq-question-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.faq-question-list li {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: white;
+  padding: 1rem 1.1rem;
+  color: var(--ink);
+  font-weight: 750;
+}
+
+@media (max-width: 780px) {
+  .overlap-grid,
+  .pricing-cards,
+  .comparison-grid,
+  .truth-grid,
+  .process-list--three {
+    grid-template-columns: 1fr;
+  }
+
+  .overlap-card,
+  .comparison-card {
+    padding: 1.25rem;
+  }
+
+  .compact-showcase {
+    gap: 1.5rem;
+  }
+
+  .callout-list span {
+    border-radius: 0.85rem;
+  }
+
+  .price-card .button-link {
+    width: 100%;
+  }
+}

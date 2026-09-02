@@ -13,7 +13,7 @@ export const metadata: Metadata = {
     template: "%s | ApplyPack",
   },
   description:
-    "Get 10 jobs matched to your goals within 24 hours for $20. Add a tailored resume and cover letter for $8 per selected job.",
+    "Get 10 jobs matched to your goals within 24 hours for $20. Choose the ones you want, then receive a tailored resume and cover letter within 24 hours for $8 per job.",
   keywords: [
     "job search help",
     "job matching service",
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     siteName: "ApplyPack",
     title: "We find the jobs. We get you ready to apply.",
     description:
-      "Ten matched jobs in 24 hours for $20. Tailored application materials for $8 per selected job.",
+      "Get 10 jobs matched to your goals within 24 hours for $20. Choose the ones you want, then receive a tailored resume and cover letter within 24 hours for $8 per job.",
     url: "/",
     images: [
       {
@@ -53,7 +53,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "We find the jobs. We get you ready to apply.",
     description:
-      "Ten matched jobs in 24 hours for $20. Tailored application materials for $8 per selected job.",
+      "Get 10 jobs matched to your goals within 24 hours for $20. Choose the ones you want, then receive a tailored resume and cover letter within 24 hours for $8 per job.",
     images: ["/opengraph-image.png"],
   },
 };

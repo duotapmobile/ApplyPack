@@ -45,21 +45,22 @@ export function SiteHeader() {
   }, [open]);
 
   return (
-    <header className={pathname === "/" ? "site-header site-header--overlay" : "site-header"}>
+    <header className="site-header">
       <div className="page-frame header-inner">
         <Link className="brand" href="/" aria-label="ApplyPack home">
           <Image
             alt=""
             className="brand-logo brand-logo--header"
-            height={521}
-            priority
-            src="/applypack-logo-transparent.png"
-            width={609}
+            height={1024}
+            preload
+            sizes="(max-width: 780px) 108px, 132px"
+            src="/applypack-logo-high-res-source.png"
+            width={1536}
           />
         </Link>
         <nav className="desktop-nav" aria-label="Primary navigation">
           {siteConfig.navigation.map((item) => (
-            <Link href={item.href} key={item.href}>{item.label}</Link>
+            <Link aria-current={pathname === item.href ? "page" : undefined} href={item.href} key={item.href}>{item.label}</Link>
           ))}
         </nav>
         <div className="header-actions">
@@ -85,9 +86,10 @@ export function SiteHeader() {
               <Image
                 alt=""
                 className="brand-logo brand-logo--mobile"
-                height={521}
-                src="/applypack-logo-transparent.png"
-                width={609}
+                height={1024}
+                sizes="108px"
+                src="/applypack-logo-high-res-source.png"
+                width={1536}
               />
             </Link>
             <button aria-label="Close navigation" className="menu-trigger" onClick={() => setOpen(false)} ref={closeRef} type="button">
@@ -96,7 +98,7 @@ export function SiteHeader() {
           </div>
           <nav aria-label="Mobile navigation">
             {[...siteConfig.navigation, { href: "/about", label: "About" }, { href: "/contact", label: "Contact" }].map((item) => (
-              <Link href={item.href} key={item.href} onClick={() => setOpen(false)}>{item.label}</Link>
+              <Link aria-current={pathname === item.href ? "page" : undefined} href={item.href} key={item.href} onClick={() => setOpen(false)}>{item.label}</Link>
             ))}
           </nav>
           <Link className="mobile-account" href="/my-applypack" onClick={() => setOpen(false)}>My ApplyPack</Link>

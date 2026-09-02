@@ -13,11 +13,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const page = publicPages[(await params).slug];
   if (!page) return {};
   return {
-    title: page.title,
+    title: { absolute: page.seoTitle },
     description: page.description,
     alternates: { canonical: "/" + page.slug },
     openGraph: {
-      title: page.title,
+      title: page.seoTitle,
       description: page.description,
       type: "website",
       url: "/" + page.slug,
@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     },
     twitter: {
       card: "summary_large_image",
-      title: page.title,
+      title: page.seoTitle,
       description: page.description,
       images: ["/opengraph-image"],
     },

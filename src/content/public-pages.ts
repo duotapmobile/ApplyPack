@@ -1,6 +1,6 @@
 export type ContentSection = { title: string; body?: string[]; bullets?: string[]; note?: string };
 export type PublicPage = {
-  slug: string; eyebrow: string; title: string; description: string;
+  slug: string; eyebrow: string; title: string; seoTitle: string; description: string;
   intro: string[]; sections: ContentSection[]; ctaLabel?: string; ctaHref?: string;
 };
 
@@ -8,8 +8,9 @@ const start = { ctaLabel: "Start My Search", ctaHref: "/get-started" };
 
 export const publicPages: Record<string, PublicPage> = {
   "how-it-works": {
-    slug: "how-it-works", eyebrow: "FROM I NEED A JOB TO READY TO APPLY",
-    title: "From I need a job to ready to apply.",
+    slug: "how-it-works", eyebrow: "FROM \"I NEED A JOB\" TO READY TO APPLY",
+    title: "From \"I need a job\" to ready to apply.",
+    seoTitle: "24-Hour Job Search and Application Help | ApplyPack",
     description: "Tell ApplyPack what fits your life. Receive 10 matched jobs within 24 hours, then add tailored application materials for the jobs you choose.",
     intro: ["ApplyPack handles the work between needing something different and having an application ready to submit.", "You do not need the perfect job title or resume. You only need to give us somewhere honest to start."],
     sections: [
@@ -24,9 +25,10 @@ export const publicPages: Record<string, PublicPage> = {
     ], ...start,
   },
   "job-search-help": {
-    slug: "job-search-help", eyebrow: "A SEARCH BUILT AROUND YOUR REAL LIFE",
+    slug: "job-search-help", eyebrow: "YOU DO NOT HAVE TO KNOW THE JOB TITLE YET",
     title: "You do not have to know the job title yet.",
-    description: "ApplyPack searches around your pay, schedule, location, priorities, and dealbreakers.",
+    seoTitle: "Job Search Help Without Knowing the Job Title | ApplyPack",
+    description: "Know what you want, or only what you do not want? ApplyPack searches around your pay, schedule, location, and career priorities.",
     intro: ["Maybe you know you want remote work, $80K+, benefits, and no sales. That is enough to begin."],
     sections: [
       { title: "Tell us what stays.", bullets: ["Remote work", "Minimum salary", "Benefits or flexibility", "Limited travel", "A location or time zone"] },
@@ -37,9 +39,10 @@ export const publicPages: Record<string, PublicPage> = {
     ], ...start,
   },
   "experience-connections": {
-    slug: "experience-connections", eyebrow: "SAME EXPERIENCE. MORE POSSIBLE DIRECTIONS.",
-    title: "Your experience may fit more jobs than you think.",
-    description: "See how real skills from work, caregiving periods, and side businesses may connect to new jobs.",
+    slug: "experience-connections", eyebrow: "YOUR EXPERIENCE MAY FIT MORE JOBS THAN YOU THINK",
+    title: "Your experience may fit more jobs than you think. ApplyPack makes the connection.",
+    seoTitle: "What Jobs Fit My Experience? | ApplyPack",
+    description: "Your experience may fit more roles than you think. See how ApplyPack connects real skills from work, caregiving periods, and side businesses to new jobs.",
     intro: ["A title is a label. The work underneath it is often much broader."],
     sections: [
       { title: "Small business", body: ["Ordering, pricing, customer communication, deadlines, costs, and problem solving may connect to operations or order management."] },
@@ -51,10 +54,11 @@ export const publicPages: Record<string, PublicPage> = {
     ], ...start,
   },
   "before-and-after": {
-    slug: "before-and-after", eyebrow: "THE DIFFERENCE IS RELEVANCE",
-    title: "Same facts. Clearer connection.",
-    description: "See how ApplyPack reorganizes truthful experience around one real role.",
-    intro: ["These examples are illustrative. Your documents use your own facts and the job you select."],
+    slug: "before-and-after", eyebrow: "SEE WHAT CHANGES WHEN THE JOB COMES FIRST",
+    title: "See what changes when the job comes first.",
+    seoTitle: "Resume Before and After for a Career Change | ApplyPack",
+    description: "See how ApplyPack connects a real background to a different role, then changes the resume and cover letter to make the fit clear.",
+    intro: ["Illustrative example based on a common career-change scenario. This is not a customer testimonial."],
     sections: [
       { title: "Before: generic", body: ["Developed lesson plans. Communicated with families. Maintained student records."] },
       { title: "After: client onboarding", body: ["Created clear instructional materials, guided people through unfamiliar processes, tracked progress, and adjusted support when barriers arose."] },
@@ -63,9 +67,10 @@ export const publicPages: Record<string, PublicPage> = {
     ], ...start,
   },
   "resume-screening": {
-    slug: "resume-screening", eyebrow: "CLEAR FOR PEOPLE AND SCREENING SOFTWARE",
-    title: "A strong resume should be easy to understand.",
-    description: "Readable, truthful, job-specific resumes for people and common hiring systems.",
+    slug: "resume-screening", eyebrow: "RESUME SCREENING",
+    title: "Before a person really looks at your resume, software may already be sorting it.",
+    seoTitle: "How Resume Screening Software Reads Applications | ApplyPack",
+    description: "Learn how hiring software may sort your resume before a recruiter reviews it, and how ApplyPack prepares documents for software and people.",
     intro: ["The safest strategy is a clean document that uses relevant language accurately."],
     sections: [
       { title: "What we do", bullets: ["Readable structure", "Relevant experience first", "Accurate job language", "Truthful dates and credentials", "Editable Word delivery"] },
@@ -74,9 +79,10 @@ export const publicPages: Record<string, PublicPage> = {
     ], ...start,
   },
   "not-just-ai": {
-    slug: "not-just-ai", eyebrow: "TECHNOLOGY CAN HELP. A PERSON IS ACCOUNTABLE.",
-    title: "ApplyPack is not a prompt and a download button.",
-    description: "Technology may assist research and drafting, but a person reviews every delivery.",
+    slug: "not-just-ai", eyebrow: "NOT JUST ANOTHER AI RESUME",
+    title: "Not just another AI resume.",
+    seoTitle: "Human-Reviewed Resume and Cover Letter Service | ApplyPack",
+    description: "ApplyPack uses technology for speed and human judgment for accuracy. No fake experience, invented numbers, or generic application materials.",
     intro: ["AI-assisted tools may support research, comparison, and drafting. They do not make the final decision about what reaches you."],
     sections: [
       { title: "Research needs judgment.", body: ["Keywords can match while salary, schedule, or location does not."] },
@@ -87,8 +93,9 @@ export const publicPages: Record<string, PublicPage> = {
   },
   pricing: {
     slug: "pricing", eyebrow: "PAY FOR THE HELP YOU ACTUALLY USE",
-    title: "Start with the search. Choose where to spend more.",
-    description: "10 matched opportunities for $20. A tailored resume and cover letter for $8 per selected job.",
+    title: "Pay for the help you actually use.",
+    seoTitle: "ApplyPack Pricing | 10 Job Matches in 24 Hours for $20",
+    description: "Receive 10 matched job opportunities within 24 hours for $20. Add a tailored resume and cover letter within 24 hours for $8 per selected job.",
     intro: ["No subscription. No recurring charge. No auto-apply service."],
     sections: [
       { title: "$20 Job Match Search", bullets: ["10 current opportunities", "Direct links", "Fit and gap explanations", "Delivered within 24 hours of completed intake and payment"] },
@@ -100,7 +107,8 @@ export const publicPages: Record<string, PublicPage> = {
   },
   faq: {
     slug: "faq", eyebrow: "CLEAR BEFORE YOU PAY", title: "Questions before you start?",
-    description: "Answers about matches, documents, turnaround, corrections, privacy, and ApplyPack's limits.",
+    seoTitle: "Job Search and Resume Help FAQ | ApplyPack",
+    description: "Answers about job matching, career changes, resume gaps, tailored cover letters, turnaround, delivery, revisions, privacy, and ApplyPack's limits.",
     intro: ["If your question is not here, contact us before purchasing."],
     sections: [
       { title: "What if I do not know what job I want?", body: ["Start with what fits your life and what you do not want to do again."] },
@@ -118,6 +126,7 @@ export const publicPages: Record<string, PublicPage> = {
   },
   about: {
     slug: "about", eyebrow: "A MORE HUMAN PLACE TO START", title: "I built ApplyPack because I needed it.",
+    seoTitle: "About ApplyPack | A More Human Job Search Service",
     description: "ApplyPack was created for people with real experience who need help finding where it fits next.",
     intro: ["I had years of experience and time outside the traditional workforce. I knew what I did not want, but not which titles to search."],
     sections: [
@@ -128,7 +137,8 @@ export const publicPages: Record<string, PublicPage> = {
   },
   contact: {
     slug: "contact", eyebrow: "CONTACT APPLYPACK", title: "How can we help?",
-    description: "Contact ApplyPack about the service, an order, billing, privacy, or accessibility.",
+    seoTitle: "Contact ApplyPack | Job Search and Resume Help",
+    description: "Questions about job matching, tailored resumes, cover letters, an order, or website accessibility? Contact ApplyPack.",
     intro: ["We normally respond within two business days. Do not email resumes, payment details, or other sensitive documents."],
     sections: [
       { title: "General help, privacy, and accessibility", body: ["help@applypack.work"] },
@@ -136,7 +146,8 @@ export const publicPages: Record<string, PublicPage> = {
     ], ctaLabel: "Email Help", ctaHref: "mailto:help@applypack.work",
   },
   accessibility: {
-    slug: "accessibility", eyebrow: "ACCESSIBILITY AT APPLYPACK", title: "A service designed for more people to use.",
+    slug: "accessibility", eyebrow: "ACCESSIBILITY AT APPLYPACK", title: "Accessibility at ApplyPack",
+    seoTitle: "Accessibility Statement | ApplyPack",
     description: "ApplyPack's accessibility target and support contact.",
     intro: ["ApplyPack is committed to a website and service usable by as many people as possible."],
     sections: [
@@ -147,6 +158,7 @@ export const publicPages: Record<string, PublicPage> = {
   },
   privacy: {
     slug: "privacy", eyebrow: "PRIVACY POLICY", title: "Your information is for providing your service.",
+    seoTitle: "Privacy Policy | ApplyPack",
     description: "How ApplyPack, operated by DuoTap LLC, handles information.",
     intro: ["Effective September 1, 2026. Provider-specific details will be confirmed before live purchasing is enabled."],
     sections: [
@@ -161,6 +173,7 @@ export const publicPages: Record<string, PublicPage> = {
   },
   terms: {
     slug: "terms", eyebrow: "TERMS OF SERVICE", title: "The service boundary, in plain language.",
+    seoTitle: "Terms of Service | ApplyPack",
     description: "Terms for ApplyPack's job-search and application-preparation services.",
     intro: ["Effective September 1, 2026. ApplyPack is operated by DuoTap LLC."],
     sections: [
