@@ -1919,3 +1919,457 @@ a {
 .admin-buttons button, .admin-work-card > button { min-height: 2.75rem; padding: .65rem 1rem; border: 1px solid var(--primary); border-radius: .65rem; background: white; color: var(--primary-dark); font-weight: 800; }
 .capacity-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; }
 @media (max-width: 700px) { .admin-control__heading { display: grid; gap: .75rem; } .capacity-grid { grid-template-columns: 1fr; } }
+
+/* Mobile-first hardening */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-x: clip;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p,
+li {
+  text-wrap: pretty;
+}
+
+button,
+summary,
+a {
+  touch-action: manipulation;
+}
+
+@media (max-width: 1080px) {
+  .menu-trigger {
+    width: 48px;
+    height: 48px;
+  }
+
+  .site-header--overlay .menu-trigger {
+    border-color: rgba(255, 255, 255, 0.32);
+    background: rgba(3, 11, 32, 0.66);
+    color: white;
+    backdrop-filter: blur(12px);
+  }
+}
+
+@media (max-width: 780px) {
+  html {
+    scroll-padding-top: 5.75rem;
+  }
+
+  .page-frame {
+    width: auto;
+    margin-left: max(1rem, env(safe-area-inset-left));
+    margin-right: max(1rem, env(safe-area-inset-right));
+  }
+
+  .header-inner {
+    min-height: 92px;
+    gap: 1rem;
+  }
+
+  .brand {
+    min-width: 0;
+  }
+
+  .brand-logo--header,
+  .brand-logo--mobile {
+    width: 8rem;
+  }
+
+  .mobile-menu {
+    min-height: 100dvh;
+    overflow-y: auto;
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    padding-left: max(1rem, env(safe-area-inset-left));
+  }
+
+  .mobile-menu nav {
+    width: 100%;
+    margin-block: 2rem auto;
+  }
+
+  .mobile-menu nav a,
+  .mobile-account {
+    display: flex;
+    min-height: 52px;
+    align-items: center;
+  }
+
+  .hero-section {
+    padding-block: 7.75rem 4rem;
+  }
+
+  .hero-grid {
+    gap: 2rem;
+  }
+
+  .hero-copy h1 {
+    max-width: 12.5ch;
+    font-size: clamp(2.8rem, 12vw, 4.4rem);
+    line-height: 0.99;
+  }
+
+  .hero-lede {
+    margin-top: 1.35rem;
+    font-size: 1.08rem;
+    line-height: 1.52;
+  }
+
+  .hero-secondary {
+    font-size: 0.98rem;
+    line-height: 1.55;
+  }
+
+  .document-visual {
+    min-height: clamp(27rem, 112vw, 33rem);
+    margin-top: 0;
+  }
+
+  .section-shell {
+    padding-block: 4.25rem;
+  }
+
+  .section-heading {
+    margin-bottom: 2rem;
+  }
+
+  .section-heading--center {
+    text-align: left;
+  }
+
+  .bento-grid {
+    gap: 1rem;
+  }
+
+  .bento-card {
+    border-radius: 20px;
+    padding: 1.35rem;
+  }
+
+  .bento-card--lead,
+  .bento-card--compact {
+    padding-bottom: 7rem;
+  }
+
+  .match-result {
+    right: 1.35rem;
+    bottom: 1.35rem;
+    left: 1.35rem;
+  }
+
+  .dark-showcase {
+    border-radius: 24px;
+    padding: 1.5rem;
+  }
+
+  .showcase-intro {
+    margin-bottom: 2.5rem;
+  }
+
+  .showcase-zone {
+    gap: 1.5rem;
+    padding-block: 2.75rem;
+  }
+
+  .result-stack,
+  .connection-map,
+  .writing-preview,
+  .mini-document {
+    transform: none;
+  }
+
+  .connection-map,
+  .writing-preview {
+    min-height: 15rem;
+    padding: 1.35rem;
+  }
+
+  .process-list {
+    margin-top: 2.5rem;
+  }
+
+  .center-action {
+    justify-content: stretch;
+  }
+
+  .center-action .button-link {
+    width: 100%;
+  }
+
+  .price-card {
+    min-height: auto;
+    padding: 1.5rem;
+  }
+
+  .price-card ul {
+    margin-top: 1.5rem;
+  }
+
+  .outcome-grid {
+    gap: 2.5rem;
+  }
+
+  .final-cta-wrap {
+    padding-bottom: 4rem;
+  }
+
+  .final-cta {
+    padding: 2rem 1.35rem;
+  }
+
+  .site-footer {
+    padding-top: 3.5rem;
+    padding-bottom: max(2rem, env(safe-area-inset-bottom));
+  }
+
+  .footer-grid {
+    gap: 2.25rem;
+  }
+
+  .wizard-page {
+    padding: 0 0 3rem;
+  }
+
+  .wizard-layout {
+    min-height: auto;
+    border-radius: 1.25rem;
+  }
+
+  .wizard-aside {
+    min-height: auto;
+    padding: 2rem 1.35rem;
+  }
+
+  .wizard-aside h1 {
+    max-width: 11ch;
+    font-size: clamp(2.55rem, 11vw, 3.25rem);
+  }
+
+  .wizard-price {
+    margin: 1.5rem 0;
+  }
+
+  .wizard-price strong {
+    font-size: 3rem;
+  }
+
+  .wizard-panel {
+    padding: 1.5rem 1.35rem 2rem;
+  }
+
+  .wizard-progress {
+    margin-bottom: 2rem;
+  }
+
+  .wizard-step h2,
+  .auth-card h1 {
+    font-size: clamp(2rem, 9vw, 2.65rem);
+  }
+
+  .wizard-step > p,
+  .auth-card > p {
+    line-height: 1.6;
+  }
+
+  .wizard-fields input:not([type="checkbox"]):not([type="file"]),
+  .wizard-fields select,
+  .wizard-fields textarea,
+  .auth-card input,
+  .conflict-form textarea,
+  .delivery-actions textarea,
+  .delivery-actions select,
+  .pack-notes textarea,
+  .cart-review textarea,
+  .admin-work-card input:not([type="checkbox"]),
+  .admin-work-card textarea {
+    min-height: 50px;
+    font-size: 16px;
+  }
+
+  .choice span {
+    min-height: 50px;
+    padding: 0.8rem 0.9rem;
+  }
+
+  .wizard-actions {
+    align-items: stretch;
+    margin-top: 2rem;
+  }
+
+  .wizard-back,
+  .wizard-next {
+    min-height: 52px;
+  }
+
+  .portal-page,
+  .admin-page {
+    padding-bottom: 4rem;
+  }
+
+  .portal-hero,
+  .admin-heading {
+    margin-bottom: 1rem;
+    padding-top: 3rem;
+    padding-bottom: 3rem;
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+
+  .portal-hero h1,
+  .admin-heading h1 {
+    font-size: clamp(2.55rem, 11vw, 3.8rem);
+  }
+
+  .portal-section,
+  .admin-table-wrap,
+  .admin-alerts,
+  .admin-control {
+    border-radius: 1rem;
+    padding: 1.15rem;
+  }
+
+  .portal-page > .portal-section {
+    margin-left: max(1rem, env(safe-area-inset-left));
+    margin-right: max(1rem, env(safe-area-inset-right));
+  }
+
+  .empty-state {
+    padding: 2rem 1rem;
+  }
+
+  .match-card {
+    padding: 1rem;
+  }
+
+  .match-card__top label {
+    min-height: 44px;
+    padding-left: 0.5rem;
+  }
+
+  .match-card__top i {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .match-actions button,
+  .delivery-actions > button {
+    min-height: 44px;
+    padding-block: 0.5rem;
+  }
+
+  .selection-bar {
+    bottom: max(0.75rem, env(safe-area-inset-bottom));
+    gap: 0.75rem;
+    border-radius: 0.9rem;
+    padding: 0.8rem;
+  }
+
+  .selection-bar .wizard-next {
+    width: 100%;
+  }
+
+  .delivery-actions a {
+    min-height: 46px;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 560px) {
+  .button-row {
+    flex-direction: column;
+  }
+
+  .button-link {
+    width: 100%;
+    min-height: 54px;
+  }
+
+  .wizard-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .wizard-actions .wizard-next {
+    grid-row: 1;
+    width: 100%;
+  }
+
+  .wizard-actions .wizard-back {
+    grid-row: 2;
+    width: 100%;
+  }
+
+  .match-card dl {
+    grid-template-columns: 1fr;
+  }
+
+  .selection-bar > div {
+    justify-content: space-between;
+  }
+
+  .delivery-actions > div {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 390px) {
+  .page-frame {
+    margin-left: max(0.875rem, env(safe-area-inset-left));
+    margin-right: max(0.875rem, env(safe-area-inset-right));
+  }
+
+  .brand-logo--header,
+  .brand-logo--mobile {
+    width: 7.25rem;
+  }
+
+  .hero-section {
+    padding-top: 7.25rem;
+  }
+
+  .hero-copy h1 {
+    font-size: clamp(2.55rem, 12.5vw, 3.1rem);
+  }
+
+  .hero-price-row span {
+    border-radius: 14px;
+  }
+
+  .document-visual {
+    min-height: 26rem;
+  }
+
+  .job-card-preview {
+    width: 84%;
+    padding: 1rem;
+  }
+
+  .paper {
+    padding: 1rem;
+  }
+
+  .section-heading h2,
+  .showcase-intro h2,
+  .pricing-copy h2,
+  .outcome-grid h2,
+  .faq-grid h2,
+  .final-cta h2 {
+    font-size: 2.2rem;
+  }
+
+  .wizard-aside,
+  .wizard-panel {
+    padding-inline: 1rem;
+  }
+}
