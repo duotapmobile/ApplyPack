@@ -24,8 +24,21 @@ export default function Home() {
               Get 10 jobs matched around your experience, priorities, and
               dealbreakers within 24 hours.
             </p>
-            <div className="hero-price-row hero-price-row--compact">
-              <span>10 matched jobs: <strong>$20</strong></span>
+            <div className="hero-cost-sequence" aria-label="ApplyPack pricing steps">
+              <div className="hero-cost-step">
+                <span>1 · JOB SEARCH</span>
+                <strong>$20</strong>
+                <p>We find 10 jobs matched around you.</p>
+              </div>
+              <div className="hero-cost-then" aria-hidden="true">THEN</div>
+              <div className="hero-cost-step">
+                <span>2 · RESUME + COVER LETTER</span>
+                <strong>$8 <small>per job you choose</small></strong>
+                <p>
+                  We write and adapt your resume and cover letter for just the
+                  jobs you want.
+                </p>
+              </div>
             </div>
             <div className="button-row">
               <ButtonLink href="/get-started">Get My 10 Jobs in 24 Hours</ButtonLink>
@@ -39,17 +52,11 @@ export default function Home() {
           </div>
           <div className="hero-application-column">
             <div className="hero-application-copy">
-              <p><strong>See one you want?</strong></p>
+              <p><strong>Then choose the jobs you want.</strong></p>
               <p>
-                Get a resume and cover letter tailored specifically for that job
-                within the next 24 hours.
+                We write and adapt your resume and cover letter for each selected
+                job within the next 24 hours.
               </p>
-              <div className="hero-price-row hero-price-row--compact">
-                <span>
-                  Tailored resume + cover letter:
-                  <strong>$8 per selected job</strong>
-                </span>
-              </div>
             </div>
             <DocumentVisual />
           </div>

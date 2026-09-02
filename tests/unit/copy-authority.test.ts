@@ -87,8 +87,8 @@ describe("approved site copy and navigation", () => {
       "BUILT AROUND WHAT IS TRUE.",
       "QUESTIONS BEFORE YOU START?",
       "YOU ALREADY HAVE ENOUGH TO START.",
-      "10 matched jobs:",
-      "Tailored resume + cover letter:",
+      "We find 10 jobs matched around you.",
+      "per job you choose",
       "ApplyPack will take it from there.",
     ];
 
@@ -102,6 +102,10 @@ describe("approved site copy and navigation", () => {
     const styles = readFileSync("src/app/globals.css", "utf8");
 
     expect(home).toContain('className="hero-application-column"');
+    expect(home).toContain("1 · JOB SEARCH");
+    expect(home).toContain("2 · RESUME + COVER LETTER");
+    expect(home).toContain("for just the");
+    expect(home).toContain("jobs you want.");
     expect(styles).toContain("@media (min-width: 641px) and (max-width: 780px)");
     expect(styles).toContain("grid-template-columns: minmax(0, 1fr) minmax(16.5rem, 0.86fr)");
     expect(styles).toContain("@media (max-width: 640px)");
