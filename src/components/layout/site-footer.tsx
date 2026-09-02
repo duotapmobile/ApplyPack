@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import { siteConfig } from "@/config/site";
@@ -33,9 +34,14 @@ export function SiteFooter() {
     <footer className="site-footer">
       <div className="page-frame footer-grid">
         <div className="footer-brand">
-          <Link className="brand" href="/">
-            <span className="brand-mark" aria-hidden="true">A</span>
-            <span>ApplyPack</span>
+          <Link className="brand" href="/" aria-label="ApplyPack home">
+            <Image
+              alt=""
+              className="brand-logo brand-logo--footer"
+              height={354}
+              src="/applypack-wordmark-transparent.png"
+              width={992}
+            />
           </Link>
           <p>{siteConfig.promise}</p>
           <a href={`mailto:${siteConfig.email.support}`}>{siteConfig.email.support}</a>

@@ -30,7 +30,14 @@ export const metadata: Metadata = {
     description:
       "Ten matched jobs in 24 hours for $20. Tailored application materials for $8 per selected job.",
     url: "/",
-    images: ["/opengraph-image"],
+    images: [
+      {
+        url: "/opengraph-image.png",
+        width: 1200,
+        height: 630,
+        alt: "ApplyPack - We find the jobs. We get you ready to apply.",
+      },
+    ],
     locale: "en_US",
   },
   robots: { index: true, follow: true },
@@ -47,7 +54,7 @@ export const metadata: Metadata = {
     title: "We find the jobs. We get you ready to apply.",
     description:
       "Ten matched jobs in 24 hours for $20. Tailored application materials for $8 per selected job.",
-    images: ["/opengraph-image"],
+    images: ["/opengraph-image.png"],
   },
 };
 

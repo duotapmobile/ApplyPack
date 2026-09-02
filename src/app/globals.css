@@ -119,16 +119,19 @@ a {
   text-decoration: none;
 }
 
-.brand-mark {
-  display: grid;
-  width: 2rem;
-  height: 2rem;
-  place-items: center;
-  border-radius: 0.7rem 0.7rem 0.7rem 0.25rem;
-  background: var(--primary);
-  color: white;
-  font-size: 0.95rem;
-  font-weight: 800;
+.brand-logo {
+  display: block;
+  width: auto;
+  object-fit: contain;
+}
+
+.brand-logo--header,
+.brand-logo--mobile {
+  height: 3.25rem;
+}
+
+.brand-logo--footer {
+  height: 4.6rem;
 }
 
 .desktop-nav {
@@ -1766,7 +1769,7 @@ a {
 }
 
 @media (forced-colors: active) {
-  .brand-mark,
+  .brand-logo,
   .button-link,
   .header-cta,
   .process-number,

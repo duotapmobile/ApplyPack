@@ -1,6 +1,7 @@
 "use client";
 
 import { Menu, X } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
@@ -45,8 +46,14 @@ export function SiteHeader() {
     <header className="site-header">
       <div className="page-frame header-inner">
         <Link className="brand" href="/" aria-label="ApplyPack home">
-          <span className="brand-mark" aria-hidden="true">A</span>
-          <span>ApplyPack</span>
+          <Image
+            alt=""
+            className="brand-logo brand-logo--header"
+            height={354}
+            priority
+            src="/applypack-wordmark-transparent.png"
+            width={992}
+          />
         </Link>
         <nav className="desktop-nav" aria-label="Primary navigation">
           {siteConfig.navigation.map((item) => (
@@ -72,7 +79,15 @@ export function SiteHeader() {
       {open ? (
         <div className="mobile-menu" id="mobile-navigation" role="dialog" aria-modal="true" aria-label="Navigation" ref={menuRef}>
           <div className="mobile-menu-top">
-            <span className="brand">ApplyPack</span>
+            <Link className="brand" href="/" aria-label="ApplyPack home" onClick={() => setOpen(false)}>
+              <Image
+                alt=""
+                className="brand-logo brand-logo--mobile"
+                height={354}
+                src="/applypack-wordmark-transparent.png"
+                width={992}
+              />
+            </Link>
             <button aria-label="Close navigation" className="menu-trigger" onClick={() => setOpen(false)} ref={closeRef} type="button">
               <X aria-hidden="true" />
             </button>
