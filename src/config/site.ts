@@ -1,11 +1,15 @@
 export const siteConfig = {
   name: "ApplyPack",
   legalEntity: process.env.APP_LEGAL_ENTITY_NAME || "DuoTap LLC",
-  url: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+  url:
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.NODE_ENV === "production" ? "https://applypack.work" : "http://localhost:3000"),
   email: {
-    support: "support@applypack.work",
-    accessibility: "accessibility@applypack.work",
-    privacy: "privacy@applypack.work",
+    orders: "orders@applypack.work",
+    support: "help@applypack.work",
+    accessibility: "help@applypack.work",
+    privacy: "help@applypack.work",
+    admin: "admin@applypack.work",
   },
   promise: "We find the jobs. We get you ready to apply.",
   navigation: [

@@ -17,7 +17,7 @@ export async function sendOrderReceipt(input: ReceiptInput) {
   const { data, error } = await resend.emails.send({
     from,
     to: input.to,
-    replyTo: process.env.EMAIL_REPLY_TO || "support@applypack.work",
+    replyTo: process.env.EMAIL_REPLY_TO || "help@applypack.work",
     subject: "Your ApplyPack order is confirmed",
     text: [
       "Your payment is complete.",
@@ -44,7 +44,7 @@ export async function sendTransactionalEmail(input: {
   const { data, error } = await resend.emails.send({
     from,
     to: input.to,
-    replyTo: process.env.EMAIL_REPLY_TO || "support@applypack.work",
+    replyTo: process.env.EMAIL_REPLY_TO || "help@applypack.work",
     subject: input.subject,
     text: [...input.lines, "", "Open My ApplyPack: " + (process.env.NEXT_PUBLIC_APP_URL || "https://applypack.work") + "/my-applypack"].join("\n"),
   }, { idempotencyKey: input.idempotencyKey });

@@ -23,8 +23,8 @@ Prices are constructed server-side from locked cents values. Stripe product reco
 
 1. Add and verify applypack.work in Resend.
 2. Publish the exact SPF and DKIM records Resend provides.
-3. Set EMAIL_FROM_ADDRESS=orders@applypack.work and EMAIL_REPLY_TO=support@applypack.work.
-4. Configure support@, accessibility@, and privacy@ as inbound aliases or mailboxes.
+3. Set EMAIL_FROM_ADDRESS=orders@applypack.work and EMAIL_REPLY_TO=help@applypack.work.
+4. Configure orders@, help@, and admin@ as inbound aliases or mailboxes.
 5. Send to an external mailbox and verify SPF, DKIM, and DMARC alignment.
 
 ## Malware scanning

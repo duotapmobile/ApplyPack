@@ -131,10 +131,9 @@ export const publicPages: Record<string, PublicPage> = {
     description: "Contact ApplyPack about the service, an order, billing, privacy, or accessibility.",
     intro: ["We normally respond within two business days. Do not email resumes, payment details, or other sensitive documents."],
     sections: [
-      { title: "General help and orders", body: ["support@applypack.work"] },
-      { title: "Privacy", body: ["privacy@applypack.work"] },
-      { title: "Website accessibility", body: ["accessibility@applypack.work"] },
-    ], ctaLabel: "Email Support", ctaHref: "mailto:support@applypack.work",
+      { title: "General help, privacy, and accessibility", body: ["help@applypack.work"] },
+      { title: "Orders and billing", body: ["orders@applypack.work"] },
+    ], ctaLabel: "Email Help", ctaHref: "mailto:help@applypack.work",
   },
   accessibility: {
     slug: "accessibility", eyebrow: "ACCESSIBILITY AT APPLYPACK", title: "A service designed for more people to use.",
@@ -142,9 +141,9 @@ export const publicPages: Record<string, PublicPage> = {
     intro: ["ApplyPack is committed to a website and service usable by as many people as possible."],
     sections: [
       { title: "Our target", body: ["We aim to conform to WCAG 2.2 Level AA."], bullets: ["Keyboard access", "Visible focus", "Clear structure and labels", "Sufficient contrast", "Reflow and reduced motion", "Manual and automated testing"] },
-      { title: "Need help?", body: ["Email accessibility@applypack.work with the page, what happened, and how you prefer us to respond."] },
+      { title: "Need help?", body: ["Email help@applypack.work with the page, what happened, and how you prefer us to respond."] },
       { title: "Ongoing work", body: ["Accessibility is reviewed during design, development, content changes, and major releases."], note: "Last reviewed September 1, 2026." },
-    ], ctaLabel: "Email Accessibility Support", ctaHref: "mailto:accessibility@applypack.work",
+    ], ctaLabel: "Email Accessibility Help", ctaHref: "mailto:help@applypack.work",
   },
   privacy: {
     slug: "privacy", eyebrow: "PRIVACY POLICY", title: "Your information is for providing your service.",
@@ -156,9 +155,9 @@ export const publicPages: Record<string, PublicPage> = {
       { title: "Payments and email", body: ["Stripe processes cards; ApplyPack does not store full card numbers. Transactional email providers deliver service messages."] },
       { title: "Sharing", body: ["We do not sell resumes or personal information. We share only as needed for the service, security, law, or customer direction."] },
       { title: "Retention and security", body: ["Access is restricted by account and role. Enforced retention periods will be documented before launch. No system can promise absolute security."] },
-      { title: "Your choices", body: ["Email privacy@applypack.work for access, correction, or deletion requests. Some records may be retained for transactions, disputes, security, or law."] },
+      { title: "Your choices", body: ["Email help@applypack.work for access, correction, or deletion requests. Some records may be retained for transactions, disputes, security, or law."] },
       { title: "Children and changes", body: ["ApplyPack is not directed to children under 18. Changes will be posted with a new effective date."] },
-    ], ctaLabel: "Contact Privacy", ctaHref: "mailto:privacy@applypack.work",
+    ], ctaLabel: "Contact Privacy", ctaHref: "mailto:help@applypack.work",
   },
   terms: {
     slug: "terms", eyebrow: "TERMS OF SERVICE", title: "The service boundary, in plain language.",
@@ -173,6 +172,6 @@ export const publicPages: Record<string, PublicPage> = {
       { title: "Payments and cancellation", body: ["Prices appear before payment. Work begins promptly, so cancellation may not be possible after fulfillment starts. Duplicate charges and failures are reviewed through support."] },
       { title: "No hiring guarantee", body: ["ApplyPack does not guarantee screening, interviews, offers, pay, or listing availability."] },
       { title: "Liability and changes", body: ["To the extent allowed by law, liability is limited to the amount paid for the service giving rise to the claim. Updates will show a new effective date."] },
-    ], ctaLabel: "Contact Support", ctaHref: "mailto:support@applypack.work",
+    ], ctaLabel: "Contact Help", ctaHref: "mailto:help@applypack.work",
   },
 };

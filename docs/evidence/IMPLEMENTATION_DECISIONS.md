@@ -1,6 +1,6 @@
 # ApplyPack Implementation Decisions
 
-Last updated: September 1, 2026
+Last updated: September 2, 2026
 
 ## Confirmed by the owner
 
@@ -11,6 +11,7 @@ Last updated: September 1, 2026
 - Apply Pack capacity: two units per rolling 24 hours.
 - Implementation authority: approved for the complete build.
 - The supplied DESIGN.md and ApplyPack handoff control implementation.
+- The owner selected exactly three domain addresses: orders@applypack.work for outgoing order mail, help@applypack.work for customer replies and public privacy/accessibility requests, and admin@applypack.work for administrative alerts and access.
 
 ## Safe defaults applied
 
@@ -28,9 +29,9 @@ Last updated: September 1, 2026
 
 ## Open external activation items
 
-- The destination inbox for forwarded support, accessibility, privacy, and alert mail is not yet supplied.
-- GitHub CLI and Railway CLI are not installed or authenticated on this workstation.
-- Supabase, Stripe, Resend, DNS, and Railway production project identities are not yet connected.
+- Namecheap forwards orders, help, and admin mail to the owner-controlled destination inbox.
+- Resend domain verification is pending DNS propagation.
+- The root applypack.work Railway domain is verified with valid TLS; www verification is pending DNS propagation.
 - Legal address, tax treatment, final policy review, and live-payment authorization remain owner-controlled launch gates.
 
 ## Architecture choice

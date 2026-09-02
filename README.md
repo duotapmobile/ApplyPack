@@ -63,8 +63,8 @@ The server fixes prices at 2,000 cents for a search and 800 cents per Applicatio
 Verify `applypack.work` with the email provider, then use:
 
 - From: `orders@applypack.work`
-- Reply-to: `support@applypack.work`
-- Inbound: `support@`, `privacy@`, and `accessibility@`
+- Reply-to: `help@applypack.work`
+- Inbound: `orders@`, `help@`, and `admin@`
 
 An actual destination inbox must be selected before launch. Disable click/open tracking for transactional mail and verify SPF, DKIM, and DMARC alignment externally.
 

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
@@ -14,6 +14,14 @@ export const metadata: Metadata = {
   },
   description:
     "Get 10 jobs matched to your goals within 24 hours for $20. Add a tailored resume and cover letter for $8 per selected job.",
+  keywords: [
+    "job search help",
+    "job matching service",
+    "tailored resume",
+    "cover letter service",
+    "career change support",
+    "ApplyPack",
+  ],
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
@@ -23,13 +31,29 @@ export const metadata: Metadata = {
       "Ten matched jobs in 24 hours for $20. Tailored application materials for $8 per selected job.",
     url: "/",
     images: ["/opengraph-image"],
+    locale: "en_US",
   },
   robots: { index: true, follow: true },
   applicationName: "ApplyPack",
   manifest: "/manifest.webmanifest",
   category: "business",
+  authors: [{ name: "DuoTap LLC" }],
   creator: "DuoTap LLC",
-  twitter: { card: "summary_large_image", images: ["/opengraph-image"] },
+  publisher: "DuoTap LLC",
+  referrer: "strict-origin-when-cross-origin",
+  formatDetection: { address: false, email: false, telephone: false },
+  twitter: {
+    card: "summary_large_image",
+    title: "We find the jobs. We get you ready to apply.",
+    description:
+      "Ten matched jobs in 24 hours for $20. Tailored application materials for $8 per selected job.",
+    images: ["/opengraph-image"],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#5637d7",
+  colorScheme: "light",
 };
 
 export default function RootLayout({
