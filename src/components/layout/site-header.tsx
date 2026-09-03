@@ -60,7 +60,14 @@ export function SiteHeader() {
         </Link>
         <nav className="desktop-nav" aria-label="Primary navigation">
           {siteConfig.navigation.map((item) => (
-            <Link aria-current={pathname === item.href ? "page" : undefined} href={item.href} key={item.href}>{item.label}</Link>
+            <Link
+              aria-current={pathname === item.href ? "page" : undefined}
+              className={item.href === "/why-apply-pack" ? "story-nav-link" : undefined}
+              href={item.href}
+              key={item.href}
+            >
+              {item.label}
+            </Link>
           ))}
         </nav>
         <div className="header-actions">
@@ -98,7 +105,15 @@ export function SiteHeader() {
           </div>
           <nav aria-label="Mobile navigation">
             {[...siteConfig.navigation, { href: "/about", label: "About" }, { href: "/contact", label: "Contact" }].map((item) => (
-              <Link aria-current={pathname === item.href ? "page" : undefined} href={item.href} key={item.href} onClick={() => setOpen(false)}>{item.label}</Link>
+              <Link
+                aria-current={pathname === item.href ? "page" : undefined}
+                className={item.href === "/why-apply-pack" ? "story-nav-link" : undefined}
+                href={item.href}
+                key={item.href}
+                onClick={() => setOpen(false)}
+              >
+                {item.label}
+              </Link>
             ))}
           </nav>
           <Link className="mobile-account" href="/my-applypack" onClick={() => setOpen(false)}>My ApplyPack</Link>

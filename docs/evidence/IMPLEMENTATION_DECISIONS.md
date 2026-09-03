@@ -74,3 +74,27 @@ The owner's latest instruction requires automatic search kickoff and automatic d
 - Stripe prices, quantity, currency, product status, webhook signature, payment state, refunds, and delivery claims are server-controlled and idempotent.
 - Every search, Apply Pack, correction, and accepted replacement remains human reviewed before customer delivery.
 - Existing Supabase rows are production data unless positively proven synthetic; no migration may delete or relabel them merely because they look old or incomplete.
+- A completed delivered Job Match Search and a completed delivered Apply Pack are non-refundable. The post-delivery remedies are the eligible no-charge replacement and included factual-correction round. Only a duplicate or incorrect charge or a non-waivable remedy required by law may bypass the completed-work block.
+- Refunds remain available only for genuinely unfinished work under the approved pre-work job-closure, missed-deadline, or inability-to-complete rules.
+- Migration 024 preserves provider-linked checkout state during a stale customer retry so a delayed verified payment event cannot lose capacity or create replacement checkout state.
+- Staging maintenance runs hourly as a short-lived Railway cron process in the existing project and records a private, content-free heartbeat. No always-on duplicate service was added.
+
+## September 3, 2026 per-customer repeat exclusion
+
+- The owner requires every later 10-job order for the same person to exclude every job previously delivered to that person.
+- Launch identity scope is the same authenticated ApplyPack customer account. ApplyPack does not silently join accounts from a name, resume, or inferred identity.
+- Migration 025 adds a private append-only delivery ledger and backfills existing delivered matches without deleting or relabeling production data.
+- Initial matches and accepted replacements both append identity snapshots. Replacing a visible match does not erase the original listing from exclusion history.
+- Operator routes preflight the complete batch and return a conflict response for reused listings. A customer-serialized database trigger remains the final atomic enforcement against races or alternate write paths.
+- A genuinely new posting may qualify when its stable listing identity differs; the same listing may not be reused merely because a month has passed or its source presentation changed.
+
+
+## September 3, 2026 founder-story page
+
+The owner's direct instruction adds a new top-level public page titled “Why Apply Pack?” and supplies its founder-story copy. This expands the previously approved navigation and public route map without replacing the existing shorter About page.
+
+- Route: `/why-apply-pack`.
+- The new route is the first primary-navigation item and uses a visually distinct button treatment.
+- The supplied copy remains first-person and preserves the founder's meaning. Obvious spacing, grammar, HTML-entity, and typographical artifacts were corrected for publication.
+- The page repeats only the already-approved $20 search, exactly 10 selected jobs, optional $8 resume-and-cover-letter set, and no-subscription boundaries.
+- The route is public, canonical, included in the sitemap and footer, and covered by public-route, responsive-overflow, and build checks.

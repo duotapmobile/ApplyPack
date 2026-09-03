@@ -18,6 +18,7 @@ const groups = [
   {
     title: "About",
     links: [
+      ["/why-apply-pack", "Why Apply Pack?"],
       ["/about", "About ApplyPack"],
       ["/contact", "Contact"],
       ["/accessibility", "Accessibility"],

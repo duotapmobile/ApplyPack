@@ -3031,3 +3031,586 @@ a {
     padding-left: 0.9rem;
   }
 }
+
+/* Founder story: editorial bento layout and highlighted top-level navigation entry. */
+.desktop-nav .story-nav-link {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  border: 1px solid rgba(243, 189, 65, 0.8);
+  border-radius: 999px;
+  background: rgba(243, 189, 65, 0.18);
+  padding: 0.5rem 0.9rem;
+  color: var(--primary-dark);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.desktop-nav .story-nav-link:hover {
+  border-color: var(--logo-gold);
+  background: var(--logo-gold);
+  color: var(--ink);
+}
+
+.desktop-nav .story-nav-link[aria-current="page"] {
+  background: var(--logo-gold);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.founder-story h1,
+.founder-story h2,
+.founder-story h3 {
+  font-family: var(--font-heading);
+}
+
+.founder-story__hero {
+  overflow: hidden;
+  padding: clamp(4.5rem, 9vw, 8.5rem) 0;
+  background:
+    radial-gradient(circle at 88% 18%, rgba(243, 189, 65, 0.35), transparent 24rem),
+    radial-gradient(circle at 62% 88%, rgba(72, 78, 156, 0.16), transparent 30rem),
+    var(--canvas);
+}
+
+.founder-story__hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(18rem, 0.65fr);
+  align-items: center;
+  gap: clamp(2.5rem, 8vw, 8rem);
+}
+
+.founder-story__hero-copy h1 {
+  max-width: 10ch;
+  margin: 1rem 0 1.5rem;
+  font-size: clamp(3.4rem, 8vw, 7.25rem);
+  line-height: 0.94;
+  letter-spacing: -0.07em;
+}
+
+.founder-story__lead {
+  max-width: 38rem;
+  margin: 0;
+  color: #3e4d63;
+  font-size: clamp(1.35rem, 2.2vw, 1.7rem);
+  line-height: 1.55;
+}
+
+.founder-story__truth-card {
+  position: relative;
+  display: grid;
+  min-height: 26rem;
+  align-content: end;
+  overflow: hidden;
+  border-radius: var(--radius-panel);
+  background: var(--deep);
+  padding: clamp(2rem, 4vw, 3.25rem);
+  color: white;
+  box-shadow: var(--shadow);
+}
+
+.founder-story__truth-card::before {
+  position: absolute;
+  width: 16rem;
+  height: 16rem;
+  border-radius: 50%;
+  background: rgba(129, 203, 250, 0.18);
+  content: "";
+  inset: -5rem -4rem auto auto;
+}
+
+.founder-story__truth-card svg {
+  position: relative;
+  margin-bottom: auto;
+  color: var(--logo-gold);
+}
+
+.founder-story__truth-card p {
+  position: relative;
+  margin: 0 0 0.85rem;
+  color: #edf4fc;
+  font-size: 1.15rem;
+  line-height: 1.6;
+}
+
+.founder-story__truth-card strong {
+  position: relative;
+  max-width: 14ch;
+  font-family: var(--font-heading);
+  font-size: clamp(1.95rem, 3vw, 2.7rem);
+  line-height: 1.12;
+}
+
+.founder-story__opening {
+  padding: clamp(4rem, 8vw, 7rem) 0 1.25rem;
+  background: white;
+}
+
+.founder-story__opening-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.founder-story__opening-card {
+  display: flex;
+  min-height: 25rem;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  border-radius: var(--radius-panel);
+  padding: clamp(2rem, 4.5vw, 4rem);
+}
+
+.founder-story__opening-card--wide {
+  grid-column: span 7;
+  border-top: 0.5rem solid var(--logo-blue);
+  background: rgba(44, 95, 200, 0.12);
+}
+
+.founder-story__opening-card--compact {
+  grid-column: span 5;
+  border-top: 0.5rem solid var(--logo-cyan);
+  background: rgba(129, 203, 250, 0.28);
+}
+
+.founder-story__opening-card h2 {
+  max-width: 12ch;
+  margin: 0 0 1.25rem;
+  font-size: clamp(2.25rem, 3.7vw, 3.75rem);
+  line-height: 1.04;
+  letter-spacing: -0.05em;
+}
+
+.founder-story__opening-card p {
+  max-width: 45rem;
+  margin: 0;
+  color: #26364c;
+  font-size: clamp(1.2rem, 1.75vw, 1.42rem);
+  line-height: 1.72;
+}
+
+.founder-story__chapters {
+  padding: 1.25rem 0 clamp(4.5rem, 9vw, 8rem);
+  background: white;
+}
+
+.founder-story__chapter-list {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.founder-story__chapter {
+  min-width: 0;
+  border-radius: var(--radius-panel);
+  padding: clamp(2rem, 4.5vw, 4rem);
+}
+
+.founder-story__chapter:nth-child(1) {
+  grid-column: span 7;
+}
+
+.founder-story__chapter:nth-child(2) {
+  grid-column: span 5;
+}
+
+.founder-story__chapter:nth-child(3) {
+  grid-column: span 12;
+}
+
+.founder-story__chapter--lavender {
+  border-top: 0.5rem solid var(--logo-violet);
+  background: rgba(72, 78, 156, 0.13);
+}
+.founder-story__chapter--mint {
+  border-top: 0.5rem solid var(--logo-green);
+  background: rgba(48, 107, 63, 0.13);
+}
+.founder-story__chapter--gold {
+  border-top: 0.5rem solid var(--logo-gold);
+  background: rgba(243, 189, 65, 0.28);
+}
+
+.founder-story__chapter h2 {
+  max-width: 13ch;
+  margin: 0 0 1.4rem;
+  font-size: clamp(2.25rem, 4vw, 4rem);
+  line-height: 1.02;
+  letter-spacing: -0.055em;
+}
+
+.founder-story__chapter:nth-child(3) h2 {
+  max-width: none;
+  font-size: clamp(2.4rem, 4.3vw, 4.35rem);
+}
+
+.founder-story__chapter p {
+  max-width: 48rem;
+  margin: 0;
+  color: #344258;
+  font-size: clamp(1.12rem, 1.45vw, 1.25rem);
+  line-height: 1.75;
+}
+
+.founder-story__chapter:nth-child(3) p {
+  max-width: 65rem;
+}
+
+.founder-story__chapter p + p {
+  margin-top: 1rem;
+}
+
+.founder-story__chapter strong {
+  color: var(--ink);
+}
+
+.founder-story__shared-problem {
+  padding: 1.25rem 0;
+  background: white;
+}
+
+.founder-story__shared-card {
+  display: block;
+  border-top: 0.5rem solid var(--logo-violet);
+  border-radius: var(--radius-panel);
+  background: rgba(72, 78, 156, 0.13);
+  padding: clamp(1.5rem, 3vw, 2.75rem);
+}
+
+.founder-story__shared-card h2 {
+  max-width: none;
+  margin: 0;
+  font-size: clamp(3rem, 5.2vw, 5.4rem);
+  line-height: 1.04;
+}
+
+.founder-story__shared-card > div {
+  max-width: 67rem;
+  margin-top: 0.9rem;
+}
+
+.founder-story__shared-card p {
+  margin: 0;
+  color: #344258;
+  font-size: clamp(1.2rem, 1.65vw, 1.36rem);
+  line-height: 1.7;
+}
+
+.founder-story__shared-card p + p {
+  margin-top: 1.15rem;
+}
+
+.founder-story__connection {
+  padding: clamp(4.5rem, 9vw, 8rem) 0;
+  background: white;
+}
+
+.founder-story__connection-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(20rem, 0.65fr);
+  align-items: center;
+  gap: clamp(3rem, 9vw, 9rem);
+}
+
+.founder-story__connection-copy h2,
+.founder-story__section-heading h2,
+.founder-story__close-box h2 {
+  margin: 0 0 1.5rem;
+  font-size: clamp(2.7rem, 5vw, 5rem);
+  line-height: 1.02;
+  letter-spacing: -0.055em;
+}
+
+.founder-story__connection-copy > p {
+  max-width: 43rem;
+  color: #415066;
+  font-size: clamp(1.15rem, 1.55vw, 1.28rem);
+  line-height: 1.75;
+}
+
+.founder-story__connection-copy .founder-story__signature {
+  margin-top: 1.6rem;
+  color: var(--ink);
+  font-family: var(--font-heading);
+  font-size: clamp(1.35rem, 2vw, 1.65rem);
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.founder-story__connection-copy .founder-story__connection-close {
+  margin-top: 1rem;
+  color: var(--primary-dark);
+  font-weight: 750;
+}
+
+.founder-story__path {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.founder-story__path > div {
+  display: flex;
+  min-height: 6rem;
+  align-items: center;
+  gap: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  background: var(--canvas);
+  padding: 1.35rem;
+  font-size: 1.08rem;
+  font-weight: 800;
+}
+
+.founder-story__path svg {
+  flex: 0 0 auto;
+  color: var(--primary);
+}
+
+.founder-story__path-line {
+  width: 2px;
+  height: 1.25rem;
+  margin-left: 2.3rem;
+  background: var(--border);
+}
+
+.founder-story__designed {
+  padding: clamp(4.5rem, 9vw, 8rem) 0;
+}
+
+.founder-story__section-heading {
+  max-width: 52rem;
+}
+
+.founder-story__offer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: 1.25rem;
+  margin-top: 2.5rem;
+}
+
+.founder-story__offer-grid article {
+  min-height: 22rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: white;
+  padding: clamp(2rem, 4vw, 3.5rem);
+}
+
+.founder-story__offer-grid article:first-child {
+  border-top: 0.5rem solid var(--logo-cyan);
+  background: rgba(129, 203, 250, 0.28);
+}
+
+.founder-story__offer-grid article:nth-child(2) {
+  border-top: 0.5rem solid var(--logo-blue);
+  background: rgba(44, 95, 200, 0.1);
+}
+
+.founder-story__offer-grid h3 {
+  margin: 0 0 1.25rem;
+  font-size: clamp(2rem, 3vw, 2.75rem);
+  line-height: 1.1;
+}
+
+.founder-story__offer-grid p {
+  max-width: 40rem;
+  color: #415066;
+  font-size: clamp(1.12rem, 1.4vw, 1.22rem);
+  line-height: 1.75;
+}
+
+.founder-story__offer-note {
+  margin: 1.75rem 0 0;
+  color: var(--primary-dark);
+  font-family: var(--font-heading);
+  font-size: clamp(1.3rem, 2.5vw, 1.9rem);
+  font-weight: 800;
+  text-align: center;
+}
+
+.founder-story__close {
+  padding: 0 0 clamp(4rem, 8vw, 8rem);
+}
+
+.founder-story__close-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: clamp(2rem, 6vw, 6rem);
+  border-radius: var(--radius-panel);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(243, 189, 65, 0.25), transparent 24rem),
+    var(--deep);
+  padding: clamp(2.5rem, 6vw, 5rem);
+  color: white;
+}
+
+.founder-story__close-box > div {
+  max-width: 50rem;
+}
+
+.founder-story__close-box p {
+  color: #edf4fc;
+  font-size: clamp(1.16rem, 1.6vw, 1.3rem);
+  line-height: 1.75;
+}
+
+.founder-story__cta {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+@media (min-width: 861px) {
+  .founder-story__shared-card h2,
+  .founder-story__chapter:nth-child(3) h2 {
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 1180px) {
+  .desktop-nav {
+    gap: 0.65rem;
+  }
+
+  .desktop-nav a {
+    font-size: 0.82rem;
+  }
+
+  .desktop-nav .story-nav-link {
+    padding-inline: 0.7rem;
+  }
+
+  .header-actions {
+    gap: 0.65rem;
+  }
+}
+
+@media (max-width: 940px) {
+  .mobile-menu nav .story-nav-link {
+    width: fit-content;
+    min-height: 48px;
+    align-items: center;
+    border: 1px solid rgba(243, 189, 65, 0.8);
+    border-radius: 999px;
+    margin-bottom: 0.5rem;
+    background: rgba(243, 189, 65, 0.2);
+    padding: 0.65rem 1rem;
+  }
+}
+
+@media (max-width: 860px) {
+  .founder-story__hero-grid,
+  .founder-story__shared-card,
+  .founder-story__connection-grid,
+  .founder-story__offer-grid,
+  .founder-story__close-box {
+    grid-template-columns: 1fr;
+  }
+
+  .founder-story__opening-card--wide,
+  .founder-story__opening-card--compact,
+  .founder-story__chapter:nth-child(1),
+  .founder-story__chapter:nth-child(2),
+  .founder-story__chapter:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
+  .founder-story__truth-card {
+    min-height: 21rem;
+  }
+
+  .founder-story__opening-card {
+    min-height: auto;
+  }
+
+  .founder-story__close-box {
+    align-items: start;
+  }
+
+  .founder-story__cta {
+    justify-self: start;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 520px) {
+  .founder-story__hero {
+    padding-block: 3.5rem 4rem;
+  }
+
+  .founder-story__hero-copy h1 {
+    font-size: clamp(3rem, 16vw, 4.5rem);
+  }
+
+  .founder-story__truth-card {
+    min-height: 19rem;
+    padding: 1.6rem;
+  }
+
+  .founder-story__opening,
+  .founder-story__turning-point,
+  .founder-story__connection,
+  .founder-story__designed {
+    padding-block: 3.75rem;
+  }
+
+  .founder-story__opening-card,
+  .founder-story__shared-card,
+  .founder-story__chapter,
+  .founder-story__close-box {
+    border-radius: 1.4rem;
+    padding: 1.5rem;
+  }
+
+  .founder-story__opening-card p,
+  .founder-story__chapter p,
+  .founder-story__shared-card p,
+  .founder-story__connection-copy > p,
+  .founder-story__offer-grid p,
+  .founder-story__close-box p {
+    font-size: 1.125rem;
+    line-height: 1.7;
+  }
+
+  .founder-story__opening-card h2,
+  .founder-story__chapter h2,
+  .founder-story__shared-card h2,
+  .founder-story__connection-copy h2,
+  .founder-story__section-heading h2,
+  .founder-story__close-box h2 {
+    font-size: clamp(2.25rem, 11vw, 3.15rem);
+  }
+
+  .founder-story__offer-grid article {
+    min-height: auto;
+    padding: 1.5rem;
+  }
+
+  .founder-story__cta {
+    width: 100%;
+  }
+}
+
+
+/* Typography is intentionally scoped to the founder story page. */
+.founder-story {
+  font-family: "Geist Variable", sans-serif;
+}
+
+.founder-story h1,
+.founder-story h2,
+.founder-story h3 {
+  font-family: "Fraunces Variable", serif;
+  font-weight: 400;
+  font-variation-settings: "wght" 400;
+  letter-spacing: 0.005em;
+}
+
+.founder-story .eyebrow,
+.founder-story .founder-story__truth-card strong,
+.founder-story .founder-story__signature,
+.founder-story .founder-story__offer-note,
+.founder-story .button-link {
+  font-family: "Geist Variable", sans-serif;
+}

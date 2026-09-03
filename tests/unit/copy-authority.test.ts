@@ -54,6 +54,7 @@ const approvedPages = {
 describe("approved site copy and navigation", () => {
   it("keeps the approved desktop navigation in order", () => {
     expect(siteConfig.navigation).toEqual([
+      { href: "/why-apply-pack", label: "Why Apply Pack?" },
       { href: "/how-it-works", label: "How It Works" },
       { href: "/experience-connections", label: "See the Connections" },
       { href: "/before-and-after", label: "Before and After" },

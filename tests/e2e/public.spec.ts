@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 const routes = [
-  "/", "/how-it-works", "/job-search-help", "/experience-connections",
+  "/", "/why-apply-pack", "/how-it-works", "/job-search-help", "/experience-connections",
   "/before-and-after", "/resume-screening", "/not-just-ai", "/pricing",
   "/faq", "/about", "/get-started", "/contact", "/accessibility",
   "/privacy", "/terms",

@@ -13,6 +13,7 @@ export const siteConfig = {
   },
   promise: "We find the jobs. We get you ready to apply.",
   navigation: [
+    { href: "/why-apply-pack", label: "Why Apply Pack?" },
     { href: "/how-it-works", label: "How It Works" },
     { href: "/experience-connections", label: "See the Connections" },
     { href: "/before-and-after", label: "Before and After" },
@@ -21,6 +22,7 @@ export const siteConfig = {
   ],
   publicRoutes: [
     "/",
+    "/why-apply-pack",
     "/how-it-works",
     "/job-search-help",
     "/experience-connections",
