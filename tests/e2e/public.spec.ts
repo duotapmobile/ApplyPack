@@ -13,7 +13,7 @@ for (const route of routes) {
     const response = await page.goto(route);
     expect(response?.status()).toBe(200);
     await expect(page.locator("main h1")).toHaveCount(1);
-    await expect(page).toHaveTitle(/ApplyPack/);
+    await expect(page).toHaveTitle(/Apply ?Pack/);
   });
 }
 

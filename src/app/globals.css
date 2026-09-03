@@ -1,5 +1,11 @@
-@import "@fontsource-variable/manrope";
-@import "@fontsource-variable/inter";
+@import "@fontsource/source-serif-pro/400.css";
+@import "@fontsource/source-serif-pro/600.css";
+@import "@fontsource/source-serif-pro/700.css";
+@import "@fontsource/source-serif-pro/900.css";
+@import "@fontsource/lato/400.css";
+@import "@fontsource/lato/400-italic.css";
+@import "@fontsource/lato/700.css";
+@import "@fontsource/lato/900.css";
 @import "tailwindcss";
 
 :root {
@@ -25,8 +31,8 @@
   --focus: var(--logo-blue);
   --error: #b42318;
   --success: #176b4d;
-  --font-heading: "Manrope Variable", "Manrope", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Source Serif Pro", Georgia, serif;
+  --font-body: "Lato", Arial, sans-serif;
   --radius-control: 14px;
   --radius-card: 24px;
   --radius-panel: 32px;
@@ -240,7 +246,7 @@ a {
 .mobile-menu nav a {
   border-bottom: 1px solid var(--border);
   padding: 1rem 0;
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-size: 1.5rem;
   font-weight: 700;
   text-decoration: none;
@@ -526,7 +532,7 @@ a {
 }
 
 .paper strong {
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   line-height: 1.2;
 }
 
@@ -737,7 +743,7 @@ a {
   background: var(--ink);
   color: white;
   padding: 1rem;
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-weight: 700;
   text-align: center;
 }
@@ -860,7 +866,7 @@ a {
   background: var(--mint);
   color: var(--ink);
   padding: 1.3rem;
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-size: 1.35rem;
   text-align: center;
 }
@@ -891,7 +897,7 @@ a {
 
 .connection-map strong {
   max-width: 22rem;
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-size: 1.5rem;
 }
 
@@ -920,7 +926,7 @@ a {
 .writing-preview strong {
   border-left: 4px solid var(--primary);
   padding-left: 1rem;
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-size: 1.2rem;
   line-height: 1.35;
 }
@@ -969,7 +975,7 @@ a {
   border-radius: 50%;
   background: var(--primary);
   color: white;
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-weight: 800;
 }
 
@@ -1032,7 +1038,7 @@ a {
 
 .price-card > strong {
   margin-top: 1rem;
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-size: 3.4rem;
   line-height: 1;
 }
@@ -1126,7 +1132,7 @@ a {
 .accordion-list summary {
   padding: 1.35rem 2.5rem 1.35rem 0;
   cursor: pointer;
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-size: 1.1rem;
   font-weight: 700;
 }
@@ -1245,7 +1251,7 @@ a {
 .inner-hero h1 {
   max-width: 13ch;
   margin-top: 1rem;
-  font-family: "Manrope Variable", sans-serif;
+  font-family: var(--font-heading);
   font-size: clamp(2.8rem,7vw,6.3rem);
   line-height: .98;
   letter-spacing: -.065em;
@@ -1282,13 +1288,13 @@ a {
   border-radius: 999px;
   background: var(--deep);
   color: white;
-  font-family: "Manrope Variable", sans-serif;
+  font-family: var(--font-body);
   font-size: .75rem;
   font-weight: 800;
 }
 .content-card h2 {
   margin-bottom: .8rem;
-  font-family: "Manrope Variable", sans-serif;
+  font-family: var(--font-heading);
   font-size: clamp(1.3rem,2vw,1.9rem);
   line-height: 1.15;
   letter-spacing: -.035em;
@@ -1312,7 +1318,7 @@ a {
 }
 .inner-cta__box h2 {
   margin-top: .75rem;
-  font-family: "Manrope Variable", sans-serif;
+  font-family: var(--font-heading);
   font-size: clamp(2rem,4vw,3.5rem);
   letter-spacing: -.05em;
 }
@@ -1356,14 +1362,14 @@ a {
 .wizard-aside h1 {
   max-width: 9ch;
   margin: 1rem 0 1.5rem;
-  font-family: "Manrope Variable", sans-serif;
+  font-family: var(--font-heading);
   font-size: clamp(2.4rem,5vw,4.8rem);
   line-height: .96;
   letter-spacing: -.06em;
 }
 .wizard-aside > p:not(.eyebrow) { max-width: 30rem; color: #d9d4ed; line-height: 1.7; }
 .wizard-price { display: flex; gap: 1rem; align-items: center; margin: auto 0 2rem; }
-.wizard-price strong { font-family: "Manrope Variable", sans-serif; font-size: 4rem; letter-spacing: -.07em; }
+.wizard-price strong { font-family: var(--font-body); font-size: 4rem; letter-spacing: -.07em; }
 .wizard-price span { color: #d9d4ed; font-size: .85rem; line-height: 1.45; text-transform: uppercase; }
 .wizard-security { display: flex; gap: .65rem; align-items: center; font-size: .83rem; }
 .wizard-security svg { flex: 0 0 auto; color: var(--mint); }
@@ -1374,7 +1380,7 @@ a {
 .wizard-step { flex: 1; }
 .wizard-step h2, .auth-card h1 {
   max-width: 18ch;
-  font-family: "Manrope Variable", sans-serif;
+  font-family: var(--font-heading);
   font-size: clamp(2rem,4vw,3.5rem);
   line-height: 1.02;
   letter-spacing: -.055em;
@@ -1540,7 +1546,7 @@ a {
 .portal-hero h1, .admin-heading h1 {
   max-width: 15ch;
   margin-top: 1rem;
-  font-family: "Manrope Variable",sans-serif;
+  font-family: var(--font-heading);
   font-size: clamp(2.6rem,6vw,5.4rem);
   line-height: .98;
   letter-spacing: -.06em;
@@ -1556,7 +1562,7 @@ a {
 .portal-section__heading { display: flex; justify-content: space-between; gap: 2rem; align-items: end; margin-bottom: 1.5rem; }
 .portal-section__heading h2, .admin-table-wrap h2, .admin-alerts h2 {
   margin-top: .5rem;
-  font-family: "Manrope Variable",sans-serif;
+  font-family: var(--font-heading);
   font-size: clamp(1.8rem,3vw,2.8rem);
   letter-spacing: -.045em;
 }
@@ -1584,7 +1590,7 @@ a {
 .match-card__top input:checked + i { background: var(--primary); color: white; }
 .match-card__top input:checked + i svg { opacity: 1; }
 .match-card__top input:focus-visible + i { outline: 3px solid var(--focus); outline-offset: 2px; }
-.match-card h3 { font-family: "Manrope Variable",sans-serif; font-size: 1.45rem; line-height: 1.15; }
+.match-card h3 { font-family: var(--font-heading); font-size: 1.45rem; line-height: 1.15; }
 .match-card > p { color: var(--muted); line-height: 1.55; }
 .match-card .match-company { color: var(--primary); font-weight: 800; }
 .job-labels { display: flex; flex-wrap: wrap; gap: .4rem; }
@@ -1607,7 +1613,7 @@ a {
 .admin-metrics { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; }
 .admin-metrics article { display: grid; gap: .5rem; padding: 1.5rem; border-radius: 1rem; background: white; border: 1px solid var(--border); }
 .admin-metrics span { color: var(--muted); font-size: .8rem; font-weight: 800; text-transform: uppercase; }
-.admin-metrics strong { font-family: "Manrope Variable",sans-serif; font-size: 2.8rem; }
+.admin-metrics strong { font-family: var(--font-body); font-size: 2.8rem; }
 .admin-table-scroll { margin-top: 1rem; overflow-x: auto; }
 .admin-table { width: 100%; min-width: 44rem; border-collapse: collapse; text-align: left; }
 .admin-table th, .admin-table td { padding: .9rem; border-bottom: 1px solid var(--border); vertical-align: top; }
@@ -1877,7 +1883,7 @@ a {
 .conflict-form .wizard-next { justify-self: start; }
 .delivery-list { display: grid; gap: .75rem; }
 .delivery-list > article { display: grid; grid-template-columns: minmax(12rem,.7fr) minmax(18rem,1.3fr); gap: 1.5rem; padding: 1.25rem; border: 1px solid var(--border); border-radius: 1rem; }
-.delivery-list h3 { margin-top: .4rem; font-family: "Manrope Variable",sans-serif; font-size: 1.3rem; }
+.delivery-list h3 { margin-top: .4rem; font-family: var(--font-heading); font-size: 1.3rem; }
 .delivery-list article > div > span { color: #145f46; font-size: .7rem; font-weight: 850; letter-spacing: .1em; }
 .delivery-list article > div > p { margin-top: .3rem; color: var(--muted); }
 .delivery-actions { display: grid; gap: .8rem; }
@@ -1912,7 +1918,7 @@ a {
 .pack-notes textarea, .cart-review textarea { width: 100%; min-height: 6rem; padding: .8rem; border: 1px solid #766f85; border-radius: .75rem; resize: vertical; }
 .pack-notes textarea:focus, .cart-review textarea:focus { outline: 3px solid var(--focus); outline-offset: 2px; }
 .cart-review { margin-top: 2rem; padding: clamp(1rem,3vw,2rem); border: 1px solid var(--border); border-radius: 1rem; background: #faf9fc; }
-.cart-review h3 { margin-top: .35rem; font-family: "Manrope Variable", sans-serif; font-size: clamp(1.25rem,3vw,1.8rem); }
+.cart-review h3 { margin-top: .35rem; font-family: var(--font-heading); font-size: clamp(1.25rem,3vw,1.8rem); }
 .cart-review fieldset { display: grid; gap: .6rem; margin: 0; padding: 0; border: 0; }
 .cart-review .confirm { display: flex; gap: .65rem; align-items: flex-start; line-height: 1.5; }
 .cart-review .confirm input { flex: 0 0 auto; width: 1.1rem; height: 1.1rem; margin-top: .15rem; accent-color: var(--primary); }
@@ -1920,7 +1926,7 @@ a {
 .admin-operations { display: grid; gap: 2rem; margin: 2rem 0; }
 .admin-control { padding: clamp(1rem,3vw,2rem); border: 1px solid var(--border); border-radius: 1rem; background: white; }
 .admin-control__heading { display: flex; justify-content: space-between; gap: 2rem; align-items: end; margin-bottom: 1.25rem; }
-.admin-control__heading h2 { margin-top: .35rem; font-family: "Manrope Variable",sans-serif; font-size: clamp(1.4rem,3vw,2rem); }
+.admin-control__heading h2 { margin-top: .35rem; font-family: var(--font-heading); font-size: clamp(1.4rem,3vw,2rem); }
 .admin-control__heading > p { max-width: 36rem; color: var(--muted); line-height: 1.5; }
 .admin-work-card { display: grid; gap: 1rem; min-width: 0; margin-top: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: .85rem; background: #faf9fc; }
 .admin-work-card > div:first-child { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem 1rem; }
@@ -1947,7 +1953,11 @@ body {
 
 h1,
 h2,
-h3 {
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading);
   text-wrap: balance;
 }
 
@@ -2802,7 +2812,7 @@ a {
 .hero-application-copy > p:first-child {
   margin-top: 0;
   color: var(--ink);
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-size: clamp(1.45rem, 2vw, 1.9rem);
   line-height: 1.15;
 }
@@ -2835,7 +2845,7 @@ a {
   display: block;
   margin-top: 0.25rem;
   color: var(--ink);
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-size: 1.55rem;
   line-height: 1.1;
 }
@@ -3451,15 +3461,14 @@ a {
 
 /* Typography is intentionally scoped to the founder story page. */
 .founder-story {
-  font-family: "Geist Variable", sans-serif;
+  font-family: var(--font-body);
 }
 
 .founder-story h1,
 .founder-story h2,
 .founder-story h3 {
-  font-family: "Geist Variable", sans-serif;
-  font-weight: 500;
-  font-variation-settings: "wght" 500;
+  font-family: var(--font-heading);
+  font-weight: 600;
   letter-spacing: 0.005em;
   text-wrap: balance;
 }
@@ -3471,5 +3480,5 @@ a {
 .founder-story .eyebrow,
 .founder-story .founder-story__truth-card strong,
 .founder-story .button-link {
-  font-family: "Geist Variable", sans-serif;
+  font-family: var(--font-body);
 }
