@@ -24,7 +24,9 @@
 3. Keep genuine gaps visible.
 4. Produce one editable resume and cover letter for each selected job.
 5. Complete the human quality check.
-6. Upload both DOCX files through the protected admin delivery route.
+6. Save the final reviewed resume and cover letter as DOCX files.
+7. Export matching PDFs from those final reviewed Word files and compare them for content and layout.
+8. Upload all four files through the protected admin delivery route; release remains blocked unless every file passes validation and scanning.
 
 ## Correction and conflict queues
 

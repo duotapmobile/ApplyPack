@@ -183,7 +183,7 @@ export function AdminOperations({ searchOrders, applyItems, conflicts, correctio
     </section>
 
     <section className="admin-control">
-      <div className="admin-control__heading"><div><p className="eyebrow">APPLY PACK PRODUCTION</p><h2>Upload reviewed DOCX files</h2></div><p>Each card is one separate $8 order.</p></div>
+      <div className="admin-control__heading"><div><p className="eyebrow">APPLY PACK PRODUCTION</p><h2>Upload reviewed Word and PDF files</h2></div><p>Each card is one separate $8 order. Export the final reviewed Word files to PDF so both formats contain the same approved content.</p></div>
       {applyItems.length ? applyItems.map((item) => <article className="admin-work-card" key={item.id}>
         <div><strong>{item.title}</strong><span>{item.company} - Order {item.order_id.slice(0, 8).toUpperCase()}</span></div>
         {item.emphasis_notes ? <p><b>Emphasize:</b> {item.emphasis_notes}</p> : null}
@@ -191,9 +191,11 @@ export function AdminOperations({ searchOrders, applyItems, conflicts, correctio
         {item.customer_update_notes ? <p><b>Changed facts:</b> {item.customer_update_notes}</p> : null}
         {item.draft_resume_path && item.draft_cover_letter_path ? <div className="admin-buttons"><a href={"/api/admin/apply-pack-items/" + item.id + "/draft?kind=resume"}>Download generated resume draft</a><a href={"/api/admin/apply-pack-items/" + item.id + "/draft?kind=cover_letter"}>Download generated cover-letter draft</a></div> : <p role="status">Draft generation status: {item.status.replaceAll("_", " ")}.</p>}
         <form onSubmit={(event) => { event.preventDefault(); deliverPack(item.id, event.currentTarget); }}>
-          <label>Tailored resume (.docx)<input name="resume" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required /></label>
-          <label>Tailored cover letter (.docx)<input name="coverLetter" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required /></label>
-          <label className="confirm"><input name="qualityConfirmed" type="checkbox" required />I completed the factual, job-specific, file, and link quality checks.</label>
+          <label>Editable resume (.docx)<input name="resume" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required /></label>
+          <label>Matching resume (.pdf)<input name="resumePdf" type="file" accept=".pdf,application/pdf" required /></label>
+          <label>Editable cover letter (.docx)<input name="coverLetter" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required /></label>
+          <label>Matching cover letter (.pdf)<input name="coverLetterPdf" type="file" accept=".pdf,application/pdf" required /></label>
+          <label className="confirm"><input name="qualityConfirmed" type="checkbox" required />I completed the factual, job-specific, file, link, and format checks, and confirmed each PDF matches its Word file.</label>
           <label>Human review note<textarea name="reviewNote" minLength={20} maxLength={2000} required placeholder="Record the job-specific facts and checks completed before release." /></label>
           <button className="wizard-next" disabled={busy === "pack-" + item.id}>Deliver privately</button>
         </form>
@@ -227,14 +229,16 @@ export function AdminOperations({ searchOrders, applyItems, conflicts, correctio
     </section>
 
     <section className="admin-control">
-      <div className="admin-control__heading"><div><p className="eyebrow">FACTUAL CORRECTIONS</p><h2>Deliver the included correction</h2></div><p>Corrected files are versioned; the previous delivery remains in the audit history.</p></div>
+      <div className="admin-control__heading"><div><p className="eyebrow">FACTUAL CORRECTIONS</p><h2>Deliver the included correction</h2></div><p>Corrected Word and PDF files are versioned; the previous delivery remains in the audit history.</p></div>
       {corrections.length ? corrections.map((review) => <article className="admin-work-card" key={review.id}>
         <div><strong>{review.title}</strong><span>{review.company}</span></div><p>{review.correction_text}</p>
         <form onSubmit={(event) => { event.preventDefault(); resolveCorrection(review.id, event.currentTarget); }}>
-          <label>Corrected resume (.docx)<input name="resume" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required /></label>
-          <label>Corrected cover letter (.docx)<input name="coverLetter" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required /></label>
+          <label>Corrected editable resume (.docx)<input name="resume" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required /></label>
+          <label>Corrected matching resume (.pdf)<input name="resumePdf" type="file" accept=".pdf,application/pdf" required /></label>
+          <label>Corrected editable cover letter (.docx)<input name="coverLetter" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required /></label>
+          <label>Corrected matching cover letter (.pdf)<input name="coverLetterPdf" type="file" accept=".pdf,application/pdf" required /></label>
           <label>Operator note<textarea name="resolution" minLength={10} required /></label>
-          <label className="confirm"><input name="qualityConfirmed" type="checkbox" required />I verified the requested factual correction and both files.</label>
+          <label className="confirm"><input name="qualityConfirmed" type="checkbox" required />I verified the requested factual correction and confirmed each PDF matches its reviewed Word file.</label>
           <button className="wizard-next" disabled={busy === "correction-" + review.id}>Deliver corrected version</button>
         </form>
       </article>) : <p>No correction requests are waiting.</p>}

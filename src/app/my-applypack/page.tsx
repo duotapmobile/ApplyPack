@@ -32,7 +32,7 @@ export default async function PortalPage() {
     }) as MatchForSelection[];
   }
   const { data: deliveryItems } = await supabase.from("apply_pack_items")
-    .select("id,status,delivered_at,job_match:job_matches(jobs(company,title))")
+    .select("id,status,delivered_at,resume_pdf_path,cover_letter_pdf_path,job_match:job_matches(jobs(company,title))")
     .not("delivered_at", "is", null).order("delivered_at", { ascending: false });
   return (
     <main id="main-content" className="portal-page">
@@ -62,7 +62,7 @@ export default async function PortalPage() {
                 return (
                   <article key={item.id}>
                     <div><span>DELIVERED</span><h3>{job?.title || "Selected job"}</h3><p>{job?.company || "Employer"}</p></div>
-                    <DeliveryActions itemId={item.id} deliveredAt={item.delivered_at!} jobLabel={(job?.company || "Employer") + " " + (job?.title || "selected job")} />
+                    <DeliveryActions itemId={item.id} deliveredAt={item.delivered_at!} jobLabel={(job?.company || "Employer") + " " + (job?.title || "selected job")} pdfAvailable={Boolean(item.resume_pdf_path && item.cover_letter_pdf_path)} />
                   </article>
                 );
               })}

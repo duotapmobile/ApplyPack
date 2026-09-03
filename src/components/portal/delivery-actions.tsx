@@ -2,7 +2,7 @@
 import { FormEvent, useState } from "react";
 import { Download } from "lucide-react";
 
-export function DeliveryActions({ itemId, deliveredAt, jobLabel }: { itemId: string; deliveredAt: string; jobLabel: string }) {
+export function DeliveryActions({ itemId, deliveredAt, jobLabel, pdfAvailable }: { itemId: string; deliveredAt: string; jobLabel: string; pdfAvailable: boolean }) {
   const [open, setOpen] = useState(false);
   const [document, setDocument] = useState("both");
   const [correction, setCorrection] = useState("");
@@ -34,10 +34,24 @@ export function DeliveryActions({ itemId, deliveredAt, jobLabel }: { itemId: str
 
   return (
     <div className="delivery-actions">
-      <div>
-        <a aria-label={"Download resume for " + jobLabel} href={"/api/customer/deliveries/" + itemId + "?kind=resume"}><Download aria-hidden="true" /> Resume</a>
-        <a aria-label={"Download cover letter for " + jobLabel} href={"/api/customer/deliveries/" + itemId + "?kind=cover_letter"}><Download aria-hidden="true" /> Cover letter</a>
+      <div className="delivery-format-grid">
+        <section aria-label={"Resume download options for " + jobLabel}>
+          <strong>Resume</strong>
+          <div>
+            <a aria-label={"Download editable Word resume for " + jobLabel} href={"/api/customer/deliveries/" + itemId + "?kind=resume&format=docx"}><Download aria-hidden="true" /> Word (.docx)</a>
+            {pdfAvailable ? <a aria-label={"Download PDF resume for " + jobLabel} href={"/api/customer/deliveries/" + itemId + "?kind=resume&format=pdf"}><Download aria-hidden="true" /> PDF</a> : null}
+          </div>
+        </section>
+        <section aria-label={"Cover letter download options for " + jobLabel}>
+          <strong>Cover letter</strong>
+          <div>
+            <a aria-label={"Download editable Word cover letter for " + jobLabel} href={"/api/customer/deliveries/" + itemId + "?kind=cover_letter&format=docx"}><Download aria-hidden="true" /> Word (.docx)</a>
+            {pdfAvailable ? <a aria-label={"Download PDF cover letter for " + jobLabel} href={"/api/customer/deliveries/" + itemId + "?kind=cover_letter&format=pdf"}><Download aria-hidden="true" /> PDF</a> : null}
+          </div>
+        </section>
       </div>
+      {!pdfAvailable ? <p>This earlier delivery includes editable Word files only. Request help if you also need a PDF copy.</p> : null}
+      <p><strong>Want to edit?</strong> Open the Word file in Microsoft Word, or upload it to Google Drive and choose <em>Open with Google Docs</em>. Use the PDF for viewing, printing, or sending when no edits are needed.</p>
       <p>Included factual corrections may be requested through {deadline.toLocaleDateString("en-US", { timeZone: "America/New_York" })}.</p><button type="button" aria-expanded={open} aria-controls={formId} aria-label={"Request a factual correction for " + jobLabel} onClick={() => setOpen((value) => !value)}>Request a factual correction</button>
       {open ? (
         <form id={formId} onSubmit={submit}>

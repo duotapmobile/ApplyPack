@@ -132,7 +132,9 @@ begin
     '63000000-0000-0000-0000-000000000001',
     '13000000-0000-0000-0000-000000000002',
     'owner/orders/pack/resume-v1.docx',
+    'owner/orders/pack/resume-v1.pdf',
     'owner/orders/pack/cover-v1.docx',
+    'owner/orders/pack/cover-v1.pdf',
     '{
       "factsVerified":true,
       "jobTargetConfirmed":true,
@@ -148,6 +150,9 @@ begin
   if (select count(*) from public.apply_pack_delivery_revisions where apply_pack_item_id = '63000000-0000-0000-0000-000000000001') <> 1 then
     raise exception 'initial delivery revision was not recorded';
   end if;
+  if exists(select 1 from public.apply_pack_delivery_revisions where apply_pack_item_id = '63000000-0000-0000-0000-000000000001' and (resume_pdf_path is null or cover_letter_pdf_path is null)) then
+    raise exception 'initial delivery PDF paths were not recorded';
+  end if;
 
   insert into public.correction_requests(id, apply_pack_item_id, customer_id, correction_text)
   values (
@@ -160,7 +165,9 @@ begin
     correction_id,
     '13000000-0000-0000-0000-000000000002',
     'owner/orders/pack/corrections/resume-v2.docx',
+    'owner/orders/pack/corrections/resume-v2.pdf',
     'owner/orders/pack/corrections/cover-v2.docx',
+    'owner/orders/pack/corrections/cover-v2.pdf',
     'Verified the corrected date against the original intake.',
     now()
   );
@@ -173,6 +180,9 @@ begin
   end if;
   if (select status from public.correction_requests where id = correction_id) <> 'resolved' then
     raise exception 'correction request did not resolve atomically';
+  end if;
+  if exists(select 1 from public.apply_pack_delivery_revisions where apply_pack_item_id = '63000000-0000-0000-0000-000000000001' and (resume_pdf_path is null or cover_letter_pdf_path is null)) then
+    raise exception 'corrected delivery PDF paths were not recorded';
   end if;
 end;
 $$;

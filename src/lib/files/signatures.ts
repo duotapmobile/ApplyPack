@@ -24,3 +24,4 @@ export function extensionMatchesMimeType(filename: string, mimeType: string) {
 }
 
 export const docxMimeType = DOCX;
+export const pdfMimeType = PDF;

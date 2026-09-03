@@ -1214,7 +1214,10 @@ Recommended first release:
 - The job search is performed manually by the ApplyPack admin.
 - The admin enters the 10 matches into the dashboard.
 - Resumes and cover letters are prepared and quality-checked by the admin.
-- The admin uploads finished DOCX files.
+- The admin uploads the final reviewed DOCX resume and cover letter plus matching PDF exports.
+- Customers receive separate, clearly labeled Word and PDF download choices for each document.
+- Word is the editable master and works in Microsoft Word or after upload to Google Docs.
+- PDF is the fixed-layout viewing, printing, and sending copy.
 - The backend controls intake, payments, deadlines, private delivery, job selection, corrections, and records.
 - Do not build automated job scraping or automatic document generation unless separately authorized.
 

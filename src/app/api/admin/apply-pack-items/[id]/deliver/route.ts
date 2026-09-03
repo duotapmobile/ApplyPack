@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { validateDocumentSafety } from "@/lib/files/document-safety";
-import { docxMimeType, extensionMatchesMimeType, hasExpectedFileSignature } from "@/lib/files/signatures";
+import { docxMimeType, extensionMatchesMimeType, hasExpectedFileSignature, pdfMimeType } from "@/lib/files/signatures";
 import { scanFile } from "@/lib/files/scanner";
 import { notifyCustomer } from "@/lib/email/notify";
 import { isSameOriginRequest } from "@/lib/security/origin";
 
 const MAX_BYTES = 10 * 1024 * 1024;
-const MAX_REQUEST_BYTES = 22 * 1024 * 1024;
+const MAX_REQUEST_BYTES = 42 * 1024 * 1024;
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   if (!isSameOriginRequest(request)) {
@@ -22,28 +22,33 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!auth.ok) return auth.response;
   const form = await request.formData();
   const resume = form.get("resume");
+  const resumePdf = form.get("resumePdf");
   const coverLetter = form.get("coverLetter");
+  const coverLetterPdf = form.get("coverLetterPdf");
   const qualityConfirmed = form.get("qualityConfirmed") === "true";
   const reviewNote = String(form.get("reviewNote") || "").trim();
-  if (!(resume instanceof File) || !(coverLetter instanceof File) || !qualityConfirmed || reviewNote.length < 20 || reviewNote.length > 2000) {
-    return NextResponse.json({ error: "Two reviewed DOCX files, the quality attestation, and an operator note are required." }, { status: 400 });
+  if (!(resume instanceof File) || !(resumePdf instanceof File) || !(coverLetter instanceof File) || !(coverLetterPdf instanceof File) || !qualityConfirmed || reviewNote.length < 20 || reviewNote.length > 2000) {
+    return NextResponse.json({ error: "Reviewed Word and PDF versions of both documents, the quality attestation, and an operator note are required." }, { status: 400 });
   }
-  const filesAreValid = (await Promise.all([resume, coverLetter].map(async (file) =>
-    file.type === docxMimeType && file.size <= MAX_BYTES && file.size > 0 && extensionMatchesMimeType(file.name, file.type) && hasExpectedFileSignature(file)
+  const reviewedFiles = [
+    { file: resume, mimeType: docxMimeType },
+    { file: resumePdf, mimeType: pdfMimeType },
+    { file: coverLetter, mimeType: docxMimeType },
+    { file: coverLetterPdf, mimeType: pdfMimeType },
+  ];
+  const filesAreValid = (await Promise.all(reviewedFiles.map(async ({ file, mimeType }) =>
+    file.type === mimeType && file.size <= MAX_BYTES && file.size > 0 && extensionMatchesMimeType(file.name, file.type) && hasExpectedFileSignature(file)
   ))).every(Boolean);
   if (!filesAreValid) {
-    return NextResponse.json({ error: "Each delivery must be a DOCX file no larger than 10 MB." }, { status: 400 });
+    return NextResponse.json({ error: "Each delivery must contain matching DOCX and PDF files no larger than 10 MB each." }, { status: 400 });
   }
-  const safety = await Promise.all([validateDocumentSafety(resume), validateDocumentSafety(coverLetter)]);
+  const safety = await Promise.all(reviewedFiles.map(({ file }) => validateDocumentSafety(file)));
   if (safety.some((result) => !result.safe)) {
     return NextResponse.json({ error: "A delivery contains an unsupported or unsafe document feature." }, { status: 400 });
   }
-  const scans = await Promise.all([
-    scanFile(resume, { structureValidated: true }),
-    scanFile(coverLetter, { structureValidated: true }),
-  ]);
+  const scans = await Promise.all(reviewedFiles.map(({ file }) => scanFile(file, { structureValidated: true })));
   if (scans.some((scan) => scan.status !== "clean")) {
-    return NextResponse.json({ error: "Both reviewed files must pass the configured document safety checks before delivery." }, { status: 409 });
+    return NextResponse.json({ error: "All four reviewed files must pass the configured document safety checks before delivery." }, { status: 409 });
   }
   const { data: item } = await auth.admin.from("apply_pack_items").select("id,order_id,status,orders!inner(customer_id,status)").eq("id", itemId).maybeSingle();
   const order = Array.isArray(item?.orders) ? item?.orders[0] : item?.orders;
@@ -71,14 +76,27 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   };
   const base = order.customer_id + "/orders/" + item.order_id + "/items/" + itemId;
   const resumePath = base + "/resume.docx";
+  const resumePdfPath = base + "/resume.pdf";
   const coverPath = base + "/cover-letter.docx";
-  const first = await auth.admin.storage.from("customer-deliveries").upload(resumePath, resume, { contentType: docxMimeType, upsert: false });
-  if (first.error) { await releaseAllClaims(); return NextResponse.json({ error: "The resume could not be stored." }, { status: 502 }); }
-  const second = await auth.admin.storage.from("customer-deliveries").upload(coverPath, coverLetter, { contentType: docxMimeType, upsert: false });
-  if (second.error) {
-    await auth.admin.storage.from("customer-deliveries").remove([resumePath]);
-    await releaseAllClaims();
-    return NextResponse.json({ error: "The cover letter could not be stored." }, { status: 502 });
+  const coverPdfPath = base + "/cover-letter.pdf";
+  const deliveryFiles = [
+    { path: resumePath, file: resume, contentType: docxMimeType, label: "Word resume" },
+    { path: resumePdfPath, file: resumePdf, contentType: pdfMimeType, label: "PDF resume" },
+    { path: coverPath, file: coverLetter, contentType: docxMimeType, label: "Word cover letter" },
+    { path: coverPdfPath, file: coverLetterPdf, contentType: pdfMimeType, label: "PDF cover letter" },
+  ];
+  const uploadedPaths: string[] = [];
+  for (const deliveryFile of deliveryFiles) {
+    const upload = await auth.admin.storage.from("customer-deliveries").upload(deliveryFile.path, deliveryFile.file, {
+      contentType: deliveryFile.contentType,
+      upsert: false,
+    });
+    if (upload.error) {
+      if (uploadedPaths.length) await auth.admin.storage.from("customer-deliveries").remove(uploadedPaths);
+      await releaseAllClaims();
+      return NextResponse.json({ error: "The " + deliveryFile.label + " could not be stored." }, { status: 502 });
+    }
+    uploadedPaths.push(deliveryFile.path);
   }
   const deliveredAt = new Date().toISOString();
   const reviewChecklist = {
@@ -94,12 +112,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     p_item_id: itemId,
     p_actor_id: auth.user.id,
     p_resume_path: resumePath,
+    p_resume_pdf_path: resumePdfPath,
     p_cover_letter_path: coverPath,
+    p_cover_letter_pdf_path: coverPdfPath,
     p_review_checklist: reviewChecklist,
     p_delivered_at: deliveredAt,
   });
   if (updateError || !completed) {
-    await auth.admin.storage.from("customer-deliveries").remove([resumePath, coverPath]);
+    await auth.admin.storage.from("customer-deliveries").remove(uploadedPaths);
     await releaseAllClaims();
     return NextResponse.json({ error: "Delivery records could not be saved." }, { status: 502 });
   }
@@ -108,7 +128,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     orderId: item.order_id,
     template: "apply_pack_delivery",
     subject: "Your ApplyPack documents are ready",
-    lines: ["Your tailored resume and cover letter are ready in My ApplyPack.", "Download and review both editable files before submitting them to an employer."],
+    lines: ["Your tailored resume and cover letter are ready in My ApplyPack.", "Choose editable Word files for Microsoft Word or Google Docs, or PDF files for viewing and sharing. Review both documents before submitting them to an employer."],
     keySuffix: itemId,
   });
   return NextResponse.json({ ok: true });

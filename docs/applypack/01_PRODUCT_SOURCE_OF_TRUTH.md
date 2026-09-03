@@ -277,7 +277,9 @@ Each Apply Pack must:
 - Avoid generic AI voice.
 - Avoid invented metrics, revenue, percentages, team sizes, tools, or results.
 - Be defensible in an interview.
-- Provide editable Word files.
+- Provide an editable Word (.docx) resume and cover letter that open in Microsoft Word and can be uploaded to Google Drive for editing in Google Docs.
+- Provide a matching reviewed PDF of each document for fixed-layout viewing, printing, or sending.
+- Do not describe PDF as the editable format; direct customers to the Word file when they want to make changes.
 
 ApplyPack does not submit applications on the customer's behalf.
 

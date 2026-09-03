@@ -17,8 +17,8 @@ describe("payment metadata and delivered-file safety", () => {
   });
 
   it("scans both original and corrected delivery files before private storage", () => {
-    expect(delivery.indexOf("Promise.all([scanFile(resume), scanFile(coverLetter)])")).toBeLessThan(delivery.indexOf('storage.from("customer-deliveries").upload'));
-    expect(correction.indexOf("Promise.all([scanFile(resume), scanFile(coverLetter)])")).toBeLessThan(correction.indexOf('storage.from("customer-deliveries").upload'));
+    expect(delivery.indexOf("const scans = await Promise.all(reviewedFiles.map")).toBeLessThan(delivery.indexOf('storage.from("customer-deliveries").upload'));
+    expect(correction.indexOf("const scans = await Promise.all(reviewedFiles.map")).toBeLessThan(correction.indexOf('storage.from("customer-deliveries").upload'));
   });
 
   it("uses a compare-and-set delivery claim and recovers abandoned claims", () => {

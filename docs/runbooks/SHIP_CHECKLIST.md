@@ -33,7 +33,7 @@
 - Customer can mark Not for Me.
 - Criteria conflict creates one review record against the preserved criteria version.
 - Signed delivery URLs expire and cross-account requests fail.
-- DOCX delivery requires two structurally validated files, complete job-specific human-review evidence, an operator note, and atomic release.
+- Apply Pack delivery requires reviewed DOCX and PDF versions of both documents, four successful safety checks, complete job-specific human-review evidence, an operator note, and atomic release.
 - One factual correction inside three days succeeds; a second or late request fails.
 
 ## Production boundary

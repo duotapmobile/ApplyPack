@@ -73,7 +73,7 @@ export const publicPages: Record<string, PublicPage> = {
     description: "Learn how hiring software may sort your resume before a recruiter reviews it, and how ApplyPack prepares documents for software and people.",
     intro: ["The safest strategy is a clean document that uses relevant language accurately."],
     sections: [
-      { title: "What we do", bullets: ["Readable structure", "Relevant experience first", "Accurate job language", "Truthful dates and credentials", "Editable Word delivery"] },
+      { title: "What we do", bullets: ["Readable structure", "Relevant experience first", "Accurate job language", "Truthful dates and credentials", "Editable Word and PDF delivery"] },
       { title: "What we do not do", bullets: ["Stuff keywords", "Hide text", "Invent qualifications", "Claim a guaranteed score", "Promise an interview"] },
       { title: "Human review matters.", body: ["A person reviews every document before delivery. You review it again before submitting."] },
     ], ...start,
@@ -99,7 +99,7 @@ export const publicPages: Record<string, PublicPage> = {
     intro: ["No subscription. No recurring charge. No auto-apply service."],
     sections: [
       { title: "$20 Job Match Search", bullets: ["10 current opportunities", "Direct links", "Fit and gap explanations", "Delivered within 24 hours of completed intake and payment"] },
-      { title: "$8 Apply Pack, per job", bullets: ["One tailored resume", "One tailored cover letter", "Editable Word documents", "Human review", "One factual-correction round"] },
+      { title: "$8 Apply Pack, per job", bullets: ["One tailored resume", "One tailored cover letter", "Editable Word and PDF downloads", "Human review", "One factual-correction round"] },
       { title: "Two selected jobs", body: ["$20 search + $16 application materials = $36 total."] },
       { title: "All 10 selected jobs", body: ["$20 search + $80 application materials = $100 total."] },
       { title: "The search stands alone.", body: ["Choose one, all 10, or none. A material conflict with an approved non-negotiable is eligible for replacement review."] },

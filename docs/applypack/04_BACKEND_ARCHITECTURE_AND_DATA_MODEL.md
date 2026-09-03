@@ -1192,7 +1192,7 @@ Unless the user expressly authorizes a separate AI generation integration, the p
 
 - Admin downloads or views source documents securely.
 - Admin prepares the tailored files using the approved process.
-- Admin uploads completed DOCX files.
+- Admin uploads completed DOCX files and matching PDF exports; all four files pass the private delivery safety gate before one atomic release.
 - Admin completes the quality checklist.
 - Backend delivers the files.
 
