@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
-import { Check, Heart, Search, Sparkles } from "lucide-react";
+import { Check, Search, Sparkles } from "lucide-react";
 
 import { ButtonLink } from "@/components/ui/button-link";
 
 const description =
-  "The personal story behind ApplyPack: a more affordable, flexible way to connect real experience with work that fits real life.";
+  "The personal story behind Apply Pack: a more affordable, flexible way to connect real experience with work that fits real life.";
 
 export const metadata: Metadata = {
-  title: { absolute: "Why I Built Apply Pack | ApplyPack" },
+  title: { absolute: "Why I Built Apply Pack | Apply Pack" },
   description,
   alternates: { canonical: "/why-apply-pack" },
   openGraph: {
-    title: "Why I Built Apply Pack | ApplyPack",
+    title: "Why I Built Apply Pack | Apply Pack",
     description,
     type: "article",
     url: "/why-apply-pack",
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Why I Built Apply Pack | ApplyPack",
+    title: "Why I Built Apply Pack | Apply Pack",
     description,
     images: ["/opengraph-image.png"],
   },
@@ -31,15 +31,14 @@ export default function WhyApplyPackPage() {
       <section className="founder-story__hero">
         <div className="page-frame founder-story__hero-grid">
           <div className="founder-story__hero-copy">
-            <p className="eyebrow">THE STORY BEHIND APPLYPACK</p>
+            <p className="eyebrow">THE STORY BEHIND APPLY PACK</p>
             <h1>Why I Built Apply Pack</h1>
             <p className="founder-story__lead">
               Apply Pack began during one of the most difficult transitions of my life.
             </p>
           </div>
 
-          <aside className="founder-story__truth-card" aria-label="The need that started ApplyPack">
-            <Heart aria-hidden="true" size={34} strokeWidth={1.8} />
+          <aside className="founder-story__truth-card" aria-label="The need that started Apply Pack">
             <p>I did not need another endless list of jobs.</p>
             <strong>I needed realistic opportunities worth my time.</strong>
           </aside>
@@ -71,13 +70,13 @@ export default function WhyApplyPackPage() {
               <p>
                 I realized other women had to be facing the same problem. Like me, they needed meaningful help finding work, but they might not have hundreds or thousands of dollars to spend on a career coach or résumé package.
               </p>
-              <p>Out of personal necessity, I built ApplyPack—the affordable, flexible service I also needed.</p>
+              <p>Out of personal necessity, I built Apply Pack—the affordable, flexible service I also needed.</p>
             </div>
           </article>
         </div>
       </section>
 
-      <section className="founder-story__chapters" aria-label="How ApplyPack began">
+      <section className="founder-story__chapters" aria-label="How Apply Pack began">
         <div className="page-frame founder-story__chapter-list">
           <article className="founder-story__chapter founder-story__chapter--lavender">
             <h2>My Résumé Missed My Story</h2>
@@ -114,15 +113,15 @@ export default function WhyApplyPackPage() {
       <section className="founder-story__connection">
         <div className="page-frame founder-story__connection-grid">
           <div className="founder-story__connection-copy">
-            <h2>ApplyPack Makes the Connection</h2>
+            <h2>Apply Pack Makes the Connection</h2>
             <p>
-              ApplyPack looks beyond your last job title and examines what you have actually done. We research the jobs, review the companies, apply your preferences and dealbreakers, and select opportunities that fit both your experience and your life.
+              Apply Pack looks beyond your last job title and examines what you have actually done. We research the jobs, review the companies, apply your preferences and dealbreakers, and select opportunities that fit both your experience and your life.
             </p>
             <p className="founder-story__signature">We find the jobs. You choose what happens next.</p>
-            <p className="founder-story__connection-close">Your experience may fit more jobs than you think. ApplyPack makes the connection.</p>
+            <p className="founder-story__connection-close">Your experience may fit more jobs than you think. Apply Pack makes the connection.</p>
           </div>
 
-          <div className="founder-story__path" aria-label="How ApplyPack makes the connection">
+          <div className="founder-story__path" aria-label="How Apply Pack makes the connection">
             <div><Sparkles aria-hidden="true" /><span>Your complete experience</span></div>
             <span className="founder-story__path-line" aria-hidden="true" />
             <div><Search aria-hidden="true" /><span>Carefully researched opportunities</span></div>
@@ -141,7 +140,7 @@ export default function WhyApplyPackPage() {
             <article>
               <h3>Ten jobs for $20</h3>
               <p>
-                ApplyPack is not a job board. Instead of thousands of loose matches to sort through, we find 10 jobs selected specifically for your skills, experience, and requirements—for a one-time payment of $20.
+                Apply Pack is not a job board. Instead of thousands of loose matches to sort through, we find 10 jobs selected specifically for your skills, experience, and requirements—for a one-time payment of $20.
               </p>
             </article>
             <article>
@@ -160,7 +159,7 @@ export default function WhyApplyPackPage() {
           <div>
             <h2>A Solution for Us</h2>
             <p>
-              I built ApplyPack for women going through transitions like mine—women who are capable, determined, and ready to move forward, but need work that fits the reality of their lives. ApplyPack makes the connections we may not see on our own, making the path back to work feel possible, even when life is already full.
+              I built Apply Pack for women going through transitions like mine—women who are capable, determined, and ready to move forward, but need work that fits the reality of their lives. Apply Pack makes the connections we may not see on our own, making the path back to work feel possible, even when life is already full.
             </p>
           </div>
           <ButtonLink className="founder-story__cta" href="/get-started" variant="light">
