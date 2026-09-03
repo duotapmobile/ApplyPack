@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Check, Search, Sparkles } from "lucide-react";
 
 import { ButtonLink } from "@/components/ui/button-link";
 
@@ -70,7 +69,7 @@ export default function WhyApplyPackPage() {
               <p>
                 I realized other women had to be facing the same problem. Like me, they needed meaningful help finding work, but they might not have hundreds or thousands of dollars to spend on a career coach or résumé package.
               </p>
-              <p>Out of personal necessity, I built Apply Pack—the affordable, flexible service I also needed.</p>
+              <p>Out of personal necessity, I built Apply Pack, the affordable, flexible service I also needed.</p>
             </div>
           </article>
         </div>
@@ -110,56 +109,12 @@ export default function WhyApplyPackPage() {
         </div>
       </section>
 
-      <section className="founder-story__connection">
-        <div className="page-frame founder-story__connection-grid">
-          <div className="founder-story__connection-copy">
-            <h2>Apply Pack Makes the Connection</h2>
-            <p>
-              Apply Pack looks beyond your last job title and examines what you have actually done. We research the jobs, review the companies, apply your preferences and dealbreakers, and select opportunities that fit both your experience and your life.
-            </p>
-            <p className="founder-story__signature">We find the jobs. You choose what happens next.</p>
-            <p className="founder-story__connection-close">Your experience may fit more jobs than you think. Apply Pack makes the connection.</p>
-          </div>
-
-          <div className="founder-story__path" aria-label="How Apply Pack makes the connection">
-            <div><Sparkles aria-hidden="true" /><span>Your complete experience</span></div>
-            <span className="founder-story__path-line" aria-hidden="true" />
-            <div><Search aria-hidden="true" /><span>Carefully researched opportunities</span></div>
-            <span className="founder-story__path-line" aria-hidden="true" />
-            <div><Check aria-hidden="true" /><span>Matches that fit your life</span></div>
-          </div>
-        </div>
-      </section>
-
-      <section className="founder-story__designed">
-        <div className="page-frame">
-          <div className="founder-story__section-heading">
-            <h2>Designed Differently</h2>
-          </div>
-          <div className="founder-story__offer-grid">
-            <article>
-              <h3>Ten jobs for $20</h3>
-              <p>
-                Apply Pack is not a job board. Instead of thousands of loose matches to sort through, we find 10 jobs selected specifically for your skills, experience, and requirements—for a one-time payment of $20.
-              </p>
-            </article>
-            <article>
-              <h3>Only add what you want</h3>
-              <p>
-                Once you receive your matches, you decide which jobs are worth pursuing. For each job that interests you, we offer a custom résumé and cover letter for $8 for the set.
-              </p>
-            </article>
-          </div>
-          <p className="founder-story__offer-note">No subscription. No ongoing commitment. You stay in control.</p>
-        </div>
-      </section>
-
       <section className="founder-story__close">
         <div className="page-frame founder-story__close-box">
           <div>
             <h2>A Solution for Us</h2>
             <p>
-              I built Apply Pack for women going through transitions like mine—women who are capable, determined, and ready to move forward, but need work that fits the reality of their lives. Apply Pack makes the connections we may not see on our own, making the path back to work feel possible, even when life is already full.
+              I built Apply Pack for women going through transitions like mine. These women are capable, determined, and ready to move forward, but need work that fits the reality of their lives. Apply Pack makes the connections we may not see on our own, making the path back to work feel possible, even when life is already full.
             </p>
           </div>
           <ButtonLink className="founder-story__cta" href="/get-started" variant="light">
