@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isSameOriginRequest } from "@/lib/security/origin";
+import { consumeRateLimit } from "@/lib/security/rate-limit";
 
 const schema = z.object({ decision: z.enum(["selected", "not_for_me", "undecided"]) });
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: "This request was rejected." }, { status: 403 });
   const id = (await context.params).id;
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Choose a valid decision." }, { status: 400 });
@@ -14,6 +17,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!supabase || !admin) return NextResponse.json({ error: "Account storage is not configured." }, { status: 503 });
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+  const rate = await consumeRateLimit({ request, scope: "job_match_decision", identity: authData.user.id, limit: 60, windowSeconds: 60 * 60 });
+  if (!rate.allowed) return NextResponse.json({ error: "Too many updates. Try again later." }, { status: 429 });
   const { data: match } = await admin.from("job_matches").select("id,orders!job_matches_search_order_id_fkey(customer_id,status)").eq("id", id).maybeSingle();
   const related = Array.isArray(match?.orders) ? match?.orders[0] : match?.orders;
   if (!match || !related || related.customer_id !== authData.user.id || related.status !== "delivered") {
@@ -21,6 +26,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
   const { error } = await admin.from("job_matches").update({ customer_decision: parsed.data.decision }).eq("id", id);
   if (error) return NextResponse.json({ error: "The decision could not be saved." }, { status: 502 });
-  await admin.from("audit_logs").insert({ actor_id: authData.user.id, action: "job_match_decision", entity_type: "job_match", entity_id: id, details: { decision: parsed.data.decision } });
+  const audit = await admin.from("audit_logs").insert({ actor_id: authData.user.id, action: "job_match_decision", entity_type: "job_match", entity_id: id, details: { decision: parsed.data.decision } });
+  if (audit.error) return NextResponse.json({ error: "The decision was saved, but its audit record failed." }, { status: 500 });
   return NextResponse.json({ ok: true });
 }

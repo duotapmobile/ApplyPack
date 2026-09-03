@@ -825,3 +825,9 @@ Exact recommendation:
 ```
 
 Do not declare READY TO SHIP while a required credential, DNS record, live provider verification, critical test, or production deployment is still missing.
+
+## Job-source expansion verification
+
+Before release, verify every canonical alias, Liveops normalization and database rejection, alias/cross-source deduplication, direct-link preference, worker relationship, remote and hybrid classifications, state filtering, phone/sales/commission/marketing signals, freshness/inactivation, missing salary/location, URL validation, legacy payload compatibility, source categories, affiliate-directory boundaries, and explainable ranking reasons.
+
+Apply all migrations to an isolated nonproduction Postgres instance and run schema lint. Confirm the two supported Lever endpoints separately without treating a successful endpoint response as a promise of job quantity or suitability. Run `npm run check` and `npm run test:e2e`; record full-suite failures and targeted reruns separately.

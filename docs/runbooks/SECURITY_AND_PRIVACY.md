@@ -18,12 +18,13 @@
 ## Upload safety
 
 - Intake accepts PDF and DOCX only and validates both extension and file signature.
-- Keep both Storage buckets private and enable a malware-scanning/quarantine service before public launch. No uploaded source document may be opened by an operator until the scan has passed.
-- Until a scanner is connected and verified, the production launch gate remains closed even if the application health endpoint is green.
+- Keep all Storage buckets private. No uploaded source document may be opened by an operator until the configured document safety checks pass.
+- The launch baseline validates file identity, structure, expansion, and active content but is not an antivirus engine. Preserve this wording in customer and operator surfaces.
+- A future malware scanner requires cost, privacy, retention, data-region, and failure-path approval plus real clean and blocked-fixture evidence.
 
 ## Retention
 
-- Source documents receive a deletion due date when the 10-match search is delivered. The default is 30 days.
+- Saved intake drafts expire after seven days. Source documents receive a deletion due date at intake and when the 10-match search is delivered. The default maximum is 30 days.
 - Invoke `POST /api/cron/maintenance` with `Authorization: Bearer <CRON_SECRET>` at least hourly.
 - The maintenance job removes due source objects, records `source_deleted_at`, and adds an audit event. Investigate any due record that remains undeleted.
 - Delivery files, orders, payments, refunds, and audit records follow the approved legal/accounting retention policy; do not improvise deletion periods.

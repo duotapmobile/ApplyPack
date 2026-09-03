@@ -981,3 +981,14 @@ Include:
 - performance results.
 - Search Console and Bing status.
 - Remaining indexing uncertainty.
+
+## External job-source security
+
+- Fetch only configured HTTPS origins through a source-specific allowlist.
+- Reject redirects, oversized responses, unsupported structured payloads, and non-HTTP application URLs.
+- Bound request time, interval, and posting count; stop on rate limits without blind retries.
+- Never bypass robots controls, CAPTCHAs, authentication, or access restrictions.
+- Treat job descriptions as untrusted text. Do not execute embedded markup or expose source content as HTML.
+- Do not label an application link official unless it matches the configured official or alternate source host.
+- Keep unsupported sources link-only or pending rather than adding a one-off scraper.
+- Enforce permanent exclusions at normalization, persistence, result, and checkout boundaries.

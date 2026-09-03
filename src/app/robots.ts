@@ -7,7 +7,7 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/admin", "/my-applypack", "/auth", "/api", "/sign-in"],
+        disallow: ["/admin", "/api"],
       },
     ],
     sitemap: siteConfig.url + "/sitemap.xml",

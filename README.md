@@ -41,7 +41,7 @@ The provider-backed flows intentionally return configuration errors until valid 
 ## Database setup
 
 1. Create separate Supabase test and production projects.
-2. Run `supabase/migrations/202609010001_initial.sql` in the test project.
+2. Apply every migration in `supabase/migrations/` to the test project in filename order; do not skip the explicit-grants or job-source expansion migrations.
 3. Confirm the two Storage buckets are private.
 4. Configure the site URL and allow `/auth/callback` for the exact test origin.
 5. Create the initial operator through normal email authentication, set the trusted profile role to `admin` in the Supabase console, add the same email to `APP_ADMIN_EMAILS`, and enroll TOTP MFA.
@@ -88,6 +88,8 @@ npm run test:e2e
 - Security, retention, backups, and key rotation: `docs/runbooks/SECURITY_AND_PRIVACY.md`
 - Incident response: `docs/runbooks/INCIDENT_RESPONSE.md`
 - Evidence required to launch: `docs/runbooks/SHIP_CHECKLIST.md`
+- Job-source registry, classification, and API contract: `docs/job-search/SOURCE_EXPANSION.md`
+- Job-source health, synchronization, and rollback: `docs/runbooks/JOB_SOURCE_OPERATIONS.md`
 
 The hourly maintenance endpoint is:
 
@@ -96,7 +98,7 @@ POST /api/cron/maintenance
 Authorization: Bearer <CRON_SECRET>
 ```
 
-It expires abandoned reservations, deletes source documents whose retention date has passed, and alerts the operator about approaching or missed deadlines.
+It expires abandoned reservations, deletes source documents whose retention date has passed, marks stale job records inactive, and alerts the operator about approaching or missed deadlines.
 
 ## Health
 

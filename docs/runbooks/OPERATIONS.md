@@ -15,6 +15,7 @@
 4. Record fit, requirements, concerns, location, salary when listed, and checked time.
 5. Deliver only when exactly 10 complete matches pass human review.
 6. Never loosen a non-negotiable without customer approval.
+7. Follow `docs/runbooks/JOB_SOURCE_OPERATIONS.md` for source health, approved syncs, classification review, staleness, and Liveops verification.
 
 ## Apply Pack
 

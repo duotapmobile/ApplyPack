@@ -3,7 +3,7 @@
 ## Before the first deploy
 
 1. Pass every local gate and review the branch.
-2. Complete provider setup in a test environment.
+2. Complete provider setup in an isolated low-cost staging environment.
 3. Apply and validate the migration in the test Supabase project.
 4. Confirm no secret or customer document is present in Git history or build output.
 5. Push the reviewed commit to GitHub.
@@ -13,11 +13,11 @@
 1. In Railway, create a project from `duotapmobile/ApplyPack`.
 2. Confirm Railpack detects Node, runs `npm run build`, and starts with `npm run start`.
 3. Add every variable from `.env.example` through Railway Variables. Generate high-entropy independent webhook and cron secrets.
-4. Set the healthcheck path to `/api/health` with a 120-second timeout.
+4. Configure process liveness at `/api/live` and dependency readiness at `/api/health`.
 5. Deploy the exact reviewed commit.
-6. Inspect build and runtime logs, then confirm `/api/health` returns 200 and the expected release SHA.
+6. Inspect build and runtime logs, then confirm `/api/health` returns 200 without exposing credentials or unnecessary internals.
 
-The health route returns 503 until the canonical HTTPS origin, Supabase, Stripe, email, cron secret, and database capacity rows are present. This makes an incomplete provider configuration fail the deployment healthcheck.
+The readiness route returns 503 until the canonical HTTPS origin, Supabase, validated Stripe prices, document safety, email, cron secret, and database capacity rows are ready.
 
 Railway's deployment healthcheck is not continuous monitoring. Configure a separate external uptime check for `/api/health` and alerts for Stripe webhook failures, email failures, missed deadlines, and application errors.
 
@@ -27,7 +27,7 @@ Railway's deployment healthcheck is not continuous monitoring. Configure a separ
 2. Copy the CNAME/verification records exactly from Railway into the DNS provider.
 3. Choose `https://applypack.work` as canonical and redirect `www` to it.
 4. Set `NEXT_PUBLIC_APP_URL=https://applypack.work` and redeploy.
-5. In Supabase Auth, set the Site URL and allow `https://applypack.work/auth/callback`.
+5. In Supabase Auth, set the Site URL to `https://applypack.work` and use the branded six-digit OTP template. Do not add the deleted magic-link callback.
 6. In Stripe, register `https://applypack.work/api/stripe/webhook`.
 7. Verify HTTPS, canonical tags, sitemap, robots, sign-in redirect, checkout return URLs, and webhook delivery on the final hostname.
 
@@ -45,9 +45,10 @@ Confirm the first run exits successfully and records expiration/retention counts
 
 1. Run the full test-mode purchase, delivery, correction, conflict, refund, email, and privacy matrix.
 2. Record the release SHA and evidence in the ship checklist.
-3. Repeat the minimum $20 and $8 paths in live mode only after explicit owner authorization.
-4. Keep capacity disabled until the live smoke tests and inbox/DNS checks pass.
-5. Enable capacity and begin continuous monitoring.
+3. Resolve the recorded tax classification before accepting a first live customer charge.
+4. Announce the live-payment smoke-test phase, then perform only the specifically authorized one $20 and one $8 charge against the founder-authenticated synthetic customer and refund both.
+5. Keep capacity disabled until the live smoke tests and inbox/DNS checks pass.
+6. Enable capacity and begin continuous monitoring.
 
 ## Rollback
 

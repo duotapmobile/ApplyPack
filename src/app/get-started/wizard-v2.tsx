@@ -53,6 +53,8 @@ type Draft = {
   accuracyConfirmed: boolean;
 };
 
+type SavedDocument = { name: string; size: number; mimeType: string; scanStatus: string };
+
 const emptyDraft: Draft = {
   email: "", fullName: "", city: "", state: "", timezone: "",
   linkedin: "", resumeFormat: "", coverLetterPreference: "not_uploaded",
@@ -80,41 +82,50 @@ const groups = {
 const STORAGE_KEY = "applypack-intake-draft-v2";
 const DRAFT_TTL_MS = 2 * 60 * 60 * 1000;
 
-export function IntakeWizard() {
+export function IntakeWizard({ authenticatedEmail }: { authenticatedEmail: string }) {
   const [step, setStep] = useState(0);
-  const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [draft, setDraft] = useState<Draft>({ ...emptyDraft, email: authenticatedEmail });
   const [resume, setResume] = useState<File | null>(null);
   const [coverLetter, setCoverLetter] = useState<File | null>(null);
+  const [savedResume, setSavedResume] = useState<SavedDocument | null>(null);
+  const [savedCoverLetter, setSavedCoverLetter] = useState<SavedDocument | null>(null);
+  const [draftId, setDraftId] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
-  const [estimatedDeadline, setEstimatedDeadline] = useState("");
   const panelRef = useRef<HTMLElement>(null);
+  const messageRef = useRef<HTMLParagraphElement>(null);
   const previousStep = useRef(step);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
       try {
-        const saved = window.sessionStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved) as { savedAt?: number; draft?: Partial<Draft> };
-          if (parsed.savedAt && Date.now() - parsed.savedAt < DRAFT_TTL_MS && parsed.draft) {
-            setDraft({ ...emptyDraft, ...parsed.draft });
-          } else {
-            window.sessionStorage.removeItem(STORAGE_KEY);
+        const response = await fetch("/api/intake/draft", { signal: controller.signal });
+        const result = response.ok ? await response.json() : null;
+        if (result?.draft) {
+          setDraft({ ...emptyDraft, ...result.draft.answers, email: authenticatedEmail });
+          setStep(Number(result.draft.currentStep || 0));
+          setDraftId(String(result.draft.id || ""));
+          setSavedResume(result.draft.resumeDocument || null);
+          setSavedCoverLetter(result.draft.coverLetterDocument || null);
+        } else {
+          const saved = window.sessionStorage.getItem(STORAGE_KEY);
+          if (saved) {
+            const parsed = JSON.parse(saved) as { savedAt?: number; draft?: Partial<Draft> };
+            if (parsed.savedAt && Date.now() - parsed.savedAt < DRAFT_TTL_MS && parsed.draft) {
+              setDraft({ ...emptyDraft, ...parsed.draft, email: authenticatedEmail });
+            }
           }
         }
       } catch {
-        window.sessionStorage.removeItem(STORAGE_KEY);
+        if (!controller.signal.aborted) setMessage("Saved progress could not be loaded. You can continue and try saving again.");
       } finally {
-        setEstimatedDeadline(new Intl.DateTimeFormat("en-US", {
-          timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short",
-        }).format(new Date(Date.now() + DRAFT_TTL_MS * 12)) + " ET");
         setReady(true);
       }
     }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [authenticatedEmail]);
 
   useEffect(() => {
     if (ready) {
@@ -130,14 +141,14 @@ export function IntakeWizard() {
   }, [step]);
 
   const validSteps = useMemo(() => [
-    draft.email.includes("@") && draft.fullName.trim().length >= 2 && draft.city.trim().length >= 2 && draft.state.trim().length >= 2 && draft.timezone.length >= 2,
-    Boolean(resume) && Boolean(draft.resumeFormat) && Boolean(draft.coverLetterPreference),
+    authenticatedEmail.includes("@") && draft.fullName.trim().length >= 2 && draft.city.trim().length >= 2 && draft.state.trim().length >= 2 && draft.timezone.length >= 2,
+    Boolean(resume || savedResume) && Boolean(draft.resumeFormat) && Boolean(draft.coverLetterPreference),
     draft.backgroundTypes.length > 0 && draft.backgroundDetails.trim().length >= 20,
     Boolean(draft.remoteRequirement) && Boolean(draft.hybridPolicy) && Boolean(draft.onSitePolicy) && Boolean(draft.unknownSalaryPolicy) && draft.employmentTypes.length > 0 && Boolean(draft.unknownBenefitsPolicy),
     draft.neverInclude.length > 0,
     Boolean(draft.directionChoice) && Boolean(draft.searchDistance) && draft.workAuthorization.trim().length >= 2 && Boolean(draft.needsSponsorship) && draft.travelPreference.trim().length >= 2,
     draft.criteriaApproved && draft.researchAcknowledged && draft.noGuaranteeAcknowledged && draft.listingChangesAcknowledged && draft.termsAccepted && draft.accuracyConfirmed,
-  ], [draft, resume]);
+  ], [authenticatedEmail, draft, resume, savedResume]);
 
   const validationMessages = [
     "Add your name, email, city, state, and time zone before continuing.",
@@ -155,34 +166,82 @@ export function IntakeWizard() {
     setMessage("");
   }
 
+  function showError(value: string) {
+    setMessage(value);
+    window.requestAnimationFrame(() => messageRef.current?.focus());
+  }
+
   function toggle(name: "backgroundTypes" | "employmentTypes" | "schedulePreferences" | "requiredBenefits" | "preferredBenefits" | "neverInclude" | "tryAvoid", value: string) {
     const current = draft[name];
     field(name, (current.includes(value) ? current.filter((item) => item !== value) : [...current, value]) as Draft[typeof name]);
   }
 
-  function advance() {
-    if (!validSteps[step]) {
-      setMessage(validationMessages[step]);
-      return;
-    }
-    setMessage("");
-    setStep((value) => Math.min(6, value + 1));
-  }
-
-  async function requestSignIn() {
-    const response = await fetch("/api/auth/magic-link", {
-      method: "POST",
+  async function saveDraft(nextStep: number) {
+    const response = await fetch("/api/intake/draft", {
+      method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: draft.email }),
+      body: JSON.stringify({ currentStep: nextStep, answers: { ...draft, email: authenticatedEmail } }),
     });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "The secure link could not be sent.");
-    setMessage("Check your email for a secure sign-in link. Return in this browser, reattach your files, and continue.");
+    if (!response.ok) throw new Error(result.error || "Your progress could not be saved.");
+    setDraftId(String(result.draft.id));
+  }
+
+  async function saveDocument(kind: "resume" | "cover_letter", file: File) {
+    const form = new FormData();
+    form.set("kind", kind);
+    form.set("file", file);
+    const response = await fetch("/api/intake/draft/document", { method: "POST", body: form });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "The document could not be saved.");
+    setDraftId(String(result.draftId));
+    if (kind === "resume") setSavedResume(result.document);
+    else setSavedCoverLetter(result.document);
+  }
+
+  async function removeDocument(kind: "resume" | "cover_letter") {
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/intake/draft/document?kind=" + kind, { method: "DELETE" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "The saved document could not be removed.");
+      if (kind === "resume") { setSavedResume(null); setResume(null); }
+      else { setSavedCoverLetter(null); setCoverLetter(null); field("coverLetterPreference", "not_uploaded"); }
+      setMessage("The saved document was removed.");
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "The saved document could not be removed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function advance() {
+    if (!validSteps[step]) {
+      showError(validationMessages[step]);
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    try {
+      if (step === 1) {
+        if (resume) await saveDocument("resume", resume);
+        if (coverLetter) await saveDocument("cover_letter", coverLetter);
+      }
+      const nextStep = Math.min(6, step + 1);
+      await saveDraft(nextStep);
+      setStep(nextStep);
+      setMessage("Progress saved securely.");
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Your progress could not be saved.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function submit() {
-    if (!validSteps[6] || !resume) {
-      setMessage(validationMessages[6]);
+    if (!validSteps[6] || !savedResume) {
+      showError(validationMessages[6]);
       return;
     }
     setBusy(true);
@@ -192,15 +251,15 @@ export function IntakeWizard() {
       Object.entries(draft).forEach(([key, value]) => {
         form.set(key, Array.isArray(value) ? JSON.stringify(value) : String(value));
       });
-      form.set("resume", resume);
-      if (coverLetter) form.set("coverLetter", coverLetter);
+      form.set("email", authenticatedEmail);
+      form.set("draftId", draftId);
       const response = await fetch("/api/intake", { method: "POST", body: form });
       const result = await response.json();
-      if (response.status === 401 && result.authRequired) {
-        await requestSignIn();
+      if (!response.ok) throw new Error(result.error || "Your intake could not be saved.");
+      if (result.sourceScanStatus !== "clean") {
+        setMessage(result.message || "Your documents are held privately until the configured safety checks complete. No payment was started.");
         return;
       }
-      if (!response.ok) throw new Error(result.error || "Your intake could not be saved.");
       const checkout = await fetch("/api/checkout/search", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -211,7 +270,7 @@ export function IntakeWizard() {
       window.sessionStorage.removeItem(STORAGE_KEY);
       window.location.assign(checkoutResult.url);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Something went wrong.");
+      showError(error instanceof Error ? error.message : "Something went wrong.");
     } finally {
       setBusy(false);
     }
@@ -237,7 +296,7 @@ export function IntakeWizard() {
           {step === 0 && <WizardStep title="First, where are you?" help="These details secure your account and help us evaluate location and schedule fit.">
             <div className="field-grid">
               <label>Full name <Required /><input autoComplete="name" value={draft.fullName} onChange={(e) => field("fullName", e.target.value)} /></label>
-              <label>Email address <Required /><input autoComplete="email" inputMode="email" type="email" value={draft.email} onChange={(e) => field("email", e.target.value)} /></label>
+              <label>Email address <Required /><input autoComplete="email" inputMode="email" type="email" value={authenticatedEmail} readOnly aria-readonly="true" /></label>
               <label>City <Required /><input autoComplete="address-level2" value={draft.city} onChange={(e) => field("city", e.target.value)} /></label>
               <label>State or region <Required /><input autoComplete="address-level1" value={draft.state} onChange={(e) => field("state", e.target.value)} /></label>
             </div>
@@ -245,8 +304,10 @@ export function IntakeWizard() {
           </WizardStep>}
 
           {step === 1 && <WizardStep title="Share the documents we should work from." help="PDF or DOCX, up to 10 MB each. Please remove Social Security numbers, birth dates, and other unnecessary sensitive details.">
-            <label className="file-drop">Current resume <Required /><input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(e) => setResume(e.target.files?.[0] || null)} /><span>{resume ? resume.name : "Choose your resume"}</span></label>
-            <label className="file-drop">Existing cover letter <span>(optional)</span><input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(e) => { const file = e.target.files?.[0] || null; setCoverLetter(file); field("coverLetterPreference", file ? "voice" : "not_uploaded"); }} /><span>{coverLetter ? coverLetter.name : "No cover letter selected"}</span></label>
+            <label className="file-drop">Current resume <Required /><input required={!savedResume} type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(e) => setResume(e.target.files?.[0] || null)} /><span>{resume ? `${resume.name} (${formatBytes(resume.size)}) — will replace saved file` : savedResume ? `${savedResume.name} (${formatBytes(savedResume.size)}) — saved privately` : "Choose your resume"}</span></label>
+            {savedResume ? <button type="button" className="text-button" disabled={busy} onClick={() => removeDocument("resume")}>Remove saved resume</button> : null}
+            <label className="file-drop">Existing cover letter <span>(optional)</span><input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(e) => { const file = e.target.files?.[0] || null; setCoverLetter(file); field("coverLetterPreference", file ? "voice" : "not_uploaded"); }} /><span>{coverLetter ? `${coverLetter.name} (${formatBytes(coverLetter.size)}) — will replace saved file` : savedCoverLetter ? `${savedCoverLetter.name} (${formatBytes(savedCoverLetter.size)}) — saved privately` : "No cover letter selected"}</span></label>
+            {savedCoverLetter ? <button type="button" className="text-button" disabled={busy} onClick={() => removeDocument("cover_letter")}>Remove saved cover letter</button> : null}
             <label>LinkedIn profile <span>(optional)</span><input type="url" placeholder="https://www.linkedin.com/in/..." value={draft.linkedin} onChange={(e) => field("linkedin", e.target.value)} /></label>
             <label>Resume formatting <Required /><select value={draft.resumeFormat} onChange={(e) => field("resumeFormat", e.target.value)}><option value="">Choose one</option><option value="keep">Keep my current format where practical</option><option value="applypack">Use ApplyPack&apos;s clean format</option><option value="decide">Use your judgment</option></select></label>
             {coverLetter && <label>How should we use it? <Required /><select value={draft.coverLetterPreference} onChange={(e) => field("coverLetterPreference", e.target.value)}><option value="voice">Preserve its voice where useful</option><option value="facts">Use it only as a fact source</option><option value="fresh">Start fresh</option></select></label>}
@@ -306,13 +367,14 @@ export function IntakeWizard() {
 
           {step === 6 && <WizardStep title="Review the boundary before payment." help="Your exact contractual deadline will be recorded after successful Stripe payment.">
             <div className="review-list">
-              <p><strong>Non-negotiables</strong>{draft.neverInclude.join(", ") || "None selected"}</p>
-              <p><strong>Work fit</strong>{[draft.remoteRequirement, ...draft.employmentTypes, ...draft.requiredBenefits].filter(Boolean).join(", ")}</p>
-              <p><strong>Experience</strong>{draft.backgroundTypes.join(", ")}</p>
-              <p><strong>Search direction</strong>{[draft.directionChoice, draft.searchDistance, draft.targetTitles].filter(Boolean).join(" ú ")}</p>
-              <p><strong>Resume</strong>{resume?.name}</p>
+              <p><strong>Identity and location</strong>{[draft.fullName, draft.city, draft.state, draft.timezone].filter(Boolean).join(", ")} <button type="button" onClick={() => setStep(0)}>Change</button></p>
+              <p><strong>Documents</strong>{savedResume?.name || resume?.name}{savedCoverLetter ? `; ${savedCoverLetter.name}` : ""} · {draft.resumeFormat} <button type="button" onClick={() => setStep(1)}>Change</button></p>
+              <p><strong>Confirmed experience</strong>{[...draft.backgroundTypes, draft.backgroundDetails, draft.tools, draft.credentials].filter(Boolean).join("; ")} <button type="button" onClick={() => setStep(2)}>Change</button></p>
+              <p><strong>Location, schedule, compensation, and benefits</strong>{[draft.remoteRequirement, draft.hybridPolicy, draft.onSitePolicy, draft.minimumSalary, draft.preferredSalary, draft.minimumHourly, draft.preferredHourly, draft.unknownSalaryPolicy, ...draft.employmentTypes, ...draft.schedulePreferences, ...draft.requiredBenefits, ...draft.preferredBenefits, draft.unknownBenefitsPolicy].filter(Boolean).join("; ")} <button type="button" onClick={() => setStep(3)}>Change</button></p>
+              <p><strong>Non-negotiables and preferences</strong>{[...draft.neverInclude, ...draft.tryAvoid, draft.previousDislikes, draft.excludedIndustries].filter(Boolean).join("; ") || "None selected"} <button type="button" onClick={() => setStep(4)}>Change</button></p>
+              <p><strong>Direction and eligibility</strong>{[draft.directionChoice, draft.searchDistance, draft.targetTitles, draft.oldCareerExclusion, draft.workAuthorization, draft.needsSponsorship, draft.travelPreference, draft.commuteDistance, draft.eligibilityRestrictions].filter(Boolean).join("; ")} <button type="button" onClick={() => setStep(5)}>Change</button></p>
             </div>
-            <div className="deadline-note"><strong>Estimated delivery if payment succeeds now:</strong> {estimatedDeadline}. The final timestamp shown in My ApplyPack controls.</div>
+            <div className="deadline-note"><strong>Contractual deadline:</strong> the exact 24-hour deadline begins only after this completed intake, your approved criteria, available capacity, and successful payment are verified. My ApplyPack will show the controlling Eastern timestamp.</div>
             <label className="confirm"><input type="checkbox" checked={draft.criteriaApproved} onChange={(e) => field("criteriaApproved", e.target.checked)} />These criteria accurately separate my requirements from my preferences.</label>
             <label className="confirm"><input type="checkbox" checked={draft.researchAcknowledged} onChange={(e) => field("researchAcknowledged", e.target.checked)} />I understand ApplyPack researches public listings but does not contact employers or submit applications.</label>
             <label className="confirm"><input type="checkbox" checked={draft.noGuaranteeAcknowledged} onChange={(e) => field("noGuaranteeAcknowledged", e.target.checked)} />I understand ApplyPack does not guarantee interviews, offers, or hiring outcomes.</label>
@@ -324,10 +386,10 @@ export function IntakeWizard() {
           <div className="wizard-actions">
             <button className="wizard-back" type="button" onClick={() => { setMessage(""); setStep((value) => Math.max(0, value - 1)); }} disabled={step === 0 || busy}><ArrowLeft aria-hidden="true" />Back</button>
             {step < 6
-              ? <button className="wizard-next" type="button" aria-describedby="step-help form-message" onClick={advance}>Continue<ArrowRight aria-hidden="true" /></button>
+              ? <button className="wizard-next" type="button" aria-describedby="step-help form-message" disabled={busy} onClick={advance}>{busy ? "Saving..." : "Save and Continue"}<ArrowRight aria-hidden="true" /></button>
               : <button className="wizard-next" type="button" aria-describedby="step-help form-message" disabled={busy} onClick={submit}>{busy ? "Preparing..." : "Continue to Secure Checkout"}<ArrowRight aria-hidden="true" /></button>}
           </div>
-          <p id="form-message" className={message ? "form-message" : "sr-only"} role="status" aria-live="polite">{message || "Complete the required fields before continuing."}</p>
+          <p ref={messageRef} tabIndex={-1} id="form-message" className={message ? "form-message" : "sr-only"} role={message ? "alert" : "status"} aria-live={message ? "assertive" : "polite"}>{message || "Complete the required fields before continuing."}</p>
         </section>
       </div>
     </main>
@@ -339,9 +401,13 @@ function WizardStep({ title, help, children }: { title: string; help: string; ch
 }
 
 function Required() {
-  return <span className="required-hint" aria-hidden="true">required</span>;
+  return <span className="required-hint">required</span>;
 }
 
 function CheckGroup({ legend, required = false, options, values, onToggle }: { legend: string; required?: boolean; options: string[]; values: string[]; onToggle: (value: string) => void }) {
   return <fieldset><legend>{legend} {required && <Required />}</legend><div className="choice-grid">{options.map((item) => <label className="choice" key={item}><input type="checkbox" checked={values.includes(item)} onChange={() => onToggle(item)} /><span><Check aria-hidden="true" />{item}</span></label>)}</div></fieldset>;
+}
+
+function formatBytes(bytes: number) {
+  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

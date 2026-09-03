@@ -1,13 +1,15 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { sendOrderReceipt } from "@/lib/email/send";
-import { createStripeClient } from "@/lib/stripe/server";
+import { stripeEventMatchesConfiguredMode } from "@/lib/stripe/mode";
+import { assertConfiguredPrice, createStripeOperationalClient } from "@/lib/stripe/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { processWorkflowTasks } from "@/lib/workflow/process";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const stripe = createStripeClient();
+  const stripe = createStripeOperationalClient();
   const admin = createSupabaseAdminClient();
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   const signature = request.headers.get("stripe-signature");
@@ -21,6 +23,9 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid signature." }, { status: 400 });
   }
+  if (!stripeEventMatchesConfiguredMode(event.livemode)) {
+    return NextResponse.json({ error: "Webhook payment mode does not match this environment." }, { status: 409 });
+  }
 
   const { error: eventError } = await admin.from("webhook_events").insert({
     provider: "stripe",
@@ -28,42 +33,135 @@ export async function POST(request: Request) {
     event_type: event.type,
   });
   if (eventError?.code === "23505") {
-    const { data: prior } = await admin.from("webhook_events").select("processed_at").eq("provider_event_id", event.id).maybeSingle();
-    if (prior?.processed_at) {
-      return NextResponse.json({ received: true, duplicate: true });
-    }
+    const { data: prior, error: priorError } = await admin
+      .from("webhook_events")
+      .select("processed_at")
+      .eq("provider_event_id", event.id)
+      .maybeSingle();
+    if (priorError) return NextResponse.json({ error: "Could not inspect duplicate event." }, { status: 500 });
+    if (prior?.processed_at) return NextResponse.json({ received: true, duplicate: true });
+  } else if (eventError) {
+    return NextResponse.json({ error: "Could not record event." }, { status: 500 });
   }
-  if (eventError && eventError.code !== "23505") return NextResponse.json({ error: "Could not record event." }, { status: 500 });
+
+  const { data: claimed, error: claimError } = await admin.rpc("claim_stripe_webhook", {
+    p_provider_event_id: event.id,
+  });
+  if (claimError) return NextResponse.json({ error: "Could not claim event." }, { status: 500 });
+  if (!claimed) {
+    return NextResponse.json({ error: "Event is still processing; Stripe should retry." }, { status: 503 });
+  }
 
   try {
     if (event.type === "checkout.session.completed") {
-      await completeCheckout(event.data.object, new Date(event.created * 1000));
+      const verified = await verifyCompletedCheckout(stripe, event.data.object);
+      await completeCheckout(verified, new Date(event.created * 1000));
     } else if (event.type === "checkout.session.expired") {
-      const session = event.data.object;
-      const orderId = session.metadata?.order_id;
-      const cartId = session.metadata?.cart_id;
-      if (cartId) {
-        await admin.from("apply_pack_carts").update({ status: "expired" }).eq("id", cartId).eq("status", "checkout_pending");
-      } else if (orderId) {
-        await admin.from("orders").update({ status: "payment_expired" }).eq("id", orderId).eq("status", "pending_payment");
-      }
-      const reservationId = session.metadata?.capacity_reservation_id;
-      if (reservationId) await admin.from("capacity_reservations").update({ status: "released" }).eq("id", reservationId).eq("status", "reserved");
-    } else if (event.type === "charge.refunded") {
-      await recordRefund(event.data.object);
+      await expireCheckout(event.data.object);
+    } else if (["refund.created", "refund.updated", "refund.failed"].includes(event.type)) {
+      await recordRefund(event.data.object as Stripe.Refund);
     } else if (event.type === "charge.dispute.created") {
-      await admin.from("audit_logs").insert({
+      const dispute = event.data.object;
+      const { error } = await admin.from("audit_logs").insert({
         action: "stripe_dispute_created",
         entity_type: "stripe_dispute",
-        entity_id: event.data.object.id,
-        details: { amount: event.data.object.amount, reason: event.data.object.reason },
+        entity_id: dispute.id,
+        details: { amount: dispute.amount, reason: dispute.reason },
       });
+      if (error) throw new Error("Could not record dispute alert");
     }
-    await admin.from("webhook_events").update({ processed_at: new Date().toISOString(), error_message: null }).eq("provider_event_id", event.id);
+
+    const { data: processed, error: processedError } = await admin
+      .from("webhook_events")
+      .update({
+        processed_at: new Date().toISOString(),
+        processing_status: "processed",
+        error_message: null,
+        last_error_code: null,
+      })
+      .eq("provider_event_id", event.id)
+      .eq("processing_status", "processing")
+      .select("id")
+      .maybeSingle();
+    if (processedError || !processed) throw new Error("Could not finalize webhook event");
+    after(() => processWorkflowTasks(admin, 2).catch(() => undefined));
     return NextResponse.json({ received: true });
   } catch (error) {
-    await admin.from("webhook_events").update({ error_message: error instanceof Error ? error.message : "Processing failed" }).eq("provider_event_id", event.id);
+    const message = error instanceof Error ? error.message.slice(0, 500) : "Processing failed";
+    await admin.from("webhook_events").update({
+      processing_status: "failed",
+      last_error_code: "webhook_processing_failed",
+      error_message: message,
+    }).eq("provider_event_id", event.id);
     return NextResponse.json({ error: "Webhook processing failed." }, { status: 500 });
+  }
+}
+
+async function verifyCompletedCheckout(stripe: Stripe, eventSession: Stripe.Checkout.Session) {
+  const session = await stripe.checkout.sessions.retrieve(eventSession.id, {
+    expand: ["line_items.data.price.product"],
+  });
+  const orderId = session.metadata?.order_id;
+  const cartId = session.metadata?.cart_id;
+  const productKind = session.metadata?.product_kind;
+  const reservationId = session.metadata?.capacity_reservation_id;
+  const paymentId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
+  if (
+    (!orderId && !cartId) ||
+    (orderId && cartId) ||
+    !reservationId ||
+    !paymentId ||
+    session.payment_status !== "paid" ||
+    session.currency?.toLowerCase() !== "usd"
+  ) {
+    throw new Error("Incomplete checkout metadata");
+  }
+
+  const lines = session.line_items?.data || [];
+  if (lines.length !== 1 || !lines[0].price || !lines[0].quantity) {
+    throw new Error("Unexpected checkout line items");
+  }
+  const line = lines[0];
+  if (productKind === "job_search" && orderId && !cartId) {
+    const priceId = process.env.STRIPE_JOB_SEARCH_PRICE_ID;
+    if (!priceId || line.price?.id !== priceId || line.quantity !== 1 || session.amount_total !== 2000) {
+      throw new Error("Job Match Search price mismatch");
+    }
+    await assertConfiguredPrice(stripe, priceId, { unitAmount: 2000, productName: "Job Match Search" });
+  } else if (productKind === "apply_pack" && cartId && !orderId) {
+    const priceId = process.env.STRIPE_APPLY_PACK_PRICE_ID;
+    const quantity = line.quantity ?? 0;
+    if (!priceId || line.price?.id !== priceId || quantity < 1 || quantity > 10 || session.amount_total !== quantity * 800) {
+      throw new Error("Apply Pack price mismatch");
+    }
+    await assertConfiguredPrice(stripe, priceId, { unitAmount: 800, productName: "Apply Pack" });
+  } else {
+    throw new Error("Checkout product mismatch");
+  }
+  return session;
+}
+
+async function expireCheckout(session: Stripe.Checkout.Session) {
+  const admin = createSupabaseAdminClient();
+  if (!admin) throw new Error("Admin client missing");
+  const orderId = session.metadata?.order_id;
+  const cartId = session.metadata?.cart_id;
+  if (cartId) {
+    const { error } = await admin.from("apply_pack_carts").update({ status: "expired" })
+      .eq("id", cartId).eq("status", "checkout_pending");
+    if (error) throw error;
+  } else if (orderId) {
+    const { error } = await admin.from("orders").update({ status: "payment_expired" })
+      .eq("id", orderId).eq("status", "pending_payment");
+    if (error) throw error;
+  } else {
+    throw new Error("Expired checkout has no internal reference");
+  }
+  const reservationId = session.metadata?.capacity_reservation_id;
+  if (reservationId) {
+    const { error } = await admin.from("capacity_reservations").update({ status: "released" })
+      .eq("id", reservationId).eq("status", "reserved");
+    if (error) throw error;
   }
 }
 
@@ -73,73 +171,90 @@ async function completeCheckout(session: Stripe.Checkout.Session, paidAtDate: Da
   const orderId = session.metadata?.order_id;
   const cartId = session.metadata?.cart_id;
   const reservationId = session.metadata?.capacity_reservation_id;
-  const paymentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
-  if ((!orderId && !cartId) || (orderId && cartId) || !reservationId || !paymentId || session.payment_status !== "paid" || session.amount_total === null) {
-    throw new Error("Incomplete checkout metadata");
+  const paymentId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
+  if ((!orderId && !cartId) || (orderId && cartId) || !reservationId || !paymentId || session.amount_total === null) {
+    throw new Error("Incomplete verified checkout");
   }
 
   const paidAt = paidAtDate.toISOString();
   const deadline = new Date(paidAtDate.getTime() + 24 * 60 * 60 * 1000).toISOString();
   const common = {
-      p_checkout_id: session.id,
-      p_payment_id: paymentId,
-      p_amount_cents: session.amount_total,
-      p_paid_at: paidAt,
-      p_deadline: deadline,
-      p_reservation_id: reservationId,
+    p_checkout_id: session.id,
+    p_payment_id: paymentId,
+    p_amount_cents: session.amount_total,
+    p_paid_at: paidAt,
+    p_deadline: deadline,
+    p_reservation_id: reservationId,
   };
   const { data: converted, error } = cartId
     ? await admin.rpc("complete_apply_pack_cart", { p_cart_id: cartId, ...common })
     : await admin.rpc("complete_paid_checkout", { p_order_id: orderId, ...common });
   if (error) throw error;
-  if (!converted || typeof converted !== "object" || !("customer_id" in converted)) throw new Error("Paid conversion returned no customer");
+  if (!converted || typeof converted !== "object" || !("customer_id" in converted)) {
+    throw new Error("Paid conversion returned no customer");
+  }
 
   const referenceId = cartId || orderId!;
   const template = cartId ? "apply_pack_purchase_confirmation" : "search_purchase_confirmation";
   const idempotencyKey = template + "/" + referenceId;
-  const { data: existingEmail } = await admin.from("email_events").select("id").eq("idempotency_key", idempotencyKey).maybeSingle();
-  if (existingEmail) return;
-  const { data: user } = await admin.auth.admin.getUserById(String(converted.customer_id));
-  const email = user.user?.email;
-  if (email) {
-    const reference = cartId ? { apply_pack_cart_id: cartId } : { order_id: orderId };
-    try {
-      const sent = await sendOrderReceipt({ to: email, orderId: referenceId, amountCents: session.amount_total, deadline });
-      await admin.from("email_events").upsert({
-        ...reference,
-        recipient: email,
-        template,
-        status: sent.skipped ? "skipped" : "sent",
-        provider_message_id: sent.providerMessageId || null,
-        idempotency_key: idempotencyKey,
-      }, { onConflict: "idempotency_key" });
-    } catch {
-      await admin.from("email_events").upsert({
-        ...reference, recipient: email, template, status: "failed", idempotency_key: idempotencyKey,
-      }, { onConflict: "idempotency_key" });
-    }
+  const { data: existingEmail, error: existingError } = await admin
+    .from("email_events")
+    .select("id,status")
+    .eq("idempotency_key", idempotencyKey)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (existingEmail && ["sent", "skipped"].includes(existingEmail.status)) return;
+
+  const { data: user, error: userError } = await admin.auth.admin.getUserById(String(converted.customer_id));
+  if (userError || !user.user?.email) throw new Error("Paid customer email was not found");
+  const reference = cartId ? { apply_pack_cart_id: cartId } : { order_id: orderId };
+  try {
+    const sent = await sendOrderReceipt({
+      to: user.user.email,
+      orderId: referenceId,
+      amountCents: session.amount_total,
+      deadline,
+    });
+    const { error: emailError } = await admin.from("email_events").upsert({
+      ...reference,
+      recipient: user.user.email,
+      template,
+      status: sent.skipped ? "skipped" : "sent",
+      provider_message_id: sent.providerMessageId || null,
+      idempotency_key: idempotencyKey,
+    }, { onConflict: "idempotency_key" });
+    if (emailError) throw emailError;
+  } catch (emailError) {
+    const { error: recordError } = await admin.from("email_events").upsert({
+      ...reference,
+      recipient: user.user.email,
+      template,
+      status: "failed",
+      idempotency_key: idempotencyKey,
+    }, { onConflict: "idempotency_key" });
+    if (recordError) throw recordError;
+    if (emailError instanceof Error && emailError.message.includes("email_events")) throw emailError;
   }
 }
 
-async function recordRefund(charge: Stripe.Charge) {
+async function recordRefund(refund: Stripe.Refund) {
   const admin = createSupabaseAdminClient();
   if (!admin) throw new Error("Admin client missing");
-  const paymentIntentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id;
-  if (!paymentIntentId) throw new Error("Refund has no payment intent");
-  const { data: payment } = await admin.from("payments").select("id,order_id,apply_pack_cart_id").eq("provider_payment_id", paymentIntentId).maybeSingle();
-  if (!payment) throw new Error("Refund payment was not found");
-  const fullyRefunded = charge.amount_refunded >= charge.amount;
-  await admin.from("payments").update({ status: fullyRefunded ? "refunded" : "partially_refunded" }).eq("id", payment.id);
-  if (payment.order_id && fullyRefunded) {
-    await admin.from("orders").update({ status: "refunded" }).eq("id", payment.order_id);
-  } else if (payment.apply_pack_cart_id && fullyRefunded) {
-    await admin.from("apply_pack_carts").update({ status: "cancelled" }).eq("id", payment.apply_pack_cart_id);
-    await admin.from("orders").update({ status: "refunded" }).eq("source_cart_id", payment.apply_pack_cart_id).neq("status", "delivered");
-  }
-  await admin.from("audit_logs").insert({
-    action: "stripe_refund_recorded",
-    entity_type: "payment",
-    entity_id: payment.id,
-    details: { amount_refunded: charge.amount_refunded, charge_amount: charge.amount, fully_refunded: fullyRefunded },
+  const localRefundId = refund.metadata?.refund_id;
+  const argumentsForProvider = {
+    p_provider_refund_id: refund.id,
+    p_provider_status: refund.status,
+    p_error_code: refund.failure_reason || null,
+  };
+  const result = localRefundId
+    ? await admin.rpc("finalize_order_refund", { p_refund_id: localRefundId, ...argumentsForProvider })
+    : await admin.rpc("finalize_order_refund_by_provider", argumentsForProvider);
+  if (result.error) throw result.error;
+  const { error: auditError } = await admin.from("audit_logs").insert({
+    action: "stripe_refund_reconciled",
+    entity_type: "stripe_refund",
+    entity_id: refund.id,
+    details: { status: refund.status },
   });
+  if (auditError) throw auditError;
 }

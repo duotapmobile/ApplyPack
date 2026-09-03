@@ -231,3 +231,18 @@ Before deploying each environment, verify:
 - Storage bucket names match migrations.
 - Capacity defaults are confirmed.
 - Retention and correction values match public copy and Terms.
+
+## Job-source settings
+
+```dotenv
+# Server-side operational controls; these are not credentials.
+APP_JOB_FRESHNESS_HOURS=24
+APP_JOB_STALE_AFTER_HOURS=72
+APP_JOB_SOURCE_SYNC_ENABLED=false
+APP_JOB_SOURCE_TIMEOUT_MS=10000
+APP_JOB_SOURCE_MIN_INTERVAL_MS=1500
+APP_JOB_SOURCE_MAX_POSTINGS=250
+APP_JOB_SOURCE_USER_AGENT=ApplyPackSourceMonitor/1.0 (+https://applypack.work/contact)
+```
+
+Keep synchronization disabled until the job-source migration is deployed and the operator explicitly enables source runs. Public Lever adapters do not require source credentials.

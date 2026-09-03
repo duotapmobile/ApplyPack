@@ -1,5 +1,6 @@
 import "server-only";
 import { Resend } from "resend";
+import { safeTransactionalRecipient } from "./safety";
 
 type ReceiptInput = {
   to: string;
@@ -16,7 +17,7 @@ export async function sendOrderReceipt(input: ReceiptInput) {
   const deadline = new Intl.DateTimeFormat("en-US", { dateStyle: "full", timeStyle: "short", timeZone: "America/New_York" }).format(new Date(input.deadline));
   const { data, error } = await resend.emails.send({
     from,
-    to: input.to,
+    to: safeTransactionalRecipient(input.to),
     replyTo: process.env.EMAIL_REPLY_TO || "help@applypack.work",
     subject: "Your ApplyPack order is confirmed",
     text: [
@@ -36,6 +37,8 @@ export async function sendTransactionalEmail(input: {
   subject: string;
   lines: string[];
   idempotencyKey: string;
+  actionUrl?: string;
+  actionLabel?: string;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return { skipped: true as const, providerMessageId: undefined };
@@ -43,10 +46,10 @@ export async function sendTransactionalEmail(input: {
   const from = process.env.EMAIL_FROM_ADDRESS || process.env.EMAIL_FROM || "orders@applypack.work";
   const { data, error } = await resend.emails.send({
     from,
-    to: input.to,
+    to: safeTransactionalRecipient(input.to),
     replyTo: process.env.EMAIL_REPLY_TO || "help@applypack.work",
     subject: input.subject,
-    text: [...input.lines, "", "Open My ApplyPack: " + (process.env.NEXT_PUBLIC_APP_URL || "https://applypack.work") + "/my-applypack"].join("\n"),
+    text: [...input.lines, "", (input.actionLabel || "Open My ApplyPack") + ": " + (input.actionUrl || (process.env.NEXT_PUBLIC_APP_URL || "https://applypack.work") + "/my-applypack")].join("\n"),
   }, { idempotencyKey: input.idempotencyKey });
   if (error) throw new Error(error.message);
   return { skipped: false as const, providerMessageId: data?.id };

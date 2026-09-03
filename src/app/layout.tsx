@@ -22,7 +22,6 @@ export const metadata: Metadata = {
     "career change support",
     "ApplyPack",
   ],
-  alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     siteName: "ApplyPack",
@@ -44,9 +43,9 @@ export const metadata: Metadata = {
   applicationName: "ApplyPack",
   manifest: "/manifest.webmanifest",
   category: "business",
-  authors: [{ name: "DuoTap LLC" }],
-  creator: "DuoTap LLC",
-  publisher: "DuoTap LLC",
+  authors: [{ name: "DuoTap LLC d/b/a ApplyPack" }],
+  creator: "DuoTap LLC d/b/a ApplyPack",
+  publisher: "DuoTap LLC d/b/a ApplyPack",
   referrer: "strict-origin-when-cross-origin",
   formatDetection: { address: false, email: false, telephone: false },
   twitter: {

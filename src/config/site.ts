@@ -1,6 +1,6 @@
 export const siteConfig = {
   name: "ApplyPack",
-  legalEntity: process.env.APP_LEGAL_ENTITY_NAME || "DuoTap LLC",
+  legalEntity: process.env.APP_LEGAL_ENTITY_NAME || "DuoTap LLC d/b/a ApplyPack",
   url:
     process.env.NEXT_PUBLIC_APP_URL ||
     (process.env.NODE_ENV === "production" ? "https://applypack.work" : "http://localhost:3000"),

@@ -23,3 +23,39 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: supabase start
+      - run: supabase db reset --local --no-seed
+      - name: Checkout concurrency
+        run: cat tests/integration/checkout-concurrency.sql | docker exec -i supabase_db_applypack psql -U postgres -d postgres -v ON_ERROR_STOP=1
+      - name: RLS and financial invariants
+        run: cat tests/integration/security-financial-invariants.sql | docker exec -i supabase_db_applypack psql -U postgres -d postgres -v ON_ERROR_STOP=1
+      - name: Intake and delivery invariants
+        run: cat tests/integration/intake-delivery-invariants.sql | docker exec -i supabase_db_applypack psql -U postgres -d postgres -v ON_ERROR_STOP=1
+      - name: Preserved-data migration
+        run: |
+          supabase db reset --local --version 202609020002 --no-seed
+          cat tests/integration/historical-preservation-fixture.sql | docker exec -i supabase_db_applypack psql -U postgres -d postgres -v ON_ERROR_STOP=1
+          supabase migration up --local
+          cat tests/integration/historical-preservation-assertions.sql | docker exec -i supabase_db_applypack psql -U postgres -d postgres -v ON_ERROR_STOP=1

@@ -16,7 +16,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     .maybeSingle();
   if (!intake || intake.source_deleted_at) return NextResponse.json({ error: "Source document not found." }, { status: 404 });
   if (intake.source_scan_status !== "clean") {
-    return NextResponse.json({ error: "Source retrieval is locked until malware scanning passes." }, { status: 423 });
+    return NextResponse.json({ error: "Source retrieval is locked until the configured document safety checks pass." }, { status: 423 });
   }
   const path = kind.data === "resume" ? intake.resume_path : intake.cover_letter_path;
   if (!path) return NextResponse.json({ error: "Source document not found." }, { status: 404 });

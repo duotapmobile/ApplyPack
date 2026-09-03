@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { validateDocumentSafety } from "@/lib/files/document-safety";
 import { docxMimeType, extensionMatchesMimeType, hasExpectedFileSignature } from "@/lib/files/signatures";
+import { scanFile } from "@/lib/files/scanner";
 import { notifyCustomer } from "@/lib/email/notify";
+import { isSameOriginRequest } from "@/lib/security/origin";
 
 const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_REQUEST_BYTES = 22 * 1024 * 1024;
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: "This correction request was rejected." }, { status: 403 });
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (contentLength > MAX_REQUEST_BYTES) return NextResponse.json({ error: "The correction upload is too large." }, { status: 413 });
   const requestId = (await context.params).id;
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
@@ -22,13 +29,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     extensionMatchesMimeType(file.name, file.type) && hasExpectedFileSignature(file)
   ))).every(Boolean);
   if (!valid) return NextResponse.json({ error: "Each corrected delivery must be a valid DOCX no larger than 10 MB." }, { status: 400 });
+  const safety = await Promise.all([validateDocumentSafety(resume), validateDocumentSafety(coverLetter)]);
+  if (safety.some((result) => !result.safe)) return NextResponse.json({ error: "A corrected file contains an unsupported or unsafe document feature." }, { status: 400 });
+  const scans = await Promise.all([
+    scanFile(resume, { structureValidated: true }),
+    scanFile(coverLetter, { structureValidated: true }),
+  ]);
+  if (scans.some((scan) => scan.status !== "clean")) return NextResponse.json({ error: "Both corrected files must pass the configured private document safety checks before delivery." }, { status: 409 });
 
-  const { data: correction } = await auth.admin.from("correction_requests")
+  const { data: correction, error: correctionError } = await auth.admin.from("correction_requests")
     .select("id,status,apply_pack_item_id,apply_pack_item:apply_pack_items(order_id,orders!inner(customer_id,status))")
     .eq("id", requestId).maybeSingle();
   const item = Array.isArray(correction?.apply_pack_item) ? correction?.apply_pack_item[0] : correction?.apply_pack_item;
   const order = Array.isArray(item?.orders) ? item.orders[0] : item?.orders;
-  if (!correction || correction.status !== "submitted" || !item || !order || order.status !== "delivered") {
+  if (correctionError) return NextResponse.json({ error: "The correction request could not be loaded." }, { status: 502 });
+  if (!correction || correction.status !== "submitted" || !item || !order || !["delivered", "delivered_refunded"].includes(order.status)) {
     return NextResponse.json({ error: "This correction request is not deliverable." }, { status: 409 });
   }
   const base = order.customer_id + "/orders/" + item.order_id + "/items/" + correction.apply_pack_item_id + "/corrections/" + requestId;
@@ -42,18 +57,18 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ error: "The corrected cover letter could not be stored." }, { status: 502 });
   }
   const resolvedAt = new Date().toISOString();
-  const itemUpdate = await auth.admin.from("apply_pack_items").update({
-    resume_path: resumePath, cover_letter_path: coverPath, delivered_at: resolvedAt,
-  }).eq("id", correction.apply_pack_item_id);
-  if (itemUpdate.error) {
+  const { data: completed, error: completionError } = await auth.admin.rpc("complete_correction_delivery", {
+    p_request_id: requestId,
+    p_actor_id: auth.user.id,
+    p_resume_path: resumePath,
+    p_cover_letter_path: coverPath,
+    p_resolution: resolution,
+    p_resolved_at: resolvedAt,
+  });
+  if (completionError || !completed) {
     await auth.admin.storage.from("customer-deliveries").remove([resumePath, coverPath]);
-    return NextResponse.json({ error: "The corrected file records could not be saved." }, { status: 502 });
+    return NextResponse.json({ error: "The corrected delivery could not be committed atomically." }, { status: 502 });
   }
-  const correctionUpdate = await auth.admin.from("correction_requests").update({
-    status: "resolved", admin_notes: resolution, resolved_at: resolvedAt,
-  }).eq("id", requestId).eq("status", "submitted");
-  if (correctionUpdate.error) return NextResponse.json({ error: "The correction status could not be saved." }, { status: 502 });
-  await auth.admin.from("audit_logs").insert({ actor_id: auth.user.id, action: "correction_delivered", entity_type: "correction_request", entity_id: requestId });
   await notifyCustomer({
     customerId: order.customer_id,
     orderId: item.order_id,

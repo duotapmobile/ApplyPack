@@ -18,6 +18,8 @@
 /test-results/
 /.next/
 /out/
+/supabase/.temp/
+/supabase/.branches/
 
 # production
 /build

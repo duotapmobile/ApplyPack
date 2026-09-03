@@ -6,6 +6,16 @@ const nextConfig: NextConfig = {
     root: process.cwd(),
   },
   poweredByHeader: false,
+  async redirects() {
+    return [
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "www.applypack.work" }],
+        destination: "https://applypack.work/:path*",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {
@@ -31,7 +41,9 @@ const nextConfig: NextConfig = {
               "font-src 'self'",
               "style-src 'self' 'unsafe-inline'",
               process.env.NODE_ENV === "production" ? "script-src 'self' 'unsafe-inline' https://js.stripe.com" : "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.stripe.com",
-              "connect-src 'self' https://*.supabase.co https://api.stripe.com https://api.resend.com",
+              process.env.NODE_ENV === "production"
+                ? "connect-src 'self' https://*.supabase.co https://api.stripe.com https://api.resend.com"
+                : "connect-src 'self' https://*.supabase.co https://api.stripe.com https://api.resend.com http://127.0.0.1:54321 http://localhost:54321 ws://127.0.0.1:54321 ws://localhost:54321",
               "frame-src https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com",
               "object-src 'none'",
               "upgrade-insecure-requests",

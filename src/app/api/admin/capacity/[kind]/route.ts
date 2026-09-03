@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { isSameOriginRequest } from "@/lib/security/origin";
 
 const schema = z.object({ unitsPer24h: z.number().int().min(1).max(100), enabled: z.boolean() });
 
 export async function POST(request: Request, context: { params: Promise<{ kind: string }> }) {
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: "This capacity request was rejected." }, { status: 403 });
   const kind = (await context.params).kind;
   if (!["job_search", "apply_pack"].includes(kind)) return NextResponse.json({ error: "Unknown capacity type." }, { status: 404 });
   const auth = await requireAdmin();

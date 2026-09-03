@@ -353,18 +353,21 @@ What employers decide:
 
 ## Refund and cancellation principles
 
-The final policy requires user confirmation and legal review. The recommended product logic is:
+The owner approved this operational policy on September 2, 2026. It remains an operational draft and is not represented as attorney-approved:
 
 - The $20 fee pays for research and delivery of the 10-job shortlist.
-- The customer does not receive a refund merely because she chooses not to apply to a delivered job.
+- Delivery of the 10-job shortlist completes the purchased search. A completed, delivered search is non-refundable.
+- Delivery of the tailored resume and cover letter completes the purchased Apply Pack. A completed, delivered Apply Pack is non-refundable.
 - A result that materially violates an approved non-negotiable is reviewed and replaced at no charge.
 - A changed preference after research begins does not invalidate the original approved search.
-- If ApplyPack cannot complete an unfinished order, it may offer a replacement, partial refund, or full refund depending on the unfinished work.
+- If ApplyPack cannot complete an unfinished order, it may offer a transfer, replacement, partial refund, or full refund depending on the unfinished work.
 - If ApplyPack misses a posted 24-hour deadline for a reason within its control, the customer may cancel the unfinished item and receive a refund for that unfinished item.
 - If a selected job closes before ApplyPack begins the paid Apply Pack work, the customer may transfer the $8 to another eligible job or request a refund.
-- If the employer closes the job after the completed Apply Pack is delivered, the completed Apply Pack is not automatically refundable.
+- If the employer closes the job after the completed Apply Pack is delivered, the completed Apply Pack remains non-refundable.
+- After delivery, the available service remedies are an eligible no-charge search-result replacement or the included factual-correction round, not a refund.
+- Duplicate or incorrect charges must still be corrected, and nothing in this policy removes a non-waivable remedy required by applicable law.
 
-Do not implement refund automation until the user approves the exact policy.
+Refund handling must remain operator-controlled, reason-coded, auditable, and unavailable for completed work except a duplicate or incorrect charge or a remedy required by law.
 
 ## Data and privacy principles
 
@@ -399,3 +402,9 @@ Do not add unless the user expressly authorizes them:
 - Automatic AI generation and delivery without human review
 - A promise to find a job
 - A promise to beat or bypass an applicant tracking system
+
+## Approved job-source behavior
+
+The September 2, 2026 owner instruction authorizes bounded discovery from approved official sources while retaining human review and the exact-10 delivery contract. The default result view prioritizes current, state-eligible, early-career W-2 support and operations work; hides sales, marketing, contractor/staffing, applicant-paid-cost, stale, rejected, and hard-excluded records; and demotes high-phone or unclear-remote work without deleting it.
+
+Employer presence never implies a current remote opening. Every posting is classified individually, unknown facts remain unknown, and only configured official hosts may receive official-source attribution. Liveops is permanently excluded. Generic Blue Cross Blue Shield and AAA identities are directories only. The complete controlling source list, aliases, classifications, filters, and precedence rules are in `docs/job-search/SOURCE_EXPANSION.md`.

@@ -13,17 +13,17 @@
 - Production migration applied without error.
 - RLS negative tests prove one customer cannot read another customer's records or files.
 - Both Storage buckets report private.
-- Uploaded PDF and DOCX samples pass the configured malware quarantine and release flow.
+- Accepted and hostile PDF/DOCX fixtures prove the configured document-safety allowlist, active-content rejection, private hold, and release flow. Evidence does not call this malware scanning.
 - Supabase backup retention is enabled and a non-production restore drill has passed.
 - Hourly maintenance and independent uptime monitoring have both produced successful evidence.
 - Admin without AAL2 is rejected.
 - Stripe purchase creates one order, deadline, payment, capacity commitment, and receipt.
 - Replayed Stripe events create no duplicate work or email.
 - Cancelled and expired sessions create no paid work.
-- Apply Pack checkout cannot exceed two current units.
+- Apply Pack checkout cannot exceed 10 items, delivered-search eligibility, or current measured capacity.
 - Capacity-full checkout makes no charge.
 - Resend domain is verified and an external receipt passes SPF, DKIM, and DMARC.
-- support@, privacy@, and accessibility@ reach the approved monitored inbox.
+- help@, orders@, and admin@ reach the securely confirmed monitored business inbox using the minimum aliases/mailboxes.
 - Partial and full refunds reconcile correctly between Stripe, payment, cart, and per-job order records.
 
 ## Fulfillment evidence
@@ -33,9 +33,9 @@
 - Customer can mark Not for Me.
 - Criteria conflict creates one review record against the preserved criteria version.
 - Signed delivery URLs expire and cross-account requests fail.
-- DOCX delivery requires two files and human quality confirmation.
+- DOCX delivery requires two structurally validated files, complete job-specific human-review evidence, an operator note, and atomic release.
 - One factual correction inside three days succeeds; a second or late request fails.
 
 ## Production boundary
 
-Do not call the service live until all provider evidence is recorded, both capacities are deliberately enabled, and the exact release SHA is captured. A local build proves code integrity, not live payment, email, DNS, malware scanning, backups, storage, or delivery behavior.
+Do not call the service live until all provider evidence is recorded, the tax classification is resolved, both capacities are deliberately enabled, and the exact release SHA is captured. A local build proves code integrity, not live payment, email, DNS, antivirus scanning, backups, storage, or delivery behavior.

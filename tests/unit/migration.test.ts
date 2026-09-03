@@ -7,6 +7,11 @@ const sql = readFileSync(
   "utf8"
 ).replace(/\s+/g, " ");
 
+const jobSourceSql = readFileSync(
+  resolve(process.cwd(), "supabase/migrations/202609020003_job_source_expansion.sql"),
+  "utf8"
+).replace(/\s+/g, " ");
+
 describe("production migration invariants", () => {
   it("quarantines new source documents until scanning passes", () => {
     expect(sql).toContain("source_scan_status text not null default 'pending'");
@@ -44,5 +49,53 @@ describe("production migration invariants", () => {
   it("keeps both document buckets private", () => {
     expect(sql).toContain("('customer-source-documents', 'customer-source-documents', false)");
     expect(sql).toContain("('customer-deliveries', 'customer-deliveries', false)");
+  });
+});
+
+describe("job source expansion migration invariants", () => {
+  it("adds the normalized fields and preserves legacy columns", () => {
+    for (const field of [
+      "canonical_employer_id", "employer_display_name", "employer_aliases", "source_id", "source_name",
+      "source_category", "official_application_url", "source_job_url", "external_job_id", "normalized_title",
+      "raw_title", "description", "employment_type", "w2_or_contractor", "work_mode", "remote_scope",
+      "eligible_states", "eligible_countries", "timezone_requirement", "schedule_type", "salary_min", "salary_max",
+      "pay_model", "phone_intensity", "sales_flag", "commission_flag", "marketing_flag", "degree_required",
+      "experience_level", "equipment_requirement", "applicant_cost", "benefits_status", "last_verified_at",
+      "source_freshness_status", "content_hash", "deduplication_key", "is_active", "review_status", "rejection_reason",
+    ]) expect(jobSourceSql).toContain(`add column ${field}`);
+    for (const legacy of ["company", "title", "source_url", "location_text", "salary_text", "checked_at", "listing_status"]) {
+      expect(jobSourceSql).not.toContain(`drop column ${legacy}`);
+    }
+  });
+
+  it("enforces all three exact deduplication keys and preserves source references", () => {
+    expect(jobSourceSql).toContain("jobs_employer_external_id_unique");
+    expect(jobSourceSql).toContain("jobs_employer_source_url_unique");
+    expect(jobSourceSql).toContain("jobs_employer_dedup_key_unique");
+    expect(jobSourceSql).toContain("create table public.job_source_references");
+  });
+
+  it("rejects Liveops at both persistence boundaries", () => {
+    expect(jobSourceSql).toContain("reject_prohibited_job_source_before_write");
+    expect(jobSourceSql).toContain("reject_prohibited_job_reference_before_write");
+    expect(jobSourceSql.match(/%liveops%/g)?.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("stores aliases as redirects without generic affiliate employers", () => {
+    for (const mapping of [
+      "'sitel group','Sitel Group','foundever'", "'sykes','SYKES','foundever'", "'teleperformance','Teleperformance','tp'",
+      "'aetna','Aetna','cvs-health'", "'turbotax','TurboTax','intuit'", "'discover','Discover','capital-one'",
+    ]) expect(jobSourceSql).toContain(mapping);
+    expect(jobSourceSql).not.toContain("('blue-cross-blue-shield','Blue Cross Blue Shield'");
+    expect(jobSourceSql).not.toContain("('aaa','AAA'");
+  });
+
+  it("adds stale-job maintenance, RLS, explicit grants, and ranking reasons", () => {
+    expect(jobSourceSql).toContain("mark_stale_jobs_inactive");
+    expect(jobSourceSql).toContain("ranking_reason_codes jsonb");
+    for (const table of ["employers", "employer_aliases", "job_sources", "job_source_runs", "job_source_references", "job_deduplication_reviews"]) {
+      expect(jobSourceSql).toContain(`alter table public.${table} enable row level security`);
+    }
+    expect(jobSourceSql).toContain("grant all privileges on public.employers");
   });
 });

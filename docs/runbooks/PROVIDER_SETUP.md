@@ -2,40 +2,45 @@
 
 ## Supabase
 
-1. Create separate test and production projects.
-2. Apply the migration in supabase/migrations.
-3. Configure Site URL and redirect URLs for localhost, Railway, and https://applypack.work/auth/callback.
+1. Use an isolated staging project or environment within the existing account before production; do not add paid capacity without approval.
+2. Apply every file in supabase/migrations in order only after the migration and recovery gate passes.
+3. Configure the Site URL for the environment. Customer sign-in uses a six-digit OTP and has no magic-link callback.
 4. Set the publishable and secret server keys in Railway. Never expose the secret key to the browser.
-5. Create the founder profile through email sign-in, set its role to admin directly in the trusted database console, and enroll a TOTP MFA factor.
-6. Verify both Storage buckets are private and test cross-account access denial.
+5. Configure confirmation and magic-link templates with the branded six-digit {{ .Token }} template, a short expiration, and custom SMTP. Disable open/link tracking.
+6. Create admin@applypack.work through email-code sign-in, set its role directly through a trusted operator-only database action, and enroll a TOTP factor. Customer-controlled fields never assign roles.
+7. Verify every Storage bucket is private and test cross-account access denial.
+8. Prove backup completion and a non-production restore before production migration.
 
 ## Stripe
 
 1. Use test mode first.
-2. Add the webhook endpoint https://applypack.work/api/stripe/webhook.
-3. Subscribe to checkout.session.completed, checkout.session.expired, charge.refunded, and charge.dispute.created.
-4. Set the signing secret and server key in Railway.
-5. Verify successful, cancelled, expired, and replayed checkout events.
+2. Create active one-time USD products and prices named Job Match Search at 2000 cents and Apply Pack at 800 cents. The server verifies names, amounts, currency, recurrence, product status, and price status.
+3. Add the environment-specific /api/stripe/webhook endpoint.
+4. Subscribe to checkout.session.completed, checkout.session.expired, refund.created, refund.updated, refund.failed, and charge.dispute.created.
+5. Set the signing secret and server key in Railway.
+6. Set the statement descriptor to APPLYPACK and inspect public receipt details for residential-address exposure.
+7. Verify successful, cancelled, expired, mismatched-price, wrong-mode, in-progress replay, completed replay, refund, and dispute events.
 
-Prices are constructed server-side from locked cents values. Stripe product records may be added for reporting but do not control the accepted amount.
+Prices and quantities are server-controlled. Test mode must pass before live configuration. Do not enable Stripe Tax until the recorded tax classification is resolved.
 
 ## Resend and email
 
-1. Add and verify applypack.work in Resend.
+1. Add and verify applypack.work or a provider-recommended sending subdomain in Resend without disturbing existing inbound MX records.
 2. Publish the exact SPF and DKIM records Resend provides.
 3. Set EMAIL_FROM_ADDRESS=orders@applypack.work and EMAIL_REPLY_TO=help@applypack.work.
-4. Configure orders@, help@, and admin@ as inbound aliases or mailboxes.
-5. Send to an external mailbox and verify SPF, DKIM, and DMARC alignment.
+4. Configure orders@, help@, and admin@ with the smallest number of inboxes/aliases. They may forward to one existing monitored business inbox after that destination is confirmed securely.
+5. Add DMARC in monitoring mode only.
+6. Use the founder-authorized Gmail inbox to test OTP, receipt, delivery, support Reply-To, spam placement where observable, retry behavior, and SPF/DKIM/DMARC alignment.
 
-## Malware scanning
+## Document safety
 
-1. Select and approve a scanner that can process private PDF and DOCX objects without retaining or training on customer content.
-2. Keep each new intake at source_scan_status=pending while it is quarantined.
-3. Have the trusted scanner integration set clean plus its provider reference and timestamp only after a successful scan; set blocked on any detection or scanner policy failure.
-4. Set APP_FILE_SCAN_MODE=connected in Railway only after the integration is live.
-5. Verify operators receive HTTP 423 for pending/blocked files and an audited 60-second signed download only for clean files.
-6. Record the provider agreement, data region, retention setting, failure path, and test evidence.
+1. Set APP_FILE_SCAN_MODE=document_validation for the zero-cost launch baseline.
+2. Verify PDF/DOCX extension, MIME, signature, size, container, expansion, active-content, macro, embedded-object, encryption, and executable controls with accepted and rejected fixtures.
+3. Keep pending, blocked, and failed documents inaccessible to operators.
+4. Verify randomized private storage paths, atomic queue claiming, capped retries, retention, and audited short-lived signed downloads.
+5. Do not describe this control as malware scanning. Record the residual risk from docs/launch/LAUNCH_DECISIONS_2026-09-02.md.
+6. Connect ClamAV only if later approved after exact cost and privacy review; if used, configure its private host and prove a real PONG plus clean and EICAR paths.
 
 ## DNS
 
-Add the Railway custom-domain CNAME exactly as Railway displays it. Add email DNS records exactly as the email provider displays them. Never copy placeholder provider tokens from documentation.
+Export the complete Namecheap zone before mutation. Preserve nameservers and unrelated records. Add Railway and email records exactly as each provider displays them; never copy placeholder tokens from documentation. Record changes without committing secret verification values.

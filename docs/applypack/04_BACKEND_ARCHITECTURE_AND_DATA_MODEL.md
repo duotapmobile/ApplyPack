@@ -1197,3 +1197,9 @@ Unless the user expressly authorizes a separate AI generation integration, the p
 - Backend delivers the files.
 
 Do not add an OpenAI or other model API merely because the public copy mentions AI-assisted tools.
+
+## Implemented job-source extension
+
+Migration `202609020003_job_source_expansion.sql` additively extends the legacy `jobs` and `job_matches` contracts and adds canonical employers, redirect aliases, source definitions, affiliate directories, exclusions, source runs, source references, and reviewable fuzzy-match candidates. Exact deduplication uses canonical employer plus external ID, normalized URL, then normalized title/location/content hash. Every source reference is preserved while a verified official direct record remains preferred.
+
+The protected endpoints are `GET /api/admin/jobs` for filtering and explainable ranking and `GET|POST /api/admin/job-sources` for registry, health, and explicitly enabled synchronization. Full field, enum, filter, and compatibility details are in `docs/job-search/SOURCE_EXPANSION.md`.

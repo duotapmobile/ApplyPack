@@ -1219,3 +1219,9 @@ Recommended first release:
 - Do not build automated job scraping or automatic document generation unless separately authorized.
 
 This model is faster to ship, easier to supervise, and consistent with the public human-review promise.
+
+## Approved source-assisted research amendment
+
+The owner subsequently authorized bounded official-source discovery. Automated source output is candidate research, not automatic customer delivery. The admin still verifies the posting, restrictions, employment relationship, costs, fit, and freshness before delivering exactly 10 matches.
+
+Customer job details display W-2/contractor/staffing status, work mode and state/timezone limits, phone intensity, sales/marketing/commission labels, benefits, pay model, equipment responsibility, applicant-paid costs, source category, and an accurately labeled official or third-party link. Source operations follow `docs/runbooks/JOB_SOURCE_OPERATIONS.md`.
