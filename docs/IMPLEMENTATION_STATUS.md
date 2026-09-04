@@ -171,6 +171,10 @@ Offline `npm ci` printed 498 packages and zero audited vulnerabilities, but its 
 
 No secret values were read or recorded. Unavailable/unverified settings include production Supabase admin credentials, Stripe secret/webhook/price/tax configuration, Resend credentials and verified domain, KMS/encryption, production malware scanner, parser/OCR services, storage signing/callback allowlists, scheduler/lease proof, staff roles, approved Arial rendering, monitoring/alerts, analytics/consent, approved retention/legal versions, capacity/staffing values, and documentary authorization for automated job sources. See `docs/CONFIG_DECISIONS.md`.
 
+## Phase 0 evidence
+
+The canonical `evidence/chunk-0/manifest.json` is 7611 bytes with SHA-256 `3190e84ac83b61f5d824c59387333603bf87087d5996553a5aaf43184c8f61b9`. It records 9 applicable Phase 0 checks and 9 passes against documentation commit `0dc823cf95cf75cc95400250cef91da99debf2f2` (with the unchanged-runtime E2E baseline explicitly tied to base commit `aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8`). The final Phase 0 commit is evidence-only relative to the tested documentation commit.
+
 ## Phase ledger
 
 | Phase/chunk | State | Notes |

@@ -1,0 +1,200 @@
+{
+  "artifacts": [
+    {
+      "bytes": 136951,
+      "path": "docs/APPLYPACK_PRODUCT_CONTRACT.md",
+      "sha256": "df4e32e2ea0c37abd3f39904c36576c0af3935f9754bb1b81979782dc002d69f"
+    },
+    {
+      "bytes": 12646,
+      "path": "docs/CONFIG_DECISIONS.md",
+      "sha256": "7eef04984e44e205c27b23b2f5d1a9d59845cd74ae4e8d51f2354b47cbf0cfd2"
+    },
+    {
+      "bytes": 3871,
+      "path": "docs/COPY_REVIEW_INVENTORY.md",
+      "sha256": "9136d97ab788b54d84b315b4a379564b61496cd781e021843643ee05978e9067"
+    },
+    {
+      "bytes": 4121,
+      "path": "docs/DEPLOYMENT_RUNBOOK.md",
+      "sha256": "ab1a41e2f2a6b927965ce7181468ed4f9f8562f5842a7f490f0811813fdef19c"
+    },
+    {
+      "bytes": 17438,
+      "path": "docs/IMPLEMENTATION_STATUS.md",
+      "sha256": "76450b53ddc03dfa6acc767938351d75ede6f5efe22956c2d9870953770ffaf3"
+    },
+    {
+      "bytes": 473429,
+      "path": "docs/REQUIREMENT_TRACEABILITY.md",
+      "sha256": "cdcdafbba3f04e52215e99b76a925f0439281f65157584bb3e701599007a2168"
+    },
+    {
+      "bytes": 3517,
+      "path": "docs/RESEARCH_BASIS.md",
+      "sha256": "b49cb967d6f68274e256bdf6844eeb2b8d3d6514d1e9f4785cd8974c8e3c38c4"
+    }
+  ],
+  "base_commit": "aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8",
+  "branch": "codex/applypack-corrected-build-2026-09-04",
+  "checks": [
+    {
+      "assertion_count": 7,
+      "command": "git identity, ref, worktree registration, and clean-state checks",
+      "due_chunk": "Phase 0",
+      "environment": "Windows 11; Git 2.50.0.windows.2",
+      "evidence": "Destination was absent and unregistered; new branch/worktree resolved to the authorized commit; canonical checkout and conflicting registrations remained untouched.",
+      "exact_commit": "aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8",
+      "exit_code": 0,
+      "failure": null,
+      "id": "P0-WORKTREE",
+      "owner": "engineering",
+      "retest": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_count": 28,
+      "command": "ZIP central-directory safety audit; sha256sum -c SHA256SUMS.txt",
+      "due_chunk": "Phase 0",
+      "environment": "ACL-restricted private extraction; Git-for-Windows sha256sum",
+      "evidence": "15 safe members (13 regular files and 2 directories); no absolute/traversal/duplicate/link/special member; 13 of 13 checks passed twice.",
+      "exact_commit": "aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8",
+      "exit_code": 0,
+      "failure": null,
+      "id": "P0-BUNDLE",
+      "owner": "engineering",
+      "retest": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_count": 2,
+      "command": "normalized LF/UTF-8 byte comparison of source Part I and repository contract body",
+      "due_chunk": "Phase 0",
+      "environment": "PowerShell/.NET SHA-256",
+      "evidence": "Source and contract bodies each measured 136360 bytes and SHA-256 95887f7c6afb312f5f3699f0851fdfc3746f7dfff6190d307d1788a7abc09510.",
+      "exact_commit": "0dc823cf95cf75cc95400250cef91da99debf2f2",
+      "exit_code": 0,
+      "failure": null,
+      "id": "P0-CONTRACT",
+      "owner": "engineering",
+      "retest": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_count": 1342,
+      "command": "Phase 0 required-file, contract, traceability-ID, privacy-path, and change-scope validator",
+      "due_chunk": "Phase 0",
+      "environment": "PowerShell 7/.NET SHA-256",
+      "evidence": "Seven required documents present; 1342 unique trace IDs; source/contract normalized content equal; no private path leak; post-commit tree clean.",
+      "exact_commit": "0dc823cf95cf75cc95400250cef91da99debf2f2",
+      "exit_code": 0,
+      "failure": null,
+      "id": "P0-DOCS",
+      "owner": "engineering",
+      "retest": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_count": null,
+      "command": "npm run lint",
+      "due_chunk": "Phase 0",
+      "environment": "Node v22.22.0; npm 10.9.4; Windows 11",
+      "evidence": "Exit 0 in both baseline and final npm run check.",
+      "exact_commit": "0dc823cf95cf75cc95400250cef91da99debf2f2",
+      "exit_code": 0,
+      "failure": null,
+      "id": "P0-LINT",
+      "owner": "engineering",
+      "retest": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_count": null,
+      "command": "npm run typecheck",
+      "due_chunk": "Phase 0",
+      "environment": "Node v22.22.0; npm 10.9.4; TypeScript strict; Windows 11",
+      "evidence": "Exit 0 in both baseline and final npm run check.",
+      "exact_commit": "0dc823cf95cf75cc95400250cef91da99debf2f2",
+      "exit_code": 0,
+      "failure": null,
+      "id": "P0-TYPE",
+      "owner": "engineering",
+      "retest": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_count": 115,
+      "command": "npm test",
+      "due_chunk": "Phase 0",
+      "environment": "Vitest 4.1.11; Node v22.22.0; Windows 11",
+      "evidence": "26 test files and 115 tests passed. Final rerun retained two post-test worker-shutdown timeout warnings; no test or command failure resulted.",
+      "exact_commit": "0dc823cf95cf75cc95400250cef91da99debf2f2",
+      "exit_code": 0,
+      "failure": null,
+      "id": "P0-UNIT",
+      "owner": "engineering",
+      "retest": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_count": 41,
+      "command": "npm run build",
+      "due_chunk": "Phase 0",
+      "environment": "Next.js 16.3.4; Node v22.22.0; Windows 11",
+      "evidence": "Production compilation, TypeScript, page data, and 41-page generation completed; exit 0.",
+      "exact_commit": "0dc823cf95cf75cc95400250cef91da99debf2f2",
+      "exit_code": 0,
+      "failure": null,
+      "id": "P0-BUILD",
+      "owner": "engineering",
+      "retest": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_count": 42,
+      "command": "npm run test:e2e",
+      "due_chunk": "Phase 0",
+      "environment": "Playwright desktop and mobile projects; Windows 11",
+      "evidence": "42 of 42 tests passed. The baseline intentionally exposes legacy seven-step and six-digit-code expectations as later-chunk conflicts; Phase 0 changes no runtime behavior.",
+      "exact_commit": "aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8",
+      "exit_code": 0,
+      "failure": null,
+      "id": "P0-E2E",
+      "owner": "engineering",
+      "retest": "Rerun after Chunk 2 changes the intake/auth behavior.",
+      "status": "PASS"
+    }
+  ],
+  "chunk": 0,
+  "created_at": "2026-09-04T08:55:48.8028984-04:00",
+  "environment": {
+    "git": "2.50.0.windows.2",
+    "node": "22.22.0",
+    "npm": "10.9.4",
+    "os": "Windows 11",
+    "timezone": "America/New_York"
+  },
+  "external_release_blockers": [
+    "approved retention, deletion, and legal-document versions",
+    "approved source automation registry entries",
+    "capacity pools and staffing version",
+    "disposable Supabase integration and migration-rehearsal target",
+    "production email, payment, storage, scanner, parser, encryption, scheduler, monitoring, and staff-role configuration",
+    "rendered DOCX and Arial verification environment"
+  ],
+  "packet": {
+    "normalized_lf_utf8_sha256": "96720cbfa395c07292cf631174bf31944f3c485c02448eddb71cd011ddc3e691",
+    "part_i_body_sha256": "95887f7c6afb312f5f3699f0851fdfc3746f7dfff6190d307d1788a7abc09510",
+    "raw_bytes": 275782,
+    "raw_sha256": "96720cbfa395c07292cf631174bf31944f3c485c02448eddb71cd011ddc3e691",
+    "version": "2026-09-04"
+  },
+  "required_tests": {
+    "denominator": 9,
+    "numerator": 9
+  },
+  "schema_version": 1,
+  "tested_documentation_commit": "0dc823cf95cf75cc95400250cef91da99debf2f2",
+  "worktree": "C:\\Users\\mskir\\Desktop\\Apply_Pack\\applypack-phase0-e9c3aea0d45447bfaa6517e488356e0d"
+}
