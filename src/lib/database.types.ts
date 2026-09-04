@@ -71,6 +71,8 @@ export type Database = {
           created_at: string
           current_step: number
           expires_at: string
+          finalized_snapshot_id: string | null
+          flow_version: string | null
           id: string
           retention_due_at: string | null
           retention_state: Database["public"]["Enums"]["ap_retention_state"]
@@ -90,6 +92,8 @@ export type Database = {
           created_at?: string
           current_step?: number
           expires_at: string
+          finalized_snapshot_id?: string | null
+          flow_version?: string | null
           id: string
           retention_due_at?: string | null
           retention_state?: Database["public"]["Enums"]["ap_retention_state"]
@@ -109,6 +113,8 @@ export type Database = {
           created_at?: string
           current_step?: number
           expires_at?: string
+          finalized_snapshot_id?: string | null
+          flow_version?: string | null
           id?: string
           retention_due_at?: string | null
           retention_state?: Database["public"]["Enums"]["ap_retention_state"]
@@ -136,6 +142,13 @@ export type Database = {
             columns: ["converted_intake_id"]
             isOneToOne: false
             referencedRelation: "intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_anonymous_drafts_finalized_snapshot_id_fkey"
+            columns: ["finalized_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
             referencedColumns: ["id"]
           },
         ]
@@ -252,11 +265,14 @@ export type Database = {
           confirmed_or_corrected_at: string | null
           created_at: string
           customer_assertion_snapshot_id: string | null
+          customer_display_label: string | null
+          customer_display_value: Json | null
           customer_id: string | null
           document_version_id: string | null
           draft_id: string | null
           ends_on: string | null
           extraction_confidence: number | null
+          fact_tier: Database["public"]["Enums"]["ap_fact_tier"]
           human_reviewer_id: string | null
           id: string
           intensity_percent: number | null
@@ -281,11 +297,14 @@ export type Database = {
           confirmed_or_corrected_at?: string | null
           created_at?: string
           customer_assertion_snapshot_id?: string | null
+          customer_display_label?: string | null
+          customer_display_value?: Json | null
           customer_id?: string | null
           document_version_id?: string | null
           draft_id?: string | null
           ends_on?: string | null
           extraction_confidence?: number | null
+          fact_tier?: Database["public"]["Enums"]["ap_fact_tier"]
           human_reviewer_id?: string | null
           id?: string
           intensity_percent?: number | null
@@ -310,11 +329,14 @@ export type Database = {
           confirmed_or_corrected_at?: string | null
           created_at?: string
           customer_assertion_snapshot_id?: string | null
+          customer_display_label?: string | null
+          customer_display_value?: Json | null
           customer_id?: string | null
           document_version_id?: string | null
           draft_id?: string | null
           ends_on?: string | null
           extraction_confidence?: number | null
+          fact_tier?: Database["public"]["Enums"]["ap_fact_tier"]
           human_reviewer_id?: string | null
           id?: string
           intensity_percent?: number | null
@@ -1161,6 +1183,107 @@ export type Database = {
           },
         ]
       }
+      ap_fact_presentations: {
+        Row: {
+          control_id: string
+          draft_id: string
+          draft_version: number
+          fact_id: string
+          id: number
+          presented_at: string
+        }
+        Insert: {
+          control_id: string
+          draft_id: string
+          draft_version: number
+          fact_id: string
+          id?: never
+          presented_at?: string
+        }
+        Update: {
+          control_id?: string
+          draft_id?: string
+          draft_version?: number
+          fact_id?: string
+          id?: never
+          presented_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_fact_presentations_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_fact_presentations_fact_id_fkey"
+            columns: ["fact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_candidate_facts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_fact_review_history: {
+        Row: {
+          correction_fact_id: string | null
+          decision: Database["public"]["Enums"]["ap_fact_review_decision"]
+          draft_id: string
+          fact_id: string
+          id: number
+          reviewed_at: string
+          snapshot_id: string
+        }
+        Insert: {
+          correction_fact_id?: string | null
+          decision: Database["public"]["Enums"]["ap_fact_review_decision"]
+          draft_id: string
+          fact_id: string
+          id?: never
+          reviewed_at?: string
+          snapshot_id: string
+        }
+        Update: {
+          correction_fact_id?: string | null
+          decision?: Database["public"]["Enums"]["ap_fact_review_decision"]
+          draft_id?: string
+          fact_id?: string
+          id?: never
+          reviewed_at?: string
+          snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_fact_review_history_correction_fact_id_fkey"
+            columns: ["correction_fact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_candidate_facts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_fact_review_history_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_fact_review_history_fact_id_fkey"
+            columns: ["fact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_candidate_facts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_fact_review_history_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_feasibility_assessments: {
         Row: {
           coverage_plan_id: string
@@ -1344,6 +1467,76 @@ export type Database = {
             foreignKeyName: "ap_feasibility_coverage_plans_snapshot_id_fkey"
             columns: ["snapshot_id"]
             isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_feasibility_requests: {
+        Row: {
+          claimed_at: string | null
+          claimed_by: string | null
+          completed_assessment_id: string | null
+          created_at: string
+          draft_id: string
+          error_code: string | null
+          id: string
+          idempotency_key: string
+          request_version: string
+          snapshot_id: string
+          stale_reason: string | null
+          state: Database["public"]["Enums"]["ap_feasibility_request_state"]
+          updated_at: string
+        }
+        Insert: {
+          claimed_at?: string | null
+          claimed_by?: string | null
+          completed_assessment_id?: string | null
+          created_at?: string
+          draft_id: string
+          error_code?: string | null
+          id?: string
+          idempotency_key: string
+          request_version: string
+          snapshot_id: string
+          stale_reason?: string | null
+          state?: Database["public"]["Enums"]["ap_feasibility_request_state"]
+          updated_at?: string
+        }
+        Update: {
+          claimed_at?: string | null
+          claimed_by?: string | null
+          completed_assessment_id?: string | null
+          created_at?: string
+          draft_id?: string
+          error_code?: string | null
+          id?: string
+          idempotency_key?: string
+          request_version?: string
+          snapshot_id?: string
+          stale_reason?: string | null
+          state?: Database["public"]["Enums"]["ap_feasibility_request_state"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_feasibility_requests_completed_assessment_id_fkey"
+            columns: ["completed_assessment_id"]
+            isOneToOne: false
+            referencedRelation: "ap_feasibility_assessments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_feasibility_requests_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_feasibility_requests_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: true
             referencedRelation: "ap_intake_snapshots"
             referencedColumns: ["id"]
           },
@@ -1705,6 +1898,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ap_intake_event_counts: {
+        Row: {
+          count: number
+          event_day: string
+          event_name: string
+          step: number
+        }
+        Insert: {
+          count?: number
+          event_day: string
+          event_name: string
+          step: number
+        }
+        Update: {
+          count?: number
+          event_day?: string
+          event_name?: string
+          step?: number
+        }
+        Relationships: []
       }
       ap_intake_snapshots: {
         Row: {
@@ -3591,6 +3805,70 @@ export type Database = {
             columns: ["draft_id"]
             isOneToOne: false
             referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_targeted_intake_questions: {
+        Row: {
+          answer_sensitive_payload_id: string | null
+          answer_sha256: string | null
+          answered_at: string | null
+          created_at: string
+          draft_id: string
+          id: string
+          job_snapshot_id: string
+          prompt_version: string
+          question_kind: string
+          stable_criterion_id: string
+          state: string
+        }
+        Insert: {
+          answer_sensitive_payload_id?: string | null
+          answer_sha256?: string | null
+          answered_at?: string | null
+          created_at?: string
+          draft_id: string
+          id?: string
+          job_snapshot_id: string
+          prompt_version: string
+          question_kind: string
+          stable_criterion_id: string
+          state?: string
+        }
+        Update: {
+          answer_sensitive_payload_id?: string | null
+          answer_sha256?: string | null
+          answered_at?: string | null
+          created_at?: string
+          draft_id?: string
+          id?: string
+          job_snapshot_id?: string
+          prompt_version?: string
+          question_kind?: string
+          stable_criterion_id?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_targeted_intake_questions_answer_sensitive_payload_id_fkey"
+            columns: ["answer_sensitive_payload_id"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_targeted_intake_questions_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_targeted_intake_questions_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
             referencedColumns: ["id"]
           },
         ]
@@ -5853,6 +6131,23 @@ export type Database = {
         }
         Returns: string
       }
+      ap_finalize_four_step_intake: {
+        Args: {
+          p_content_sha256: string
+          p_draft_id: string
+          p_expected_version: number
+          p_fact_reviews: Json
+          p_secret_hash: string
+          p_sensitive_payload_id: string
+          p_snapshot: Json
+          p_snapshot_id: string
+        }
+        Returns: {
+          draft_version: number
+          feasibility_request_id: string
+          snapshot_id: string
+        }[]
+      }
       ap_grant_reference_permission: {
         Args: {
           p_customer_id: string
@@ -5865,6 +6160,10 @@ export type Database = {
           p_reference_version_id: string
         }
         Returns: string
+      }
+      ap_increment_intake_event: {
+        Args: { p_event: string; p_step: number }
+        Returns: boolean
       }
       ap_invalidate_pre_activation_snapshot: {
         Args: {
@@ -5893,6 +6192,28 @@ export type Database = {
           state: Database["public"]["Enums"]["ap_draft_state"]
           version: number
         }[]
+      }
+      ap_read_four_step_draft: {
+        Args: { p_draft_id: string; p_secret_hash: string }
+        Returns: {
+          answers: Json
+          current_step: number
+          expires_at: string
+          finalized_snapshot_id: string
+          id: string
+          state: Database["public"]["Enums"]["ap_draft_state"]
+          version: number
+        }[]
+      }
+      ap_record_fact_presentation: {
+        Args: {
+          p_control_id: string
+          p_draft_id: string
+          p_expected_version: number
+          p_fact_id: string
+          p_secret_hash: string
+        }
+        Returns: boolean
       }
       ap_record_reference_staff_access: {
         Args: {
@@ -5974,6 +6295,18 @@ export type Database = {
         }
         Returns: string
       }
+      ap_retry_anonymous_document: {
+        Args: {
+          p_draft_id: string
+          p_expected_draft_version: number
+          p_kind: Database["public"]["Enums"]["ap_document_kind"]
+          p_secret_hash: string
+        }
+        Returns: {
+          document_id: string
+          draft_version: number
+        }[]
+      }
       ap_return_anonymous_draft_after_checkout: {
         Args: { p_draft_id: string; p_secret_hash: string }
         Returns: boolean
@@ -6008,6 +6341,24 @@ export type Database = {
           answers: Json
           current_step: number
           expires_at: string
+          id: string
+          state: Database["public"]["Enums"]["ap_draft_state"]
+          version: number
+        }[]
+      }
+      ap_save_four_step_draft: {
+        Args: {
+          p_answers: Json
+          p_current_step: number
+          p_draft_id: string
+          p_expected_version: number
+          p_secret_hash: string
+        }
+        Returns: {
+          answers: Json
+          current_step: number
+          expires_at: string
+          finalized_snapshot_id: string
           id: string
           state: Database["public"]["Enums"]["ap_draft_state"]
           version: number
@@ -6359,6 +6710,9 @@ export type Database = {
         | "EDUCATION"
         | "CAREER_BREAK"
         | "CAREGIVING"
+        | "OTHER_RELEVANT_LIFE_CONTEXT"
+      ap_fact_review_decision: "CONFIRM" | "REJECT" | "SKIP" | "CORRECT"
+      ap_fact_tier: "SEARCH_CRITICAL" | "MATCH_ENHANCING" | "DOCUMENT_ONLY"
       ap_feasibility_outcome: "LIKELY" | "LIMITED" | "INFEASIBLE"
       ap_feasibility_reason:
         | "INVENTORY_SHORTAGE"
@@ -6367,6 +6721,12 @@ export type Database = {
         | "CONSTRAINT_COLLISION"
         | "COMPENSATION_BELOW_MINIMUM"
         | "COMPENSATION_UNCONFIRMED"
+      ap_feasibility_request_state:
+        | "PENDING"
+        | "CLAIMED"
+        | "COMPLETED"
+        | "STALE"
+        | "ERROR"
       ap_feasibility_run_state:
         | "NOT_RUN"
         | "PENDING"
@@ -6709,7 +7069,10 @@ export const Constants = {
         "EDUCATION",
         "CAREER_BREAK",
         "CAREGIVING",
+        "OTHER_RELEVANT_LIFE_CONTEXT",
       ],
+      ap_fact_review_decision: ["CONFIRM", "REJECT", "SKIP", "CORRECT"],
+      ap_fact_tier: ["SEARCH_CRITICAL", "MATCH_ENHANCING", "DOCUMENT_ONLY"],
       ap_feasibility_outcome: ["LIKELY", "LIMITED", "INFEASIBLE"],
       ap_feasibility_reason: [
         "INVENTORY_SHORTAGE",
@@ -6718,6 +7081,13 @@ export const Constants = {
         "CONSTRAINT_COLLISION",
         "COMPENSATION_BELOW_MINIMUM",
         "COMPENSATION_UNCONFIRMED",
+      ],
+      ap_feasibility_request_state: [
+        "PENDING",
+        "CLAIMED",
+        "COMPLETED",
+        "STALE",
+        "ERROR",
       ],
       ap_feasibility_run_state: [
         "NOT_RUN",

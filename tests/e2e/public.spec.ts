@@ -32,83 +32,61 @@ test("sign-in starts with the six-digit email-code flow", async ({ page }) => {
   await expect(page.getByRole("button", { name: /send.*code/i })).toBeEnabled();
 });
 
-test("all seven intake steps reflow and expose no serious axe findings at 320px", async ({ page }) => {
-  test.setTimeout(360_000);
-  const draftId = "23000000-0000-0000-0000-000000000099";
-  await page.route("**/api/intake/draft", async (route) => {
-    if (route.request().method() === "GET") {
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ draft: null }) });
-    }
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ draft: { id: draftId } }) });
-  });
-  await page.route("**/api/intake/draft/document", async (route) => {
-    return route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        draftId,
-        document: { name: "resume.pdf", size: 32, mimeType: "application/pdf", scanStatus: "clean" },
-      }),
-    });
-  });
+test("the anonymous four-step intake is accessible and starts no checkout", async ({ page }) => {
+  test.setTimeout(180_000);
   await page.setViewportSize({ width: 320, height: 760 });
   await page.goto("/get-started");
-
-  async function assertStep(title: RegExp) {
-    await expect(page.getByRole("heading", { name: title })).toBeVisible();
-    expect(await findOverflow(page), String(title)).toEqual([]);
-    const axe = await new AxeBuilder({ page }).exclude("script").analyze();
-    expect(axe.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
-  }
-
-  await assertStep(/First, where are you/);
+  await expect(page.getByText("STEP 1 OF 4")).toBeVisible();
+  await expect(page.getByText(/No account or payment in this intake/)).toBeVisible();
   await page.getByRole("button", { name: /save and continue/i }).click();
-  const error = page.getByText(/Add your name, email, city, state, and time zone/);
-  await expect(error).toBeFocused();
-  await page.getByLabel("Full name").fill("E2E Customer");
-  await page.getByLabel("City").fill("Tampa");
-  await page.getByLabel("State or region").fill("Florida");
-  await page.getByLabel("Time zone").selectOption({ label: "Eastern Time" });
+  await expect(page.getByRole("link", { name: "Enter your full name." })).toBeVisible();
+  await expect(page.getByLabel("Full name required")).toBeFocused();
+  await page.getByLabel("Full name required").fill("E2E Customer");
+  await page.getByLabel("Email address required").fill("e2e@example.invalid");
+  await page.getByLabel("Current resume required").setInputFiles({ name: "resume.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7\n%%EOF") });
   await page.getByRole("button", { name: /save and continue/i }).click();
-
-  await assertStep(/Share the documents/);
-  await page.getByLabel("Current resume required").setInputFiles({
-    name: "resume.pdf",
-    mimeType: "application/pdf",
-    buffer: Buffer.from("%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF"),
-  });
-  await page.getByLabel("Resume formatting").selectOption("applypack");
+  await expect(page.getByText("STEP 2 OF 4")).toBeVisible();
+  await page.getByRole("checkbox", { name: /Coordinating projects/ }).first().check();
   await page.getByRole("button", { name: /save and continue/i }).click();
-
-  await assertStep(/understand your full background/);
-  await page.getByRole("checkbox", { name: "Paid work" }).check();
-  await page.getByLabel(/Experience, accomplishments/).fill("I coordinated customer operations, documented work, and resolved service issues accurately.");
+  await expect(page.getByText("STEP 3 OF 4")).toBeVisible();
   await page.getByRole("button", { name: /save and continue/i }).click();
-
-  await assertStep(/fit your life/);
-  await page.getByLabel("Remote work").selectOption("required");
-  await page.getByLabel("Hybrid roles").selectOption("exclude");
-  await page.getByLabel("On-site roles").selectOption("exclude");
-  await page.getByLabel("Listings without salary").selectOption("include_mark_unknown");
-  await page.getByRole("checkbox", { name: "Full-time" }).check();
-  await page.getByLabel("Listings without benefit details").selectOption("include_mark_unknown");
-  await page.getByRole("button", { name: /save and continue/i }).click();
-
-  await assertStep(/never show up again/);
-  await page.getByRole("group", { name: "Never include required" }).getByRole("checkbox", { name: "Sales", exact: true }).check();
-  await page.getByRole("button", { name: /save and continue/i }).click();
-
-  await assertStep(/How far should this search stretch/);
-  await page.getByLabel("Search direction").selectOption("different");
-  await page.getByLabel("How far from your background?").selectOption("bigger_change");
-  await page.getByLabel("Work authorization").fill("Authorized to work in the U.S.");
-  await page.getByLabel("Need sponsorship?").selectOption("no");
-  await page.getByLabel("Travel preference").fill("No travel");
-  await page.getByRole("button", { name: /save and continue/i }).click();
-
-  await assertStep(/Review the boundary/);
+  await expect(page.getByText("STEP 4 OF 4")).toBeVisible();
+  await page.getByRole("checkbox", { name: "Remote" }).check();
+  await page.getByLabel("U.S. state or District of Columbia required").selectOption("VA");
+  await page.getByRole("checkbox", { name: "Full Time" }).check();
+  await page.getByLabel(/I agree to/).check();
+  await page.getByRole("button", { name: "Finish intake" }).click();
+  await expect(page.getByText(/Feasibility review is pending. No payment was started/)).toBeVisible();
+  expect(await findOverflow(page)).toEqual([]);
+  const axe = await new AxeBuilder({ page }).exclude("script").analyze();
+  expect(axe.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
 });
 
+for (const width of [320, 360, 390, 430, 768, 1024, 1440]) {
+  test(`four-step intake has no horizontal overflow at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width < 500 ? 780 : 900 });
+    await page.goto("/get-started");
+    await expect(page.getByText("STEP 1 OF 4")).toBeVisible();
+    expect(await findOverflow(page), `${width}px`).toEqual([]);
+  });
+}
+
+test("intake supports keyboard focus, reduced motion, and forced colors", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce", forcedColors: "active" });
+  await page.goto("/get-started");
+  await page.keyboard.press("Tab");
+  await expect(page.locator(":focus")).toBeVisible();
+  const duration = await page.locator(".wizard-progress i").evaluate((element) => getComputedStyle(element).transitionDuration);
+  expect(Number.parseFloat(duration)).toBeLessThanOrEqual(0.001);
+});
+test("intake remains usable at 200 percent browser zoom", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/get-started");
+  await expect(page.getByText("STEP 1 OF 4")).toBeVisible();
+  await page.evaluate(() => { document.documentElement.style.zoom = "2"; });
+  await expect(page.getByLabel("Full name required")).toBeVisible();
+  expect(await findOverflow(page)).toEqual([]);
+});
 test("security headers are present", async ({ request }) => {
   const response = await request.get("/");
   expect(response.headers()["x-content-type-options"]).toBe("nosniff");

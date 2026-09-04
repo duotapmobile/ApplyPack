@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     return NextResponse.json(mapped.body, { status: mapped.status });
   }
   const row = registered.data[0] as Record<string, unknown>;
-  return NextResponse.json({ document: { id: row.document_id, version: row.document_version, kind: documentKind, processingState: "QUARANTINED" }, draftVersion: row.draft_version }, { status: 201 });
+  return NextResponse.json({ document: { id: row.document_id, version: row.document_version, kind: documentKind, name: validName(file.name), size: file.size, mimeType: file.type, processingState: "QUARANTINED", failureCode: null }, draftVersion: row.draft_version }, { status: 201 });
 }
 
 export async function DELETE(request: Request) {

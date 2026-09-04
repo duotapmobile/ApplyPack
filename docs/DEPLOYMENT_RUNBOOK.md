@@ -1,13 +1,13 @@
 # ApplyPack deployment runbook
 
-Status: Chunk 1 repository implementation is complete locally. No production migration, deployment, provider call, or feature enablement is authorized. Production remains blocked on the approvals and configuration listed below.
+Status: Chunk 2 repository implementation is complete locally. No production migration, deployment, provider call, source activation, Checkout, or feature enablement is authorized. Production remains blocked on the approvals and configuration listed below.
 
 ## Owners and stop conditions
 
 | Owner | Responsibility |
 | --- | --- |
 | Release owner | Exact commit, change window, go/no-go, traffic rollback |
-| Database owner | Backup, migration `202609040022`, backfill checkpoints, validation, database recovery |
+| Database owner | Backup, migrations `202609040022` and `202609040023`, backfill checkpoints, validation, database recovery |
 | Application owner | Compatibility deploy, server feature flags, cutover |
 | Payments owner | Stripe tax/price/webhook/refund/dispute reconciliation |
 | Security/privacy owner | KMS, private storage, malware scanner, sandbox parser, reference isolation, retention/privacy approval |
@@ -36,9 +36,10 @@ Migration order is fixed:
 
 1. Apply all existing migrations through `202609030021_nonrecursive_job_read_policies.sql`.
 2. Apply additive migration `202609040022_corrected_chunk1_foundation.sql`.
-3. Do not drop or rewrite legacy tables, columns, paid orders, provider history, or audit history.
-4. Keep `CUSTOMER_SUPPLIED_INGESTION`, corrected file processing, retention cleanup, and Checkout disabled.
-5. Regenerate types and compare them to `src/lib/database.types.ts`.
+3. Apply additive migration `202609040023_chunk2_four_step_intake.sql`.
+4. Do not drop or rewrite legacy tables, columns, paid orders, provider history, or audit history.
+5. Keep `CUSTOMER_SUPPLIED_INGESTION`, corrected file processing, retention cleanup, and Checkout disabled.
+6. Regenerate types and compare them to `src/lib/database.types.ts`.
 
 Disposable rehearsal commands:
 
@@ -151,11 +152,84 @@ Normal rollback:
 
 The compensating script `supabase/rollback/202609040022_corrected_chunk1_foundation.rollback.sql` is only for an unactivated, disposable or proved-empty deployment. It refuses to run when operational Chunk 1 data exists. It never drops legacy tables. Use it only after backup verification, database-owner approval, and a recorded zero-operational-row proof. If an invariant fails or customer/payment/reference data may be affected, stop and escalate; do not prune, rewrite, or force a rollback.
 
-## Release blockers remaining after Chunk 1
+## Release blockers remaining after Chunk 2
 
 - approved retention durations and matching Privacy Policy language;
 - production KMS/encryption and key-rotation configuration;
 - production malware scanner, sandbox parser/OCR decision and limits, leak scan, and permitted-model configuration;
 - Stripe tax-inclusive configuration and provider credentials/reconciliation evidence;
 - capacity/staffing values, workers, leases, monitoring, and staff access roles;
-- later authorized Chunks 2-7, including public flow, matching, payments, artifacts, copy/legal review, and release audit.
+- later authorized Chunks 3-7, including matching, payments, artifacts, copy/legal review, and release audit.
+
+
+## 7. Chunk 2 intake expansion and activation gate
+
+Owner: application owner for route/feature traffic; database owner for migration and validation; security/privacy owner for KMS, document processing, retention, and Privacy Policy approval.
+
+Apply `202609040023_chunk2_four_step_intake.sql` only after `202609040022_corrected_chunk1_foundation.sql`. Regenerate and compare database types before deploying compatibility code. The migration is additive and does not rewrite legacy paid orders. The four-step UI may be deployed only with anonymous capability persistence available; final submission remains fail closed unless the exact production KMS configuration and secure file-processing gates are approved.
+
+Required non-secret server settings for production finalization:
+
+```text
+APP_SENSITIVE_PAYLOAD_ENCRYPTION_ENABLED=true
+APP_KMS_KEY_IDENTITY=<approved exact identity>
+APP_KMS_KEY_VERSION=<approved exact version>
+APP_KMS_WRAP_URL=https://<approved-host>/<wrap-path>
+APP_KMS_UNWRAP_URL=https://<approved-host>/<unwrap-path>
+APP_KMS_BEARER_TOKEN=<secret manager reference>
+APP_KMS_TIMEOUT_MS=<approved bounded integer>
+```
+
+Never place the bearer token in logs, evidence, client payloads, or deployment tickets. The wrap service must authenticate the request, bind the supplied encryption context, and return the configured key identity and version exactly. A missing/mismatched response or timeout must keep finalization disabled.
+
+Disposable verification and ordering:
+
+```powershell
+supabase db reset
+npm.cmd run test:database
+npm.cmd run test:legacy-backfill
+npm.cmd run types:database:check
+npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run build
+npm.cmd run test:e2e
+```
+
+Checkpoint and validation queries:
+
+```sql
+select count(*) as four_step_drafts
+from public.ap_anonymous_drafts
+where flow_version = 'FOUR_STEP_RESPONSIBILITY_V1' and current_step between 0 and 3;
+
+select state, count(*)
+from public.ap_feasibility_requests
+group by state order by state;
+
+select count(*) as finalized_without_snapshot
+from public.ap_anonymous_drafts d
+where d.state = 'COMPLETE' and d.finalized_snapshot_id is null;
+
+select count(*) as unsafe_pending_requests
+from public.ap_feasibility_requests r
+left join public.ap_intake_snapshots s on s.id = r.snapshot_id
+where r.state = 'PENDING' and s.id is null;
+
+select event_day, event_name, step, count
+from public.ap_intake_event_counts
+order by event_day, event_name, step;
+```
+
+Required results: no completed draft lacks a finalized snapshot; no pending feasibility request lacks its immutable snapshot; event rows contain only the allowlisted event name and numbered step; capability-only functions are not executable by `anon` or `authenticated`; protected staff visibility is role checked; and the UI creates no Checkout, payment, quote, capacity reservation, or feasibility outcome.
+
+Failure recovery:
+
+1. Disable Chunk 2 application traffic and keep finalization/KMS processing off.
+2. Revert application traffic to the last compatible commit.
+3. Leave migrations `202609040022` and `202609040023` in place; both are additive.
+4. Preserve drafts, document versions, immutable snapshots, fact review history, sensitive payloads, pending requests, and audit events.
+5. Reconcile any pending request with its exact snapshot/content hash before retrying; never synthesize a success, quote, or capacity allocation.
+6. Use a compensating migration only after the database owner proves the affected tables have no operational/customer data and obtains separate approval. Do not drop or rewrite legacy data.
+
+Before any production cutover, the release ticket must record the exact application/database commits, target project identity, KMS approval/version, file-processing adapter approvals, retention/privacy approval, validation-query results, staff role proof, monitoring owner, rollback decision, and an explicit go/no-go. Chunk 2 completion alone does not authorize production deployment or Chunk 3.

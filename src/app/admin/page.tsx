@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AdminMfa } from "@/components/admin/admin-mfa";
 import { AdminOperations } from "@/components/admin/admin-operations";
+import { PendingIntakes } from "@/components/admin/pending-intakes";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { isAdminEmailAllowed } from "@/lib/auth/require-admin";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -31,6 +32,11 @@ export default async function AdminPage() {
     admin.from("capacity_limits").select("kind,units_per_24h,enabled").order("kind"),
     admin.from("search_candidates").select("search_order_id,ranking_score,fit_summary,requirements,concerns,job:jobs(*)").eq("review_status", "proposed").order("ranking_score", { ascending: false }),
   ]);
+  const { data: pendingRequests } = await admin.from("ap_feasibility_requests").select("id,snapshot_id,state,created_at").eq("state", "PENDING").order("created_at");
+  const pendingSnapshotIds = (pendingRequests || []).map((request) => request.snapshot_id);
+  const { data: pendingSnapshots } = pendingSnapshotIds.length
+    ? await admin.from("ap_intake_snapshots").select("id,access_email_normalized,desired_activities,avoided_activities,search_breadth,guidance_requested,work_modes,us_state_or_dc,employment_types,dealbreakers,salary_hard_minimum_cents,salary_period,finalized_at").in("id", pendingSnapshotIds)
+    : { data: [] };
   const applyItems = (applyRows || []).map((item) => {
     const match = Array.isArray(item.job_match) ? item.job_match[0] : item.job_match;
     const job = Array.isArray(match?.job) ? match.job[0] : match?.job;
@@ -75,6 +81,7 @@ export default async function AdminPage() {
         <div className="admin-heading"><div><p className="eyebrow eyebrow--light">APPLYPACK OPERATIONS</p><h1>Fulfillment queue</h1></div><div><p>Manual-first controls. Every delivery requires human review.</p><SignOutButton /></div></div>
         <div className="admin-metrics"><article><span>Open work</span><strong>{orders?.length || 0}</strong></article><article><span>Active capacity units</span><strong>{capacity?.reduce((sum, item) => sum + item.units, 0) || 0}</strong></article><article><span>Webhook failures</span><strong>{failures?.length || 0}</strong></article></div>
         <AdminOperations searchOrders={searchOrders} applyItems={applyItems} conflicts={conflicts} corrections={corrections} capacityLimits={capacityLimits || []} />
+        <PendingIntakes requests={pendingRequests || []} snapshots={pendingSnapshots || []} />
         <section className="admin-table-wrap">
           <h2>Orders due</h2>
           {orders?.length ? <div className="admin-table-scroll"><table className="admin-table">

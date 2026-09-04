@@ -52,7 +52,7 @@ All manifest items were present and readable. No conflicting duplicate was found
 | --- | --- | --- |
 | Web application | Next.js 16 App Router, React 19, TypeScript strict | Sound base; current UI and routes predate the corrected contract. |
 | Public pages | Server-rendered marketing, process, founder, FAQ, privacy, terms, contact | Copy and legal text require later authorized correction/review. |
-| Intake | Client/server seven-step wizard with draft persistence | Conflicts with required anonymous four-step flow; due Chunk 2. |
+| Intake | Anonymous server-persisted four-step responsibility-first wizard | Chunk 2 complete; no account creation or Checkout before feasibility. |
 | Auth/access | Supabase auth plus email-code/magic-link/guest routes | Prepayment email-code conflicts; post-payment access-link work is due Chunks 1 and 4. |
 | Data | Supabase Postgres, RLS, typed application models | Existing catch-all lifecycle and schemas require additive expansion; due Chunk 1. |
 | Files | Private Supabase storage and document validation | Quarantine, scan, isolation, versioning, and lifecycle are incomplete; due Chunk 1. |
@@ -86,8 +86,8 @@ The repository contains 21 migrations from `202609010001_initial_schema.sql` thr
 
 | Conflict ID | Existing source/runtime | Controlling Part I rule | Due/status |
 | --- | --- | --- | --- |
-| CF-001 | Seven intake steps | Exactly four responsibility-first steps | Chunk 2 / PENDING |
-| CF-002 | Prepayment six-digit email authentication | Anonymous prepayment draft; immutable access email; secure post-payment access link | Chunks 1/2/4 / PENDING |
+| CF-001 | Seven intake steps | Exactly four responsibility-first steps | Chunk 2 / COMPLETE |
+| CF-002 | Prepayment six-digit email authentication | Anonymous prepayment draft; immutable access email; secure post-payment access link | Chunk 2 anonymous boundary COMPLETE; Chunk 4 post-payment access PENDING |
 | CF-003 | “Application Pack” naming | Customer-facing product is “Resume + Cover Letter Pack” | Chunks 5/6 / PENDING |
 | CF-004 | Fixed 7-day draft and 30-day source retention | Retention durations are governed and blocking until approved/configured | Chunks 1/6 / UNSET_BLOCKING |
 | CF-005 | 150-minute reservation | Checkout reservation is 30 minutes | Chunks 1/4 / PENDING |
@@ -151,7 +151,7 @@ Offline `npm ci` printed 498 packages and zero audited vulnerabilities, but its 
 | H-009 | Transaction barriers/failure injection | Chunk 1 | AVAILABLE | optimistic conflict, uniqueness, lease, rollback fixtures; engineering |
 | H-010 | Format check | Chunk 1 | AVAILABLE | `git diff --check`; engineering |
 | H-011 | Axe accessibility | Chunk 2 | AVAILABLE | Playwright axe; design/engineering |
-| H-012 | Deterministic visual regression/artifacts | Chunk 2 | MISSING_REPOSITORY_HARNESS | Design/engineering |
+| H-012 | Deterministic visual regression/artifacts | Chunk 2 | AVAILABLE | Playwright captures for every step at 1440 and 390 pixels plus mobile error state; design/engineering |
 | H-013 | Fake clock/timezone/DST | Chunk 3 | MISSING_REPOSITORY_HARNESS | Engineering |
 | H-014 | Recorded permitted job fixtures | Chunk 3 | PARTIAL | Authorization fixtures due; search owner |
 | H-015 | Signed synthetic Stripe webhook fixtures | Chunk 4 | PARTIAL | Full lifecycle due; payments owner |
@@ -181,7 +181,8 @@ The canonical `evidence/chunk-0/manifest.json` is 7611 bytes with SHA-256 `3190e
 | --- | --- | --- |
 | Phase 0 | COMPLETE after commit | Documentation, precedence, baselines, and evidence only |
 | Chunk 1 | COMPLETE after evidence commit | Additive secure foundation; production gates remain disabled |
-| Chunks 2-7 | NOT AUTHORIZED / PENDING | Boundaries indexed; no work performed |
+| Chunk 2 | COMPLETE after evidence commit | Anonymous four-step intake, secure finalization, pending feasibility handoff, admin visibility, accessibility, and responsive evidence |
+| Chunks 3-7 | NOT AUTHORIZED / PENDING | Boundaries indexed; no work performed |
 ## Chunk 1 implementation: secure typed foundation
 
 ### Entity relationship summary
@@ -278,4 +279,74 @@ Production credentials were not used. The unconfigured production malware scanne
 
 Tested code commit `cd267dc8bbfad07107b22f88c06e26cbdbbaed34` (tree `a029a26c3b33235bc34f8d54048549cc353611f1`) passed all 11 applicable Chunk 1 checks: zero-to-latest migration, database invariants, legacy paid-order backfill/idempotency, guarded rollback, generated-type equality, lint, TypeScript, 135/135 repository tests in 32 files, production build with 43 generated pages, 42/42 desktop/mobile Playwright cases, and staged whitespace validation. The real-scanner integration suite reported 3/3 tests skipped across two files because no approved production scanner was configured; this is `NOT_APPLICABLE_LOCAL`, is excluded from the denominator, and does not weaken the mandatory deterministic fail-closed tests.
 
-The cumulative verified ledger is 20/20 applicable checks: 9/9 from Phase 0 and 11/11 from Chunk 1. Failed tests: none. Blocked applicable tests: none. Chunk 2 was not started.
+The cumulative verified ledger through Chunk 1 is 20/20 applicable checks: 9/9 from Phase 0 and 11/11 from Chunk 1. Failed tests: none. Blocked applicable tests: none. Chunk 2 results are recorded below.
+
+
+## Chunk 2 implementation: anonymous four-step intake
+
+### Flow and data relationship summary
+
+```text
+anonymous capability cookie -> four-step draft + optimistic version
+                                  |
+                                  +-- private resume/optional-cover versions
+                                  +-- presented candidate-fact decisions
+                                  +-- structured customer assertions/experience
+                                  +-- typed criteria and policy choices
+                                  +-- encrypted sensitive wording reference
+                                  |
+                                  +-- atomic finalization
+                                           |
+                                           +-- immutable intake snapshot + content hash
+                                           +-- immutable fact review history
+                                           +-- typed experience/capability facts
+                                           +-- PENDING feasibility request
+
+protected staff role -> pending-intake summary (not a feasibility result, quote, reservation, or payment)
+```
+
+The active public route renders `wizard-v3.tsx` without a prepayment authentication gate. Exactly four numbered steps are stored (`0` through `3`): basics and private documents; work direction; candidate-fact review and experience; preferences, pay, exclusions, review, and the single combined Terms/Privacy agreement. Adaptive sections do not become additional steps. Back, refresh, same-session return, payment-cancel return, progressive saves, and recoverable optimistic-version conflicts use the server draft and capability cookie; document bytes and draft answers are never placed in browser local storage.
+
+### Transition ownership and invariants
+
+- The anonymous draft route owns typed partial saves and current-step progression. Every read/write requires the separate capability secret; the draft ID is insufficient. Visible-step validation permits partial autosave and blocks forward navigation or finalization until the current step is valid.
+- The document route owns PDF/DOCX server validation, private version registration, replacement/supersession, removal, and explicit retry. Upload status is visible and errors remain actionable. Finalization requires a non-failed resume record but never exposes storage paths or extracted text.
+- Fact-presentation records prove which fact/version was shown. `CONFIRMED`, `REJECTED`, `CORRECTED`, and skipped decisions create immutable review history. Resume or cover-letter text inspection remains unconfirmed evidence; only customer confirmation or independently substantiated human evidence may satisfy a claim or hard gate.
+- Structured experience records retain actual identity, dates/precision, responsibilities, tools, scope, outcome, intensity, and conditional education detail. Caregiving and other relevant life context remain optional context and receive no occupational credit.
+- Atomic finalization owns immutable normalized access email, a canonical content hash, one protected encrypted sensitive-payload reference, fact transitions, customer-asserted facts, experience identities, and a real `PENDING` feasibility request. It does not create Checkout, payment, quote, capacity, or a feasibility outcome.
+- A newer pre-activation snapshot stales the superseded feasibility request and invalidates only the superseded snapshot's assessment, quote, evaluations, review, and never-consumed reserved capacity. Winning post-activation commercial records remain governed by Chunk 1 revision procedures.
+- The production encryption adapter is a fail-closed remote KMS boundary. It requires exact HTTPS wrap/unwrap endpoints, bearer authorization, key identity/version agreement, timeout handling, and successful authenticated wrapping. Missing configuration disables finalization; no production mock path exists.
+- Aggregate intake analytics accept only an allowlisted event name and numbered step. Names, email, free text, document metadata, draft IDs, capability values, and arbitrary dimensions are not accepted.
+- The staff pending-intake surface is protected by existing admin authorization and labels pending records accurately. No public customer-supplied-job product, pricing, matching, Checkout, or site-wide redesign was added.
+
+### Accessibility, responsive behavior, and recovery
+
+The wizard uses native checkbox/radio controls, labelled fields and fieldsets, a linked focusable error summary, adjacent errors for grouped/required controls, polite save/status announcements, first-invalid focus, visible keyboard focus, minimum 44-pixel targets, reduced-motion behavior, forced-color support, and responsive layouts from 320 through 1440 pixels. Automated browser coverage includes keyboard-only progression, 200% zoom, reduced motion, forced colors, every step at desktop/mobile sizes, adaptive task follow-ups, and a mobile validation-error capture. The app image-viewer ACL fault prevented a separate manual in-app image inspection; the committed screenshots and automated layout assertions are the retained visual evidence.
+
+### Migration, compatibility, and rollback
+
+Additive migration `202609040023_chunk2_four_step_intake.sql` follows the Chunk 1 foundation. It adds four-step draft metadata, candidate-fact presentation tier fields, immutable presentation/review history, targeted questions, pending feasibility requests, privacy-safe aggregate counts, and capability-only read/save/retry/finalization functions. Existing and paid legacy records are not rewritten or dropped. Generated database types include the expanded schema.
+
+Deployment order remains expand -> regenerate types -> compatibility deploy -> checkpoint/validate -> later authorized cutover. Code rollback restores the prior route while leaving the additive compatible schema. No destructive down migration is supplied for operational Chunk 2 data; any compensating migration requires separate database-owner proof and approval. Production activation remains fail closed until KMS, file processing, retention/privacy, capacity/staffing, source authorization, and later-chunk gates are approved.
+
+### Chunk 2 verification inventory
+
+| Check ID | Procedure | Intended result |
+| --- | --- | --- |
+| C2-MIGRATE | `supabase db reset` | All 23 migrations apply from zero |
+| C2-DB | `npm run test:database` | Chunk 1 invariants plus four-step capability, fact decision, invalidation, and pending-feasibility transaction pass |
+| C2-LEGACY | `npm run test:legacy-backfill` | Legacy paid records and idempotent compatibility backfill remain intact |
+| C2-ROLLBACK | `npm run test:rollback` followed by reset | Guarded Chunk 1 rollback rehearsal still passes and latest schema is restored |
+| C2-TYPES | `npm run types:database:check` | Generated schema types match |
+| C2-LINT | `npm run lint` | Static lint passes |
+| C2-TYPE | `npm run typecheck` | Strict TypeScript passes |
+| C2-UNIT | `npm test` | Four-step validation, duration/fact regressions, KMS fail-closed behavior, and repository units pass |
+| C2-BUILD | `npm run build` | Production build and route generation pass |
+| C2-E2E | `npm run test:e2e` | Full desktop/mobile regression, four-step flow, keyboard, zoom, and media preferences pass |
+| C2-A11Y-VISUAL | `tests/e2e/chunk2-evidence.spec.ts` plus committed PNGs | Axe/layout assertions and deterministic step/adaptive/error captures pass |
+| C2-INTEGRATION-EXTERNAL | `npm run test:integration` | Real scanner tests are local N/A without an approved scanner; fail-closed deterministic tests remain mandatory |
+| C2-FORMAT | `git diff --check` and staged check | No whitespace errors |
+
+### Chunk 2 verified result
+
+The exact candidate commit and final counts are recorded in `evidence/chunk-2/manifest.json` by the evidence-only commit after all checks run. Production credentials were not used. Missing production KMS, malware/parser/model pipeline, approved retention durations and Privacy Policy language, capacity/staffing configuration, documentary source authorization, and later Chunks 3-7 remain release blockers; they are not failed local repository tests.
