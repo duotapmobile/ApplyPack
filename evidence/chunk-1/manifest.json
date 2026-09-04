@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "chunk": 1,
+  "chunk_status": "COMPLETE",
+  "created_at": "2026-09-04T11:56:37.2248917-04:00",
+  "worktree": "C:\\Users\\mskir\\Desktop\\Apply_Pack\\applypack-phase0-e9c3aea0d45447bfaa6517e488356e0d",
+  "branch": "codex/applypack-corrected-build-2026-09-04",
+  "base_commit": "aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8",
+  "required_phase_0_commit": "0595ae7cec5c2f36d06b11b691fd319742cb692c",
+  "start_head": "0595ae7cec5c2f36d06b11b691fd319742cb692c",
+  "tested_code_commit": "cd267dc8bbfad07107b22f88c06e26cbdbbaed34",
+  "tested_tree": "a029a26c3b33235bc34f8d54048549cc353611f1",
+  "contract_sha256": "df4e32e2ea0c37abd3f39904c36576c0af3935f9754bb1b81979782dc002d69f",
+  "environment": {
+    "git": "2.50.0.windows.2",
+    "node": "22.22.0",
+    "npm": "10.9.4",
+    "os": "Windows 11",
+    "supabase_cli": "2.116.0",
+    "timezone": "America/New_York"
+  },
+  "checks": [
+    {
+      "id": "C1-MIGRATE",
+      "command": "supabase db reset --local",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 22,
+      "evidence": "All 22 migrations applied from zero, ending with 202609040022_corrected_chunk1_foundation.sql."
+    },
+    {
+      "id": "C1-DB",
+      "command": "npm run test:database",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": null,
+      "evidence": "Transactional SQL fixture passed capability-only draft access, optimistic conflicts, upload supersession, provenance, RLS, immutable revisions, snapshot invalidation, capacity, checkout, payment, refund, entitlement, release, retention, feature-flag, outbox, audit, and lease invariants."
+    },
+    {
+      "id": "C1-LEGACY",
+      "command": "npm run test:legacy-backfill",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 2,
+      "evidence": "A pre-Chunk-1 paid order and payment survived the additive migration; the compatibility projection and checkpoint verified before and after an idempotent no-op rerun."
+    },
+    {
+      "id": "C1-ROLLBACK",
+      "command": "npm run test:rollback",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 2,
+      "evidence": "The compensating script completed on an empty disposable corrected schema, preserved legacy orders, and separately refused rollback after operational corrected data existed."
+    },
+    {
+      "id": "C1-TYPES",
+      "command": "npm run types:database:check",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 1,
+      "evidence": "Checked-in TypeScript database types exactly matched the fully migrated local schema after regeneration."
+    },
+    {
+      "id": "C1-LINT",
+      "command": "npm run lint",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": null,
+      "evidence": "ESLint completed without findings."
+    },
+    {
+      "id": "C1-TYPE",
+      "command": "npm run typecheck",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": null,
+      "evidence": "TypeScript strict no-emit check completed without errors."
+    },
+    {
+      "id": "C1-UNIT",
+      "command": "npm test",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 135,
+      "evidence": "32 test files and 135 tests passed, including deterministic fail-closed file-pipeline, upload-policy, capability, sensitive-envelope, provenance, canonicalization, evaluation, lifecycle, and regression coverage."
+    },
+    {
+      "id": "C1-BUILD",
+      "command": "npm run build",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 43,
+      "evidence": "Next.js production compilation, TypeScript, page-data collection, and generation of all 43 pages completed."
+    },
+    {
+      "id": "C1-E2E",
+      "command": "npm run test:e2e",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 42,
+      "evidence": "42 of 42 desktop/mobile Playwright tests passed in 14.2 minutes, including all seven unchanged intake steps, accessibility, security headers, and 320px overflow."
+    },
+    {
+      "id": "C1-FORMAT",
+      "command": "git diff --cached --check",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 31,
+      "evidence": "All 31 implementation-commit files passed the staged whitespace check after generated-type EOF normalization."
+    },
+    {
+      "id": "C1-INTEGRATION-EXTERNAL",
+      "command": "npm run test:integration",
+      "status": "NOT_APPLICABLE_LOCAL",
+      "exit_code": 0,
+      "assertion_count": 3,
+      "evidence": "Two real-adapter test files and all three tests were explicitly skipped because no approved production malware scanner integration was configured. The contract permits this when deterministic fail-closed fixtures pass and production processing remains disabled.",
+      "excluded_from_required_denominator": true
+    }
+  ],
+  "required_tests": {
+    "numerator": 11,
+    "denominator": 11,
+    "failed": [],
+    "blocked": [],
+    "not_applicable_local": [
+      "C1-INTEGRATION-EXTERNAL"
+    ]
+  },
+  "cumulative_required_tests": {
+    "numerator": 20,
+    "denominator": 20,
+    "phase_0": "9/9",
+    "chunk_1": "11/11"
+  },
+  "artifacts": [
+    {
+      "path": "supabase/migrations/202609040022_corrected_chunk1_foundation.sql",
+      "bytes": 126854,
+      "sha256": "49bfe51bf197fd5ddc48fa0117f052cc25efe0352f69ba24ae137a862ff1b2bc"
+    },
+    {
+      "path": "supabase/rollback/202609040022_corrected_chunk1_foundation.rollback.sql",
+      "bytes": 4990,
+      "sha256": "5c25a1a15271d50d088ca7090b28146ab861cb4298c974849741eca732359fe2"
+    },
+    {
+      "path": "src/lib/database.types.ts",
+      "bytes": 230409,
+      "sha256": "1229414a31393fd1c6fdab5968775dd40be9cd6cc15088b46ef9e763d2ce1751"
+    },
+    {
+      "path": "src/lib/domain/foundation.ts",
+      "bytes": 21481,
+      "sha256": "9dff018e4bd514c3366ef336abdb09cda55cfc2113464c0a77c48b17befebaef"
+    },
+    {
+      "path": "src/lib/domain/evaluation.ts",
+      "bytes": 9402,
+      "sha256": "a34c31c0a51ae947ad44fea54de91d829954215f25b1ef403723d1b0678dcac6"
+    },
+    {
+      "path": "src/lib/security/draft-capability.ts",
+      "bytes": 2482,
+      "sha256": "5c48669e1a0e3f8dbd61c9e10df669eb5b2e7869c46c8d796314fd4a161d8aaf"
+    },
+    {
+      "path": "src/lib/security/sensitive-payload.ts",
+      "bytes": 5780,
+      "sha256": "2654a75c6371be0e860cf900152a8182867373a0d0026bb4d85241885e6fd358"
+    },
+    {
+      "path": "src/lib/files/secure-pipeline.ts",
+      "bytes": 7407,
+      "sha256": "ed1f95f3059edaffa9284dfc751468efaf85267ceac431d72f4f32dc0343b110"
+    },
+    {
+      "path": "tests/integration/chunk1-foundation.sql",
+      "bytes": 46273,
+      "sha256": "04cb008eefc7bee028a19af0dd70e57576bace5c1e2080d1102dde6311e18709"
+    },
+    {
+      "path": "docs/DEPLOYMENT_RUNBOOK.md",
+      "bytes": 8944,
+      "sha256": "9ffac7568debc2ab38a05e7a01753cf7145f61505dacad51a44a193191d2eab4"
+    },
+    {
+      "path": "docs/IMPLEMENTATION_STATUS.md",
+      "bytes": 31965,
+      "sha256": "f6db5ca5a7c5ea5a571da2d840a274bbe366a783eabca0597428d4b8ab7d2797"
+    },
+    {
+      "path": "docs/REQUIREMENT_TRACEABILITY.md",
+      "bytes": 493167,
+      "sha256": "292c5359e1573bdc79f1766c7dc8529135dea1216fd76dced5d3135d236cbcfa"
+    }
+  ],
+  "unimplemented_chunk_requirements": [],
+  "unresolved_release_blockers": [
+    "Owner-approved unpaid-draft, file, customer-data, financial, artifact, reference, auth, analytics, audit, backup, and deletion durations plus matching Privacy Policy language are unset.",
+    "Production KMS adapter, key identity/version, rotation/access controls, and live encrypt/decrypt/tamper evidence are not configured.",
+    "Production malware scanner, sandbox parser, OCR decision, permitted-model policy, model/token limits, and leak-detection configuration are not approved or configured; processing remains disabled.",
+    "Production Stripe credentials, tax-inclusive configuration, provider reconciliation, and webhook operations are not configured.",
+    "Production capacity pools/staffing, worker/scheduler leases, monitoring, and staff-role assignments are not configured.",
+    "Chunks 2 through 7 remain unimplemented and unauthorized."
+  ],
+  "next_chunk_started": false,
+  "next_chunk_authorized": true
+}

@@ -273,3 +273,9 @@ Normal rollback reverts code/traffic and leaves the additive schema. The compens
 | C1-FORMAT | `git diff --check` | No whitespace errors |
 
 Production credentials were not used. The unconfigured production malware scanner/parser/model boundary and actual retention/privacy approvals remain explicit release blockers, permitted by Chunk 1 only because the repository has deterministic local contract fixtures and the affected features fail closed.
+
+### Chunk 1 verified result
+
+Tested code commit `cd267dc8bbfad07107b22f88c06e26cbdbbaed34` (tree `a029a26c3b33235bc34f8d54048549cc353611f1`) passed all 11 applicable Chunk 1 checks: zero-to-latest migration, database invariants, legacy paid-order backfill/idempotency, guarded rollback, generated-type equality, lint, TypeScript, 135/135 repository tests in 32 files, production build with 43 generated pages, 42/42 desktop/mobile Playwright cases, and staged whitespace validation. The real-scanner integration suite reported 3/3 tests skipped across two files because no approved production scanner was configured; this is `NOT_APPLICABLE_LOCAL`, is excluded from the denominator, and does not weaken the mandatory deterministic fail-closed tests.
+
+The cumulative verified ledger is 20/20 applicable checks: 9/9 from Phase 0 and 11/11 from Chunk 1. Failed tests: none. Blocked applicable tests: none. Chunk 2 was not started.
