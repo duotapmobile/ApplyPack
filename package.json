@@ -13,6 +13,10 @@
     "test:e2e": "playwright test",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build",
     "test:integration": "vitest run --config vitest.integration.config.mts",
+    "test:database": "node scripts/run-supabase-db-tests.mjs",
+    "test:legacy-backfill": "node scripts/run-supabase-legacy-backfill-test.mjs",
+    "test:rollback": "node scripts/run-supabase-rollback-test.mjs",
+    "types:database:check": "node scripts/check-database-types.mjs",
     "stripe:configure:test": "node scripts/configure-stripe-test-prices.mjs"
   },
   "dependencies": {

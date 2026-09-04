@@ -1,69 +1,161 @@
 # ApplyPack deployment runbook
 
-Status: Phase 0 skeleton only. No production operation is authorized. Owners must replace placeholders with rehearsed commands and evidence in the owning chunk.
+Status: Chunk 1 repository implementation is complete locally. No production migration, deployment, provider call, or feature enablement is authorized. Production remains blocked on the approvals and configuration listed below.
 
-## Roles and gates
+## Owners and stop conditions
 
-| Role | Responsibility |
+| Owner | Responsibility |
 | --- | --- |
-| Release owner | Exact commit, window, go/no-go, rollback |
-| Database owner | Expand/backfill/validation/compensating migration |
-| Application owner | Compatibility deploy, feature flags, cutover |
-| Payments owner | Stripe, reconciliation, refund readiness |
-| Security/privacy owner | Storage, encryption, deletion, access, scans |
-| Operations owner | Workers, scheduler leases, queues, outbox, monitoring |
+| Release owner | Exact commit, change window, go/no-go, traffic rollback |
+| Database owner | Backup, migration `202609040022`, backfill checkpoints, validation, database recovery |
+| Application owner | Compatibility deploy, server feature flags, cutover |
+| Payments owner | Stripe tax/price/webhook/refund/dispute reconciliation |
+| Security/privacy owner | KMS, private storage, malware scanner, sandbox parser, reference isolation, retention/privacy approval |
+| Operations owner | Capacity/staffing versions, worker leases, outbox, monitoring |
 
-No cutover proceeds with an `UNSET_BLOCKING`, failed/blocked required check, unverified source automation, absent rollback evidence, or dirty/incorrect release worktree.
+Stop before production writes if the repository/remote/commit is wrong; any migration or validation query fails; a required owner is absent; any existing paid order would be changed or lost; or an approval/configuration value is missing. Never record secrets or customer payloads in evidence.
 
-## 1. Expand
+## 1. Preflight and backup
 
-1. Confirm authorized release commit and clean worktree.
-2. Back up and record non-sensitive schema/version evidence.
-3. Apply additive tables, columns, indexes, constraints, policies, functions, queues, and disabled feature flags.
-4. Regenerate database types and fail on drift.
-5. Validate legacy reads/writes.
+Run from the authorized release worktree in PowerShell:
 
-Rollback: revert application traffic/code to the last compatible release and leave additive compatible schema in place. A compensating migration requires proof that it preserves paid orders, audit, financial history, and customer data.
+```powershell
+$repo = 'C:\path\to\authorized\ApplyPack-worktree'
+git -C $repo rev-parse --show-toplevel
+git -C $repo remote get-url origin
+git -C $repo status --short --branch
+git -C $repo rev-parse HEAD
+supabase --workdir $repo migration list
+```
 
-## 2. Compatibility
+The release owner records the authorized commit, target project reference, backup/PITR evidence, row counts for `orders`, `payments`, `refunds`, `apply_pack_carts`, and `apply_pack_items`, and a non-sensitive schema hash. The database owner confirms the target project separately. A local `supabase db reset` is disposable-only and must never target production.
 
-Deploy compatibility reads/writes, preserve legacy paid orders, ensure new-order validation does not require deprecated fields, and prove new flags default off and unauthorized paths fail closed. Record row counts and deterministic fixture results without PII.
+## 2. Expand
 
-## 3. Backfill
+Migration order is fixed:
 
-Run an idempotent, checkpointed, bounded backfill. Record counts, rejects, retries, and checkpoints. Stop on invariant, authorization, payment, ownership, or provenance conflict. Never synthesize customer facts or rewrite provider/audit history. Resume only from a durable checkpoint after repairing the cause.
+1. Apply all existing migrations through `202609030021_nonrecursive_job_read_policies.sql`.
+2. Apply additive migration `202609040022_corrected_chunk1_foundation.sql`.
+3. Do not drop or rewrite legacy tables, columns, paid orders, provider history, or audit history.
+4. Keep `CUSTOMER_SUPPLIED_INGESTION`, corrected file processing, retention cleanup, and Checkout disabled.
+5. Regenerate types and compare them to `src/lib/database.types.ts`.
 
-## 4. Validate
+Disposable rehearsal commands:
 
-Validate schema/type drift, RLS/cross-customer denial, lifecycle guards, integer financial math, provider idempotency, exact-ten, entitlement uniqueness, capacity math, file/reference isolation, outbox deduplication, retention/deletion, legacy compatibility, routes/accessibility, DOCX structure/render/font, and secret/dependency/security scans. Exact commands, queries, and hashes are added in owning chunks. Use synthetic data.
+```powershell
+supabase db reset
+npm.cmd run test:database
+npm.cmd run test:legacy-backfill
+npm.cmd run types:database:check
+```
 
-## 5. Cutover
+Production application is owned by the database owner and uses the already-linked, independently verified Supabase project. The exact approved `supabase db push` invocation and project identity must be recorded in the release ticket before use; this repository runbook does not authorize it.
 
-1. Confirm legal/config/source authorization gates.
-2. Confirm production settings without recording secrets.
-3. Confirm workers, scheduler leases, callbacks, allowlists, email, monitoring, and staffed capacity.
-4. Enable the smallest slice, observe health/reconciliation, then advance.
-5. Keep `CUSTOMER_SUPPLIED` and unverified automated sources disabled.
+## 3. Compatibility and checkpointed backfill
 
-Go/no-go evidence includes release commit, migration IDs, config versions, test-manifest hash, monitoring owner, rollback owner, and time-bounded approval.
+The migration writes checkpoint `202609040022 / LEGACY_ORDERS_V1`. Its backfill is idempotent:
 
-## 6. Rollback and recovery
+- legacy payment rows map to `ap_payment_attempts` by unique `legacy_payment_id`;
+- legacy orders map to `ap_search_services` by unique `legacy_order_id`;
+- refunded legacy payments remain represented as paid settlement plus refund history in the legacy compatibility boundary;
+- no legacy row is updated or deleted;
+- new corrected records do not require deprecated intake blobs or catch-all statuses;
+- `ap_legacy_order_compatibility` keeps old records readable during compatibility deployment.
 
-- Disable affected features and stop new affected checkouts.
-- Preserve provider events, paid orders, refunds, disputes, entitlements, audit, outbox, and artifacts.
-- Revert code/traffic to the last compatible version.
-- Leave additive schema unless a reviewed compensating migration is safe.
-- Reconcile Stripe, email, storage, queue, capacity, and scheduled jobs before reopening.
-- Escalate any data, payment, privacy, or authorization incident.
+Before resuming a failed backfill, inspect the durable checkpoint and rejected invariant without editing historical data. Correct code or configuration, reapply the idempotent migration, and compare counts to the preflight baseline. Never synthesize missing facts, payment IDs, or customer ownership.
 
-## External readiness checklist
+Validation queries (run under a read-only operational role where possible):
 
-- [ ] Supabase policies/storage/backups and disposable rehearsal target.
-- [ ] Stripe prices/webhook/tax/refund/dispute/reconciliation.
-- [ ] Resend domain/senders/local capture/dead-letter alerts.
-- [ ] KMS, malware scanner, parser/OCR, model boundary, signed downloads.
-- [ ] Scheduler leases, workers, health, monitoring, paging.
-- [ ] Staff roles, review coverage, capacity pools, staffing version.
-- [ ] Arial-capable DOCX rendering and inspection evidence.
-- [ ] Terms, Privacy, consent versions, retention, deletion, legal approval.
-- [ ] Documentary source approvals; all others disabled; Liveops blocked.
+```sql
+select migration_id, checkpoint, rows_processed, completed_at
+from public.ap_migration_checkpoints
+where migration_id = '202609040022';
+
+select count(*) as legacy_paid_orders
+from public.orders where status in ('paid','in_fulfillment','delivered','refunded');
+
+select count(*) as compatible_orders
+from public.ap_legacy_order_compatibility
+where status in ('paid','in_fulfillment','delivered','refunded');
+
+select count(*) as missing_compatibility_rows
+from public.orders o left join public.ap_search_services s on s.legacy_order_id = o.id
+where o.status in ('paid','in_fulfillment','delivered','refunded') and s.id is null;
+
+select flag, enabled, approval_reference
+from public.ap_feature_flags;
+
+select checkout_enabled, tax_configuration_approved, tax_approval_reference
+from public.ap_commerce_configuration;
+
+select cleanup_enabled, approved, unpaid_draft_seconds, unpaid_file_seconds,
+       privacy_policy_approval_reference
+from public.ap_retention_configuration;
+```
+
+Required result: missing compatibility rows `0`; flags off unless separately approved; Checkout false until approved Stripe tax-inclusive configuration exists; cleanup false until approved durations and Privacy Policy version exist.
+
+## 4. Required verification
+
+Run on the exact candidate commit:
+
+```powershell
+npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run build
+npm.cmd run test:e2e
+npm.cmd run test:integration
+npm.cmd run test:database
+npm.cmd run test:legacy-backfill
+npm.cmd run types:database:check
+git diff --check
+```
+
+The real private malware-scanner integration requires its external test service. When absent, the scanner integration is `NOT_APPLICABLE_LOCAL`, not a pass; the deterministic secure-pipeline suite must pass and `APP_FILE_PROCESSING_ENABLED=false` must keep processing fail-closed. Test migration rollback separately only in a newly reset disposable database:
+
+```powershell
+supabase db reset
+npm.cmd run test:rollback
+supabase db reset
+npm.cmd run test:database
+npm.cmd run test:legacy-backfill
+npm.cmd run types:database:check
+```
+
+Also verify RLS/cross-customer denial, capability-only anonymous access, optimistic conflicts, private/versioned files, stale-result suppression, immutable snapshots/quotes/audits, revision-scoped invalidation, capacity held-plus-spent math, entitlement locking, provider/outbox idempotency, refund aggregation, scheduler lease uniqueness, and legacy count parity.
+
+## 5. Configuration and cutover
+
+No corrected Checkout or processing cutover occurs until all of these have owner-approved versioned values:
+
+- Stripe tax-inclusive prices and tax configuration;
+- anonymous draft/file retention durations and matching Privacy Policy language;
+- production KMS identity/version/rotation policy, `APP_SENSITIVE_PAYLOAD_ENCRYPTION_ENABLED=true`, encryption-context version, adapter credentials, access policy, and live wrap/unwrap/tamper proof;
+- malware scanner identity, sandboxed local parser identity and resource limits, leak policy, and permitted-model policy;
+- capacity pools, buckets, units, and staffing version;
+- scheduler worker identity, monitoring, paging, and dead-letter ownership;
+- authenticated staff roles and protected human-review procedures.
+
+Then deploy compatibility code first, observe legacy reads/writes and provider reconciliation, configure capacity, enable the smallest approved server slice, and monitor. `CUSTOMER_SUPPLIED_INGESTION` remains off unless a separate approval reference is stored. Chunk 1 does not authorize a public customer-supplied-job intake or price.
+
+## 6. Failure recovery and rollback
+
+Normal rollback:
+
+1. Disable affected feature flags and stop new affected Checkouts.
+2. Revert application traffic/code to the last compatible release.
+3. Leave the additive schema in place.
+4. Reconcile Stripe commands/events, settlements, disputes, refunds, capacity debits, entitlements, outbox messages, and scheduled leases.
+5. Preserve paid orders, immutable snapshots, audit events, artifacts, and reference permissions.
+
+The compensating script `supabase/rollback/202609040022_corrected_chunk1_foundation.rollback.sql` is only for an unactivated, disposable or proved-empty deployment. It refuses to run when operational Chunk 1 data exists. It never drops legacy tables. Use it only after backup verification, database-owner approval, and a recorded zero-operational-row proof. If an invariant fails or customer/payment/reference data may be affected, stop and escalate; do not prune, rewrite, or force a rollback.
+
+## Release blockers remaining after Chunk 1
+
+- approved retention durations and matching Privacy Policy language;
+- production KMS/encryption and key-rotation configuration;
+- production malware scanner, sandbox parser/OCR decision and limits, leak scan, and permitted-model configuration;
+- Stripe tax-inclusive configuration and provider credentials/reconciliation evidence;
+- capacity/staffing values, workers, leases, monitoring, and staff access roles;
+- later authorized Chunks 2-7, including public flow, matching, payments, artifacts, copy/legal review, and release audit.

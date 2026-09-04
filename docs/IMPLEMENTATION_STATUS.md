@@ -73,14 +73,14 @@ The repository contains 21 migrations from `202609010001_initial_schema.sql` thr
 
 | Risk | Existing behavior/evidence | Controlling resolution | Owner/status |
 | --- | --- | --- | --- |
-| Catch-all lifecycle fields | Orders and financial helpers combine concerns | Orthogonal guarded state dimensions and derived aggregate state | Chunk 1 / PENDING |
-| Legacy paid orders | Existing schemas/routes depend on legacy fields | Additive compatibility/backfill/validate/cutover; never rewrite/drop legacy paid data | Chunk 1 / PENDING |
-| Reservation duration | Existing env/migrations use 150 minutes | Locked 30-minute checkout reservation | Chunk 1 / PENDING |
+| Catch-all lifecycle fields | Orders and financial helpers combine concerns | Additive orthogonal guarded dimensions and derived aggregate implemented; legacy adapter retained | Chunk 1 / COMPLETE |
+| Legacy paid orders | Existing schemas/routes depend on legacy fields | Additive compatibility view plus idempotent checkpointed backfill; paid fixture preserved | Chunk 1 / COMPLETE |
+| Reservation duration | Existing env/migrations use 150 minutes | Corrected allocation RPC enforces a 30-minute half-open reservation; legacy path retained only for compatibility | Chunk 1 / COMPLETE |
 | Draft/source retention | Existing values are 7 and 30 days | `UNSET_BLOCKING` until owner/legal approval and configuration | Chunk 1 / BLOCKED_FOR_RELEASE |
 | Job freshness | Existing 24/72-hour defaults | Governed configuration, not an invented universal value | Chunk 3 / UNSET_BLOCKING |
 | Capacity | Existing defaults are one search/two material units per day | Staffing-versioned governed configuration | Chunks 1/4 / UNSET_BLOCKING |
 | Signed URL | Existing generation uses 60 seconds | Locked 15-minute post-reauth download URL | Chunk 4 / PENDING |
-| Schema rollback | No disposable-database up/rollback proof | Additive rollback rehearsal and generated-type proof | Chunk 1 / MISSING_EXTERNAL_DEPENDENCY |
+| Schema rollback | Prior state had no corrected rollback proof | Up/backfill/idempotency/guarded rollback/type drift rehearsed in disposable Supabase | Chunk 1 / COMPLETE |
 
 ## Requirement conflicts and precedence decisions
 
@@ -132,7 +132,7 @@ Commands ran in the dedicated worktree at start HEAD `aa60adf85d0a1ae7c42769ac41
 | P0-UNIT | `npm test` | PASS | 26 files; 115 tests | Phase 0 |
 | P0-BUILD | `npm run build` | PASS | 41 routes/pages generated | Phase 0 |
 | P0-E2E | `npm run test:e2e` | PASS | 42/42 desktop/mobile | Phase 0 mandatory regression |
-| C1-INTEGRATION | `npm run test:integration` | BLOCKED | Exit 0 but 2 files/3 tests skipped without disposable Supabase prerequisites; not a pass | Chunk 1 |
+| C1-INTEGRATION | `npm run test:database` | PASS | Disposable Supabase invariant fixture; transaction rolls back synthetic rows | Chunk 1 |
 
 Offline `npm ci` printed 498 packages and zero audited vulnerabilities, but its wrapper received an interrupt immediately after completion; `npm ls --depth=0` then exited 0. Each required baseline ran independently and passed.
 
@@ -145,11 +145,11 @@ Offline `npm ci` printed 498 packages and zero audited vulnerabilities, but its 
 | H-003 | TypeScript strict check | Phase 0 | AVAILABLE | `npm run typecheck`; engineering |
 | H-004 | Production Next build | Phase 0 | AVAILABLE | `npm run build`; engineering |
 | H-005 | Playwright desktop/mobile | Phase 0 | AVAILABLE | `npm run test:e2e`; engineering |
-| H-006 | Supabase integration suite | Chunk 1 | MISSING_EXTERNAL_DEPENDENCY | Disposable DB not configured; platform owner |
-| H-007 | Migration up/rollback rehearsal | Chunk 1 | MISSING_EXTERNAL_DEPENDENCY | Disposable DB; platform owner |
-| H-008 | Generated DB-type drift check | Chunk 1 | MISSING_REPOSITORY_HARNESS | Add command/golden check; engineering |
-| H-009 | Transaction barriers/failure injection | Chunk 1 | PARTIAL | DB fixture coverage due; engineering |
-| H-010 | Format check | Chunk 1 | MISSING_REPOSITORY_HARNESS | No format script; engineering |
+| H-006 | Supabase integration suite | Chunk 1 | AVAILABLE | `npm run test:database`; engineering |
+| H-007 | Migration up/rollback rehearsal | Chunk 1 | AVAILABLE | `supabase db reset`, `npm run test:rollback`; database owner |
+| H-008 | Generated DB-type drift check | Chunk 1 | AVAILABLE | `npm run types:database:check`; engineering |
+| H-009 | Transaction barriers/failure injection | Chunk 1 | AVAILABLE | optimistic conflict, uniqueness, lease, rollback fixtures; engineering |
+| H-010 | Format check | Chunk 1 | AVAILABLE | `git diff --check`; engineering |
 | H-011 | Axe accessibility | Chunk 2 | AVAILABLE | Playwright axe; design/engineering |
 | H-012 | Deterministic visual regression/artifacts | Chunk 2 | MISSING_REPOSITORY_HARNESS | Design/engineering |
 | H-013 | Fake clock/timezone/DST | Chunk 3 | MISSING_REPOSITORY_HARNESS | Engineering |
@@ -163,7 +163,7 @@ Offline `npm ci` printed 498 packages and zero audited vulnerabilities, but its 
 | H-021 | Built-route crawl/link/assets | Chunk 6 | AVAILABLE | Next build/Playwright |
 | H-022 | Static/security/dependency scan | Chunk 7 | PARTIAL | Full release scan policy due |
 | H-023 | Secret scan | Chunk 7 | MISSING_REPOSITORY_HARNESS | Security owner |
-| H-024 | Synthetic PII leak fixtures | Chunk 1 | PARTIAL | Full pipeline fixtures due |
+| H-024 | Synthetic PII leak fixtures | Chunk 1 | AVAILABLE | deterministic local/non-model isolation suite; security owner |
 
 `PARTIAL` here describes future-chunk capability, not a Phase 0 required-check result. No harness first due in Phase 0 is missing.
 
@@ -180,5 +180,96 @@ The canonical `evidence/chunk-0/manifest.json` is 7611 bytes with SHA-256 `3190e
 | Phase/chunk | State | Notes |
 | --- | --- | --- |
 | Phase 0 | COMPLETE after commit | Documentation, precedence, baselines, and evidence only |
-| Chunk 1 | NOT AUTHORIZED / PENDING | No runtime/schema work performed |
+| Chunk 1 | COMPLETE after evidence commit | Additive secure foundation; production gates remain disabled |
 | Chunks 2-7 | NOT AUTHORIZED / PENDING | Boundaries indexed; no work performed |
+## Chunk 1 implementation: secure typed foundation
+
+### Entity relationship summary
+
+```text
+anonymous draft --< document versions --< candidate facts --< conflicts
+       |                    |                    |
+       |                    +-- local quarantine/isolation provenance
+       +--< immutable intake snapshots --< feasibility plans/assessments --< immutable quotes
+                                      |                         |
+                                      +--< match evaluations    +-- capacity allocation/audit
+
+quote + held capacity + durable provider command -> checkout attempt -> payment attempt
+payment attempt -> refund operations -> derived refund aggregate
+paid search order -> original/active criteria snapshots -> amendments -> job snapshots/evaluations
+paid search order -> material purchase -> lines -> immutable line revisions -> artifacts/file versions
+material line + (delivered order, delivered match) -> entitlement history -> one current claim
+reference record -> encrypted versions -> exact-job permissions -> access audit/revocation
+all deliverable effects -> atomic releases + transactional outbox + scheduled leases + audit events
+```
+
+Migration `202609040022_corrected_chunk1_foundation.sql` is additive. It creates corrected `ap_*` records beside the legacy schema, default-deny RLS, private service-role capability RPCs, compatibility/backfill records, state guards, revision invalidation procedures, configuration gates, and job leases. `src/lib/database.types.ts` is generated from the migrated schema.
+
+### Orthogonal state dimensions
+
+| Dimension | Source of truth | Values/derivation |
+| --- | --- | --- |
+| Draft | `ap_anonymous_drafts.state` | in progress, complete, locked to Checkout, converted, expired |
+| Source processing | `ap_document_versions.processing_state` | uploaded, quarantined, scanning, extracting, ready, failed, superseded |
+| Feasibility | assessment state/outcome/blocker | run state separated from likely/limited/infeasible and candidate/human blocker |
+| Capacity | allocation lifecycle + debit | none/reserved/consumed/completed/superseded/released/expired separated from none/held/spent/returned |
+| Checkout | `ap_checkout_attempts.state` | none, open, canceled, expired, completed, failed |
+| Payment | settlement + dispute | unpaid/processing/paid/failed independent of none/open/won/lost |
+| Refund | operations plus aggregate view | scoped pending/succeeded/failed operations; derived none/pending/partial/full/failed |
+| Search | fulfillment + adjustment | fulfillment independent of proposed/accepted/declined/expired adjustment; delayed is projected only |
+| Material | readiness + fulfillment + substitution | three guarded concerns, never one catch-all field |
+| Communication | outbox state | queued, sending, sent, retry, dead letter |
+| Customer portal | `projectCustomerState` | derived precedence only; no editable aggregate-state column |
+
+### Transition ownership and invariants
+
+- Anonymous routes own draft capability creation/read/save and private versioned upload registration. The opaque UUID never authorizes; the separate 256-bit secret is sent only in an HttpOnly SameSite cookie and only its SHA-256 is stored. Optimistic versions return a recoverable `409` conflict.
+- Checkout orchestration owns draft lock/cancel return. Open Checkout requires an approved tax-inclusive configuration plus the same subject's unexpired immutable quote and held capacity. No public UI was changed in Chunk 1.
+- The secure file worker owns `QUARANTINED -> MALWARE_SCAN -> SANDBOXED_PARSE -> REFERENCE_ISOLATION -> LEAK_SCAN -> MODEL_READY`. Missing configuration, scanner uncertainty, empty/scanned-only text, reference uncertainty, or leak detection produces no model input. Superseded uploads ignore late results.
+- Snapshot/revision procedures own invalidation. Pre-activation edits invalidate the prior feasibility, quote, review, evaluation, and never-consumed capacity. After activation, an accepted child revision preserves the winning quote, payment, order, original snapshot, and historical deadline while invalidating only prior revision work. Paid material corrections supersede only that line revision's files/approvals/capacity.
+- Capacity availability is `total - held - spent`; earliest ending bucket then UUID is the deterministic tie rule. Spent capacity can become completed/superseded but never returned. Multi-line reservations validate attributable member-unit totals atomically.
+- Payment settlement never becomes “refunded.” Refund operations use integer cents, payment/optional-line scope, idempotency, and a derived aggregate. Dispute WON requires resolution plus secured/restored funds; LOST requires a distinct funds-reversed time.
+- Materials use immutable entitlement history plus one atomic current claim keyed by `(delivered_order_id, delivered_match_id)`. A successful full line refund and terminal history are required before release; pending, disputed, partial, or delivered claims remain locked.
+- Provider events, authenticated-envelope sensitive payloads, snapshots, entitlement history, capacity audit, general audit, and reference-access history are immutable. Quote commercial content is immutable; only one-way invalidation metadata can change. Sensitive payloads store AES-256-GCM ciphertext, nonce, tag, wrapped data key, exact KMS identity/version, and context hash; processing fails closed until the approved KMS adapter is configured.
+- General snapshots and public draft responses exclude provider IDs, storage paths, extracted resume text, sensitive wording, and reference PII. Sensitive wording is referenced through encrypted immutable payload IDs/hashes. References use opaque client IDs, encrypted version records, exact-job permission snapshots, contact-change reconfirmation, revocation, purpose-based access, and separate reference-sheet artifacts.
+- `CUSTOMER_SUPPLIED_INGESTION` is false by default and database-guarded by an approval reference. No public intake or price exists.
+- Retention records and cleanup leases exist, but the corrected cleanup gate remains false until owner-approved draft/file durations and matching Privacy Policy approval are stored. No new duration was invented.
+
+### Retention and deletion configuration matrix
+
+This is a required configuration matrix, not a retention approval. Every duration, lawful/business purpose, backup rule, and legal approval remains `UNSET_BLOCKING`; therefore corrected cleanup cannot run and production release remains blocked. Execution order is always revoke capabilities/downloads first, then delete or crypto-shred sensitive data, then retain only an approved non-linkable tombstone if required.
+
+| Entity/domain | Fields eligible to remain | Duration | Purpose/legal basis | Primary deletion mechanism | Backup behavior | Accountable owner / approval |
+| --- | --- | --- | --- | --- | --- | --- |
+| Anonymous draft/session | Opaque non-linkable tombstone only after deletion | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Revoke/rotate capability; delete answers, email linkage, linkable hashes, and session records | `UNSET_BLOCKING`; restore must reapply deletion | Privacy/platform / legal `UNSET_BLOCKING` |
+| Raw source uploads | No document bytes, extracted text, filename, path, or linkable content hash after deletion | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Revoke access; delete private objects and metadata; destroy any keyed linkability material | `UNSET_BLOCKING`; object/PITR propagation required | Security/privacy / legal `UNSET_BLOCKING` |
+| Extracted candidate facts | Non-PII aggregate tombstone only if approved | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Delete typed PII/facts, conflicts, locators, and unkeyed PII-derived hashes; preserve no claim text | `UNSET_BLOCKING`; restore must reapply deletion | Privacy/product / legal `UNSET_BLOCKING` |
+| Sensitive free-text payloads | Opaque non-linkable tombstone only | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Revoke access and crypto-shred wrapped data key, then delete ciphertext/context hashes as approved | `UNSET_BLOCKING`; wrapped keys must not be recoverable after final erasure | Security/privacy / legal `UNSET_BLOCKING` |
+| Job and customer/order snapshots | Public job evidence may remain only under approved source rules; customer-linked criteria/facts may not | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Unlink/delete customer PII and linkable hashes; retain only approved operational tombstone | `UNSET_BLOCKING`; restore must reapply unlink/deletion | Product/privacy / legal `UNSET_BLOCKING` |
+| Payment/refund records | Minimum approved financial/legal fields only; no resume, reference, or custom wording | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Remove customer PII not legally required; retain minimal provider/accounting evidence under legal hold rules | `UNSET_BLOCKING`; finance/legal restore controls required | Finance/privacy / legal `UNSET_BLOCKING` |
+| Generated artifacts/files | No generated document bytes, storage path, embedded PII, or linkable content hash after deletion | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Revoke downloads first; delete private files and PII-bearing metadata; tombstone release without identity | `UNSET_BLOCKING`; storage/PITR propagation required | Document/privacy / legal `UNSET_BLOCKING` |
+| Reference records/permissions | Non-PII permission/revocation tombstone only if approved | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Revoke exact-job permissions/downloads; crypto-shred contact payload and delete linkable hashes/identity | `UNSET_BLOCKING`; no recoverable contact after final erasure | Privacy/operations / legal `UNSET_BLOCKING` |
+| Authentication records/linkages | Non-linkable security event only if approved | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Revoke links/tokens/sessions, remove email/account linkage, and delete auth PII | `UNSET_BLOCKING`; restored auth state must remain revoked | Security/platform / legal `UNSET_BLOCKING` |
+| Analytics | Only approved coarse allowlisted events with no PII/free text | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Delete pseudonymous linkage and disallowed payloads; honor consent/deletion propagation | `UNSET_BLOCKING`; provider deletion proof required | Privacy/product / legal `UNSET_BLOCKING` |
+| Audit/operational history | Opaque non-linkable event type, time, and approved non-PII reason only | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Replace customer/entity linkage and PII with irreversible non-linkable tombstone; never retain names/text | `UNSET_BLOCKING`; restored copies must repeat tombstoning | Security/legal / legal `UNSET_BLOCKING` |
+### Migration, compatibility, and rollback
+
+The executed sequence is expand -> regenerate types -> compatibility reads/writes -> idempotent checkpointed legacy backfill -> invariant validation -> later authorized cutover. Checkpoint `202609040022 / LEGACY_ORDERS_V1` maps legacy payments/orders without modifying them; `ap_legacy_order_compatibility` preserves reads. New corrected records do not require deprecated fields. The disposable migration and invariant fixture preserve legacy tables and roll back all synthetic data.
+
+Normal rollback reverts code/traffic and leaves the additive schema. The compensating script is guarded, unactivated-only, refuses operational corrected data, and was rehearsed in a disposable database; it preserves the legacy schema. Exact commands, queries, owners, recovery, and blockers are in `docs/DEPLOYMENT_RUNBOOK.md`.
+
+### Chunk 1 verification inventory
+
+| Check ID | Procedure | Intended result |
+| --- | --- | --- |
+| C1-MIGRATE | `supabase db reset` | All 22 migrations apply from zero |
+| C1-DB | `npm run test:database` | Synthetic transaction verifies draft/auth/version/file/RLS/snapshot/capacity/payment/refund/entitlement/flag/lease invariants |
+| C1-LEGACY | `npm run test:legacy-backfill` | Pre-Chunk-1 paid order/payment survive migration, compatibility backfill, checkpoint, and idempotent rerun |
+| C1-ROLLBACK | `npm run test:rollback` | Guarded rollback succeeds in disposable empty state and legacy `orders` remains |
+| C1-TYPES | `npm run types:database:check` | Generated schema types match |
+| C1-UNIT | `npm test` | Typed unions, provenance, canonicalization, pipeline, upload, and all regression units pass |
+| C1-INTEGRATION-EXTERNAL | `npm run test:integration` | Real scanner tests are local N/A without approved scanner; deterministic fail-closed tests are mandatory |
+| C1-LINT/TYPE/BUILD/E2E | standard repository commands | Relevant regression suite passes |
+| C1-FORMAT | `git diff --check` | No whitespace errors |
+
+Production credentials were not used. The unconfigured production malware scanner/parser/model boundary and actual retention/privacy approvals remain explicit release blockers, permitted by Chunk 1 only because the repository has deterministic local contract fixtures and the affected features fail closed.
