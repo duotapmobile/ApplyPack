@@ -35,7 +35,7 @@ export default async function AdminPage() {
   const { data: pendingRequests } = await admin.from("ap_feasibility_requests").select("id,snapshot_id,state,created_at").eq("state", "PENDING").order("created_at");
   const pendingSnapshotIds = (pendingRequests || []).map((request) => request.snapshot_id);
   const { data: pendingSnapshots } = pendingSnapshotIds.length
-    ? await admin.from("ap_intake_snapshots").select("id,access_email_normalized,desired_activities,avoided_activities,search_breadth,guidance_requested,work_modes,us_state_or_dc,employment_types,dealbreakers,salary_hard_minimum_cents,salary_period,finalized_at").in("id", pendingSnapshotIds)
+    ? await admin.from("ap_intake_snapshots").select("id,access_email_normalized,desired_activities,avoided_activities,search_breadth,guidance_requested,work_modes,preferred_work_mode,us_state_or_dc,employment_types,preferred_employment_type,schedules,benefits,work_condition_preferences,dealbreakers,employer_unknown_policy,salary_hard_minimum_cents,salary_period,finalized_at").in("id", pendingSnapshotIds)
     : { data: [] };
   const applyItems = (applyRows || []).map((item) => {
     const match = Array.isArray(item.job_match) ? item.job_match[0] : item.job_match;

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { anonymousDraftContext, anonymousDraftError } from "@/lib/drafts/anonymous-server";
 import { canonicalSha256, CANONICALIZATION_VERSION } from "@/lib/domain/foundation";
-import { fourStepDraftSchema, validateFourStep, FOUR_STEP_SCHEMA_VERSION } from "@/lib/intake/four-step";
+import { buildFourStepSnapshot, fourStepDraftSchema, normalizedFourStepDraft, validateFourStep, FOUR_STEP_SCHEMA_VERSION } from "@/lib/intake/four-step";
 import { fourStepPrivateState } from "@/lib/intake/four-step-server";
 import { remoteKmsAdapter } from "@/lib/security/remote-kms";
 import { encryptSensitivePayload, sensitivePayloadConfiguration, sensitivePayloadEncryptionReady } from "@/lib/security/sensitive-payload";
@@ -18,10 +18,11 @@ export async function POST(request: Request) {
   if (!context) return NextResponse.json({ error: "The saved draft is unavailable." }, { status: 404 });
   const parsed = inputSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "The intake is invalid." }, { status: 400 });
+  const answers = normalizedFourStepDraft(parsed.data.answers);
   const privateState = await fourStepPrivateState(context.admin, context.capability.draftId).catch(() => null);
   if (!privateState) return NextResponse.json({ error: "The intake cannot be reviewed right now." }, { status: 503 });
   const resume = privateState.documents.find((item: import("@/lib/intake/four-step").IntakeDocument) => item.kind === "RESUME") ?? null;
-  const errors = [0, 1, 2, 3].flatMap((step) => validateFourStep(step as 0 | 1 | 2 | 3, parsed.data.answers, {
+  const errors = [0, 1, 2, 3].flatMap((step) => validateFourStep(step as 0 | 1 | 2 | 3, answers, {
     resume, facts: privateState.facts, presentedFactIds: new Set(privateState.presentedFactIds),
   }));
   if (errors.length) return NextResponse.json({ error: "Review the highlighted intake fields.", errors }, { status: 400 });
@@ -32,8 +33,8 @@ export async function POST(request: Request) {
   }
   const snapshotId = randomUUID();
   const sensitivePlaintext = Buffer.from(JSON.stringify({
-    schemaVersion: FOUR_STEP_SCHEMA_VERSION, fullName: parsed.data.answers.fullName,
-    customDealbreaker: parsed.data.answers.customDealbreaker || null,
+    schemaVersion: FOUR_STEP_SCHEMA_VERSION, fullName: answers.fullName,
+    customDealbreaker: answers.customDealbreaker || null,
   }), "utf8");
   let envelope;
   try {
@@ -53,23 +54,8 @@ export async function POST(request: Request) {
   });
   if (sensitiveInsert.error) return NextResponse.json({ error: "The encrypted intake could not be stored." }, { status: 502 });
 
-  const answers = parsed.data.answers;
-  const snapshot = {
-    accessEmailNormalized: answers.email.trim().normalize("NFC").toLocaleLowerCase("en-US"),
-    documentContactEmail: answers.email.trim(), desiredActivities: answers.desiredActivities, avoidedActivities: answers.avoidedActivities,
-    optionalTitles: answers.targetTitles, confirmedTitleRestriction: answers.titleRestrictionConfirmed ? { titles: answers.targetTitles } : null,
-    optionalIndustries: answers.industryInterests, blockedIndustries: answers.blockedIndustries, searchBreadth: answers.searchBreadth,
-    guidanceRequested: answers.guidanceRequested, workModes: answers.workModes, stateOrDc: answers.stateOrDc,
-    employmentTypes: answers.employmentTypes, schedules: answers.schedules,
-    travel: { preference: answers.workConditionPreferences.TRAVEL ?? null }, benefits: answers.benefits,
-    dealbreakers: answers.dealbreakers, salaryTargetCents: answers.salaryTargetCents, salaryHardMinimumCents: answers.salaryHardMinimumCents,
-    salaryMinimumFlexible: answers.salaryMinimumFlexible, salaryPeriod: answers.salaryPeriod || null, salaryBasis: answers.salaryBasis || null,
-    salaryOverlapPolicy: answers.salaryOverlapPolicy, salaryUnpublishedPolicy: answers.salaryUnpublishedPolicy,
-    salaryNoncomparablePolicy: answers.salaryNoncomparablePolicy, salaryVariablePayPolicy: answers.salaryVariablePayPolicy,
-    employerUnknownPolicies: answers.employerUnknownPolicies, priorCoverLetterUse: answers.priorCoverLetterUse,
-    experienceAdditions: answers.experienceAdditions, capabilities: answers.capabilities,
-    sensitivePayloadSha256: envelope.contentSha256, canonicalizationVersion: CANONICALIZATION_VERSION, schemaVersion: FOUR_STEP_SCHEMA_VERSION,
-  };
+
+  const snapshot = buildFourStepSnapshot(answers, envelope.contentSha256, CANONICALIZATION_VERSION);
   const reviews = Object.fromEntries(Object.entries(answers.factReviews).map(([factId, decision]) => [factId, {
     decision, correction: answers.factCorrections[factId] ?? null,
   }]));

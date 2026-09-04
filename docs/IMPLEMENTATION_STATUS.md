@@ -20,11 +20,13 @@ The canonical checkout and its four pre-existing changes were not modified, copi
 
 | Artifact | Version/boundary | Bytes | Raw SHA-256 | Normalized LF/UTF-8 SHA-256 |
 | --- | --- | ---: | --- | --- |
-| `APPLYPACK_CODEX_IMPLEMENTATION_CHUNKS_CORRECTED.md` | 2026-09-04; Part I lines 37-1147; Phase 0 lines 1148-1186; Chunks 1-7 begin at lines 1188, 1291, 1378, 1477, 1663, 1779, and 1906 | 275782 | `96720cbfa395c07292cf631174bf31944f3c485c02448eddb71cd011ddc3e691` | `96720cbfa395c07292cf631174bf31944f3c485c02448eddb71cd011ddc3e691` |
+| `APPLYPACK_CODEX_IMPLEMENTATION_CHUNKS_CORRECTED.md` | 2026-09-04; Part I lines 37-1147; Phase 0 lines 1148-1186; Chunks 1-7 begin at lines 1188, 1291, 1392, 1546, 1724, 1901, and 2074 | 275782 | `96720cbfa395c07292cf631174bf31944f3c485c02448eddb71cd011ddc3e691` | `96720cbfa395c07292cf631174bf31944f3c485c02448eddb71cd011ddc3e691` |
 | Part I source body | Lines 37-1147 | 136360 | `95887f7c6afb312f5f3699f0851fdfc3746f7dfff6190d307d1788a7abc09510` | `95887f7c6afb312f5f3699f0851fdfc3746f7dfff6190d307d1788a7abc09510` |
 | `docs/APPLYPACK_PRODUCT_CONTRACT.md` body | Text following the non-normative identity header | 136360 | `95887f7c6afb312f5f3699f0851fdfc3746f7dfff6190d307d1788a7abc09510` | `95887f7c6afb312f5f3699f0851fdfc3746f7dfff6190d307d1788a7abc09510` |
 
-The ZIP central directory contained 13 regular files and two directory members. It contained no absolute path, traversal, duplicate path, symlink, device, socket, FIFO, or other non-regular member. All 13 checks in `SHA256SUMS.txt` passed before use and passed again before Phase 0 documentation was completed. No older implementation-chunks file is tracked in this repository, so no precedence notice was needed. The controlling contract itself identifies the corrected packet and precedence.
+The full repository contract file is 136951 bytes with SHA-256 `df4e32e2ea0c37abd3f39904c36576c0af3935f9754bb1b81979782dc002d69f`; that digest includes the repository-local non-normative identity header and is not a checksum entry from the private bundle. The authoritative Part I body alone is 136360 bytes with SHA-256 `95887f7c6afb312f5f3699f0851fdfc3746f7dfff6190d307d1788a7abc09510`, exactly matching the body installed below that header.
+
+The ZIP central directory contained 14 regular files and two directory members. It contained no absolute path, traversal, duplicate path, symlink, device, socket, FIFO, or other non-regular member. All 13 checks in `SHA256SUMS.txt` passed before use and passed again before Phase 0 documentation was completed. No older implementation-chunks file is tracked in this repository, so no precedence notice was needed. The controlling contract itself identifies the corrected packet and precedence.
 
 ## Required source manifest
 
@@ -319,13 +321,26 @@ The active public route renders `wizard-v3.tsx` without a prepayment authenticat
 - Aggregate intake analytics accept only an allowlisted event name and numbered step. Names, email, free text, document metadata, draft IDs, capability values, and arbitrary dimensions are not accepted.
 - The staff pending-intake surface is protected by existing admin authorization and labels pending records accurately. No public customer-supplied-job product, pricing, matching, Checkout, or site-wide redesign was added.
 
+### Chunk 2 oversight remediation
+
+The prior `161/161 IMPLEMENTED`, `UNIMPLEMENTED_CHUNK_REQUIREMENTS: NONE`, and `CHUNK_STATUS: COMPLETE` declarations were withdrawn when oversight identified seven unsupported or inaccurate claims. Starting from remediation authority commit `6256250693adefe2762a5f921c81fbfbcc305c75`, this correction:
+
+- preserves all selected matching preferences in the immutable snapshot and clears hidden or inapplicable title/preference state before save and finalization;
+- gives `NEITHER` an immediate document-removal action and a server-side fail-safe that supersedes any still-current prior cover letter before finalization;
+- replaces generic correction text with a strict discriminated union and typed persisted payloads for employer/organization, role/relationship, date range, responsibility, tool capability, education, credential, and other structured facts;
+- derives employer-unknown questions from every active hard dealbreaker, required benefit, and hard work-condition preference;
+- exposes separate human-readable review sections with per-section Edit, direct return to review after earlier-step edits, and retained uploaded-document state;
+- associates adjacent errors with their controls, keeps focus on the linked summary until the customer activates an error link, and adds full keyboard-only and browser-engine scaling checks; and
+- corrects Phase 0 bundle-member counts, chunk boundaries, and contract-hash qualification.
+
+The implementation commit intentionally records this scope before the final evidence-only commit. No Chunk 3 code, provider activation, production migration, push, merge, or deployment is included.
 ### Accessibility, responsive behavior, and recovery
 
-The wizard uses native checkbox/radio controls, labelled fields and fieldsets, a linked focusable error summary, adjacent errors for grouped/required controls, polite save/status announcements, first-invalid focus, visible keyboard focus, minimum 44-pixel targets, reduced-motion behavior, forced-color support, and responsive layouts from 320 through 1440 pixels. Automated browser coverage includes keyboard-only progression, 200% zoom, reduced motion, forced colors, every step at desktop/mobile sizes, adaptive task follow-ups, and a mobile validation-error capture. The app image-viewer ACL fault prevented a separate manual in-app image inspection; the committed screenshots and automated layout assertions are the retained visual evidence.
+The wizard uses native checkbox/radio controls, labelled fields and fieldsets, a linked focusable error summary that retains focus until its user-activated link focuses the corresponding control, stable adjacent error IDs with `aria-describedby` associations, polite save/status announcements, visible keyboard focus, minimum 44-pixel targets, reduced-motion behavior, forced-color support, and responsive layouts from 320 through 1440 pixels. Automated browser coverage includes complete keyboard-only progression, a Chromium DevTools browser-metrics 2:1 zoom-equivalent reflow check with no CSS `zoom`, reduced motion, forced colors, every step at desktop/mobile sizes, adaptive task follow-ups, and a mobile validation-error capture. These checks do not constitute manual screen-reader or assistive-technology certification. The app image-viewer ACL fault previously prevented a separate manual in-app image inspection; committed screenshots and automated layout assertions remain evidence, not a manual accessibility certification.
 
 ### Migration, compatibility, and rollback
 
-Additive migration `202609040023_chunk2_four_step_intake.sql` follows the Chunk 1 foundation. It adds four-step draft metadata, candidate-fact presentation tier fields, immutable presentation/review history, targeted questions, pending feasibility requests, privacy-safe aggregate counts, and capability-only read/save/retry/finalization functions. Existing and paid legacy records are not rewritten or dropped. Generated database types include the expanded schema.
+Additive migration `202609040023_chunk2_four_step_intake.sql` follows the Chunk 1 foundation. Additive remediation migration `202609040024_chunk2_remediation.sql` then preserves preferred work mode, preferred employment type, and all work-condition preferences; stores structured corrections without generic-text collapse; and enforces `NEITHER` as a server-side supersession boundary for any current prior cover letter. Existing and paid legacy records are not rewritten or dropped. Generated database types include the expanded schema.
 
 Deployment order remains expand -> regenerate types -> compatibility deploy -> checkpoint/validate -> later authorized cutover. Code rollback restores the prior route while leaving the additive compatible schema. No destructive down migration is supplied for operational Chunk 2 data; any compensating migration requires separate database-owner proof and approval. Production activation remains fail closed until KMS, file processing, retention/privacy, capacity/staffing, source authorization, and later-chunk gates are approved.
 
@@ -333,8 +348,8 @@ Deployment order remains expand -> regenerate types -> compatibility deploy -> c
 
 | Check ID | Procedure | Intended result |
 | --- | --- | --- |
-| C2-MIGRATE | `supabase db reset` | All 23 migrations apply from zero |
-| C2-DB | `npm run test:database` | Chunk 1 invariants plus four-step capability, fact decision, invalidation, and pending-feasibility transaction pass |
+| C2-MIGRATE | `supabase db reset --local` | All 24 migrations apply from zero |
+| C2-DB | `npm run test:database` | Chunk 1 invariants plus lossless preferences, typed fact corrections, cover-letter supersession, invalidation, and pending-feasibility transactions pass |
 | C2-LEGACY | `npm run test:legacy-backfill` | Legacy paid records and idempotent compatibility backfill remain intact |
 | C2-ROLLBACK | `npm run test:rollback` followed by reset | Guarded Chunk 1 rollback rehearsal still passes and latest schema is restored |
 | C2-TYPES | `npm run types:database:check` | Generated schema types match |
@@ -342,13 +357,11 @@ Deployment order remains expand -> regenerate types -> compatibility deploy -> c
 | C2-TYPE | `npm run typecheck` | Strict TypeScript passes |
 | C2-UNIT | `npm test` | Four-step validation, duration/fact regressions, KMS fail-closed behavior, and repository units pass |
 | C2-BUILD | `npm run build` | Production build and route generation pass |
-| C2-E2E | `npm run test:e2e` | Full desktop/mobile regression, four-step flow, keyboard, zoom, and media preferences pass |
+| C2-E2E | `npm run test:e2e` | Full desktop/mobile regression plus exact review/edit, keyboard, error-association, cover removal, browser-metrics scaling, and media-preference coverage pass |
 | C2-A11Y-VISUAL | `tests/e2e/chunk2-evidence.spec.ts` plus committed PNGs | Axe/layout assertions and deterministic step/adaptive/error captures pass |
 | C2-INTEGRATION-EXTERNAL | `npm run test:integration` | Real scanner tests are local N/A without an approved scanner; fail-closed deterministic tests remain mandatory |
 | C2-FORMAT | `git diff --check` and staged check | No whitespace errors |
 
-### Chunk 2 verified result
+### Chunk 2 remediation verification status
 
-Tested code commit `d3e56351ffb09f9b67063d4ed5e1f34e2d4caeb1` (tree `a4e26eadbdd77802d84e764a24d5441e11d99e17`) passed all 12 applicable Chunk 2 checks: all 23 migrations from zero; combined Chunk 1/2 database invariants; legacy paid-order backfill and idempotency; guarded rollback followed by full restoration; generated-type equality; lint; strict TypeScript; 144/144 unit tests in 34 files; production build with 47 generated pages; 61 passing desktop/mobile Playwright cases plus one intentional duplicate-capture skip across 62 scheduled cases; Axe, keyboard, zoom, forced-color, reduced-motion, responsive-layout, and deterministic capture evidence; and whitespace validation. The real-scanner integration suite reported 3/3 tests skipped in two files because no approved production scanner was configured; this is `NOT_APPLICABLE_LOCAL`, is excluded from the denominator, and leaves production processing fail closed.
-
-The cumulative verified ledger is 32/32 applicable checks: 9/9 from Phase 0, 11/11 from Chunk 1, and 12/12 from Chunk 2. Failed tests: none. Blocked applicable tests: none. Production credentials were not used. Missing production KMS, malware/parser/model pipeline, approved retention durations and Privacy Policy language, capacity/staffing configuration, documentary source authorization, and later Chunks 3-7 remain release blockers; they are not failed local repository tests.
+The superseded pre-remediation result is not authoritative. Final test counts, the tested implementation commit/tree, corrected artifact hashes, and the completion decision are recorded only after the clean implementation commit is exercised by the complete required suite and then captured in the evidence-only commit.

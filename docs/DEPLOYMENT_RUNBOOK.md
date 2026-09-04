@@ -7,7 +7,7 @@ Status: Chunk 2 repository implementation is complete locally. No production mig
 | Owner | Responsibility |
 | --- | --- |
 | Release owner | Exact commit, change window, go/no-go, traffic rollback |
-| Database owner | Backup, migrations `202609040022` and `202609040023`, backfill checkpoints, validation, database recovery |
+| Database owner | Backup, migrations `202609040022`, `202609040023`, and `202609040024`, backfill checkpoints, validation, database recovery |
 | Application owner | Compatibility deploy, server feature flags, cutover |
 | Payments owner | Stripe tax/price/webhook/refund/dispute reconciliation |
 | Security/privacy owner | KMS, private storage, malware scanner, sandbox parser, reference isolation, retention/privacy approval |
@@ -37,9 +37,10 @@ Migration order is fixed:
 1. Apply all existing migrations through `202609030021_nonrecursive_job_read_policies.sql`.
 2. Apply additive migration `202609040022_corrected_chunk1_foundation.sql`.
 3. Apply additive migration `202609040023_chunk2_four_step_intake.sql`.
-4. Do not drop or rewrite legacy tables, columns, paid orders, provider history, or audit history.
-5. Keep `CUSTOMER_SUPPLIED_INGESTION`, corrected file processing, retention cleanup, and Checkout disabled.
-6. Regenerate types and compare them to `src/lib/database.types.ts`.
+4. Apply additive remediation migration `202609040024_chunk2_remediation.sql`.
+5. Do not drop or rewrite legacy tables, columns, paid orders, provider history, or audit history.
+6. Keep `CUSTOMER_SUPPLIED_INGESTION`, corrected file processing, retention cleanup, and Checkout disabled.
+7. Regenerate types and compare them to `src/lib/database.types.ts`.
 
 Disposable rehearsal commands:
 
@@ -166,7 +167,7 @@ The compensating script `supabase/rollback/202609040022_corrected_chunk1_foundat
 
 Owner: application owner for route/feature traffic; database owner for migration and validation; security/privacy owner for KMS, document processing, retention, and Privacy Policy approval.
 
-Apply `202609040023_chunk2_four_step_intake.sql` only after `202609040022_corrected_chunk1_foundation.sql`. Regenerate and compare database types before deploying compatibility code. The migration is additive and does not rewrite legacy paid orders. The four-step UI may be deployed only with anonymous capability persistence available; final submission remains fail closed unless the exact production KMS configuration and secure file-processing gates are approved.
+Apply `202609040023_chunk2_four_step_intake.sql` only after `202609040022_corrected_chunk1_foundation.sql`, then apply `202609040024_chunk2_remediation.sql`. Regenerate and compare database types before deploying compatibility code. The migration is additive and does not rewrite legacy paid orders. The four-step UI may be deployed only with anonymous capability persistence available; final submission remains fail closed unless the exact production KMS configuration and secure file-processing gates are approved.
 
 Required non-secret server settings for production finalization:
 
@@ -219,15 +220,30 @@ where r.state = 'PENDING' and s.id is null;
 select event_day, event_name, step, count
 from public.ap_intake_event_counts
 order by event_day, event_name, step;
+select count(*) as invalid_preferred_work_mode
+from public.ap_intake_snapshots
+where preferred_work_mode is not null and not (work_modes ? preferred_work_mode);
+
+select count(*) as invalid_preferred_employment_type
+from public.ap_intake_snapshots
+where preferred_employment_type is not null and not (employment_types ? preferred_employment_type);
+
+select count(*) as neither_with_current_prior_cover
+from public.ap_anonymous_drafts d
+join public.ap_intake_snapshots s on s.id = d.finalized_snapshot_id
+join public.ap_document_versions v on v.draft_id = d.id
+where s.prior_cover_letter_use = 'NEITHER'
+  and v.kind = 'PRIOR_COVER_LETTER'
+  and v.is_current;
 ```
 
-Required results: no completed draft lacks a finalized snapshot; no pending feasibility request lacks its immutable snapshot; event rows contain only the allowlisted event name and numbered step; capability-only functions are not executable by `anon` or `authenticated`; protected staff visibility is role checked; and the UI creates no Checkout, payment, quote, capacity reservation, or feasibility outcome.
+Required results: no completed draft lacks a finalized snapshot; no pending feasibility request lacks its immutable snapshot; all three remediation queries return zero; selected preferences and their criterion-specific unknown policies remain present in the snapshot; structured corrections retain their category-specific JSON shape; event rows contain only the allowlisted event name and numbered step; capability-only functions are not executable by `anon` or `authenticated`; protected staff visibility is role checked; and the UI creates no Checkout, payment, quote, capacity reservation, or feasibility outcome.
 
 Failure recovery:
 
 1. Disable Chunk 2 application traffic and keep finalization/KMS processing off.
 2. Revert application traffic to the last compatible commit.
-3. Leave migrations `202609040022` and `202609040023` in place; both are additive.
+3. Leave migrations `202609040022`, `202609040023`, and `202609040024` in place; all three are additive.
 4. Preserve drafts, document versions, immutable snapshots, fact review history, sensitive payloads, pending requests, and audit events.
 5. Reconcile any pending request with its exact snapshot/content hash before retrying; never synthesize a success, quote, or capacity allocation.
 6. Use a compensating migration only after the database owner proves the affected tables have no operational/customer data and obtains separate approval. Do not drop or rewrite legacy data.

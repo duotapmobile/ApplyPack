@@ -124,3 +124,18 @@ The owner's latest direct feedback replaces the compact, playful process control
 - The dedicated `/how-it-works` page now explains intake, capacity and payment timing, research, the complete 10-match delivery, customer selection, optional $8 application materials, truthful human review, customer submission, and the no-guarantee boundary.
 - `/how-it-works` explains the operational journey. `/experience-connections`, labeled `How Matching Works`, remains focused on the reasoning used to identify credible experience and life-fit connections.
 - `What it demonstrate` is corrected to `What it demonstrates`, with the caregiving example retaining the qualified wording `What it may demonstrate`.
+
+## September 4, 2026 Chunk 2 oversight remediation
+
+The oversight verdict supersedes the earlier Chunk 2 completion and accessibility claims until the remediation is implemented and reverified. The authorized start is `6256250693adefe2762a5f921c81fbfbcc305c75`; scope is Chunk 2 remediation and evidence correction only.
+
+- Immutable intake snapshots now retain preferred work mode, preferred employment type, schedules, benefits, all work-condition preferences, and criterion-specific employer-unknown policies. A shared normalizer removes hidden or inapplicable title/preference state before save and finalization.
+- A prior cover letter set to `NEITHER` is removed through the capability-protected document route; finalization also supersedes any still-current prior letter before downstream processing can use it.
+- Extracted-fact corrections use a strict discriminated union. The database retains the category in `value_kind` and the category-specific fields in `typed_value`; the original extracted fact remains rejected and superseded for audit.
+- Hard employer-unknown decisions are derived independently for dealbreakers, must-have benefits, and hard work-condition preferences. Namespaced keys prevent collisions.
+- Review is divided into distinct human-readable sections, each with its own Edit action. Editing an earlier step returns directly to review after a successful save and retains the document record.
+- Error summaries retain focus until the customer activates a link. Controls and groups expose stable adjacent error IDs through `aria-describedby`. Keyboard evidence traverses and operates the complete flow. The 200 percent assertion uses Chromium browser-engine metrics and explicitly does not use CSS `zoom`; automated checks do not claim manual assistive-technology certification.
+- Migration `202609040024_chunk2_remediation.sql` is additive. Normal rollback reverts code/traffic while retaining the compatible schema; a destructive down migration remains prohibited without separate proof and approval.
+- The Phase 0 bundle inventory is corrected to 14 regular files plus 2 directories, Chunk 3 through 7 boundaries are corrected, and full-file versus authoritative-body contract checksums are distinguished.
+
+No provider was activated, no production database was changed, and no Chunk 3 work was started.

@@ -58,7 +58,7 @@
       "command": "ZIP central-directory safety audit; sha256sum -c SHA256SUMS.txt",
       "due_chunk": "Phase 0",
       "environment": "ACL-restricted private extraction; Git-for-Windows sha256sum",
-      "evidence": "15 safe members (13 regular files and 2 directories); no absolute/traversal/duplicate/link/special member; 13 of 13 checks passed twice.",
+      "evidence": "16 safe members (14 regular files and 2 directories); no absolute/traversal/duplicate/link/special member; 13 of 13 checks passed twice.",
       "exact_commit": "aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8",
       "exit_code": 0,
       "failure": null,

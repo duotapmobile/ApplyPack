@@ -1946,6 +1946,8 @@ export type Database = {
           optional_titles: Json
           parent_snapshot_id: string | null
           payer_receipt_email: string | null
+          preferred_employment_type: string | null
+          preferred_work_mode: string | null
           prior_cover_letter_use: string
           salary_basis: string | null
           salary_hard_minimum_cents: number | null
@@ -1965,6 +1967,7 @@ export type Database = {
           travel: Json
           us_state_or_dc: string | null
           version: number
+          work_condition_preferences: Json
           work_modes: Json
         }
         Insert: {
@@ -1992,6 +1995,8 @@ export type Database = {
           optional_titles: Json
           parent_snapshot_id?: string | null
           payer_receipt_email?: string | null
+          preferred_employment_type?: string | null
+          preferred_work_mode?: string | null
           prior_cover_letter_use: string
           salary_basis?: string | null
           salary_hard_minimum_cents?: number | null
@@ -2011,6 +2016,7 @@ export type Database = {
           travel: Json
           us_state_or_dc?: string | null
           version: number
+          work_condition_preferences?: Json
           work_modes: Json
         }
         Update: {
@@ -2038,6 +2044,8 @@ export type Database = {
           optional_titles?: Json
           parent_snapshot_id?: string | null
           payer_receipt_email?: string | null
+          preferred_employment_type?: string | null
+          preferred_work_mode?: string | null
           prior_cover_letter_use?: string
           salary_basis?: string | null
           salary_hard_minimum_cents?: number | null
@@ -2057,6 +2065,7 @@ export type Database = {
           travel?: Json
           us_state_or_dc?: string | null
           version?: number
+          work_condition_preferences?: Json
           work_modes?: Json
         }
         Relationships: [

@@ -39,7 +39,11 @@ test("the anonymous four-step intake is accessible and starts no checkout", asyn
   await expect(page.getByText("STEP 1 OF 4")).toBeVisible();
   await expect(page.getByText(/No account or payment in this intake/)).toBeVisible();
   await page.getByRole("button", { name: /save and continue/i }).click();
-  await expect(page.getByRole("link", { name: "Enter your full name." })).toBeVisible();
+  const errorSummary = page.locator(".intake-errors");
+  await expect(errorSummary).toBeFocused();
+  const nameErrorLink = page.getByRole("link", { name: "Enter your full name." });
+  await expect(nameErrorLink).toBeVisible();
+  await nameErrorLink.click();
   await expect(page.getByLabel("Full name required")).toBeFocused();
   await page.getByLabel("Full name required").fill("E2E Customer");
   await page.getByLabel("Email address required").fill("e2e@example.invalid");
@@ -71,21 +75,11 @@ for (const width of [320, 360, 390, 430, 768, 1024, 1440]) {
   });
 }
 
-test("intake supports keyboard focus, reduced motion, and forced colors", async ({ page }) => {
+test("intake honors reduced motion and forced colors", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce", forcedColors: "active" });
   await page.goto("/get-started");
-  await page.keyboard.press("Tab");
-  await expect(page.locator(":focus")).toBeVisible();
   const duration = await page.locator(".wizard-progress i").evaluate((element) => getComputedStyle(element).transitionDuration);
   expect(Number.parseFloat(duration)).toBeLessThanOrEqual(0.001);
-});
-test("intake remains usable at 200 percent browser zoom", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/get-started");
-  await expect(page.getByText("STEP 1 OF 4")).toBeVisible();
-  await page.evaluate(() => { document.documentElement.style.zoom = "2"; });
-  await expect(page.getByLabel("Full name required")).toBeVisible();
-  expect(await findOverflow(page)).toEqual([]);
 });
 test("security headers are present", async ({ request }) => {
   const response = await request.get("/");

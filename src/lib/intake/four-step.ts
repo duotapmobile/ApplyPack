@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const FOUR_STEP_FLOW_VERSION = "FOUR_STEP_RESPONSIBILITY_V1" as const;
-export const FOUR_STEP_SCHEMA_VERSION = "applypack-intake-v2" as const;
+export const FOUR_STEP_SCHEMA_VERSION = "applypack-intake-v3" as const;
 export const ACTIVITY_CATALOG_VERSION = "applypack-activities-2026-09-04" as const;
 export const CAPABILITY_CATALOG_VERSION = "applypack-capabilities-2026-09-04" as const;
 
@@ -70,6 +70,16 @@ export const businessSystemTasks = [
 
 export const factTiers = ["SEARCH_CRITICAL", "MATCH_ENHANCING", "DOCUMENT_ONLY"] as const;
 export const factReviewDecisions = ["CONFIRM", "REJECT", "SKIP", "CORRECT"] as const;
+export const factCorrectionCategories = [
+  "EMPLOYER_OR_ORGANIZATION",
+  "ROLE_OR_RELATIONSHIP",
+  "DATE_RANGE",
+  "RESPONSIBILITY",
+  "TOOL_CAPABILITY",
+  "EDUCATION",
+  "CERTIFICATION_OR_CREDENTIAL",
+  "OTHER_STRUCTURED_FACT",
+] as const;
 export const experienceKinds = [
   "PAID_EMPLOYMENT",
   "SELF_EMPLOYMENT_BUSINESS",
@@ -142,10 +152,18 @@ export const factSuggestionSchema = z.object({
 
 export type FactSuggestion = z.infer<typeof factSuggestionSchema>;
 
-const factCorrectionSchema = z.object({
-  value: z.string().trim().min(1).max(500),
-  category: z.enum(["IDENTITY", "ROLE", "DATE", "RESPONSIBILITY", "TOOL", "EDUCATION", "CERTIFICATION", "OTHER"]),
-});
+export const factCorrectionSchema = z.discriminatedUnion("category", [
+  z.object({ category: z.literal("EMPLOYER_OR_ORGANIZATION"), employerOrOrganization: boundedText(200) }).strict(),
+  z.object({ category: z.literal("ROLE_OR_RELATIONSHIP"), roleOrRelationship: boundedText(200) }).strict(),
+  z.object({ category: z.literal("DATE_RANGE"), startsOn: optionalDate, endsOn: optionalDate, datePrecision: z.enum(["EXACT_DAY", "MONTH", "YEAR", "UNKNOWN"]) }).strict(),
+  z.object({ category: z.literal("RESPONSIBILITY"), responsibility: boundedText(500) }).strict(),
+  z.object({ category: z.literal("TOOL_CAPABILITY"), taskOrTool: boundedText(200), capabilityStatus: z.enum(["", "CAN_DO_NOW", "DONE_BEFORE_NEEDS_REFRESHER", "BASIC_EXPOSURE", "NOT_DONE", "UNSURE"]) }).strict(),
+  z.object({ category: z.literal("EDUCATION"), educationLevel: boundedText(120), educationField: boundedText(200), completionStatus: boundedText(120) }).strict(),
+  z.object({ category: z.literal("CERTIFICATION_OR_CREDENTIAL"), credentialName: boundedText(200), issuingOrganization: boundedText(200), completionStatus: boundedText(120) }).strict(),
+  z.object({ category: z.literal("OTHER_STRUCTURED_FACT"), factLabel: boundedText(160), factValue: boundedText(500) }).strict(),
+]);
+
+export type FactCorrection = z.infer<typeof factCorrectionSchema>;
 
 export const experienceAdditionSchema = z.object({
   clientId: z.string().uuid(),
@@ -275,6 +293,133 @@ export type IntakeDocument = {
 
 export type StepError = { fieldId: string; message: string };
 
+export type HardEmployerCriterion = { key: string; label: string };
+
+const hardPreferenceValues = new Set(["MUST_HAVE", "DO_NOT_SHOW", "DEALBREAKER"]);
+const workConditionLabels: Record<string, string> = {
+  TRAVEL: "travel",
+  PHONE_INTENSITY: "phone intensity",
+  SALES: "sales duties",
+  PHYSICAL_DEMANDS: "physical demands",
+  FLEXIBILITY: "schedule flexibility",
+};
+
+export function hardEmployerCriteria(draft: FourStepDraft): HardEmployerCriterion[] {
+  const criteria = new Map<string, string>();
+  const dealbreakerLabels = new Map<string, string>(dealbreakerCatalog.map(([value, label]) => [value, label]));
+  for (const value of draft.dealbreakers.filter((item) => item !== "SOMETHING_ELSE")) {
+    criteria.set(`dealbreaker:${value}`, dealbreakerLabels.get(value) ?? value);
+  }
+  for (const benefit of draft.benefits.mustHave) criteria.set(`benefit:${benefit}`, `${benefit} as a required benefit`);
+  for (const [key, value] of Object.entries(draft.workConditionPreferences)) {
+    if (!hardPreferenceValues.has(value)) continue;
+    const activity = key.startsWith("activity:") ? activityCatalog.find(([id]) => id === key.slice(9))?.[1] : null;
+    criteria.set(`work_condition:${key}`, activity ?? workConditionLabels[key] ?? key);
+  }
+  return [...criteria].map(([key, label]) => ({ key, label }));
+}
+
+export function unknownPolicyFieldId(key: string) {
+  return `unknown-${key.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+}
+
+export function normalizedFourStepDraft(draft: FourStepDraft): FourStepDraft {
+  const applicableWorkConditions = Object.fromEntries(Object.entries(draft.workConditionPreferences).filter(([key]) => !key.startsWith("activity:") || draft.avoidedActivities.includes(key.slice(9))));
+  const base = clearInapplicableCommute({
+    ...draft,
+    titleRestrictionConfirmed: draft.searchBreadth === "CLOSE_TO_PREVIOUS_WORK" && draft.targetTitles.length > 0 ? draft.titleRestrictionConfirmed : false,
+    preferredWorkMode: draft.workModes.length > 1 && draft.preferredWorkMode && draft.workModes.includes(draft.preferredWorkMode) ? draft.preferredWorkMode : "",
+    preferredEmploymentType: draft.employmentTypes.length > 1 && draft.preferredEmploymentType && draft.employmentTypes.includes(draft.preferredEmploymentType) ? draft.preferredEmploymentType : "",
+    workConditionPreferences: applicableWorkConditions,
+  });
+  const activeCriteria = new Set(hardEmployerCriteria(base).map(({ key }) => key));
+  const employerUnknownPolicies = Object.fromEntries(Object.entries(base.employerUnknownPolicies).flatMap(([key, value]) => {
+    const migratedKey = key.includes(":") ? key : `dealbreaker:${key}`;
+    return activeCriteria.has(migratedKey) ? [[migratedKey, value]] : [];
+  }));
+  return { ...base, employerUnknownPolicies };
+}
+
+export function buildFourStepSnapshot(draft: FourStepDraft, sensitivePayloadSha256: string, canonicalizationVersion: string) {
+  const answers = normalizedFourStepDraft(draft);
+  return {
+    accessEmailNormalized: answers.email.trim().normalize("NFC").toLocaleLowerCase("en-US"),
+    documentContactEmail: answers.email.trim(),
+    desiredActivities: answers.desiredActivities,
+    avoidedActivities: answers.avoidedActivities,
+    optionalTitles: answers.targetTitles,
+    confirmedTitleRestriction: answers.titleRestrictionConfirmed ? { titles: answers.targetTitles } : null,
+    optionalIndustries: answers.industryInterests,
+    blockedIndustries: answers.blockedIndustries,
+    searchBreadth: answers.searchBreadth,
+    guidanceRequested: answers.guidanceRequested,
+    workModes: answers.workModes,
+    preferredWorkMode: answers.preferredWorkMode || null,
+    stateOrDc: answers.stateOrDc,
+    employmentTypes: answers.employmentTypes,
+    preferredEmploymentType: answers.preferredEmploymentType || null,
+    schedules: answers.schedules,
+    travel: { preference: answers.workConditionPreferences.TRAVEL ?? null },
+    benefits: answers.benefits,
+    workConditionPreferences: answers.workConditionPreferences,
+    dealbreakers: answers.dealbreakers,
+    salaryTargetCents: answers.salaryTargetCents,
+    salaryHardMinimumCents: answers.salaryHardMinimumCents,
+    salaryMinimumFlexible: answers.salaryMinimumFlexible,
+    salaryPeriod: answers.salaryPeriod || null,
+    salaryBasis: answers.salaryBasis || null,
+    salaryOverlapPolicy: answers.salaryOverlapPolicy,
+    salaryUnpublishedPolicy: answers.salaryUnpublishedPolicy,
+    salaryNoncomparablePolicy: answers.salaryNoncomparablePolicy,
+    salaryVariablePayPolicy: answers.salaryVariablePayPolicy,
+    employerUnknownPolicies: answers.employerUnknownPolicies,
+    priorCoverLetterUse: answers.priorCoverLetterUse,
+    experienceAdditions: answers.experienceAdditions,
+    capabilities: answers.capabilities,
+    sensitivePayloadSha256,
+    canonicalizationVersion,
+    schemaVersion: FOUR_STEP_SCHEMA_VERSION,
+  };
+}
+export function recommendedFactCorrectionCategory(fact: Pick<FactSuggestion, "semanticKey" | "displayLabel">): FactCorrection["category"] {
+  const key = `${fact.semanticKey} ${fact.displayLabel}`.toLowerCase();
+  if (/employer|company|organization|business/.test(key)) return "EMPLOYER_OR_ORGANIZATION";
+  if (/role|title|relationship|position/.test(key)) return "ROLE_OR_RELATIONSHIP";
+  if (/date|start|end|period|when/.test(key)) return "DATE_RANGE";
+  if (/education|degree|course|school|college|university/.test(key)) return "EDUCATION";
+  if (/certification|credential|license/.test(key)) return "CERTIFICATION_OR_CREDENTIAL";
+  if (/tool|software|skill|excel|system|capability/.test(key)) return "TOOL_CAPABILITY";
+  if (/responsib|duty|activity|task/.test(key)) return "RESPONSIBILITY";
+  return "OTHER_STRUCTURED_FACT";
+}
+
+export function emptyFactCorrection(category: FactCorrection["category"]): FactCorrection {
+  switch (category) {
+    case "EMPLOYER_OR_ORGANIZATION": return { category, employerOrOrganization: "" };
+    case "ROLE_OR_RELATIONSHIP": return { category, roleOrRelationship: "" };
+    case "DATE_RANGE": return { category, startsOn: "", endsOn: "", datePrecision: "MONTH" };
+    case "RESPONSIBILITY": return { category, responsibility: "" };
+    case "TOOL_CAPABILITY": return { category, taskOrTool: "", capabilityStatus: "" };
+    case "EDUCATION": return { category, educationLevel: "", educationField: "", completionStatus: "" };
+    case "CERTIFICATION_OR_CREDENTIAL": return { category, credentialName: "", issuingOrganization: "", completionStatus: "" };
+    case "OTHER_STRUCTURED_FACT": return { category, factLabel: "", factValue: "" };
+  }
+}
+
+export function factCorrectionIsComplete(correction: FactCorrection | undefined) {
+  if (!correction) return false;
+  switch (correction.category) {
+    case "EMPLOYER_OR_ORGANIZATION": return correction.employerOrOrganization.length > 0;
+    case "ROLE_OR_RELATIONSHIP": return correction.roleOrRelationship.length > 0;
+    case "DATE_RANGE": return Boolean(correction.startsOn || correction.endsOn);
+    case "RESPONSIBILITY": return correction.responsibility.length > 0;
+    case "TOOL_CAPABILITY": return correction.taskOrTool.length > 0 && correction.capabilityStatus.length > 0;
+    case "EDUCATION": return Boolean(correction.educationLevel || correction.educationField || correction.completionStatus);
+    case "CERTIFICATION_OR_CREDENTIAL": return correction.credentialName.length > 0;
+    case "OTHER_STRUCTURED_FACT": return correction.factLabel.length > 0 && correction.factValue.length > 0;
+  }
+}
+
 export function validateFourStep(step: 0 | 1 | 2 | 3, draft: FourStepDraft, input: {
   resume: IntakeDocument | null;
   facts: readonly FactSuggestion[];
@@ -299,7 +444,7 @@ export function validateFourStep(step: 0 | 1 | 2 | 3, draft: FourStepDraft, inpu
     for (const fact of input.facts.filter((item) => item.tier === "SEARCH_CRITICAL" && item.verification === "EXTRACTED_UNCONFIRMED")) {
       if (!input.presentedFactIds.has(fact.id) || !draft.factReviews[fact.id]) {
         errors.push({ fieldId: `fact-${fact.id}`, message: `Review ${fact.displayLabel}.` });
-      } else if (draft.factReviews[fact.id] === "CORRECT" && !draft.factCorrections[fact.id]?.value) {
+      } else if (draft.factReviews[fact.id] === "CORRECT" && !factCorrectionIsComplete(draft.factCorrections[fact.id])) {
         errors.push({ fieldId: `fact-correction-${fact.id}`, message: `Enter the corrected value for ${fact.displayLabel}.` });
       }
     }
@@ -317,8 +462,8 @@ export function validateFourStep(step: 0 | 1 | 2 | 3, draft: FourStepDraft, inpu
     if (!draft.salaryMinimumFlexible && draft.salaryTargetCents !== null && draft.salaryHardMinimumCents !== null && draft.salaryTargetCents < draft.salaryHardMinimumCents) {
       errors.push({ fieldId: "salary-target", message: "Your target cannot be below a firm hard minimum." });
     }
-    for (const criterion of draft.dealbreakers.filter((value) => value !== "SOMETHING_ELSE")) {
-      if (!draft.employerUnknownPolicies[criterion]) errors.push({ fieldId: `unknown-${criterion.toLowerCase()}`, message: "Choose what to do when the employer does not state this detail." });
+    for (const criterion of hardEmployerCriteria(draft)) {
+      if (!draft.employerUnknownPolicies[criterion.key]) errors.push({ fieldId: unknownPolicyFieldId(criterion.key), message: `Choose what to do when the employer does not state ${criterion.label.toLowerCase()}.` });
     }
     if (draft.dealbreakers.includes("SOMETHING_ELSE") && !draft.customDealbreaker) {
       errors.push({ fieldId: "custom-dealbreaker", message: "Describe what else should be left out." });
