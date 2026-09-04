@@ -31,6 +31,8 @@ The image is visual inspiration only. Do not copy its brand, people, words, illu
 
 Create a highly polished, modern service website that feels clear, human, trustworthy, and easy to navigate. The page should never feel like a generic template or a stack of identical SaaS cards.
 
+The controlling visual standard is refined editorial clarity. Brand color is welcome, but it must appear as disciplined emphasis rather than decoration. Strong alignment, readable type measure, thin rules, quiet surfaces, and intentional negative space should carry the design. The site must never resemble a craft sale, classroom worksheet, or playful consumer app.
+
 The reference succeeds because it uses:
 
 - Clearly defined sections
@@ -86,6 +88,11 @@ Avoid:
 - AI sparkles, robot graphics, magic wands, or sci-fi styling
 - Decorative resume designs that conflict with an ATS-safe service
 - Purple borders running down the full sides of the site
+- Oversized pill controls
+- Candy-colored blocks competing for attention
+- Checkmarks used as decoration inside selected navigation controls
+- Bouncy buttons, inset novelty stripes, or cartoon-like selected states
+- Headings forced into narrow measures that create stranded words
 
 ## Color system
 
@@ -203,10 +210,10 @@ Rules:
 
 ### Shape
 
-- Standard card radius: 24px
-- Large panel radius: 32px
-- Small control radius: 14px
-- Use one consistent pill-button treatment only if it matches the approved brand
+- Standard card radius: 8px to 16px
+- Large panel radius: 16px to 24px
+- Small control radius: 6px to 10px
+- Reserve pills for compact tags only, not navigation, tabs, process steps, or primary actions
 - Standard border: 1px solid `--border`
 
 ### Shadow
@@ -238,7 +245,9 @@ The numbered visual patterns below are a reusable component inventory. They do n
 ### 1. Header
 
 - Light background
-- Logo left
+- Give the logo enough vertical room to show the full mark without compression
+- Position the logo at the left edge of the content frame, slightly lower than a mechanically centered placement
+- Desktop logo width should normally be 160px to 176px
 - Short primary navigation right
 - One high-contrast action at the far right
 - Optional secondary account or status link only if the product supports it
@@ -328,15 +337,16 @@ Do not alternate the mobile reading order.
 
 ### 6. Process or journey section
 
-Use a visual sequence rather than another bento grid.
+Use a refined visual sequence rather than another bento grid.
 
 Recommended pattern:
 
-- Large numbered circles or markers
-- Short connector line on desktop
-- Vertical sequence on mobile
-- One icon or miniature visual per step
-- Clear action below the full sequence
+- Plain numbered markers, thin rules, and a directional arrow
+- A visible instruction that the steps can be selected
+- Each step uses an explicit `View details` label or equivalent
+- The selected explanation stays visually attached to the sequence and uses normal body size
+- Horizontal sequence on desktop and vertical sequence on mobile
+- Use brand color as a selected rule or small accent, not a filled novelty tile
 
 Do not use a horizontally scrollable process on mobile.
 
@@ -439,10 +449,12 @@ Buttons must be easy to spot and must clearly lead somewhere.
 - White text
 - Minimum height: 48px desktop, 52px mobile
 - Horizontal padding: 24px to 30px
+- Corner radius: 6px to 10px
 - Semibold label
 - Optional arrow icon after the label
 - High-contrast hover and active states
 - Visible focus ring
+- No bounce, oversized pill shape, decorative checkmark, or novelty shadow
 
 ### Secondary action
 
@@ -564,7 +576,7 @@ Never rely on a spinner alone. Pair it with status text.
 Desktop:
 
 - Maximum content width: 1180px to 1240px
-- Header height: 72px to 80px
+- Header height: 96px to 110px when using the full stacked logo mark
 - Standard section padding: 72px to 96px
 - Compact section padding: 48px to 64px
 - Grid gap: 24px to 32px
@@ -576,7 +588,7 @@ Mobile:
 
 - Test at 360 by 800, 390 by 844, 430 by 932, and 768 by 1024.
 - Horizontal page padding: 18px to 20px
-- Header height: 64px to 72px
+- Header height: 76px to 84px
 - Section padding: 48px to 64px
 - Card gap: 16px to 20px
 - Card padding: 20px to 24px

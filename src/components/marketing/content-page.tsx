@@ -1,4 +1,5 @@
-import { Check } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
+import Link from "next/link";
 import type { PublicPage } from "@/content/public-pages";
 import { ButtonLink } from "@/components/ui/button-link";
 import { ExperienceConnector, FaqAccordion, JobMatchExample, PricingCards, ProcessSteps, TailoringExample } from "@/components/marketing/brief-interactions";
@@ -12,6 +13,102 @@ const fullFaq = [
 ];
 
 export function ContentPage({ page }: { page: PublicPage }) {
+  if (page.slug === "how-it-works") {
+    return (
+      <main id="main-content" className="brief-page process-page">
+        <section className="process-page-hero" aria-labelledby="process-page-title">
+          <div className="page-frame">
+            <p className="eyebrow">OUR PROCESS</p>
+            <h1 aria-label="From unsure where to start to ready to apply." className="process-page-title" id="process-page-title">
+              <span>From unsure where to start</span>
+              <ArrowRight aria-hidden="true" />
+              <span>Ready to apply.</span>
+            </h1>
+            <div className="process-page-lede">
+              <p>You do not need the perfect job title or a perfectly updated resume. Tell us what fits your life now, and we will use your experience to find credible directions.</p>
+              <ButtonLink href="/get-started">Find My 10 Jobs</ButtonLink>
+            </div>
+          </div>
+        </section>
+
+        <section className="process-page-steps" aria-labelledby="process-detail-title">
+          <div className="page-frame">
+            <div className="process-page-section-heading">
+              <p className="eyebrow">FOUR CLEAR STEPS</p>
+              <h2 id="process-detail-title">See what happens at every stage.</h2>
+              <p>Choose a step to see the work involved, what you receive, when payment happens, and what stays in your control.</p>
+            </div>
+            <ProcessSteps detailed />
+          </div>
+        </section>
+
+        <section className="process-page-delivery" aria-labelledby="delivery-title">
+          <div className="page-frame">
+            <div className="process-page-section-heading">
+              <p className="eyebrow">TWO SEPARATE DECISIONS</p>
+              <h2 id="delivery-title">Start with the search. Add application help only if you want it.</h2>
+            </div>
+            <div className="process-page-delivery-grid">
+              <article>
+                <p className="brief-demo-kicker">YOUR $20 SEARCH</p>
+                <h3>Your 10-match delivery</h3>
+                <p>Before you choose where to apply, each researched opportunity includes:</p>
+                <ul>
+                  <li>A direct application link</li>
+                  <li>Why the role may fit your experience</li>
+                  <li>Pay, location, schedule, and remote details when listed</li>
+                  <li>Important requirements and possible gaps</li>
+                  <li>The date the listing was checked</li>
+                </ul>
+              </article>
+              <article>
+                <p className="brief-demo-kicker">ONLY FOR JOBS YOU CHOOSE</p>
+                <h3>Application materials are optional</h3>
+                <p>After reviewing all 10 jobs, you decide whether any are worth pursuing.</p>
+                <ul>
+                  <li>Choose one job, several jobs, all 10, or none</li>
+                  <li>Pay $8 per selected job</li>
+                  <li>Receive one tailored resume and cover letter per selected job</li>
+                  <li>Review and submit every application yourself</li>
+                </ul>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section className="process-page-standards" aria-labelledby="standards-title">
+          <div className="page-frame process-page-standards-grid">
+            <div>
+              <p className="eyebrow">WHAT STAYS TRUE</p>
+              <h2 id="standards-title">You keep control from start to finish.</h2>
+            </div>
+            <ul>
+              <li>A person reviews every customer-facing delivery</li>
+              <li>Your experience stays truthful</li>
+              <li>ApplyPack does not submit applications for you</li>
+              <li>Employers control interviews, offers, and hiring decisions</li>
+            </ul>
+          </div>
+        </section>
+
+        <section className="process-page-next">
+          <div className="page-frame process-page-next-grid">
+            <div>
+              <p className="eyebrow">A DIFFERENT QUESTION</p>
+              <h2>Want to see how a job earns a place on your list?</h2>
+              <p>How Matching Works explains the connection between your experience, the job requirements, and the conditions that make the role workable for your life.</p>
+              <Link className="brief-text-link" href="/experience-connections">See How Matching Works <ArrowRight aria-hidden="true" /></Link>
+            </div>
+            <div className="process-page-final-action">
+              <p>Ready to begin with the work and life you have now?</p>
+              <ButtonLink href="/get-started">Find My 10 Jobs</ButtonLink>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main id="main-content" className="brief-page">
       <section className="inner-hero">

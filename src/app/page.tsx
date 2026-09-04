@@ -1,4 +1,4 @@
-import { Check, ChevronDown } from "lucide-react";
+import { ArrowRight, Check, ChevronDown } from "lucide-react";
 import Link from "next/link";
 
 import { ExperienceConnector, FaqAccordion, JobMatchExample, PricingCards, ProcessSteps, TailoringExample } from "@/components/marketing/brief-interactions";
@@ -35,7 +35,7 @@ export default function Home() {
       </section>
 
       <section className="brief-section brief-section-process" id="how-it-works" aria-labelledby="process-title">
-        <div className="page-frame"><div className="brief-heading-block brief-heading-wide"><p className="eyebrow">FROM SEARCHING TO READY TO APPLY</p><h2 id="process-title">Four clear steps. You stay in control of every decision.</h2></div><ProcessSteps /><TailoringExample /></div>
+        <div className="page-frame"><div className="brief-heading-block brief-heading-wide brief-process-heading"><p className="eyebrow">OUR PROCESS</p><h2 aria-label="From unsure where to start to ready to apply." className="brief-flow-heading" id="process-title"><span>From unsure where to start</span><ArrowRight aria-hidden="true" /><span>Ready to apply.</span></h2><p>Four clear steps. You stay in control of every decision.</p></div><ProcessSteps /><TailoringExample /></div>
       </section>
 
       <section className="brief-section brief-section-pricing" aria-labelledby="pricing-title">

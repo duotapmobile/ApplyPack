@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import Link from "next/link";
 
@@ -37,7 +38,7 @@ function Tabs({ label, items, className = "" }: { label: string; items: TabItem[
             tabIndex={selected === index ? 0 : -1}
             type="button"
           >
-            <span className="brief-selected-mark" aria-hidden="true">{selected === index ? "✓" : ""}</span>{item.label}
+            {item.label}
           </button>
         ))}
       </div>
@@ -118,13 +119,14 @@ export function ExperienceConnector() {
       <h3 className="sr-only" id="connector-title">Experience connector</h3>
       <div className="brief-role-selector" aria-label="Choose an experience example">
         {experienceExamples.map((example, index) => (
-          <button aria-pressed={selected === index} key={example.label} onClick={() => setSelected(index)} type="button"><span className="brief-selected-mark" aria-hidden="true">{selected === index ? "✓" : ""}</span>{example.label}</button>
+          <button aria-pressed={selected === index} key={example.label} onClick={() => setSelected(index)} type="button">{example.label}</button>
         ))}
       </div>
       <p className="sr-only" aria-live="polite">Showing {item.label}</p>
+      <p className="brief-active-example">Viewing example: <strong>{item.label}</strong></p>
       <div className="brief-connector-panels">
         <article><span>1</span><h3>What you did</h3><ul>{item.did.map((text) => <li key={text}>{text}</li>)}</ul></article>
-        <article><span>2</span><h3>What it {selected === 3 ? "may " : ""}demonstrate</h3><ul>{item.shows.map((text) => <li key={text}>{text}</li>)}</ul></article>
+        <article><span>2</span><h3>{selected === 3 ? "What it may demonstrate" : "What it demonstrates"}</h3><ul>{item.shows.map((text) => <li key={text}>{text}</li>)}</ul></article>
         <article><span>3</span><h3>Where it may connect</h3><ul>{item.connects.map((text) => <li key={text}>{text}</li>)}</ul></article>
       </div>
       <p className="brief-boundary">These are possible directions, not automatic qualifications. ApplyPack verifies every connection against the customer&apos;s actual experience and the job&apos;s requirements.</p>
@@ -167,15 +169,84 @@ export function FaqAccordion({ items = homepageFaqs }: { items?: string[][] }) {
   );
 }
 
-export function ProcessSteps() {
-  const steps = [
-    ["Tell us what fits.", "Upload your current resume and choose your priorities, preferences, and dealbreakers."],
-    ["Receive 10 matched jobs.", "We research current openings and deliver 10 focused opportunities within 24 hours."],
-    ["Choose what you want to pursue.", "Review why each job may fit and what you should know before applying."],
-    ["Get application materials for the jobs you choose.", "Add a tailored resume and cover letter for $8 per selected job."],
-  ];
+const processSteps = [
+  {
+    title: "Tell us what fits.",
+    summary: "Upload your current resume and choose your priorities, preferences, and dealbreakers.",
+    details: [
+      "Start with the resume you have, even if it is old or incomplete.",
+      "Confirm experience, responsibilities, tools, and training the resume may not show.",
+      "Choose your priorities, preferences, and dealbreakers, then review them before payment.",
+    ],
+  },
+  {
+    title: "Receive 10 matched jobs.",
+    summary: "We research current openings and deliver 10 focused opportunities within 24 hours.",
+    details: [
+      "Complete the one-time $20 payment after your intake and current capacity are confirmed.",
+      "The 24-clock-hour search period begins after intake and payment are complete and capacity is confirmed.",
+      "A person reads the listings, researches the employers, and compares each role with your approved criteria.",
+    ],
+  },
+  {
+    title: "Choose what you want to pursue.",
+    summary: "Review why each job may fit and what you should know before applying.",
+    details: [
+      "Each match includes a direct application link, fit explanation, available work details, key requirements, possible gaps, and the date checked.",
+      "You can decide a job is not for you without affecting the other matches.",
+      "If a job materially conflicts with an approved dealbreaker, you can ask ApplyPack to review it.",
+    ],
+  },
+  {
+    title: "Get application materials for the jobs you choose.",
+    summary: "Add a tailored resume and cover letter for $8 per selected job.",
+    details: [
+      "Choose one job, several jobs, all 10, or none.",
+      "Each selected job includes one tailored resume and one tailored cover letter based on your verified experience.",
+      "A person reviews the documents. You download them and submit each application yourself.",
+      "Delivery is within 24 hours after your selection and payment are complete.",
+    ],
+  },
+];
+
+export function ProcessSteps({ detailed = false }: { detailed?: boolean }) {
   const [selected, setSelected] = useState(0);
-  return <div className="brief-process-wrap"><ol className="brief-process">{steps.map(([title], index) => <li key={title}><button type="button" aria-pressed={selected === index} aria-controls="process-step-detail" onClick={() => setSelected(index)}><span>{index + 1}</span><span className="brief-selected-mark" aria-hidden="true">{selected === index ? "✓" : ""}</span><h3>{title}</h3></button></li>)}</ol><p id="process-step-detail" className="brief-process-detail" aria-live="polite"><strong>Step {selected + 1}:</strong> {steps[selected][1]}</p><noscript><ol>{steps.map(([title, body]) => <li key={title}><strong>{title}</strong> {body}</li>)}</ol></noscript></div>;
+  const activeStep = processSteps[selected];
+
+  return (
+    <div className={`brief-process-wrap${detailed ? " brief-process-wrap--detailed" : ""}`}>
+      <p className="brief-interaction-prompt">Select a step to see exactly what happens.</p>
+      <div className="brief-process-layout">
+        <ol className="brief-process">
+          {processSteps.map((step, index) => (
+            <li className={selected === index ? "is-active" : undefined} key={step.title}>
+              <button
+                aria-controls="process-step-detail"
+                aria-expanded={selected === index}
+                onClick={() => setSelected(index)}
+                type="button"
+              >
+                <span className="brief-process-number">{String(index + 1).padStart(2, "0")}</span>
+                <span className="brief-process-title">{step.title}</span>
+                <span className="brief-process-action">{selected === index ? "Viewing details" : "View details"}<ChevronRight aria-hidden="true" /></span>
+              </button>
+            </li>
+          ))}
+        </ol>
+        <article id="process-step-detail" className="brief-process-detail" aria-live="polite">
+          <p className="eyebrow">STEP {selected + 1} OF 4</p>
+          <h3>{activeStep.title}</h3>
+          <p>{activeStep.summary}</p>
+          {detailed ? <ul>{activeStep.details.map((detail) => <li key={detail}>{detail}</li>)}</ul> : null}
+        </article>
+      </div>
+      <noscript>
+        <ol className="brief-process-noscript">
+          {processSteps.map((step) => <li key={step.title}><strong>{step.title}</strong> {step.summary}<ul>{step.details.map((detail) => <li key={detail}>{detail}</li>)}</ul></li>)}
+        </ol>
+      </noscript>
+    </div>
+  );
 }
 
 export function PricingCards() {

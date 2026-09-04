@@ -5,7 +5,7 @@ const start = { ctaLabel: "Find My 10 Jobs", ctaHref: "/get-started" };
 
 export const publicPages: Record<string, PublicPage> = {
   "how-it-works": {
-    slug: "how-it-works", eyebrow: "HOW IT WORKS", title: "From unsure where to start to ready to apply.",
+    slug: "how-it-works", eyebrow: "OUR PROCESS", title: "From unsure where to start to ready to apply.",
     seoTitle: "How ApplyPack Works | Job Search and Application Help", description: "Four clear steps from intake to 10 researched job matches and optional tailored application materials.",
     intro: ["You do not need the perfect job title or a perfectly updated resume. Tell us what fits your life now, and we will use your experience to find credible directions."],
     sections: [], ...start,

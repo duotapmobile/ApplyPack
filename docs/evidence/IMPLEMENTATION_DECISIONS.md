@@ -113,3 +113,14 @@ The owner's supplied correction brief supersedes the earlier public marketing co
 - The prior dedicated /why-apply-pack route remains available because it was explicitly requested and published. /about carries the corrected concise founder story from the new brief, avoiding unsupported credentials.
 - Customer-facing copy uses no em dash or en dash characters.
 - Customer-facing labels use Tailored Resume + Cover Letter for the $8 item. The Stripe product configuration still requires a coordinated provider rename before its server-side name assertion can change; live payments remain disabled.
+
+## September 3, 2026 refined process presentation
+
+The owner's latest direct feedback replaces the compact, playful process controls and cramped generic How It Works hero with a restrained editorial presentation.
+
+- The full stacked logo receives more vertical room and a larger, lower-left placement in the public header.
+- Process and experience selectors use quiet surfaces, thin rules, restrained brand accents, explicit selected states, and no decorative checkmarks or inset novelty stripes.
+- The homepage process heading is `Our Process`, with a directional arrow connecting `From unsure where to start` and `ready to apply.`
+- The dedicated `/how-it-works` page now explains intake, capacity and payment timing, research, the complete 10-match delivery, customer selection, optional $8 application materials, truthful human review, customer submission, and the no-guarantee boundary.
+- `/how-it-works` explains the operational journey. `/experience-connections`, labeled `How Matching Works`, remains focused on the reasoning used to identify credible experience and life-fit connections.
+- `What it demonstrate` is corrected to `What it demonstrates`, with the caregiving example retaining the qualified wording `What it may demonstrate`.
