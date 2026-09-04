@@ -9,28 +9,30 @@
 @import "tailwindcss";
 
 :root {
-  --logo-navy: #030b20;
-  --logo-blue: #2c5fc8;
-  --logo-cyan: #81cbfa;
-  --logo-violet: #484e9c;
-  --logo-green: #306b3f;
-  --logo-gold: #f3bd41;
+  --logo-navy: #021185;
+  --logo-blue: #069fec;
+  --logo-cyan: #2dd7fb;
+  --logo-violet: #5a57e9;
+  --logo-green: #03ab63;
+  --logo-gold: #fdc403;
+  --logo-orange: #fd9d02;
+  --logo-bright-green: #02d051;
   --canvas: #f6f9ff;
   --surface: #ffffff;
   --ink: var(--logo-navy);
   --muted: #536277;
   --border: #bdcde0;
   --deep: var(--logo-navy);
-  --primary: var(--logo-blue);
+  --primary: var(--logo-violet);
   --primary-dark: #050746;
   --lavender: #e0e3ff;
   --mint: #dcece1;
   --sky: #d9f3ff;
   --gold: var(--logo-gold);
   --rose: #e7e4f4;
-  --focus: var(--logo-blue);
+  --focus: var(--logo-violet);
   --error: #b42318;
-  --success: #176b4d;
+  --success: var(--logo-green);
   --font-heading: "Source Serif Pro", Georgia, serif;
   --font-body: "Lato", Arial, sans-serif;
   --radius-control: 14px;
@@ -3167,13 +3169,13 @@ a {
 .founder-story__opening-card--wide {
   grid-column: span 7;
   border-top: 0.5rem solid var(--logo-blue);
-  background: rgba(44, 95, 200, 0.12);
+  background: rgba(6, 159, 236, 0.12);
 }
 
 .founder-story__opening-card--compact {
   grid-column: span 5;
   border-top: 0.5rem solid var(--logo-cyan);
-  background: rgba(129, 203, 250, 0.28);
+  background: rgba(45, 215, 251, 0.28);
 }
 
 .founder-story__opening-card h2 {
@@ -3224,15 +3226,15 @@ a {
 
 .founder-story__chapter--lavender {
   border-top: 0.5rem solid var(--logo-violet);
-  background: rgba(72, 78, 156, 0.13);
+  background: rgba(90, 87, 233, 0.13);
 }
 .founder-story__chapter--mint {
   border-top: 0.5rem solid var(--logo-green);
-  background: rgba(48, 107, 63, 0.13);
+  background: rgba(3, 171, 99, 0.13);
 }
 .founder-story__chapter--gold {
   border-top: 0.5rem solid var(--logo-gold);
-  background: rgba(243, 189, 65, 0.28);
+  background: rgba(253, 196, 3, 0.28);
 }
 
 .founder-story__chapter h2 {
@@ -3277,7 +3279,7 @@ a {
   display: block;
   border-top: 0.5rem solid var(--logo-violet);
   border-radius: var(--radius-panel);
-  background: rgba(72, 78, 156, 0.13);
+  background: rgba(90, 87, 233, 0.13);
   padding: clamp(1.75rem, 3vw, 2.5rem);
 }
 

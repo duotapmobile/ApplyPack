@@ -206,18 +206,30 @@ async function completeCheckout(session: Stripe.Checkout.Session, paidAtDate: Da
   if (existingEmail && ["sent", "skipped"].includes(existingEmail.status)) return;
 
   const { data: user, error: userError } = await admin.auth.admin.getUserById(String(converted.customer_id));
-  if (userError || !user.user?.email) throw new Error("Paid customer email was not found");
+  if (userError) throw new Error("Paid customer identity was not found");
+  let recipient = user.user?.email || null;
+  if (!recipient && orderId && "intake_id" in converted && converted.intake_id) {
+    const { data: paidIntake, error: intakeError } = await admin
+      .from("intakes")
+      .select("email")
+      .eq("id", String(converted.intake_id))
+      .eq("customer_id", String(converted.customer_id))
+      .maybeSingle();
+    if (intakeError) throw intakeError;
+    recipient = paidIntake?.email || null;
+  }
+  if (!recipient) throw new Error("Paid customer email was not found");
   const reference = cartId ? { apply_pack_cart_id: cartId } : { order_id: orderId };
   try {
     const sent = await sendOrderReceipt({
-      to: user.user.email,
+      to: recipient,
       orderId: referenceId,
       amountCents: session.amount_total,
       deadline,
     });
     const { error: emailError } = await admin.from("email_events").upsert({
       ...reference,
-      recipient: user.user.email,
+      recipient,
       template,
       status: sent.skipped ? "skipped" : "sent",
       provider_message_id: sent.providerMessageId || null,
@@ -227,7 +239,7 @@ async function completeCheckout(session: Stripe.Checkout.Session, paidAtDate: Da
   } catch (emailError) {
     const { error: recordError } = await admin.from("email_events").upsert({
       ...reference,
-      recipient: user.user.email,
+      recipient,
       template,
       status: "failed",
       idempotency_key: idempotencyKey,

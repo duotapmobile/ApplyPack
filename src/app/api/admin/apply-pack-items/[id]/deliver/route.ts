@@ -62,7 +62,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     .eq("id", itemId).eq("status", priorStatus).select("id").maybeSingle();
   if (claimError || !claim) {
     await auth.admin.rpc("release_order_delivery", { p_order_id: item.order_id });
-    return NextResponse.json({ error: "Another operator is already delivering this Apply Pack." }, { status: 409 });
+    return NextResponse.json({ error: "Another operator is already delivering this Tailored Resume + Cover Letter set." }, { status: 409 });
   }
   const releaseClaim = () => auth.admin.from("apply_pack_items").update({ status: priorStatus, delivery_claimed_at: null }).eq("id", itemId).eq("status", "delivery_processing");
   const releaseAllClaims = async () => {

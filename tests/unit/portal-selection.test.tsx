@@ -27,17 +27,17 @@ const match: MatchForSelection = {
   },
 };
 
-describe("Apply Pack customer selection", () => {
+describe("Tailored Resume + Cover Letter customer selection", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("lets a customer select a fresh reviewed job after capacity loads", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ availableUnits: 2 }) }));
     render(<ApplyPackSelector matches={[match]} evaluatedAt={new Date().toISOString()} />);
-    const checkbox = screen.getByRole("checkbox", { name: /Select Apply Pack for Operations Assistant/ });
+    const checkbox = screen.getByRole("checkbox", { name: /Select Tailored Resume \+ Cover Letter for Operations Assistant/ });
     await waitFor(() => expect(checkbox).toBeEnabled());
     await userEvent.click(checkbox);
     expect(checkbox).toBeChecked();
     expect(screen.getByText("Selected")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /1 Apply Pack.*\$8 total/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /1 document set.*\$8 total/ })).toBeInTheDocument();
   });
 });

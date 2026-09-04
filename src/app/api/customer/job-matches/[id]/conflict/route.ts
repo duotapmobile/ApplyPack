@@ -12,7 +12,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!isSameOriginRequest(request)) return NextResponse.json({ error: "This request was rejected." }, { status: 403 });
   const id = (await context.params).id;
   const parsed = schema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Explain which approved non-negotiable conflicts with this job." }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: "Explain which Dealbreaker conflicts with this job." }, { status: 400 });
   const supabase = await createSupabaseServerClient();
   const admin = createSupabaseAdminClient();
   if (!supabase || !admin) return NextResponse.json({ error: "Account storage is not configured." }, { status: 503 });
@@ -43,7 +43,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     orderId: order.id,
     template: "conflict_review_received",
     subject: "We received your ApplyPack match review",
-    lines: ["We recorded your report that a match conflicts with an approved non-negotiable.", "An operator will review the criteria snapshot before deciding on a replacement."],
+    lines: ["We recorded your report that a match conflicts with an Dealbreaker.", "An operator will review the criteria snapshot before deciding on a replacement."],
     keySuffix: id,
   });
   return NextResponse.json({ ok: true });

@@ -197,7 +197,7 @@ export function AdminOperations({ searchOrders, applyItems, conflicts, correctio
           <label>Human review note<textarea name="reviewNote" minLength={20} maxLength={2000} required placeholder="Record the job-specific facts and checks completed before release." /></label>
           <button className="wizard-next" disabled={busy === "pack-" + item.id}>Deliver privately</button>
         </form>
-      </article>) : <p>No paid Apply Packs need delivery.</p>}
+      </article>) : <p>No paid document sets need delivery.</p>}
     </section>
 
     <section className="admin-control">

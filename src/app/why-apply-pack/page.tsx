@@ -118,7 +118,7 @@ export default function WhyApplyPackPage() {
             </p>
           </div>
           <ButtonLink className="founder-story__cta" href="/get-started" variant="light">
-            Find What Fits My Life
+            Find My 10 Jobs
           </ButtonLink>
         </div>
       </section>

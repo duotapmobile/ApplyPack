@@ -43,7 +43,8 @@ site_url = "http://127.0.0.1:3000"
 additional_redirect_urls = []
 jwt_expiry = 3600
 enable_signup = true
-enable_anonymous_sign_ins = false
+enable_anonymous_sign_ins = true
+enable_manual_linking = true
 
 [auth.email]
 enable_signup = true

@@ -1,42 +1,37 @@
 import { Check } from "lucide-react";
 import type { PublicPage } from "@/content/public-pages";
 import { ButtonLink } from "@/components/ui/button-link";
+import { ExperienceConnector, FaqAccordion, JobMatchExample, PricingCards, ProcessSteps, TailoringExample } from "@/components/marketing/brief-interactions";
+
+const fullFaq = [
+  { group: "Getting started", items: [["What if I do not know what kind of job I want?", "You do not need a job title to begin. Tell us what kind of work fits your life, what you want to avoid, and what experience you bring. We use that information to identify credible directions."], ["What if my resume is old or incomplete?", "Upload the best version you have. The intake lets you confirm experience, responsibilities, tools, training, and other information that may be missing or outdated."]] },
+  { group: "Job matching", items: [["How do you decide whether a job fits?", "We compare your actual experience with the work in the listing, then check pay, schedule, location, travel, benefits, and each approved dealbreaker."], ["Does ApplyPack apply to jobs for me?", "No. ApplyPack researches opportunities and prepares application materials. You choose where to apply and submit each application yourself."]] },
+  { group: "Pricing and timing", items: [["When does the 24-hour period begin?", "The 24-clock-hour period begins after your intake and payment are complete and current capacity is confirmed."], ["Do I have to buy documents for all 10 jobs?", "No. Choose one job, several jobs, all 10, or none. Each selected resume and cover letter set costs $8."]] },
+  { group: "Resumes and cover letters", items: [["Will you add experience I do not have?", "No. ApplyPack does not invent experience, titles, dates, credentials, achievements, metrics, or qualifications."], ["What does tailoring change?", "Tailoring changes emphasis, order, and language so the most relevant verified experience is clear for the selected job."]] },
+  { group: "Privacy and account access", items: [["How do I access my documents?", "Use My ApplyPack and the email connected to your purchase to request a secure six-digit sign-in code."], ["Is my information sold?", "No. ApplyPack does not sell resumes or personal information."]] },
+];
 
 export function ContentPage({ page }: { page: PublicPage }) {
   return (
-    <main id="main-content">
+    <main id="main-content" className="brief-page">
       <section className="inner-hero">
         <div className="page-frame inner-hero__grid">
           <div><p className="eyebrow">{page.eyebrow}</p><h1>{page.title}</h1></div>
-          <div className="inner-hero__intro">
-            {page.intro.map((text) => <p key={text}>{text}</p>)}
-            {page.ctaLabel && page.ctaHref ? <ButtonLink href={page.ctaHref}>{page.ctaLabel}</ButtonLink> : null}
-          </div>
+          <div className="inner-hero__intro">{page.intro.map((text) => <p key={text}>{text}</p>)}{page.ctaLabel && page.ctaHref ? <ButtonLink href={page.ctaHref}>{page.ctaLabel}</ButtonLink> : null}</div>
         </div>
       </section>
-      <section className="content-shell">
-        <div className="page-frame content-grid">
-          {page.sections.map((section, index) => (
-            <article className="content-card" key={section.title}>
-              <span className="content-card__number" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
-              <div>
-                <h2>{section.title}</h2>
-                {section.body?.map((text) => <p key={text}>{text}</p>)}
-                {section.bullets ? <ul>{section.bullets.map((item) => <li key={item}><Check aria-hidden="true" /><span>{item}</span></li>)}</ul> : null}
-                {section.note ? <p className="content-card__note">{section.note}</p> : null}
-              </div>
-            </article>
-          ))}
+      <section className="brief-page-body">
+        <div className="page-frame">
+          {page.slug === "how-it-works" ? <><ProcessSteps /><div className="brief-generic-grid"><article className="brief-generic-card"><h2>What happens after you begin</h2><p>Your intake captures your experience, priorities, preferences, and dealbreakers without asking you to know the perfect title first.</p></article><article className="brief-generic-card"><h2>What arrives with each match</h2><p>You receive a direct link, the reason the role may fit, available pay and work-setting details, important requirements, possible gaps, and the date the listing was checked.</p></article><article className="brief-generic-card"><h2>What stays in your control</h2><p>You decide which jobs to pursue and whether to buy a tailored resume and cover letter for any selected job.</p></article></div></> : null}
+          {page.slug === "experience-connections" ? <><ExperienceConnector /><div className="brief-heading-block brief-heading-wide"><h2>See the whole fit for one illustrative role.</h2><p>Capability matters, and so do the conditions that make a job workable.</p></div><JobMatchExample /></> : null}
+          {page.slug === "before-and-after" ? <><TailoringExample /><article className="brief-cover-example"><p className="eyebrow">COVER LETTER EXAMPLE</p><h2>The same honest connection, made personal.</h2><p><strong>Illustrative excerpt:</strong> My background in teaching required me to guide people through unfamiliar processes, communicate clearly when questions arose, and track progress over time. Those experiences are directly relevant to supporting clients through a thoughtful onboarding process.</p><p className="brief-caption">Illustrative example. Final materials use only the customer&apos;s verified facts and the selected job.</p></article></> : null}
+          {page.slug === "pricing" ? <><PricingCards /><div className="brief-price-examples"><span>Search only: <strong>$20</strong></span><span>Search plus one: <strong>$28 total</strong></span><span>Search plus three: <strong>$44 total</strong></span><span>Search plus all 10: <strong>$100 total</strong></span></div><ul className="brief-reassurance-row"><li><Check aria-hidden="true" />No subscription</li><li><Check aria-hidden="true" />No expensive coaching package</li><li><Check aria-hidden="true" />No automatic applications</li><li><Check aria-hidden="true" />No obligation to buy all 10 document sets</li></ul></> : null}
+          {page.slug === "faq" ? <div className="brief-faq-groups">{fullFaq.map((group) => <section key={group.group} className="brief-faq-group"><h2>{group.group}</h2><FaqAccordion items={group.items} /></section>)}</div> : null}
+          {page.slug === "about" ? <article className="brief-about-story"><h2>A difficult transition showed me what was missing.</h2><p>I loved teaching and never expected my career to move outside education. Later, after time focused on my family and running a small business, I needed work that fit the life I had now. I knew what I could not return to, but I did not know what job titles to search.</p><p>My experience included teaching, family caregiving, and small-business ownership. Running a mobile spray-tanning business and selling products on Amazon involved customer service, scheduling, purchasing, inventory, fulfillment, advertising, and daily operational decisions.</p><p>The more descriptions I read, the more I realized my experience was broader than my resume made it look. Planning, documentation, training, problem solving, purchasing, inventory, and operations appeared under titles I had never considered. I was capable of more than my original search showed me, but uncovering those connections took hours.</p><p>I built ApplyPack for women going through transitions like mine, women who are capable, determined, and ready to move forward, but need work that fits the reality of their lives. ApplyPack makes the connections we may not see on our own, making the path back to work feel possible, even when life is already full.</p></article> : null}
+          {!["how-it-works", "experience-connections", "before-and-after", "pricing", "faq", "about"].includes(page.slug) ? <div className="brief-generic-grid">{page.sections.map((section) => <article className="brief-generic-card" key={section.title}><h2>{section.title}</h2>{section.body?.map((text) => <p key={text}>{text}</p>)}{section.bullets ? <ul>{section.bullets.map((item) => <li key={item}><Check aria-hidden="true" /><span>{item}</span></li>)}</ul> : null}{section.note ? <p className="brief-caption">{section.note}</p> : null}</article>)}</div> : null}
+          {page.ctaLabel && page.ctaHref ? <div className="center-action brief-page-action"><ButtonLink href={page.ctaHref}>{page.ctaLabel}</ButtonLink></div> : null}
         </div>
       </section>
-      {page.ctaLabel && page.ctaHref ? (
-        <section className="inner-cta">
-          <div className="page-frame inner-cta__box">
-            <div><p className="eyebrow eyebrow--light">READY WHEN YOU ARE</p><h2>Take the next useful step.</h2></div>
-            <ButtonLink href={page.ctaHref} variant="light">{page.ctaLabel}</ButtonLink>
-          </div>
-        </section>
-      ) : null}
     </main>
   );
 }

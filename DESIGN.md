@@ -89,38 +89,44 @@ Avoid:
 
 ## Color system
 
-If approved ApplyPack brand tokens already exist, keep them and map them to the semantic roles below. Do not create a second competing palette.
+The Apply Pack logo palette is approved and controlling. Use these exact source colors. Semantic tokens may use white and neutral text colors where required for readability, but must not substitute a competing accent palette.
 
-If there is no approved palette, use:
+| Logo token | Value | Primary role |
+| --- | --- | --- |
+| `--logo-yellow` | `#fdc403` | Warm highlight and selected detail |
+| `--logo-green` | `#03ab63` | Success and grounded accent |
+| `--logo-violet` | `#5a57e9` | Primary action and selected state |
+| `--logo-orange` | `#fd9d02` | Warm emphasis and caution |
+| `--logo-navy` | `#021185` | Dark brand panel and high-contrast brand text |
+| `--logo-blue` | `#069fec` | Information and connection accent |
+| `--logo-cyan` | `#2dd7fb` | Light information accent |
+| `--logo-bright-green` | `#02d051` | Positive state and secondary green accent |
+
+Semantic mapping:
 
 | Token | Value | Role |
 | --- | --- | --- |
-| `--canvas` | `#FBFAFC` | Main background |
-| `--surface` | `#FFFFFF` | Cards and raised surfaces |
-| `--ink` | `#17131F` | Primary text and dark controls |
-| `--muted` | `#5D5868` | Supporting text |
-| `--border` | `#DCD8E3` | Borders and separators |
-| `--deep` | `#12102E` | Dark feature sections |
-| `--primary` | `#5637D7` | Brand action color |
-| `--lavender` | `#DDD4FF` | Bento surface |
-| `--mint` | `#C8F1DF` | Bento surface |
-| `--sky` | `#CDEBFA` | Bento surface |
-| `--gold` | `#F6D36F` | Highlight surface |
-| `--rose` | `#F3D5E5` | Human-centered accent surface |
-| `--focus` | `#FFB000` | Focus ring |
-| `--error` | `#B42318` | Error state |
-| `--success` | `#176B4D` | Success state |
+| `--canvas` | `#f6f9ff` | Main background |
+| `--surface` | `#ffffff` | Cards and raised surfaces |
+| `--ink` | `#030b20` | Primary text |
+| `--muted` | `#536277` | Supporting text |
+| `--border` | `#bdcde0` | Borders and separators |
+| `--deep` | `#021185` | Dark brand sections |
+| `--primary` | `#5a57e9` | Primary actions and selected states |
+| `--focus` | `#021185` | Keyboard focus ring on light surfaces |
+| `--error` | `#b42318` | Error state |
+| `--success` | `#03ab63` | Success state |
 
 Color rules:
 
-- Use dark text on all pastel cards.
-- Reserve `--primary` for high-value actions, selected states, and limited accents.
-- Keep each section to three accent colors or fewer.
+- Use dark text on light logo-color tints.
+- Reserve violet and navy for high-value actions and selected states. Use blue as an accent unless paired with navy text.
+- Use yellow and orange as emphasis colors, not paragraph backgrounds. Use yellow for focus on navy surfaces.
+- Use no more than three accent colors inside one section.
 - Do not assign random colors to equivalent components.
 - Do not use color as the only signal.
 - Use a solid backing behind text when a gradient is present.
-- All final foreground and background combinations must pass contrast testing.
-
+- All foreground and background combinations must pass WCAG 2.2 AA contrast testing.
 ## Gradient direction
 
 Use gradients sparingly.
@@ -148,33 +154,35 @@ Final CTA:
 
 ## Typography
 
-Use approved brand fonts if they exist. Otherwise:
+The approved site-wide type system is:
 
-- Headings: Manrope
-- Body and controls: Inter
-- Fallback: `ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+- Headings: Source Serif Pro
+- Body, navigation, buttons, labels, and controls: Lato
+- Heading fallback: `Georgia, serif`
+- Body fallback: `Arial, ui-sans-serif, system-ui, sans-serif`
+- Monospace is permitted only for code, machine-readable records, and diagnostic data.
 
-| Style | Size |
-| --- | --- |
-| Hero heading | `clamp(2.75rem, 6vw, 5.75rem)` |
-| Section heading | `clamp(2rem, 4vw, 3.75rem)` |
-| Subsection heading | `clamp(1.5rem, 2.5vw, 2.25rem)` |
-| Card heading | `1.25rem` to `1.75rem` |
-| Large body | `1.125rem` to `1.25rem` |
-| Body | `1rem` |
-| Supporting text | `0.875rem` minimum |
-| Button | `1rem`, semibold |
+| Style | Desktop size | Mobile size |
+| --- | --- | --- |
+| Homepage H1 | `4rem` to `4.5rem` | `2.5rem` to `2.875rem` |
+| Interior H1 | `3.25rem` to `4rem` | `2.25rem` to `2.75rem` |
+| Homepage H2 | `2.625rem` to `3.25rem` | `1.875rem` to `2.25rem` |
+| Subsection heading | `1.5rem` to `2.25rem` | `1.375rem` to `1.75rem` |
+| Body | `1.0625rem` to `1.1875rem` | `1rem` to `1.125rem` |
+| Supporting text | `0.9375rem` minimum | `0.9375rem` minimum |
+| Button | `1rem`, bold | `1rem`, bold |
 
 Rules:
 
 - Body text never drops below 16px.
-- Limit normal text lines to approximately 55 to 72 characters.
+- Limit normal text lines to approximately 60 to 72 characters.
 - Keep hero and major section headings compact.
 - Use tight heading line height, approximately 0.98 to 1.1.
-- Use comfortable body line height, approximately 1.5 to 1.65.
-- Do not center-align paragraphs longer than three short lines.
+- Use comfortable body line height, approximately 1.5 to 1.7.
+- Do not center paragraphs longer than three short lines.
 - Do not reduce font size to force content into a card.
-
+- Do not use decorative alternates, swashes, or ligatures that make individual letters look distorted.
+- Use balanced wrapping for headings and readable wrapping for body copy.
 ## Grid and spacing
 
 ### Page frame
@@ -183,9 +191,9 @@ Rules:
 - Desktop side padding: 40px
 - Tablet side padding: 28px
 - Mobile side padding: 18px
-- Desktop section spacing: 120px to 152px
-- Tablet section spacing: 80px to 104px
-- Mobile section spacing: 64px to 80px
+- Desktop section spacing: 72px to 96px
+- Tablet section spacing: 64px to 80px
+- Mobile section spacing: 48px to 64px
 
 ### Grid
 
@@ -215,7 +223,17 @@ Do not apply the same shadow to every card. Pastel cards may remain flat.
 
 ## Page composition
 
-The homepage should use the following visual rhythm. Copy sources determine the words and exact amount of content.
+The homepage contains exactly seven primary content sections, excluding the global header and footer. The required order is:
+
+1. The offer
+2. What a real match means
+3. How experience connects to new roles
+4. What Apply Pack takes off the customer''s plate
+5. How it works and before-and-after proof
+6. Pricing and customer control
+7. Founder story, trust, FAQ, and final action
+
+The numbered visual patterns below are a reusable component inventory. They do not authorize additional homepage sections. Combine them inside the seven required sections, and remove a pattern when it does not advance the section''s purpose.
 
 ### 1. Header
 
@@ -541,6 +559,46 @@ Never rely on a spinner alone. Pair it with status text.
 - Do not hide the primary action inside a submenu.
 - Logo links to the homepage.
 
+## Current layout measurements
+
+Desktop:
+
+- Maximum content width: 1180px to 1240px
+- Header height: 72px to 80px
+- Standard section padding: 72px to 96px
+- Compact section padding: 48px to 64px
+- Grid gap: 24px to 32px
+- Card padding: 28px to 36px
+- Homepage height target at 1440 by 900: no more than approximately 7500px
+- Remove decorative minimum heights and align short two-column content to the top.
+
+Mobile:
+
+- Test at 360 by 800, 390 by 844, 430 by 932, and 768 by 1024.
+- Horizontal page padding: 18px to 20px
+- Header height: 64px to 72px
+- Section padding: 48px to 64px
+- Card gap: 16px to 20px
+- Card padding: 20px to 24px
+- Minimum touch target: 44px by 44px
+- Form-control font size: at least 16px
+- Put the offer, price, timing, and primary action before artwork.
+- Treat mobile as a separate composition, not a narrower desktop canvas.
+
+## Required educational interactions
+
+The public site uses interaction only when it explains the service more clearly than static copy:
+
+1. Why this job made the list
+2. Experience connector
+3. Original, tailored, and why
+4. FAQ accordion
+
+All tabs and accordions must use semantic controls, visible selected states, keyboard support, screen-reader relationships, and content that remains available in the page markup. No carousel, hover-only disclosure, drag-only control, looping animation, or scroll-jacking is allowed.
+
+## Intake presentation
+
+The intake is a focused task flow. Use a compact header with the logo, Help, and My ApplyPack. Do not show the full marketing navigation, marketing footer, or a large marketing sidebar. Show the current step, heading, and first control in the initial mobile viewport. New customers may begin intake without email authentication before checkout.
 ## Responsive rules
 
 Test at:
@@ -713,8 +771,8 @@ All components must use shared tokens. Do not hardcode slightly different spacin
   --error: #b42318;
   --success: #176b4d;
 
-  --font-heading: "Manrope", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Source Serif Pro", Georgia, serif;
+  --font-body: "Lato", Arial, ui-sans-serif, system-ui, sans-serif;
 
   --radius-control: 14px;
   --radius-card: 24px;

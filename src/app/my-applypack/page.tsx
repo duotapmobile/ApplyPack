@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { DeliveryActions } from "@/components/portal/delivery-actions";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { EmailCodeSignIn } from "@/components/auth/email-code-sign-in";
 import { ApplyPackSelector, type MatchForSelection } from "@/components/portal/apply-pack-selector-v2";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -12,7 +12,7 @@ export default async function PortalPage() {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return <SetupState />;
   const { data: authData } = await supabase.auth.getUser();
-  if (!authData.user) redirect("/sign-in?next=/my-applypack");
+  if (!authData.user) return <EmailCodeSignIn />;
   const { data: orders } = await supabase.from("orders").select("id,product_kind,amount_cents,status,delivery_deadline,delivered_at,created_at").order("created_at", { ascending: false });
   const searchOrders = (orders || []).filter((order) => order.product_kind === "job_search" && ["delivered", "delivered_refunded"].includes(order.status));
   let matches: MatchForSelection[] = [];
@@ -43,7 +43,7 @@ export default async function PortalPage() {
           {orders?.length ? (
             <div className="order-list">{orders.map((order) => (
               <article key={order.id}>
-                <div><span>{order.product_kind === "job_search" ? "Job Match Search" : "Apply Pack"}</span><strong>{order.status.replaceAll("_", " ")}</strong></div>
+                <div><span>{order.product_kind === "job_search" ? "10 Researched Job Matches" : "Tailored Resume + Cover Letter"}</span><strong>{order.status.replaceAll("_", " ")}</strong></div>
                 <p>Order {order.id.slice(0, 8).toUpperCase()}</p>
                 <p>{"$" + (order.amount_cents / 100).toFixed(2)}</p>
                 {order.delivery_deadline ? <p>Due {new Date(order.delivery_deadline).toLocaleString("en-US", { timeZone: "America/New_York" })} ET</p> : null}

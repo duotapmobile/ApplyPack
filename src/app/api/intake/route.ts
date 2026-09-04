@@ -46,10 +46,31 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Complete every required intake field.", details: parsed.error.flatten() }, { status: 400 });
   }
-  if (parsed.data.email.toLowerCase() !== (authData.user.email || "").toLowerCase()) {
+  const guestCustomer = authData.user.is_anonymous === true;
+  if (!guestCustomer && parsed.data.email.toLowerCase() !== (authData.user.email || "").toLowerCase()) {
     return NextResponse.json({ error: "Use the email address that received your secure sign-in code." }, { status: 403 });
   }
 
+  if (guestCustomer) {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
+    const { error: identityError } = await supabase.auth.updateUser(
+      { email: parsed.data.email.toLowerCase() },
+      { emailRedirectTo: appUrl + "/auth/callback?next=/my-applypack" },
+    );
+    if (identityError) {
+      return NextResponse.json({
+        error: "This email may already be connected to My ApplyPack. Sign in with that email or use a different address.",
+        authRequired: true,
+      }, { status: 409 });
+    }
+    const profileUpdate = await admin.from("profiles").update({
+      email: parsed.data.email.toLowerCase(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", authData.user.id).eq("email", "").select("id").maybeSingle();
+    if (profileUpdate.error || !profileUpdate.data) {
+      return NextResponse.json({ error: "Your contact email could not be attached to this private intake." }, { status: 502 });
+    }
+  }
   const draftId = String(formData.get("draftId") || "");
   const { data: savedDraft, error: draftError } = draftId
     ? await admin.from("intake_drafts").select("id,resume_document,cover_letter_document")

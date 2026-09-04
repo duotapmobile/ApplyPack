@@ -23,7 +23,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const { data: item } = await admin.from("apply_pack_items").select("id,delivered_at,orders!inner(id,customer_id,status)").eq("id", id).maybeSingle();
   const order = Array.isArray(item?.orders) ? item?.orders[0] : item?.orders;
   if (!item || !order || order.customer_id !== authData.user.id || order.status !== "delivered" || !item.delivered_at) {
-    return NextResponse.json({ error: "Delivered Apply Pack not found." }, { status: 404 });
+    return NextResponse.json({ error: "Delivered Tailored Resume + Cover Letter set not found." }, { status: 404 });
   }
   if (Date.now() - new Date(item.delivered_at).getTime() > 3 * 24 * 60 * 60 * 1000) {
     return NextResponse.json({ error: "The included three-day correction window has closed." }, { status: 409 });

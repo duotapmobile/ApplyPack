@@ -32,7 +32,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (parsed.data.status === "accepted" && parsed.data.replacement) {
     const { count, error: itemCountError } = await auth.admin.from("apply_pack_items").select("id", { count: "exact", head: true }).eq("job_match_id", review.job_match_id);
     if (itemCountError) return NextResponse.json({ error: "Apply Pack eligibility could not be verified." }, { status: 502 });
-    if (count) return NextResponse.json({ error: "This job already has an Apply Pack order and cannot be replaced automatically." }, { status: 409 });
+    if (count) return NextResponse.json({ error: "This job already has a Tailored Resume + Cover Letter order and cannot be replaced automatically." }, { status: 409 });
     const replacement = parsed.data.replacement;
     const freshnessMs = Number(process.env.APP_JOB_FRESHNESS_HOURS || 24) * 60 * 60 * 1000;
     if (Date.now() - new Date(replacement.checkedAt).getTime() > freshnessMs) {

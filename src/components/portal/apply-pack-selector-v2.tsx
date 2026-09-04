@@ -158,7 +158,7 @@ export function ApplyPackSelector({ matches, evaluatedAt }: { matches: MatchForS
 
   return (
     <section className="portal-section">
-      <div className="portal-section__heading"><div><p className="eyebrow">YOUR MATCHES</p><h2>Choose Apply Packs for current listings.</h2></div><p>Each selected job is a separate $8 order with one tailored resume and one tailored cover letter. {availableUnits === null ? "Checking current capacity..." : availableUnits > 0 ? `${availableUnits} can be accepted now; availability is reserved only when checkout opens.` : "No 24-hour production slots are currently available."}</p></div>
+      <div className="portal-section__heading"><div><p className="eyebrow">YOUR MATCHES</p><h2>Choose Tailored Resume + Cover Letter sets for current listings.</h2></div><p>Each selected job is a separate $8 order with one tailored resume and one tailored cover letter. {availableUnits === null ? "Checking current capacity..." : availableUnits > 0 ? `${availableUnits} can be accepted now; availability is reserved only when checkout opens.` : "No 24-hour production slots are currently available."}</p></div>
       <div className="match-grid">
         {matches.map((match) => {
           const checked = selected.includes(match.id);
@@ -167,7 +167,7 @@ export function ApplyPackSelector({ matches, evaluatedAt }: { matches: MatchForS
           const maxSelection = Math.min(10, availableUnits ?? 0);
           return (
             <article className={"match-card " + (checked ? "match-card--selected" : "")} key={match.id}>
-              <div className="match-card__top"><span>#{match.position}</span><label><input aria-label={`${checked ? "Remove" : "Select"} Apply Pack for ${match.job.title} at ${match.job.company}`} type="checkbox" checked={checked} onChange={() => toggle(match.id)} disabled={!available || (!checked && selected.length >= maxSelection)} /><i><Check aria-hidden="true" /></i><b>{checked ? "Selected" : available ? "Select" : "Unavailable"}</b></label></div>
+              <div className="match-card__top"><span>#{match.position}</span><label><input aria-label={`${checked ? "Remove" : "Select"} Tailored Resume + Cover Letter for ${match.job.title} at ${match.job.company}`} type="checkbox" checked={checked} onChange={() => toggle(match.id)} disabled={!available || (!checked && selected.length >= maxSelection)} /><i><Check aria-hidden="true" /></i><b>{checked ? "Selected" : available ? "Select" : "Unavailable"}</b></label></div>
               <h3>{match.job.title}</h3>
               <p className="match-company">{match.job.company}</p>
               <div className="job-labels" aria-label="Job classification">
@@ -212,7 +212,7 @@ export function ApplyPackSelector({ matches, evaluatedAt }: { matches: MatchForS
                 <button aria-expanded={conflictFor === match.id} aria-controls={"conflict-" + match.id} type="button" onClick={() => setConflictFor(conflictFor === match.id ? "" : match.id)}>Conflicts with my criteria</button>
               </div>
               {conflictFor === match.id ? <div className="conflict-form" id={"conflict-" + match.id}>
-                <label>Which approved non-negotiable does this conflict with?<textarea value={explanation} onChange={(event) => setExplanation(event.target.value)} minLength={10} /></label>
+                <label>Which Dealbreaker does this conflict with?<textarea value={explanation} onChange={(event) => setExplanation(event.target.value)} minLength={10} /></label>
                 <button className="wizard-next" disabled={busy || explanation.trim().length < 10} onClick={() => submitConflict(match.id)}>Submit for Review</button>
               </div> : null}
             </article>
@@ -221,7 +221,7 @@ export function ApplyPackSelector({ matches, evaluatedAt }: { matches: MatchForS
       </div>
 
       {selected.length ? <div className="cart-review">
-        <div><p className="eyebrow">REVIEW SELECTED JOBS</p><h3>{selected.length} Apply Pack{selected.length === 1 ? "" : "s"} × $8 each · {"$" + selected.length * 8} total</h3></div>
+        <div><p className="eyebrow">REVIEW SELECTED JOBS</p><h3>{selected.length} document set{selected.length === 1 ? "" : "s"} × $8 each · {"$" + selected.length * 8} total</h3></div>
         <fieldset><legend>Has anything changed since your original intake?</legend>
           <label className="confirm"><input type="radio" name="changed" checked={changed === "no"} onChange={() => setChanged("no")} />No</label>
           <label className="confirm"><input type="radio" name="changed" checked={changed === "yes"} onChange={() => setChanged("yes")} />Yes, I need to update something</label>

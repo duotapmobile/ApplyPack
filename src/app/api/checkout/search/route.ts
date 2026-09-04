@@ -31,7 +31,7 @@ export async function POST(request: Request) {
 
   const { data: intake } = await supabase
     .from("intakes")
-    .select("id,status,source_scan_status")
+    .select("id,email,status,source_scan_status")
     .eq("id", parsed.data.intakeId)
     .eq("customer_id", authData.user.id)
     .maybeSingle();
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
     session = await stripe.checkout.sessions.create({
     mode: "payment",
     payment_method_types: ["card"],
-    customer_email: authData.user.email,
+    customer_email: intake.email,
     expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
     success_url: appUrl + "/checkout/return?session_id={CHECKOUT_SESSION_ID}",
     cancel_url: appUrl + "/checkout/return?cancelled=1",

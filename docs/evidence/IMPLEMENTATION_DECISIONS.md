@@ -98,3 +98,18 @@ The owner's direct instruction adds a new top-level public page titled “Why Ap
 - The supplied copy remains first-person and preserves the founder's meaning. Obvious spacing, grammar, HTML-entity, and typographical artifacts were corrected for publication.
 - The page repeats only the already-approved $20 search, exactly 10 selected jobs, optional $8 resume-and-cover-letter set, and no-subscription boundaries.
 - The route is public, canonical, included in the sitemap and footer, and covered by public-route, responsive-overflow, and build checks.
+
+
+## September 3, 2026 public-site copy and interaction correction
+
+The owner's supplied correction brief supersedes the earlier public marketing copy, homepage section structure, generic secondary-page presentation, and decorative spacing rules. It does not weaken the verified pricing, timing, customer-control, human-review, no-auto-apply, or no-guarantee boundaries.
+
+- The whole site uses Source Serif Pro for headings and Lato for body copy and controls. Heading ligatures are disabled, heading tracking is readable, and the default heading weight is 600.
+- The controlling logo palette is #fdc403, #03ab63, #5a57e9, #fd9d02, #021185, #069fec, #2dd7fb, and #02d051. Bright colors use navy text when white would fail contrast.
+- The homepage is limited to seven primary sections and uses the required match, experience, tailoring, and FAQ interactions with semantic keyboard controls and no hover-only disclosure.
+- Public legal pages no longer display internal draft-status labels. Removing those labels does not represent attorney review or change the legal activation gate.
+- The focused intake now starts with a rate-limited Supabase anonymous user. The same unique user ID owns the draft, private files, completed intake, capacity reservation, and order. The customer enters an email during intake, identity linking begins without blocking checkout, and the paid intake email is used for checkout and receipt delivery while verification is pending. Production requires Anonymous Sign-Ins and Manual Identity Linking to be enabled in the hosted Supabase project.
+- The four-stage presentation groups the detailed questions into contact and documents, experience and direction, work fit and dealbreakers, and review and agreement. The review presents the service boundaries as plain text and uses one combined agreement checkbox.
+- The prior dedicated /why-apply-pack route remains available because it was explicitly requested and published. /about carries the corrected concise founder story from the new brief, avoiding unsupported credentials.
+- Customer-facing copy uses no em dash or en dash characters.
+- Customer-facing labels use Tailored Resume + Cover Letter for the $8 item. The Stripe product configuration still requires a coordinated provider rename before its server-side name assertion can change; live payments remain disabled.

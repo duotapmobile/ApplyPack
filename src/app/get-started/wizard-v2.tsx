@@ -83,6 +83,7 @@ const STORAGE_KEY = "applypack-intake-draft-v2";
 const DRAFT_TTL_MS = 2 * 60 * 60 * 1000;
 
 export function IntakeWizard({ authenticatedEmail }: { authenticatedEmail: string }) {
+  const guestCustomer = !authenticatedEmail;
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<Draft>({ ...emptyDraft, email: authenticatedEmail });
   const [resume, setResume] = useState<File | null>(null);
@@ -104,7 +105,7 @@ export function IntakeWizard({ authenticatedEmail }: { authenticatedEmail: strin
         const response = await fetch("/api/intake/draft", { signal: controller.signal });
         const result = response.ok ? await response.json() : null;
         if (result?.draft) {
-          setDraft({ ...emptyDraft, ...result.draft.answers, email: authenticatedEmail });
+          setDraft({ ...emptyDraft, ...result.draft.answers, email: authenticatedEmail || String(result.draft.answers?.email || "") });
           setStep(Number(result.draft.currentStep || 0));
           setDraftId(String(result.draft.id || ""));
           setSavedResume(result.draft.resumeDocument || null);
@@ -114,7 +115,7 @@ export function IntakeWizard({ authenticatedEmail }: { authenticatedEmail: strin
           if (saved) {
             const parsed = JSON.parse(saved) as { savedAt?: number; draft?: Partial<Draft> };
             if (parsed.savedAt && Date.now() - parsed.savedAt < DRAFT_TTL_MS && parsed.draft) {
-              setDraft({ ...emptyDraft, ...parsed.draft, email: authenticatedEmail });
+              setDraft({ ...emptyDraft, ...parsed.draft, email: authenticatedEmail || String(parsed.draft.email || "") });
             }
           }
         }
@@ -141,14 +142,14 @@ export function IntakeWizard({ authenticatedEmail }: { authenticatedEmail: strin
   }, [step]);
 
   const validSteps = useMemo(() => [
-    authenticatedEmail.includes("@") && draft.fullName.trim().length >= 2 && draft.city.trim().length >= 2 && draft.state.trim().length >= 2 && draft.timezone.length >= 2,
+    draft.email.includes("@") && draft.fullName.trim().length >= 2 && draft.city.trim().length >= 2 && draft.state.trim().length >= 2 && draft.timezone.length >= 2,
     Boolean(resume || savedResume) && Boolean(draft.resumeFormat) && Boolean(draft.coverLetterPreference),
     draft.backgroundTypes.length > 0 && draft.backgroundDetails.trim().length >= 20,
     Boolean(draft.remoteRequirement) && Boolean(draft.hybridPolicy) && Boolean(draft.onSitePolicy) && Boolean(draft.unknownSalaryPolicy) && draft.employmentTypes.length > 0 && Boolean(draft.unknownBenefitsPolicy),
     draft.neverInclude.length > 0,
     Boolean(draft.directionChoice) && Boolean(draft.searchDistance) && draft.workAuthorization.trim().length >= 2 && Boolean(draft.needsSponsorship) && draft.travelPreference.trim().length >= 2,
     draft.criteriaApproved && draft.researchAcknowledged && draft.noGuaranteeAcknowledged && draft.listingChangesAcknowledged && draft.termsAccepted && draft.accuracyConfirmed,
-  ], [authenticatedEmail, draft, resume, savedResume]);
+  ], [draft, resume, savedResume]);
 
   const validationMessages = [
     "Add your name, email, city, state, and time zone before continuing.",
@@ -157,7 +158,7 @@ export function IntakeWizard({ authenticatedEmail }: { authenticatedEmail: strin
     "Complete the work-setting, employment-type, salary, and benefits choices.",
     "Choose at least one thing that must never appear in your matches.",
     "Complete the direction, search distance, work authorization, sponsorship, and travel fields.",
-    "Review and check all six acknowledgments before checkout.",
+    "Review the service limits and check the agreement before checkout.",
   ];
 
 
@@ -180,7 +181,7 @@ export function IntakeWizard({ authenticatedEmail }: { authenticatedEmail: strin
     const response = await fetch("/api/intake/draft", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ currentStep: nextStep, answers: { ...draft, email: authenticatedEmail } }),
+      body: JSON.stringify({ currentStep: nextStep, answers: { ...draft, email: draft.email } }),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Your progress could not be saved.");
@@ -251,7 +252,7 @@ export function IntakeWizard({ authenticatedEmail }: { authenticatedEmail: strin
       Object.entries(draft).forEach(([key, value]) => {
         form.set(key, Array.isArray(value) ? JSON.stringify(value) : String(value));
       });
-      form.set("email", authenticatedEmail);
+      form.set("email", draft.email);
       form.set("draftId", draftId);
       const response = await fetch("/api/intake", { method: "POST", body: form });
       const result = await response.json();
@@ -276,6 +277,8 @@ export function IntakeWizard({ authenticatedEmail }: { authenticatedEmail: strin
     }
   }
 
+  const displayedStage = [1, 1, 2, 2, 3, 3, 4][step];
+
   if (!ready) return <main id="main-content" className="auth-page"><section className="auth-card"><p className="eyebrow">SECURE INTAKE</p><h1>Loading your intake.</h1></section></main>;
 
   return (
@@ -286,17 +289,17 @@ export function IntakeWizard({ authenticatedEmail }: { authenticatedEmail: strin
           <h1>Let&apos;s find what fits next.</h1>
           <p>10 researched job matches for $20. Your firm 24-hour deadline appears after both intake and payment are complete.</p>
           <div className="wizard-price"><strong>$20</strong><span>one search<br />no subscription</span></div>
-          <p className="wizard-security"><LockKeyhole aria-hidden="true" /> Files stay in private account storage and are never saved in this browser draft.</p>
+          <p className="wizard-security"><LockKeyhole aria-hidden="true" /> Files stay in private secure storage. Document contents are never stored in this browser draft.</p>
         </aside>
         <section ref={panelRef} className="wizard-panel" aria-labelledby="wizard-title">
-          <div className="wizard-progress" role="progressbar" aria-label="Intake progress" aria-valuemin={1} aria-valuemax={7} aria-valuenow={step + 1} aria-valuetext={"Step " + (step + 1) + " of 7"}>
-            <span>STEP {step + 1} OF 7</span><div><i style={{ width: ((step + 1) / 7 * 100) + "%" }} /></div>
+          <div className="wizard-progress" role="progressbar" aria-label="Intake progress" aria-valuemin={1} aria-valuemax={4} aria-valuenow={displayedStage} aria-valuetext={"Stage " + displayedStage + " of 4"}>
+            <span>STAGE {displayedStage} OF 4</span><div><i style={{ width: (displayedStage / 4 * 100) + "%" }} /></div>
           </div>
 
-          {step === 0 && <WizardStep title="First, where are you?" help="These details secure your account and help us evaluate location and schedule fit.">
+          {step === 0 && <WizardStep title="First, where are you?" help="These details help us evaluate location and schedule fit.">
             <div className="field-grid">
               <label>Full name <Required /><input autoComplete="name" value={draft.fullName} onChange={(e) => field("fullName", e.target.value)} /></label>
-              <label>Email address <Required /><input autoComplete="email" inputMode="email" type="email" value={authenticatedEmail} readOnly aria-readonly="true" /></label>
+              <label>Email address <Required /><input autoComplete="email" inputMode="email" type="email" value={draft.email} onChange={(e) => field("email", e.target.value)} readOnly={!guestCustomer} aria-readonly={!guestCustomer} /></label>
               <label>City <Required /><input autoComplete="address-level2" value={draft.city} onChange={(e) => field("city", e.target.value)} /></label>
               <label>State or region <Required /><input autoComplete="address-level1" value={draft.state} onChange={(e) => field("state", e.target.value)} /></label>
             </div>
@@ -304,9 +307,9 @@ export function IntakeWizard({ authenticatedEmail }: { authenticatedEmail: strin
           </WizardStep>}
 
           {step === 1 && <WizardStep title="Share the documents we should work from." help="PDF or DOCX, up to 10 MB each. Please remove Social Security numbers, birth dates, and other unnecessary sensitive details.">
-            <label className="file-drop">Current resume <Required /><input required={!savedResume} type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(e) => setResume(e.target.files?.[0] || null)} /><span>{resume ? `${resume.name} (${formatBytes(resume.size)}) — will replace saved file` : savedResume ? `${savedResume.name} (${formatBytes(savedResume.size)}) — saved privately` : "Choose your resume"}</span></label>
+            <label className="file-drop">Current resume <Required /><input required={!savedResume} type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(e) => setResume(e.target.files?.[0] || null)} /><span>{resume ? `${resume.name} (${formatBytes(resume.size)}) ; will replace saved file` : savedResume ? `${savedResume.name} (${formatBytes(savedResume.size)}) ; saved privately` : "Choose your resume"}</span></label>
             {savedResume ? <button type="button" className="text-button" disabled={busy} onClick={() => removeDocument("resume")}>Remove saved resume</button> : null}
-            <label className="file-drop">Existing cover letter <span>(optional)</span><input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(e) => { const file = e.target.files?.[0] || null; setCoverLetter(file); field("coverLetterPreference", file ? "voice" : "not_uploaded"); }} /><span>{coverLetter ? `${coverLetter.name} (${formatBytes(coverLetter.size)}) — will replace saved file` : savedCoverLetter ? `${savedCoverLetter.name} (${formatBytes(savedCoverLetter.size)}) — saved privately` : "No cover letter selected"}</span></label>
+            <label className="file-drop">Existing cover letter <span>(optional)</span><input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(e) => { const file = e.target.files?.[0] || null; setCoverLetter(file); field("coverLetterPreference", file ? "voice" : "not_uploaded"); }} /><span>{coverLetter ? `${coverLetter.name} (${formatBytes(coverLetter.size)}) ; will replace saved file` : savedCoverLetter ? `${savedCoverLetter.name} (${formatBytes(savedCoverLetter.size)}) ; saved privately` : "No cover letter selected"}</span></label>
             {savedCoverLetter ? <button type="button" className="text-button" disabled={busy} onClick={() => removeDocument("cover_letter")}>Remove saved cover letter</button> : null}
             <label>LinkedIn profile <span>(optional)</span><input type="url" placeholder="https://www.linkedin.com/in/..." value={draft.linkedin} onChange={(e) => field("linkedin", e.target.value)} /></label>
             <label>Resume formatting <Required /><select value={draft.resumeFormat} onChange={(e) => field("resumeFormat", e.target.value)}><option value="">Choose one</option><option value="keep">Keep my current format where practical</option><option value="applypack">Use ApplyPack&apos;s clean format</option><option value="decide">Use your judgment</option></select></label>
@@ -371,16 +374,12 @@ export function IntakeWizard({ authenticatedEmail }: { authenticatedEmail: strin
               <p><strong>Documents</strong>{savedResume?.name || resume?.name}{savedCoverLetter ? `; ${savedCoverLetter.name}` : ""} · {draft.resumeFormat} <button type="button" onClick={() => setStep(1)}>Change</button></p>
               <p><strong>Confirmed experience</strong>{[...draft.backgroundTypes, draft.backgroundDetails, draft.tools, draft.credentials].filter(Boolean).join("; ")} <button type="button" onClick={() => setStep(2)}>Change</button></p>
               <p><strong>Location, schedule, compensation, and benefits</strong>{[draft.remoteRequirement, draft.hybridPolicy, draft.onSitePolicy, draft.minimumSalary, draft.preferredSalary, draft.minimumHourly, draft.preferredHourly, draft.unknownSalaryPolicy, ...draft.employmentTypes, ...draft.schedulePreferences, ...draft.requiredBenefits, ...draft.preferredBenefits, draft.unknownBenefitsPolicy].filter(Boolean).join("; ")} <button type="button" onClick={() => setStep(3)}>Change</button></p>
-              <p><strong>Non-negotiables and preferences</strong>{[...draft.neverInclude, ...draft.tryAvoid, draft.previousDislikes, draft.excludedIndustries].filter(Boolean).join("; ") || "None selected"} <button type="button" onClick={() => setStep(4)}>Change</button></p>
+              <p><strong>Dealbreakers and preferences</strong>{[...draft.neverInclude, ...draft.tryAvoid, draft.previousDislikes, draft.excludedIndustries].filter(Boolean).join("; ") || "None selected"} <button type="button" onClick={() => setStep(4)}>Change</button></p>
               <p><strong>Direction and eligibility</strong>{[draft.directionChoice, draft.searchDistance, draft.targetTitles, draft.oldCareerExclusion, draft.workAuthorization, draft.needsSponsorship, draft.travelPreference, draft.commuteDistance, draft.eligibilityRestrictions].filter(Boolean).join("; ")} <button type="button" onClick={() => setStep(5)}>Change</button></p>
             </div>
             <div className="deadline-note"><strong>Contractual deadline:</strong> the exact 24-hour deadline begins only after this completed intake, your approved criteria, available capacity, and successful payment are verified. My ApplyPack will show the controlling Eastern timestamp.</div>
-            <label className="confirm"><input type="checkbox" checked={draft.criteriaApproved} onChange={(e) => field("criteriaApproved", e.target.checked)} />These criteria accurately separate my requirements from my preferences.</label>
-            <label className="confirm"><input type="checkbox" checked={draft.researchAcknowledged} onChange={(e) => field("researchAcknowledged", e.target.checked)} />I understand ApplyPack researches public listings but does not contact employers or submit applications.</label>
-            <label className="confirm"><input type="checkbox" checked={draft.noGuaranteeAcknowledged} onChange={(e) => field("noGuaranteeAcknowledged", e.target.checked)} />I understand ApplyPack does not guarantee interviews, offers, or hiring outcomes.</label>
-            <label className="confirm"><input type="checkbox" checked={draft.listingChangesAcknowledged} onChange={(e) => field("listingChangesAcknowledged", e.target.checked)} />I understand listings can change or close after they are checked.</label>
-            <label className="confirm"><input type="checkbox" checked={draft.accuracyConfirmed} onChange={(e) => field("accuracyConfirmed", e.target.checked)} />I confirm the information and documents I provided are accurate and mine to use.</label>
-            <label className="confirm"><input type="checkbox" checked={draft.termsAccepted} onChange={(e) => field("termsAccepted", e.target.checked)} /><span>I agree to the <Link href="/terms">Terms</Link> and acknowledge the <Link href="/privacy">Privacy Policy</Link>.</span></label>
+            <div className="deadline-note"><strong>Before you continue:</strong><ul><li>ApplyPack researches public listings but does not contact employers or submit applications.</li><li>Listings can change or close after they are checked.</li><li>ApplyPack cannot guarantee interviews, offers, or hiring outcomes.</li></ul></div>
+            <label className="confirm"><input type="checkbox" checked={draft.termsAccepted && draft.criteriaApproved && draft.accuracyConfirmed} onChange={(e) => { const checked = e.target.checked; setDraft((current) => ({ ...current, criteriaApproved: checked, researchAcknowledged: checked, noGuaranteeAcknowledged: checked, listingChangesAcknowledged: checked, termsAccepted: checked, accuracyConfirmed: checked })); setMessage(""); }} /><span>I confirm my information and criteria are accurate, understand the service limits above, agree to the <Link href="/terms">Terms</Link>, and acknowledge the <Link href="/privacy">Privacy Policy</Link>.</span></label>
           </WizardStep>}
 
           <div className="wizard-actions">

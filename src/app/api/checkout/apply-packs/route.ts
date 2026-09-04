@@ -53,14 +53,14 @@ export async function POST(request: Request) {
   const searchOrderId = matches[0].search_order_id;
   const { data: searchOrder } = await admin.from("orders").select("id,customer_id,status").eq("id", searchOrderId).maybeSingle();
   if (!searchOrder || searchOrder.customer_id !== authData.user.id || searchOrder.status !== "delivered") {
-    return NextResponse.json({ error: "These jobs are not ready for Apply Packs." }, { status: 403 });
+    return NextResponse.json({ error: "These jobs are not ready for Tailored Resume + Cover Letter sets." }, { status: 403 });
   }
   const { data: existingItems } = await admin.from("apply_pack_items").select("job_match_id,orders!inner(status)").in("job_match_id", ids);
   if (existingItems?.some((item) => {
     const related = Array.isArray(item.orders) ? item.orders[0] : item.orders;
     return related && !["cancelled", "refunded", "payment_expired"].includes(related.status);
   })) {
-    return NextResponse.json({ error: "An Apply Pack already exists for one selected job." }, { status: 409 });
+    return NextResponse.json({ error: "A Tailored Resume + Cover Letter order already exists for one selected job." }, { status: 409 });
   }
   const { data: activeCartItems } = await admin.from("apply_pack_cart_items")
     .select("job_match_id,cart:apply_pack_carts!inner(status,expires_at)")
