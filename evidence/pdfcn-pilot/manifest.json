@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "feature": "pdfcn-job-match-packet-pilot",
+  "status": "IMPLEMENTATION_ACCEPTED_LOCAL",
+  "created_at": "2026-09-05T10:03:46.8509483-04:00",
+  "repository": "https://github.com/duotapmobile/ApplyPack.git",
+  "worktree": "C:\\Users\\mskir\\Desktop\\Apply_Pack\\applypack-pdfcn-2026-09-04",
+  "branch": "codex/applypack-pdfcn-document-generation-2026-09-04",
+  "base_commit": "6256250693adefe2762a5f921c81fbfbcc305c75",
+  "tested_code_commit": "27462f9d1d384ce64d4a9344de84f8049469c746",
+  "tested_tree": "28c52a85ab39f4cae2e3cd88aa315a974b7063b5",
+  "upstream": {
+    "pdfcn_repository": "https://github.com/shadcn-labs/pdfcn",
+    "pdfcn_commit": "590a1f9421a7561ed94bc3dec5eae46360b28c69",
+    "component_revision": "590a1f9421a7561ed94bc3dec5eae46360b28c69:takumi-minimal-audited",
+    "takumi_pdf": "0.11.0",
+    "pdfjs_dist": "5.4.296",
+    "takumi_helpers": "2.10.0",
+    "napi_canvas": "0.1.100",
+    "forme_installed": false
+  },
+  "career_ops_addendum": {
+    "status": "INCORPORATED",
+    "repository": "https://github.com/career-ops-hq/career-ops",
+    "audited_commit": "719d1a4c64735fec4eb6f5f4b1616db4d181476c",
+    "disposition": "REFERENCE_ONLY",
+    "chunk_3_started": false
+  },
+  "environment": {
+    "os": "Windows 11",
+    "git": "2.50.0.windows.2",
+    "node": "22.22.0",
+    "npm": "10.9.4",
+    "supabase_cli": "2.116.0",
+    "timezone": "America/New_York"
+  },
+  "checks": [
+    {
+      "id": "PDFCN-INSTALL",
+      "command": "npm ci --ignore-scripts --offline",
+      "status": "PASS",
+      "evidence": "503 packages installed; 0 vulnerabilities"
+    },
+    {
+      "id": "PDFCN-FOCUSED",
+      "command": "npm test -- --run tests/unit/pdfcn-route-safety.test.ts tests/unit/job-match-packet-schema.test.ts tests/unit/job-match-packet-service.test.ts tests/unit/job-match-packet-storage-recovery.test.ts tests/unit/job-match-packet-renderer.test.ts",
+      "status": "PASS",
+      "files": 5,
+      "passed": 18
+    },
+    {
+      "id": "PDFCN-MIGRATE",
+      "command": "npx supabase db reset --local",
+      "status": "PASS",
+      "migrations": 24
+    },
+    {
+      "id": "PDFCN-DB",
+      "command": "npm run test:database",
+      "status": "PASS",
+      "fixtures": 3
+    },
+    {
+      "id": "PDFCN-ROLLBACK",
+      "command": "npm run test:rollback",
+      "status": "PASS",
+      "markers": ["PDFCN_ROLLBACK_OK", "ROLLBACK_OK"]
+    },
+    {
+      "id": "PDFCN-LEGACY",
+      "command": "npm run test:legacy-backfill",
+      "status": "PASS",
+      "idempotent_rerun": true
+    },
+    {
+      "id": "PDFCN-TYPES",
+      "command": "npm run types:database:check",
+      "status": "PASS"
+    },
+    {
+      "id": "PDFCN-TYPECHECK",
+      "command": "npm run typecheck",
+      "status": "PASS"
+    },
+    {
+      "id": "PDFCN-LINT",
+      "command": "npm run lint",
+      "status": "PASS"
+    },
+    {
+      "id": "PDFCN-UNIT",
+      "command": "npm test",
+      "status": "PASS",
+      "files": 39,
+      "passed": 162
+    },
+    {
+      "id": "PDFCN-RENDER",
+      "command": "npm run test:pdfcn:visual",
+      "status": "PASS",
+      "files": 1,
+      "passed": 3
+    },
+    {
+      "id": "PDFCN-INTEGRATION-EXTERNAL",
+      "command": "npm run test:integration",
+      "status": "NOT_APPLICABLE_LOCAL",
+      "files_skipped": 2,
+      "tests_skipped": 3,
+      "reason": "No approved external scanner is configured; processing remains fail closed"
+    },
+    {
+      "id": "PDFCN-BUILD",
+      "command": "npm run build",
+      "status": "PASS_WITH_DOCUMENTED_WARNING",
+      "routes": 47,
+      "warning": "Takumi next loader dynamic WASM pattern matches 40994 files"
+    },
+    {
+      "id": "PDFCN-E2E",
+      "command": "npm run test:e2e",
+      "status": "PASS",
+      "passed": 61,
+      "skipped": 1,
+      "failed": 0,
+      "duration_minutes": 12.1
+    },
+    {
+      "id": "PDFCN-AUDIT-ALL",
+      "command": "npm audit --json",
+      "status": "PASS",
+      "vulnerabilities": 0
+    },
+    {
+      "id": "PDFCN-AUDIT-PROD",
+      "command": "npm audit --omit=dev --json",
+      "status": "PASS",
+      "vulnerabilities": 0
+    },
+    {
+      "id": "PDFCN-DIFF",
+      "command": "git diff --check and git diff --cached --check",
+      "status": "PASS"
+    },
+    {
+      "id": "PDFCN-INDEPENDENT-REVIEW",
+      "command": "separate skeptical read-only review",
+      "status": "ACCEPTED",
+      "blocking_findings": 0
+    }
+  ],
+  "visual_artifacts": [
+    {
+      "fixture": "short",
+      "path": "C:\\Users\\mskir\\AppData\\Local\\Temp\\applypack-pdfcn-visual-20260905-v8\\short.pdf",
+      "pages": 8,
+      "bytes": 72037,
+      "duration_ms": 2286,
+      "sha256": "0281dd91753b281227c6f0e9f079a6fa69ce21dbac23428e46e3adc9729e5f24"
+    },
+    {
+      "fixture": "long-fields-and-warnings",
+      "path": "C:\\Users\\mskir\\AppData\\Local\\Temp\\applypack-pdfcn-visual-20260905-v8\\long-fields-and-warnings.pdf",
+      "pages": 9,
+      "bytes": 86883,
+      "duration_ms": 1465,
+      "sha256": "cdfee1e79def9f39b3d6ea64c4c382e20bb066758bcf77b7eafff330bea96f27"
+    },
+    {
+      "fixture": "maximum-content",
+      "path": "C:\\Users\\mskir\\AppData\\Local\\Temp\\applypack-pdfcn-visual-20260905-v8\\maximum-content.pdf",
+      "pages": 14,
+      "bytes": 123663,
+      "duration_ms": 2440,
+      "sha256": "066ae706185bc1e8ef93231adb414fe979e647e06080e7db43df5bb3e29a2ded"
+    }
+  ],
+  "manual_visual_review": {
+    "status": "PASS",
+    "pages_inspected": 31,
+    "issues_found": 0
+  },
+  "artifact_hashes": [
+    { "path": "supabase/migrations/202609040024_pdfcn_job_match_packet.sql", "bytes": 37824, "sha256": "f9facbb4947b71a9357c0c52788e674b5d490833e9d9b48cb9481fe394c55b18" },
+    { "path": "src/lib/documents/job-match-packet/renderer.tsx", "bytes": 3972, "sha256": "81da4cb77f1a6c0c02908362580682231821fa46c34b4da47920a86bbfa737ee" },
+    { "path": "src/lib/documents/job-match-packet/service.ts", "bytes": 9153, "sha256": "7653118e2cecb3b5bab6dbb6fca3508577dc4cf1bc7e7a70af9786acc93d00e7" },
+    { "path": "src/lib/documents/job-match-packet/supabase-repository.ts", "bytes": 15367, "sha256": "7eca612af79c15b700b0c6a313fef30c6dadf0ed222d2294c00aa5a19a528e05" },
+    { "path": "src/lib/documents/job-match-packet/storage-recovery.ts", "bytes": 258, "sha256": "6c96b76d8e080e4c4f0db06c89badd8a3f22b1a759bec868c13ed4931d7e8bf4" },
+    { "path": "src/lib/documents/pdfcn/components.tsx", "bytes": 5324, "sha256": "9315494ad4d0109d25be7dd0def73f6f6dd717fe1f86e047acc7965093b56fa3" },
+    { "path": "tests/integration/pdfcn-job-match-packet.sql", "bytes": 26455, "sha256": "19044c1653d64529d83c3ff3566397c8b33958c99307af490c6eabdb7646c830" },
+    { "path": "tests/rendering/job-match-packet.visual.test.tsx", "bytes": 2399, "sha256": "6d2e15d0e543f712b71a7523f1f6a057e561d81e71a8ecc32f70a79de10160db" },
+    { "path": "docs/DOCUMENT_GENERATION.md", "bytes": 11046, "sha256": "3f6bd4f756535b30882e8b9c8f5d868d5798c786ad530d68727b6b38881e0138" },
+    { "path": "THIRD_PARTY_NOTICES.md", "bytes": 1950, "sha256": "83106863fd64c8282182a049b5720714ae71c65d01db405a0af81ae73bfb364a" }
+  ],
+  "required_local_checks": {
+    "passed": 17,
+    "failed": 0,
+    "blocked": 0,
+    "not_applicable_local": ["PDFCN-INTEGRATION-EXTERNAL"]
+  },
+  "release_blockers": [
+    "Approved retention and legal policy",
+    "Fresh customer reauthentication",
+    "Production migration and private-storage proof",
+    "Hosted Takumi WASM cold-start, memory, timeout, and artifact-size evidence",
+    "Production security and operations acceptance"
+  ],
+  "main_modified": false,
+  "canonical_checkout_modified": false,
+  "site_checkout_modified": false,
+  "merged": false,
+  "deployed": false
+}
