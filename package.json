@@ -13,6 +13,7 @@
     "test:e2e": "playwright test",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build",
     "test:integration": "vitest run --config vitest.integration.config.mts",
+    "test:pdfcn:visual": "vitest run --config vitest.render.config.mts",
     "test:database": "node scripts/run-supabase-db-tests-v2.mjs",
     "test:legacy-backfill": "node scripts/run-supabase-legacy-backfill-test.mjs",
     "test:rollback": "node scripts/run-supabase-rollback-test.mjs",
@@ -32,6 +33,7 @@
     "resend": "^6.25.0",
     "server-only": "^0.0.1",
     "stripe": "^22.6.0",
+    "takumi-pdf": "0.11.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {
@@ -47,6 +49,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
     "jsdom": "^29.1.1",
+    "pdfjs-dist": "5.4.296",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.11"

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const fixtures = ["../tests/integration/chunk1-foundation.sql", "../tests/integration/chunk2-four-step.sql"];
+const fixtures = ["../tests/integration/chunk1-foundation.sql", "../tests/integration/chunk2-four-step.sql", "../tests/integration/pdfcn-job-match-packet.sql"];
 for (const fixture of fixtures) {
   const sqlPath = fileURLToPath(new URL(fixture, import.meta.url));
   const result = spawnSync("docker", ["exec", "-i", "supabase_db_applypack", "psql", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"], {

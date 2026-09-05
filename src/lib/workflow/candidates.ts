@@ -1,5 +1,7 @@
 export function candidatePayload(candidate: Record<string, unknown>, job: Record<string, unknown>): Record<string, unknown> {
   const sourceUrl = stringValue(job.official_application_url || job.source_job_url || job.source_url);
+  const candidateId = stringValue(candidate.id, "candidate-record");
+  const concerns = stringArray(candidate.concerns);
   return {
     company: stringValue(job.employer_display_name || job.company, "Unknown employer"),
     title: stringValue(job.raw_title || job.title, "Unknown role"),
@@ -35,7 +37,18 @@ export function candidatePayload(candidate: Record<string, unknown>, job: Record
     coreResponsibilities: [],
     requirements: stringArray(candidate.requirements),
     hiddenJobFunctions: [],
-    concerns: stringArray(candidate.concerns),
+    concerns,
+    matchCategory: "TRANSFERABLE",
+    packetStrongConnections: [{
+      kind: "TRANSFERABLE",
+      statement: stringValue(candidate.fit_summary, "Operator review is required before this connection can be approved."),
+      evidenceIds: [`candidate-fact:${candidateId}`, "job-field:description"],
+    }],
+    packetThingsToConsider: concerns.map((statement) => ({ kind: "GAP", statement, evidenceIds: ["job-field:description"] })),
+    packetUnknownWarnings: [
+      ...(stringValue(job.benefits_status, "unknown") === "unknown" ? [{ field: "Health benefits", status: "NOT_CONFIRMED", evidenceIds: ["job-field:benefits_status"] }] : []),
+      ...(!stringValue(job.salary_text) ? [{ field: "Compensation", status: "NOT_STATED", evidenceIds: ["job-field:salary_text"] }] : []),
+    ],
     criteriaChecks: {
       dutiesAligned: false,
       experienceConfirmed: false,

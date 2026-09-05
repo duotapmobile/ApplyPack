@@ -72,3 +72,23 @@ No row is a legal conclusion. `UNVERIFIED_DISABLED` means no automation may run 
 ## Change control
 
 Every change requires the stable ID, approving owner, non-secret evidence, validation update, version bump, and fresh test date. A missing or malformed required value fails according to its recorded fail mode; it never falls back to an invented product rule.
+
+## 2026-09-04 source-access correction addendum
+
+This table corrects and narrows the earlier broad phrase that listed Himalayas among approved sources. Technical accessibility never establishes permission for ApplyPack's paid commercial display.
+
+| ID | Source | Corrected state | Conditions |
+| --- | --- | --- | --- |
+| SRC-012 | Workable XML | APPROVED_CANDIDATE_DISABLED | Enable only after adapter, completeness, attribution, permission evidence, and tests |
+| SRC-013 | SmartRecruiters public Posting API | APPROVED_CANDIDATE_DISABLED | Enable only after adapter, commercial/display evidence, and tests |
+| SRC-014 | We Work Remotely RSS | APPROVED_CANDIDATE_DISABLED | Attribution and link-back required |
+| SRC-015 | Remote OK API | APPROVED_CANDIDATE_DISABLED | Attribution, sanitization, geography validation, and official-destination verification required |
+| SRC-016 | Himalayas | PERMISSION_PENDING_DISABLED | Written commercial and automated-extraction permission required; not approved |
+| SRC-017 | TheirStack | CONTRACT_PENDING_DISABLED | Paid display, retention, evidence, exclusions, direct-link, termination, and deletion rights required |
+| SRC-018 | Greenhouse public job board | TECHNICALLY_READY_POLICY_DISABLED | Fixtures only until written permission or documented legal determination |
+| SRC-019 | Ashby public postings | TECHNICALLY_READY_POLICY_DISABLED | Fixtures only until written permission or documented legal determination |
+| SRC-020 | Workday CXS/undocumented routes | REJECTED | No undocumented-route replay |
+| SRC-021 | Playwright/stealth/CAPTCHA/proxy bypass scanning | REJECTED | No browser-evasion discovery |
+| SRC-022 | Indeed and HiringCafe | HUMAN_ASSISTED_ONLY | Resolve leads to a permitted official employer/ATS record before delivery |
+
+Existing bounded Lever integrations remain governed by their recorded employer-specific approval. No new source is enabled by this documentation. The full source policy and future adapter contract are in `docs/research/CAREEROPS_AUDIT_2026-09-04.md`.

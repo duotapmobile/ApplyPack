@@ -40,3 +40,15 @@
 - Do not paste private resume content into logs, tickets, or analytics.
 - Do not manually mark an unpaid order paid.
 - Do not bypass capacity, MFA, quality confirmation, or webhook verification.
+
+## Ten-job packet preview and release
+
+1. Complete the existing human review of exactly ten job records. Stage them for packet review; do not release them to the customer yet. Generation never approves a job.
+2. In the admin order view, inspect the ten rendered record summaries and every unknown warning.
+3. Generate the current snapshot. Confirm schema, template, renderer, content identity, and checksum.
+4. Open the 60-second private preview and inspect every page, link, warning, and page number.
+5. Approve only the checksum shown for that exact preview. Approval atomically binds the current artifact and releases those same ten staged matches.
+6. If an approved correction changes content, regenerate; the new identity does not mutate the prior artifact.
+7. The customer downloads only the currently approved artifact through the authenticated owner route.
+
+Never upload a partial renderer result or rename a packet manually. A failed render remains non-deliverable. Follow `docs/DOCUMENT_GENERATION.md` for QA, upgrade, and rollback.

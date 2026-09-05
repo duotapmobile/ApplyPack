@@ -86,6 +86,35 @@ export async function POST(request: Request) {
     deletedSources += 1;
   }
 
+  const { data: duePackets, error: packetRetentionError } = await admin.from("job_match_packet_artifacts")
+    .select("id,storage_bucket,storage_path")
+    .in("status", ["PREVIEW_READY", "APPROVED", "SUPERSEDED"])
+    .lte("retention_due_at", nowIso)
+    .limit(100);
+  if (packetRetentionError) return NextResponse.json({ error: "Packet retention maintenance failed." }, { status: 500 });
+  let expiredPackets = 0;
+  for (const packet of duePackets || []) {
+    const expired = await admin.rpc("expire_job_match_packet_artifact", {
+      p_artifact_id: packet.id,
+      p_expired_at: nowIso,
+    });
+    if (expired.error || !expired.data) continue;
+    if (packet.storage_bucket && packet.storage_path) {
+      const removal = await admin.storage.from(packet.storage_bucket).remove([packet.storage_path]);
+      if (removal.error) {
+        await admin.from("storage_cleanup_queue").upsert({
+          bucket: packet.storage_bucket,
+          storage_path: packet.storage_path,
+          reason: "expired_job_match_packet",
+          attempts: 1,
+          last_error: "storage_remove_failed",
+          last_attempt_at: nowIso,
+        }, { onConflict: "bucket,storage_path" });
+      }
+    }
+    expiredPackets += 1;
+  }
+
   const { data: expiredDrafts, error: draftQueryError } = await admin.from("intake_drafts")
     .select("id,resume_document,cover_letter_document").lt("expires_at", nowIso).limit(100);
   if (draftQueryError) return NextResponse.json({ error: "Draft retention maintenance failed." }, { status: 500 });
@@ -171,6 +200,7 @@ export async function POST(request: Request) {
     expiredCarts: cartResult.data?.length || 0,
     removedRateLimits: removedRateLimits || 0,
     deletedSources,
+    expiredPackets,
     deletedDrafts,
     recoveredStorageObjects,
     staleJobs: Number(staleJobs || 0),

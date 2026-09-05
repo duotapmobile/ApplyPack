@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
-import { notifyCustomer } from "@/lib/email/notify";
+import { bindPacketEvidence } from "@/lib/documents/job-match-packet/evidence";
 import { deduplicateJobs } from "@/lib/jobs/deduplicate";
 import { normalizeJob } from "@/lib/jobs/normalize";
 import { persistNormalizedJob, rankingDatabaseValues } from "@/lib/jobs/persistence";
@@ -73,7 +74,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     await releaseClaim();
     return NextResponse.json({ error: "Duplicate jobs cannot occupy more than one delivered position." }, { status: 409 });
   }
+  const jobMatchIds = parsed.data.matches.map(() => randomUUID());
   const rows = parsed.data.matches.map((match, index) => ({
+    job_match_id: jobMatchIds[index],
     job_id: jobIds[index],
     position: index + 1,
     fit_summary: match.fitSummary,
@@ -83,12 +86,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     requirements: match.requirements,
     hidden_job_functions: match.hiddenJobFunctions,
     concerns: match.concerns,
+    match_category: match.matchCategory,
+    packet_strong_connections: bindPacketEvidence(jobMatchIds[index], jobIds[index], "strong", match.packetStrongConnections),
+    packet_things_to_consider: bindPacketEvidence(jobMatchIds[index], jobIds[index], "consideration", match.packetThingsToConsider),
+    packet_unknown_warnings: bindPacketEvidence(jobMatchIds[index], jobIds[index], "unknown", match.packetUnknownWarnings),
     criteria_checks: match.criteriaChecks,
     ...rankingDatabaseValues(normalized[index]),
   }));
   const deliveredAt = new Date();
   const retentionDays = Math.max(1, Number(process.env.APP_SOURCE_DOCUMENT_RETENTION_DAYS || 30));
-  const { data: completed, error: completeError } = await auth.admin.rpc("complete_search_delivery", {
+  const { data: completed, error: completeError } = await auth.admin.rpc("stage_search_delivery", {
     p_order_id: orderId,
     p_actor_id: auth.user.id,
     p_matches: rows,
@@ -100,12 +107,5 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     await releaseClaim();
     return NextResponse.json({ error: "The reviewed matches could not be committed atomically." }, { status: 502 });
   }
-  await notifyCustomer({
-    customerId: order.customer_id,
-    orderId,
-    template: "search_delivery",
-    subject: "Your 10 ApplyPack job matches are ready",
-    lines: ["Your researched job matches are ready in My ApplyPack.", "Review each employer listing before deciding whether to apply."],
-  });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, packetApprovalRequired: true });
 }

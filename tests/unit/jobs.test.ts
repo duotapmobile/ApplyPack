@@ -205,11 +205,28 @@ describe("reviewed admin payload contract", () => {
   };
   const reviewed = {
     ...legacy,
+    officialApplicationUrl: "https://employer.example/jobs/role/apply",
     matchingExperience: ["Confirmed customer-support experience"],
     primaryOutcome: "Resolve customer issues accurately and efficiently.",
     coreResponsibilities: ["Respond to customer requests"],
     requirements: ["Clear written communication"],
     hiddenJobFunctions: [],
+    matchCategory: "DIRECT",
+    packetStrongConnections: [{
+      kind: "DIRECT",
+      statement: "Confirmed customer-support experience maps directly to the role.",
+      evidenceIds: ["candidate-fact:60000000-0000-4000-8000-000000000001", "job-field:description"],
+    }],
+    packetThingsToConsider: [{
+      kind: "GAP",
+      statement: "The specific support platform has not been confirmed.",
+      evidenceIds: ["job-field:description"],
+    }],
+    packetUnknownWarnings: [{
+      field: "Health benefits",
+      status: "NOT_CONFIRMED",
+      evidenceIds: ["job-field:benefits_status"],
+    }],
     criteriaChecks: {
       dutiesAligned: true,
       experienceConfirmed: true,
@@ -227,6 +244,7 @@ describe("reviewed admin payload contract", () => {
   });
 
   it("rejects broken application URLs but allows missing salary and location", () => {
+    expect(jobPayloadSchema.safeParse({ ...reviewed, officialApplicationUrl: undefined }).success).toBe(false);
     expect(jobPayloadSchema.safeParse({ ...reviewed, sourceUrl: "javascript:alert(1)" }).success).toBe(false);
     expect(jobPayloadSchema.safeParse({ ...reviewed, sourceUrl: undefined }).success).toBe(false);
     expect(jobPayloadSchema.safeParse({ ...reviewed, location: undefined, salary: undefined }).success).toBe(true);

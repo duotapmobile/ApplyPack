@@ -10,6 +10,32 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { candidatePayload } from "@/lib/workflow/candidates";
 
 export const metadata: Metadata = { title: "ApplyPack Operations", robots: { index: false, follow: false } };
+type RenderedPacketJob = { job_id: string; title: string; employer: string; unknown_warnings: { field: string; status: string }[] };
+
+function renderedPacketJobs(snapshot: unknown): RenderedPacketJob[] {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return [];
+  const jobs = (snapshot as { jobs?: unknown }).jobs;
+  if (!Array.isArray(jobs)) return [];
+  return jobs.flatMap((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const row = value as Record<string, unknown>;
+    const warnings = Array.isArray(row.unknownWarnings) ? row.unknownWarnings.flatMap((warning) => {
+      if (!warning || typeof warning !== "object" || Array.isArray(warning)) return [];
+      const item = warning as Record<string, unknown>;
+      return typeof item.field === "string" && typeof item.status === "string"
+        ? [{ field: item.field, status: item.status }]
+        : [];
+    }) : [];
+    if (typeof row.jobId !== "string" || typeof row.positionTitle !== "string" || typeof row.employerName !== "string") return [];
+    return [{
+      job_id: row.jobId,
+      title: row.positionTitle,
+      employer: row.employerName,
+      unknown_warnings: warnings,
+    }];
+  });
+}
+
 
 export default async function AdminPage() {
   const supabase = await createSupabaseServerClient();
@@ -33,6 +59,10 @@ export default async function AdminPage() {
     admin.from("search_candidates").select("search_order_id,ranking_score,fit_summary,requirements,concerns,job:jobs(*)").eq("review_status", "proposed").order("ranking_score", { ascending: false }),
   ]);
   const { data: pendingRequests } = await admin.from("ap_feasibility_requests").select("id,snapshot_id,state,created_at").eq("state", "PENDING").order("created_at");
+  const [{ data: packetOrderRows }, { data: packetArtifactRows }] = await Promise.all([
+    admin.from("orders").select("id,delivered_at,status").eq("product_kind", "job_search").in("status", ["delivery_processing", "delivered"]).order("updated_at", { ascending: false }).limit(25),
+    admin.from("job_match_packet_artifacts").select("id,order_id,status,checksum_sha256,renderer_version,template_version,content_snapshot,created_at").order("created_at", { ascending: false }).limit(100),
+  ]);
   const pendingSnapshotIds = (pendingRequests || []).map((request) => request.snapshot_id);
   const { data: pendingSnapshots } = pendingSnapshotIds.length
     ? await admin.from("ap_intake_snapshots").select("id,access_email_normalized,desired_activities,avoided_activities,search_breadth,guidance_requested,work_modes,us_state_or_dc,employment_types,dealbreakers,salary_hard_minimum_cents,salary_period,finalized_at").in("id", pendingSnapshotIds)
@@ -75,12 +105,15 @@ export default async function AdminPage() {
       suggested_matches: candidatesByOrder.get(order.id) || [],
     };
   });
+  const latestPacketByOrder = new Map<string, NonNullable<typeof packetArtifactRows>[number]>();
+  for (const artifact of packetArtifactRows || []) if (!latestPacketByOrder.has(artifact.order_id)) latestPacketByOrder.set(artifact.order_id, artifact);
+  const packetOrders = (packetOrderRows || []).map((order) => { const artifact = latestPacketByOrder.get(order.id); return { ...order, artifact: artifact ? { ...artifact, rendered_jobs: renderedPacketJobs(artifact.content_snapshot) } : null }; });
   return (
     <main id="main-content" className="admin-page">
       <div className="page-frame">
         <div className="admin-heading"><div><p className="eyebrow eyebrow--light">APPLYPACK OPERATIONS</p><h1>Fulfillment queue</h1></div><div><p>Manual-first controls. Every delivery requires human review.</p><SignOutButton /></div></div>
         <div className="admin-metrics"><article><span>Open work</span><strong>{orders?.length || 0}</strong></article><article><span>Active capacity units</span><strong>{capacity?.reduce((sum, item) => sum + item.units, 0) || 0}</strong></article><article><span>Webhook failures</span><strong>{failures?.length || 0}</strong></article></div>
-        <AdminOperations searchOrders={searchOrders} applyItems={applyItems} conflicts={conflicts} corrections={corrections} capacityLimits={capacityLimits || []} />
+        <AdminOperations searchOrders={searchOrders} packetOrders={packetOrders} applyItems={applyItems} conflicts={conflicts} corrections={corrections} capacityLimits={capacityLimits || []} />
         <PendingIntakes requests={pendingRequests || []} snapshots={pendingSnapshots || []} />
         <section className="admin-table-wrap">
           <h2>Orders due</h2>

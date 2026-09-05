@@ -5,6 +5,7 @@ import { SignOutButton } from "@/components/auth/sign-out-button";
 import { EmailCodeSignIn } from "@/components/auth/email-code-sign-in";
 import { ApplyPackSelector, type MatchForSelection } from "@/components/portal/apply-pack-selector-v2";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const metadata: Metadata = { title: "My ApplyPack", robots: { index: false, follow: false } };
 
@@ -15,6 +16,11 @@ export default async function PortalPage() {
   if (!authData.user) return <EmailCodeSignIn />;
   const { data: orders } = await supabase.from("orders").select("id,product_kind,amount_cents,status,delivery_deadline,delivered_at,created_at").order("created_at", { ascending: false });
   const searchOrders = (orders || []).filter((order) => order.product_kind === "job_search" && ["delivered", "delivered_refunded"].includes(order.status));
+  const admin = createSupabaseAdminClient();
+  const { data: approvedPackets } = admin && searchOrders.length
+    ? await admin.from("job_match_packet_artifacts").select("order_id").eq("customer_id", authData.user.id).eq("status", "APPROVED").in("order_id", searchOrders.map((order) => order.id))
+    : { data: [] };
+  const packetOrderIds = new Set((approvedPackets || []).map((packet) => packet.order_id));
   let matches: MatchForSelection[] = [];
   if (searchOrders.length) {
     const { data } = await supabase.from("job_matches").select("id,position,fit_summary,matching_experience,primary_outcome,core_responsibilities,requirements,hidden_job_functions,concerns,ranking_reason_codes,job:jobs(company,title,source_url,official_application_url,source_name,source_category,location_text,salary_text,checked_at,listing_status,employment_type,w2_or_contractor,work_mode,remote_scope,eligible_states,eligible_countries,timezone_requirement,schedule_type,pay_model,phone_intensity,sales_flag,commission_flag,marketing_flag,high_volume_contact_center_flag,equipment_requirement,equipment_cost_responsibility,applicant_cost,benefits_status,experience_level,is_active,review_status,rejection_reason)").in("search_order_id", searchOrders.map((order) => order.id)).order("position");
@@ -47,6 +53,7 @@ export default async function PortalPage() {
                 <p>Order {order.id.slice(0, 8).toUpperCase()}</p>
                 <p>{"$" + (order.amount_cents / 100).toFixed(2)}</p>
                 {order.delivery_deadline ? <p>Due {new Date(order.delivery_deadline).toLocaleString("en-US", { timeZone: "America/New_York" })} ET</p> : null}
+                {packetOrderIds.has(order.id) ? <a href={`/api/customer/search-orders/${order.id}/job-match-packet`}>Download approved job-match PDF</a> : null}
               </article>
             ))}</div>
           ) : <div className="empty-state"><h3>No orders yet.</h3><p>Complete the intake to start your first search.</p><Link href="/get-started">Get started</Link></div>}

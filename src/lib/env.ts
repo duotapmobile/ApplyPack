@@ -23,6 +23,7 @@ const serverSchema = z.object({
   APP_SEARCH_CAPACITY_PER_ROLLING_24H: z.coerce.number().int().positive().default(1),
   APP_APPLY_PACK_CAPACITY_PER_ROLLING_24H: z.coerce.number().int().positive().default(2),
   APP_SOURCE_DOCUMENT_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+  APP_GENERATED_ARTIFACT_RETENTION_DAYS: z.preprocess((value) => value === "" ? undefined : value, z.coerce.number().int().min(1).max(3650).optional()),
   APP_CORRECTION_WINDOW_DAYS: z.coerce.number().int().positive().default(3),
   APP_JOB_FRESHNESS_HOURS: z.coerce.number().int().min(1).max(168).default(24),
   APP_JOB_STALE_AFTER_HOURS: z.coerce.number().int().min(24).max(720).default(72),

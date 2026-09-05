@@ -2,8 +2,9 @@ import { z } from "zod";
 import { canonicalizeEmployer } from "./canonicalize";
 import { getEmployerSource, sourceUrlMatchesDefinition } from "./source-registry";
 import type { RawJobPosting } from "./types";
+import { evidenceStatementInputSchema, unknownWarningInputSchema } from "@/lib/documents/job-match-packet/schema";
 
-const httpUrl = z.url().refine((value) => ["http:", "https:"].includes(new URL(value).protocol));
+const httpUrl = z.url().refine((value) => new URL(value).protocol === "https:", "A secure HTTPS job URL is required.");
 
 export const jobPayloadSchema = z.object({
   company: z.string().trim().min(1).max(200),
@@ -11,7 +12,7 @@ export const jobPayloadSchema = z.object({
   sourceUrl: httpUrl,
   sourceId: z.string().trim().min(1).max(100).optional(),
   sourceName: z.string().trim().max(200).optional(),
-  officialApplicationUrl: httpUrl.optional(),
+  officialApplicationUrl: httpUrl,
   externalJobId: z.string().trim().max(300).optional(),
   description: z.string().trim().max(100_000).optional().default(""),
   department: z.string().trim().max(300).optional().default(""),
@@ -41,6 +42,10 @@ export const jobPayloadSchema = z.object({
   requirements: z.array(z.string().trim().min(1).max(500)).min(1).max(30),
   hiddenJobFunctions: z.array(z.string().trim().min(1).max(500)).max(20),
   concerns: z.array(z.string().trim().min(1).max(500)).max(30).default([]),
+  matchCategory: z.enum(["DIRECT", "TRANSFERABLE", "DIRECT_AND_TRANSFERABLE"]),
+  packetStrongConnections: z.array(evidenceStatementInputSchema.refine((value) => value.kind === "DIRECT" || value.kind === "TRANSFERABLE", "A strong connection must be direct or transferable.")).min(1).max(30),
+  packetThingsToConsider: z.array(evidenceStatementInputSchema.refine((value) => value.kind === "GAP" || value.kind === "SOFT_PREFERENCE_COMPROMISE", "A consideration must be a gap or soft-preference compromise.")).max(30),
+  packetUnknownWarnings: z.array(unknownWarningInputSchema).max(30),
   criteriaChecks: z.object({
     dutiesAligned: z.literal(true),
     experienceConfirmed: z.literal(true),

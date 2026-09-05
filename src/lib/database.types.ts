@@ -4780,6 +4780,148 @@ export type Database = {
           },
         ]
       }
+      job_match_packet_artifacts: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          checksum_sha256: string | null
+          content_identity: string
+          content_revision: number
+          content_snapshot: Json
+          content_snapshot_sha256: string
+          created_at: string
+          customer_filename: string | null
+          customer_id: string
+          failure_code: string | null
+          id: string
+          order_id: string
+          pdfcn_upstream_commit: string
+          render_attempts: number
+          render_generation: string
+          render_lease_until: string | null
+          rendered_at: string | null
+          renderer_version: string
+          requested_by: string
+          retention_due_at: string
+          schema_version: string
+          size_bytes: number | null
+          status: Database["public"]["Enums"]["job_match_packet_status"]
+          storage_bucket: string | null
+          storage_path: string | null
+          supersedes_id: string | null
+          takumi_version: string
+          template_version: string
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          checksum_sha256?: string | null
+          content_identity: string
+          content_revision: number
+          content_snapshot: Json
+          content_snapshot_sha256: string
+          created_at?: string
+          customer_filename?: string | null
+          customer_id: string
+          failure_code?: string | null
+          id?: string
+          order_id: string
+          pdfcn_upstream_commit: string
+          render_attempts?: number
+          render_generation?: string
+          render_lease_until?: string | null
+          rendered_at?: string | null
+          renderer_version: string
+          requested_by: string
+          retention_due_at: string
+          schema_version: string
+          size_bytes?: number | null
+          status?: Database["public"]["Enums"]["job_match_packet_status"]
+          storage_bucket?: string | null
+          storage_path?: string | null
+          supersedes_id?: string | null
+          takumi_version: string
+          template_version: string
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          checksum_sha256?: string | null
+          content_identity?: string
+          content_revision?: number
+          content_snapshot?: Json
+          content_snapshot_sha256?: string
+          created_at?: string
+          customer_filename?: string | null
+          customer_id?: string
+          failure_code?: string | null
+          id?: string
+          order_id?: string
+          pdfcn_upstream_commit?: string
+          render_attempts?: number
+          render_generation?: string
+          render_lease_until?: string | null
+          rendered_at?: string | null
+          renderer_version?: string
+          requested_by?: string
+          retention_due_at?: string
+          schema_version?: string
+          size_bytes?: number | null
+          status?: Database["public"]["Enums"]["job_match_packet_status"]
+          storage_bucket?: string | null
+          storage_path?: string | null
+          supersedes_id?: string | null
+          takumi_version?: string
+          template_version?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_match_packet_artifacts_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_match_packet_artifacts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_match_packet_artifacts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_match_packet_artifacts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_match_packet_artifacts_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_match_packet_artifacts_supersedes_id_fkey"
+            columns: ["supersedes_id"]
+            isOneToOne: false
+            referencedRelation: "job_match_packet_artifacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_matches: {
         Row: {
           apply_pack_cart_id: string | null
@@ -4794,7 +4936,11 @@ export type Database = {
           hidden_job_functions: Json
           id: string
           job_id: string
+          match_category: string | null
           matching_experience: Json
+          packet_strong_connections: Json | null
+          packet_things_to_consider: Json | null
+          packet_unknown_warnings: Json | null
           position: number
           primary_outcome: string | null
           ranking_reason_codes: Json
@@ -4817,7 +4963,11 @@ export type Database = {
           hidden_job_functions?: Json
           id?: string
           job_id: string
+          match_category?: string | null
           matching_experience?: Json
+          packet_strong_connections?: Json | null
+          packet_things_to_consider?: Json | null
+          packet_unknown_warnings?: Json | null
           position: number
           primary_outcome?: string | null
           ranking_reason_codes?: Json
@@ -4840,7 +4990,11 @@ export type Database = {
           hidden_job_functions?: Json
           id?: string
           job_id?: string
+          match_category?: string | null
           matching_experience?: Json
+          packet_strong_connections?: Json | null
+          packet_things_to_consider?: Json | null
+          packet_unknown_warnings?: Json | null
           position?: number
           primary_outcome?: string | null
           ranking_reason_codes?: Json
@@ -5330,6 +5484,8 @@ export type Database = {
           human_reviewed_by: string | null
           id: string
           intake_id: string | null
+          job_match_packet_artifact_id: string | null
+          job_match_packet_content_revision: number
           paid_at: string | null
           parent_order_id: string | null
           processing_previous_status:
@@ -5356,6 +5512,8 @@ export type Database = {
           human_reviewed_by?: string | null
           id?: string
           intake_id?: string | null
+          job_match_packet_artifact_id?: string | null
+          job_match_packet_content_revision?: number
           paid_at?: string | null
           parent_order_id?: string | null
           processing_previous_status?:
@@ -5382,6 +5540,8 @@ export type Database = {
           human_reviewed_by?: string | null
           id?: string
           intake_id?: string | null
+          job_match_packet_artifact_id?: string | null
+          job_match_packet_content_revision?: number
           paid_at?: string | null
           parent_order_id?: string | null
           processing_previous_status?:
@@ -5422,6 +5582,13 @@ export type Database = {
             columns: ["intake_id"]
             isOneToOne: false
             referencedRelation: "intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_job_match_packet_artifact_id_fkey"
+            columns: ["job_match_packet_artifact_id"]
+            isOneToOne: false
+            referencedRelation: "job_match_packet_artifacts"
             referencedColumns: ["id"]
           },
           {
@@ -6364,6 +6531,15 @@ export type Database = {
           version: number
         }[]
       }
+      approve_job_match_packet_artifact: {
+        Args: {
+          p_actor_id: string
+          p_approved_at: string
+          p_artifact_id: string
+          p_checksum_sha256: string
+        }
+        Returns: string
+      }
       available_capacity: {
         Args: { p_kind: Database["public"]["Enums"]["product_kind"] }
         Returns: number
@@ -6535,6 +6711,10 @@ export type Database = {
         }
         Returns: string
       }
+      expire_job_match_packet_artifact: {
+        Args: { p_artifact_id: string; p_expired_at: string }
+        Returns: boolean
+      }
       finalize_intake_source_retention: {
         Args: {
           p_deleted_at: string
@@ -6565,6 +6745,23 @@ export type Database = {
         Args: { p_stale_hours?: number }
         Returns: number
       }
+      packet_claims_have_valid_provenance: {
+        Args: {
+          p_claims: Json
+          p_customer_id: string
+          p_group: string
+          p_intake_id: string
+          p_job_id: string
+          p_match_id: string
+          p_require_candidate: boolean
+        }
+        Returns: boolean
+      }
+      packet_unknown_warnings_are_complete: {
+        Args: { p_job_id: string; p_warnings: Json }
+        Returns: boolean
+      }
+      packet_value_is_unknown: { Args: { p_value: string }; Returns: boolean }
       prepare_apply_pack_checkout: {
         Args: {
           p_customer_id: string
@@ -6610,6 +6807,17 @@ export type Database = {
           p_resolved_at?: string
           p_review_id: string
           p_status: string
+        }
+        Returns: boolean
+      }
+      stage_search_delivery: {
+        Args: {
+          p_actor_id: string
+          p_delivered_at: string
+          p_matches: Json
+          p_order_id: string
+          p_retention_due_at: string
+          p_review_checklist: Json
         }
         Returns: boolean
       }
@@ -6820,6 +7028,13 @@ export type Database = {
         | "in_review"
         | "approved"
         | "cancelled"
+      job_match_packet_status:
+        | "RENDERING"
+        | "PREVIEW_READY"
+        | "APPROVED"
+        | "FAILED"
+        | "SUPERSEDED"
+        | "EXPIRED"
       order_status:
         | "pending_payment"
         | "paid"
@@ -7195,6 +7410,14 @@ export const Constants = {
         "in_review",
         "approved",
         "cancelled",
+      ],
+      job_match_packet_status: [
+        "RENDERING",
+        "PREVIEW_READY",
+        "APPROVED",
+        "FAILED",
+        "SUPERSEDED",
+        "EXPIRED",
       ],
       order_status: [
         "pending_payment",

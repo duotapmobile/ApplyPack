@@ -48,3 +48,15 @@
 ## Security incident
 
 Use `INCIDENT_RESPONSE.md`. Pause purchases first when confidentiality, payment integrity, or delivery correctness may be affected. Preserve identifiers and timestamps, but never copy customer document contents into the incident record.
+
+## Job-match packet controls
+
+- Generation and preview are server-side Node operations. Operator access requires the existing allowlist, role, and AAL2 MFA controls.
+- The renderer accepts only the strict approved-content schema. Customer and posting text is inert, bounded, and cannot choose executable templates, URLs to fetch, or parser commands.
+- Packet objects stay in `customer-deliveries`; access reuses the repository's 60-second signed URL policy. Cross-customer, pre-release, stale, superseded, and expired requests return not-found.
+- Generated-artifact retention is fail closed: without approved `APP_GENERATED_ARTIFACT_RETENTION_DAYS`, packet generation returns unavailable. With it, access expires before private-object deletion; failed deletion is queued without restoring access.
+- Artifact identity includes order, customer, content snapshot, renderer, template, pdfcn commit, Takumi version, and the order content revision. Database uniqueness, bounded leases, and per-attempt generation tokens prevent concurrent duplicate or stale-worker delivery.
+- Approval revalidates all ten current job records under an order lock: active/open state, rejection, 24-hour freshness, direct HTTPS destination, Liveops exclusion, exact membership, and unchanged application URL. Corrections take the same order lock, advance the revision, clear customer visibility, and require reapproval.
+- Candidate evidence references must resolve to the owning customer's current confirmed/verified facts; job evidence must name an allowlisted field on the exact selected job. Invalid, cross-customer, rejected, superseded, or dangling evidence fails closed.
+- Audit events contain identifiers, states, revisions, versions, checksums, and bounded failure codes, never packet text. Upload/database interruptions recover an existing private object only after SHA-256 equality.
+- Customer release remains blocked until the shared fresh-reauthentication control is implemented and proven.

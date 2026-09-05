@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { bindPacketEvidence } from "@/lib/documents/job-match-packet/evidence";
 import { notifyCustomer } from "@/lib/email/notify";
 import { normalizeJob } from "@/lib/jobs/normalize";
 import { persistNormalizedJob, rankingDatabaseValues } from "@/lib/jobs/persistence";
@@ -53,6 +54,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       requirements: replacement.requirements,
       hidden_job_functions: replacement.hiddenJobFunctions,
       concerns: replacement.concerns,
+      match_category: replacement.matchCategory,
+      packet_strong_connections: bindPacketEvidence(review.job_match_id, replacementJobId, "strong", replacement.packetStrongConnections),
+      packet_things_to_consider: bindPacketEvidence(review.job_match_id, replacementJobId, "consideration", replacement.packetThingsToConsider),
+      packet_unknown_warnings: bindPacketEvidence(review.job_match_id, replacementJobId, "unknown", replacement.packetUnknownWarnings),
       criteria_checks: replacement.criteriaChecks,
       ...rankingDatabaseValues(normalized),
     };
@@ -72,7 +77,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     orderId: searchOrderId,
     template: "conflict_review_resolved",
     subject: parsed.data.status === "accepted" ? "Your replacement ApplyPack match is ready" : "Your ApplyPack match review is complete",
-    lines: [parsed.data.resolution, parsed.data.status === "accepted" ? "A fresh replacement is now visible in My ApplyPack." : "Your original match remains in My ApplyPack."],
+    lines: [parsed.data.resolution, parsed.data.status === "accepted" ? "Your corrected packet is awaiting final document review." : "Your original match remains in My ApplyPack."],
     keySuffix: reviewId,
   });
   return NextResponse.json({ ok: true });

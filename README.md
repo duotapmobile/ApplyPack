@@ -107,3 +107,7 @@ It expires abandoned reservations, deletes source documents whose retention date
 ## Repository
 
 Canonical remote: `https://github.com/duotapmobile/ApplyPack.git`
+
+## Document-generation architecture
+
+The ten-job match packet uses the server-side pdfcn/Takumi presentation layer while resumes and cover letters remain editable, Word-first DOCX artifacts. See `docs/DOCUMENT_GENERATION.md`, `docs/architecture/ADR-001-PDFCN-TAKUMI-PRESENTATION-LAYER.md`, and `docs/research/CAREEROPS_AUDIT_2026-09-04.md`.

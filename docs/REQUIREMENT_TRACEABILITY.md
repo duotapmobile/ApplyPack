@@ -1346,6 +1346,16 @@ Generated from the checksum-verified corrected packet, version 2026-09-04. Each 
 | APC-IR-0001 | IR Independent review after Chunk 7 L2280 | `385e006543a681b1d44ec398773046bd012dc639f197d05bef5295c972574d24` | Start a fresh Codex session that did not implement the feature. Check out the exact clean evidence-only `CHUNK_COMMIT` reported by Chunk 7 on a new review branch; do not review ... | Independent review | TBD in owning chunk | Owning chunk checks | Owning chunk manifest | PENDING |
 | APC-IR-0002 | IR Independent review after Chunk 7 L2282 | `7c391f63cca50b5b9ab2be4f06b0963767a82880fbb54230ab142ae7d1d02664` | Use this prompt: | Independent review | TBD in owning chunk | Owning chunk checks | Owning chunk manifest | PENDING |
 | APC-IR-0003 | IR Independent review after Chunk 7 L2284 | `22acbd1c2076a2f5f8f81ae7c8224e7f9310059bbe858290cd1b51a58b24e9cb` | Independently challenge the ApplyPack release at the exact clean Chunk 7 evidence-only `CHUNK_COMMIT`; stop as Blocked if HEAD differs or the worktree is dirty. Verify the recor... | Independent review | TBD in owning chunk | Owning chunk checks | Owning chunk manifest | PENDING |
+## 2026-09-04 correction and pdfcn pilot mapping
+
+| Supplemental ID | Requirement | Owning scope | Evidence | State |
+| --- | --- | --- | --- | --- |
+| SUP-PDFCN-001 | Exactly ten human-approved jobs enter a schema-validated, evidence-grounded content model | Document pilot / Chunk 5 partial | `src/lib/documents/job-match-packet/schema.ts`; unit and SQL fixtures | IMPLEMENTED_LOCAL |
+| SUP-PDFCN-002 | pdfcn/Takumi formats the job packet; DOCX remains resume/cover-letter truth | Document pilot / Chunk 5 partial | ADR-001; renderer boundary; existing DOCX generator unchanged | IMPLEMENTED_LOCAL |
+| SUP-PDFCN-003 | Private immutable, versioned artifact with preview and exact-checksum approval | Document pilot / Chunk 5 partial | migration 024; service/repository/routes/admin tests | IMPLEMENTED_LOCAL |
+| SUP-CAREEROPS-001 | Pin and audit CareerOps; selectively adapt without runtime dependency | Correction addendum | `docs/research/CAREEROPS_AUDIT_2026-09-04.md` | COMPLETE_RESEARCH |
+| SUP-CAREEROPS-002 | Separate source feasibility from paid commercial permission and correct Himalayas | Correction addendum / future Chunk 3 | `docs/CONFIG_DECISIONS.md` SRC-012 through SRC-022 | CORRECTED_DISABLED |
+| SUP-CAREEROPS-003 | Bounded similar-repository gap audit and independent review | Correction addendum | CareerOps audit and pdfcn evidence record | REVIEW_REQUIRED |
 
 ## Coverage summary
 
