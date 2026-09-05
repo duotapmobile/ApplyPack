@@ -83,11 +83,12 @@ describe("Chunk 3 source and retrieval policy", () => {
   });
 
   it("blocks release without configured TTL, final activity, or an actionable path", () => {
-    const baseRelease = { sourceId: "manual-reviewed", company: "Example", urls: ["https://example.invalid/apply"], listingActive: true, applicationActionable: true, lastLiveVerifiedAt: "2026-09-04T12:00:00.000Z", now: "2026-09-04T12:30:00.000Z" };
+    const baseRelease = { sourceId: "manual-reviewed", company: "Example", urls: ["https://example.invalid/apply"], sourceAuthorized: true, listingActive: true, applicationActionable: true, lastLiveVerifiedAt: "2026-09-04T12:00:00.000Z", now: "2026-09-04T12:30:00.000Z" };
     expect(releaseVerification(baseRelease).reason).toBe("UNSET_BLOCKING");
     expect(releaseVerification({ ...baseRelease, ttlSeconds: 3600 }).eligible).toBe(true);
     expect(releaseVerification({ ...baseRelease, ttlSeconds: 600 }).reason).toBe("VERIFICATION_EXPIRED");
     expect(releaseVerification({ ...baseRelease, ttlSeconds: 3600, listingActive: false }).reason).toBe("VERIFICATION_INCOMPLETE");
+    expect(releaseVerification({ ...baseRelease, ttlSeconds: 3600, sourceAuthorized: false }).reason).toBe("SOURCE_AUTHORIZATION_REVOKED");
     expect(releaseVerification({ ...baseRelease, ttlSeconds: 3600, company: "Liveops" }).reason).toBe("BLOCKED_SOURCE");
   });
 

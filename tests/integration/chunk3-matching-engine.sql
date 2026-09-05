@@ -180,5 +180,36 @@ end $$;
 select pg_temp.assert_true(not has_table_privilege('service_role','public.ap_feasibility_assessments','insert'),'service_role_can_manufacture_feasibility');
 select pg_temp.assert_true(exists(select 1 from public.ap_migration_checkpoints where migration_id='202609050026' and checkpoint='CHUNK3_AUDIT_REMEDIATION_EXPAND'),'chunk3_remediation_checkpoint_missing');
 
+do $$ begin
+  begin
+    insert into public.ap_human_review_records(customer_id,draft_id,reviewer_id,snapshot_id,job_snapshot_id,review_kind,rationale,catalog_version,decision)
+    values('13000000-0000-4000-8000-000000000003','33000000-0000-4000-8000-000000000003','13000000-0000-4000-8000-000000000003','53000000-0000-4000-8000-000000000003','83000000-0000-4000-8000-000000000001','MATCH_EVIDENCE','A hard pass without candidate evidence must fail.','matching-rules-v2','{"disposition":"RESOLVED_PASS","evidenceChanges":["reviewed exact criterion"],"sourceEvidenceNodeIds":["85000000-0000-4000-8000-000000000002"],"candidateFactIds":[],"candidateFactVersionIds":[],"rulesVersion":"matching-rules-v2","stableCriterionId":"85000000-0000-4000-8000-000000000003","evidenceRelation":"DIRECT"}');
+    raise exception 'zero_fact_hard_pass_was_accepted';
+  exception when raise_exception then if sqlerrm='zero_fact_hard_pass_was_accepted' then raise; end if; if sqlerrm<>'match_evidence_binding_invalid' then raise; end if; end;
+end $$;
+
+select public.ap_persist_match_selection(
+  '53000000-0000-4000-8000-000000000003','SEARCH_WORKFLOW','order-fixture',10,'bounded-diversity-v2',repeat('e',64),repeat('f',64),
+  '[{"evaluationId":"84000000-0000-4000-8000-000000000001","baseRank":1,"selectedRank":1,"rankExplanation":{"fit":90,"version":"matching-rules-v2"},"selectorExplanation":{"state":"BASE_RANK_RETAINED","selectorVersion":"bounded-diversity-v2"}}]'
+);
+select public.ap_persist_match_selection(
+  '53000000-0000-4000-8000-000000000003','SEARCH_WORKFLOW','order-fixture',10,'bounded-diversity-v2',repeat('e',64),repeat('f',64),
+  '[{"evaluationId":"84000000-0000-4000-8000-000000000001","baseRank":1,"selectedRank":1,"rankExplanation":{"fit":90,"version":"matching-rules-v2"},"selectorExplanation":{"state":"BASE_RANK_RETAINED","selectorVersion":"bounded-diversity-v2"}}]'
+);
+select pg_temp.assert_true((select count(*)=1 from public.ap_match_selection_runs where content_sha256=repeat('f',64)),'selection_run_not_idempotent');
+select pg_temp.assert_true((select count(*)=1 from public.ap_match_selection_members member join public.ap_match_selection_runs run on run.id=member.selection_run_id where run.content_sha256=repeat('f',64) and member.base_rank=1 and member.selected_rank=1 and member.rank_explanation->>'version'='matching-rules-v2'),'ranking_stages_not_persisted');
+select pg_temp.assert_true(not has_table_privilege('authenticated','public.ap_match_selection_runs','select'),'selection_runs_exposed_to_clients');
+
+insert into public.ap_source_authorizations(source_id,source_display_name,state,access_method,authorization_version,content_sha256)
+values('manual-reviewed','Manual reviewed source revoked','BLOCKED','NONE','source-auth-v2',repeat('1',64));
+do $$ begin
+  begin
+    insert into public.ap_match_evaluations(id,customer_id,snapshot_id,job_snapshot_id,inventory_member_id,inventory_version_id,eligibility,root_result,leaf_results,resolution_issues,unknown_treatments,satisfaction_paths,categorical_evidence_sufficient,fit_score,fit_components,evidence_confidence,confidence_components,salary_status,salary_disposition,soft_preferences,application_readiness,presentation_risk,presentation_risk_reasons,warnings,candidate_fact_ids,job_evidence,version_bundle,human_review_id,active_root_keys,root_results,calculation_input_sha256,calculation_version,usefulness_result,preference_alignment,confidence_label,rank_explanation,selector_explanation,legacy_compatibility)
+    values('84000000-0000-4000-8000-000000000002','13000000-0000-4000-8000-000000000003','53000000-0000-4000-8000-000000000003','83000000-0000-4000-8000-000000000001','82000000-0000-4000-8000-000000000001','72000000-0000-4000-8000-000000000004','INELIGIBLE','FAIL','[]','{}','{}','[]',false,null,'[]',85,'{}','UNPUBLISHED','NOT_APPLICABLE','{}','READY','LOW','[]','[]','{}','[]','{"matching":"matching-rules-v2"}',null,'{root-a}','[{"rootKey":"root-a","result":"FAIL"}]',repeat('2',64),'matching-rules-v2','FAIL',null,'HIGH','{"state":"AWAITING_SELECTION_RUN"}','{"state":"AWAITING_SELECTION_RUN"}',false);
+    raise exception 'evaluation_after_source_revocation_was_accepted';
+  exception when raise_exception then if sqlerrm='evaluation_after_source_revocation_was_accepted' then raise; end if; if sqlerrm<>'current_source_authorization_required' then raise; end if; end;
+end $$;
+select pg_temp.assert_true(exists(select 1 from public.ap_migration_checkpoints where migration_id='202609050027' and checkpoint='CHUNK3_PERSISTED_EVIDENCE_EXPAND'),'chunk3_persisted_evidence_checkpoint_missing');
+
 rollback;
 select 'chunk3_matching_engine_ok' as result;

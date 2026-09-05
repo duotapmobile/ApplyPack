@@ -391,7 +391,7 @@ evaluations + complete coverage            -> feasibility worker -> immutable as
 pending request -> claimed -> completed | pending retry | stale | error
 ```
 
-Migration `202609040025_chunk3_matching_engine.sql` is additive. It adds immutable source-authorization evidence, mandatory bounded source configuration, normalized inventory membership, query-family coverage links, deduplication displacements, deterministic rank/explanation fields, and service-role-only feasibility request transitions. Generated database types are regenerated from all 25 migrations.
+Migrations `202609040025_chunk3_matching_engine.sql`, `202609050026_chunk3_audit_remediation.sql`, and `202609050027_chunk3_persisted_evidence_remediation.sql` are additive. Together they add immutable source-authorization evidence, mandatory bounded source configuration, normalized inventory membership, query-family coverage links, deduplication displacements, exact evaluation provenance, five-section explanation evidence, immutable base/diversity selection runs, and service-role-only feasibility request transitions. Generated database types are regenerated from all 27 migrations.
 
 ### Ownership and invariants
 
@@ -403,8 +403,8 @@ Migration `202609040025_chunk3_matching_engine.sql` is additive. It adds immutab
 - `tool-clusters-v1` defines explicit Boolean task trees for spreadsheet, CRM, reporting/BI, SQL, and system-administration work. Posting-named tasks override generic clusters; equivalent-tool mappings require version and rationale.
 - Eligibility validates exact active-root equality and uses the binding precedence. Employer omissions remain unknown and need criterion-specific consent/warning. Candidate unknowns create targeted input needs. Parser/conflict/unwaivable uncertainty requires protected resolution. A reviewer cannot override a confirmed hard failure.
 - `salary-rules-v1` uses integer cents, employer-published like-for-like USD evidence, exact endpoint/basis/location/worker rules, stored schedule conversions, and separate target-pay preference. Non-USD always fails at launch.
-- `matching-rules-v1` requires categorical usefulness before the normalized 35/25/20/10/10 fit calculation. Equal-weight preferences apply only on an exact fit tie. Confidence uses 40/25/20/15 and minimum material-source quality. Readiness and allowlisted presentation risk are separate; career break, breadth, title, and industry labels add no fit points.
-- `bounded-diversity-v1` filters ineligible, evidence-insufficient, and Liveops candidates before its inclusive 5.00-fit/0.05-preference, non-lower-confidence reordering. It uses the hypothetical concentration vector and stable ID, and records each displacement.
+- `matching-rules-v2` accepts only immutable evidence identifiers at the evaluation boundary. It reloads the intake snapshot, persisted requirement tree, current candidate facts, exact human-review records, and source authorization; derives eligibility and the salary gate before categorical usefulness; then derives normalized 35/25/20/10/10 fit, exact-tie preferences, 40/25/20/15 confidence, readiness, risk, and five-section evidence. No caller score or factor is accepted.
+- `bounded-diversity-v2` filters ineligible, evidence-insufficient, revoked-source, and Liveops candidates before its inclusive 5.00-fit/0.05-preference, non-lower-confidence reordering. It persists both ranking stages and every displacement in immutable, idempotent selection-run records required by search, release, and replacement.
 - `feasibility-v1` requires an immutable plan with every required family and authorized source cell, positive bounds, terminal result, parser completion, normalization/deduplication, and manual checklist where applicable. Missing configuration and any result-changing defect are pending/error, never limited/infeasible. Only a current complete `LIKELY` result with no blocker can later support Checkout; Chunk 3 creates no Checkout.
 - `feasibility-worker-v1` owns claim, calculation, immutable assessment persistence, and guarded complete/defer/stale/error transitions. It derives counts and outcomes server-side; caller totals are rejected. Human corrections must add evidence and rerun.
 - The previous point-based `rankLegacyJob(s)` surface is explicitly compatibility-only for historical paid/admin records. It does not create corrected-contract evaluations.
@@ -419,11 +419,11 @@ Normal rollback returns code/traffic to the preceding compatible build while lea
 
 | Check ID | Procedure | Intended result |
 | --- | --- | --- |
-| C3-MIGRATE | `supabase db reset --local` | All 25 migrations apply from zero |
+| C3-MIGRATE | `supabase db reset --local` | All 27 migrations apply from zero |
 | C3-DB | `npm run test:database` | All Chunk 1-3 transactional fixtures and guarded worker/source/coverage invariants pass |
 | C3-LEGACY | `npm run test:legacy-backfill` | Legacy paid data and idempotent compatibility records remain intact |
 | C3-ROLLBACK | `npm run test:rollback` | Self-restoring guarded rollback retains the expanded compatible schema |
-| C3-TYPES | `npm run types:database:check` | Generated database types match all 25 migrations |
+| C3-TYPES | `npm run types:database:check` | Generated database types match all 27 migrations |
 | C3-LINT | `npm run lint` | Static lint passes |
 | C3-TYPE | `npm run typecheck` | Strict TypeScript passes |
 | C3-UNIT | `npm test` | Matching truth tables, source policy, deduplication, scoring, feasibility, and prior regressions pass |
@@ -435,11 +435,17 @@ Normal rollback returns code/traffic to the preceding compatible build while lea
 
 ### Chunk 3 verified result
 
-Tested implementation commit `152fc529cbf39652cd59dedc734f50433419bb31` (tree `8691c03a09acd2ce9bfb528f71b31a0c21521b31`) passed all 12 applicable Chunk 3 checks: all 25 migrations from zero; all three transactional Chunk 1-3 database fixtures; legacy paid-order preservation and idempotent backfill; self-restoring rollback with the complete 25-migration schema; generated database-type equality; lint; strict TypeScript; 253/253 unit and property tests in 41 files; production build with 48 generated routes/pages; 70 passing desktop/mobile Playwright cases with two intentional duplicate-platform skips among 72 scheduled cases; 243/243 implemented Chunk 3 traceability rows; and both unstaged and staged whitespace checks. Failed applicable tests: none. Blocked applicable tests: none.
+The original tested implementation commit `152fc529cbf39652cd59dedc734f50433419bb31` and evidence commit `1ec2eb6ffdb7b942acbe76f87e53c5bcbbe7c3c6` were rejected by oversight. The first remediation commit `077c55d1b57366de929223886379eca14255355a` was also rejected because reachable evaluation still trusted caller primitives and did not persist or recheck all required provenance. Those historical results are superseded and are not acceptance evidence.
 
 The real-scanner integration suite reported three tests skipped in two files because no approved production scanner is configured. This is `NOT_APPLICABLE_LOCAL`, is excluded from the applicable-test denominator, and leaves production processing fail closed. The cumulative verified ledger is 44/44 applicable checks: 9/9 from Phase 0, 11/11 from Chunk 1, 12/12 from Chunk 2, and 12/12 from Chunk 3.
 
-The evidence-only closeout is `evidence/chunk-3/manifest.json`. No source was contacted, no production database changed, and no payment, Checkout, push, merge, deploy, public redesign, or Chunk 4 work occurred.
+The second-remediation implementation commit and canonical `evidence/chunk-3/manifest.json` hash will be recorded in the evidence-only closeout after every required check is rerun against the exact implementation commit. No source was contacted, no production database changed, and no payment, Checkout, push, merge, deploy, public redesign, or Chunk 4 work occurred.
+
+### Chunk 3 persisted-evidence remediation result
+
+The implementation replaces the matching-evaluations request body with immutable evidence-review references, evaluates the stored Boolean tree, derives the salary gate from the immutable intake, derives fit/confidence/preferences from current evidence, and stores five-section evidence provenance. Migration `202609050027` makes strict v2 evaluation creation fail closed on incomplete parsing, stale source authorization, missing/incorrect candidate evidence, invalid review bindings, or malformed server-derived metadata. Immutable selection runs persist both rank stages and displacement explanations. Delivery reloads current fact versions and the latest source authorization, derives match text from candidate facts, and refuses a selection without a persisted run.
+
+Exact tested implementation SHA, tree SHA, canonical manifest SHA-256, final evidence commit, and complete test counts are intentionally deferred to the evidence-only commit so the ledger cannot claim results before they exist.
 
 ### Remaining release blockers
 

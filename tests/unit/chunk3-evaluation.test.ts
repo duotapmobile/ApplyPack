@@ -78,6 +78,7 @@ describe("Chunk 3 eligibility, salary, fit, confidence, and selection", () => {
     expect(calculateFit("ELIGIBLE", true, allComponents(0.5)).score).toBe(50);
     expect(calculateFit("INELIGIBLE", true, allComponents(1)).score).toBeNull();
     expect(calculateFit("ELIGIBLE", false, allComponents(1)).score).toBeNull();
+    expect(calculateFit("ELIGIBLE", true, allComponents(1).map((component) => ({ ...component, applicable: false, criteria: [] })))).toMatchObject({ score: null, uncomputableReason: "NO_APPLICABLE_COMPONENTS" });
     expect(() => calculateFit("ELIGIBLE", true, allComponents(1).map((c, i) => i === 0 ? { ...c, criteria: [] } : c))).toThrow("empty_fit_denominator");
     expect(() => calculateFit("ELIGIBLE", true, allComponents(1).map((c, i) => i === 0 ? { ...c, criteria: [{ ...c.criteria[0], evidenceFactor: Number.NaN }] } : c))).toThrow("invalid_fit_factor");
     expect(() => calculateFit("ELIGIBLE", true, allComponents(1).map((c, i) => i === 0 ? { ...c, criteria: [c.criteria[0], c.criteria[0]] } : c))).toThrow("duplicate_fit_criterion");
@@ -138,7 +139,7 @@ describe("Chunk 3 eligibility, salary, fit, confidence, and selection", () => {
     expect(baseRank([candidate("lower-fit", { fit: 89, preference: 1 }), candidate("higher-fit", { fit: 90, preference: 0 })])[0].jobId).toBe("higher-fit");
     expect(baseRank([candidate("low-pref", { preference: 0.5 }), candidate("high-pref", { preference: 1 })])[0].jobId).toBe("high-pref");
     expect(baseRank([candidate("b"), candidate("a")])[0].jobId).toBe("a");
-    expect(baseRankWithExplanations([candidate("a")])[0]).toMatchObject({ baseRank: 1, explanation: { fit: 90, preference: 0.5, confidence: 80, postedDateKnown: false, stableJobId: "a", version: "matching-rules-v1" } });
+    expect(baseRankWithExplanations([candidate("a")])[0]).toMatchObject({ baseRank: 1, explanation: { fit: 90, preference: 0.5, confidence: 80, postedDateKnown: false, stableJobId: "a", version: "matching-rules-v2" } });
   });
 
   it("applies inclusive diversity bounds, concentration vectors, and null preference omission", () => {

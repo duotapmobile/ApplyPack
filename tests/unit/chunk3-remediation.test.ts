@@ -22,12 +22,20 @@ function evaluation(id: string): PersistedMatchEvaluation {
     salary_disposition: "PASS",
     usefulness_result: "PASS",
     application_readiness: "READY",
+    candidate_fact_ids: [uuid],
     root_results: [{ rootKey: uuid, result: "PASS" }],
     leaf_results: [],
-    job_evidence: [{ field: "responsibility", sourceLocator: "line:2" }],
+    satisfaction_paths: [{ rootKey: uuid, selectedNodeIds: [uuid] }],
+    job_evidence: [{ id: uuid, field: "responsibility", sourceLocator: "line:2" }],
+    explanation_evidence: {
+      whatJobInvolves: { sourceEvidenceNodeIds: [uuid], candidateFactIds: [] },
+      whyMadeList: { sourceEvidenceNodeIds: [uuid], candidateFactIds: [uuid] },
+      howExperienceConnects: { sourceEvidenceNodeIds: [uuid], candidateFactIds: [uuid] },
+      whatMayBeNew: { sourceEvidenceNodeIds: [uuid], candidateFactIds: [] },
+      whatToKnow: { sourceEvidenceNodeIds: [uuid], candidateFactIds: [] },
+    },
     warnings: [],
-    rank_explanation: { version: "matching-rules-v1" },
-    selector_explanation: { version: "bounded-diversity-v1" },
+    candidate_facts: [{ id: uuid, semantic_key: "experience:customer-operations", value_kind: "RESPONSIBILITY", verification: "CUSTOMER_CONFIRMED", source_kind: "CUSTOMER_ASSERTION", supplied_source_id: null, superseded_at: null, customer_display_label: "Customer operations", customer_display_value: "Coordinated service recovery" }],
     job_snapshot: {
       id,
       legacy_job_id: id,
@@ -43,6 +51,9 @@ function evaluation(id: string): PersistedMatchEvaluation {
       listing_activity_result: "PASS",
       application_path_result: "PASS",
       legitimacy_result: "PASS",
+      source_authorization_id: uuid,
+      source_authorization: { id: uuid, source_id: "manual-reviewed", state: "AUTHORIZED_MANUAL_ONLY", access_method: "MANUAL", authorization_version: "source-auth-v1", created_at: "2026-09-04T00:00:00.000Z" },
+      current_source_authorization: { id: uuid, source_id: "manual-reviewed", state: "AUTHORIZED_MANUAL_ONLY", access_method: "MANUAL", authorization_version: "source-auth-v1", created_at: "2026-09-04T00:00:00.000Z" },
     },
   };
 }
@@ -64,8 +75,22 @@ describe("Chunk 3 audit remediation", () => {
     const rows = Array.from({ length: 10 }, (_, index) => evaluation(`20000000-0000-4000-8000-${String(index).padStart(12, "0")}`));
     const selected = selectPersistedEvaluations(rows, 10).selected;
     expect(selected).toHaveLength(10);
-    expect(deliveryRow(selected[0], 1)).toMatchObject({ job_id: selected[0].job_snapshot.legacy_job_id, criteria_checks: { nonNegotiablesSatisfied: true } });
+    selected[0].selection!.runId = uuid;
+    expect(selected[0].selection).toMatchObject({ baseRank: expect.any(Number), selectedRank: expect.any(Number), rankExplanation: expect.any(Object), selectorExplanation: expect.any(Object) });
+    expect(deliveryRow(selected[0], 1)).toMatchObject({
+      job_id: selected[0].job_snapshot.legacy_job_id,
+      matching_experience: ["Customer operations: Coordinated service recovery"],
+      criteria_checks: { experienceConfirmed: true, nonNegotiablesSatisfied: true },
+      ranking_reason_codes: { selectionRunId: uuid, baseRank: expect.any(Number), selectedRank: expect.any(Number) },
+    });
     expect(() => deliveryRow({ ...selected[0], usefulness_result: "FAIL" }, 1)).toThrow("persisted_evaluation_not_deliverable");
+  });
+
+  it("excludes a persisted evaluation when the linked source authorization is no longer current", () => {
+    const row = evaluation("20000000-0000-4000-8000-000000000099");
+    row.job_snapshot.current_source_authorization = { id: "30000000-0000-4000-8000-000000000099", source_id: "manual-reviewed", state: "BLOCKED", access_method: "NONE", authorization_version: "source-auth-v2", created_at: "2026-09-05T00:00:00.000Z" };
+    expect(selectPersistedEvaluations([row], 1).selected).toHaveLength(0);
+    expect(() => deliveryRow(row, 1)).toThrow("persisted_evaluation_not_deliverable");
   });
 
   it("rejects manufactured feasibility objects without persisted identity and version bindings", () => {
@@ -95,6 +120,9 @@ describe("Chunk 3 audit remediation", () => {
     expect(source).toContain("loadPersistedEvaluationsForOrder");
     expect(readFileSync("src/app/api/admin/jobs/route.ts", "utf8")).toContain("ap_persist_parsed_inventory_job");
     expect(readFileSync("src/app/api/cron/maintenance/route.ts", "utf8")).toContain("processPendingFeasibilityRequests");
-    expect(readFileSync("src/app/api/admin/matching-evaluations/route.ts", "utf8")).toContain("deriveEligibility");
+    const evaluationRoute = readFileSync("src/app/api/admin/matching-evaluations/route.ts", "utf8");
+    expect(evaluationRoute).toContain("deriveEvaluationFromPersistedEvidence");
+    expect(evaluationRoute).not.toContain("fitComponents:");
+    expect(evaluationRoute).not.toContain("hardMinimumCents:");
   });
 });

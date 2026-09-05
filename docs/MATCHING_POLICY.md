@@ -8,12 +8,13 @@ Status: Chunk 3 repository implementation. This policy is subordinate to `APPLYP
 | --- | --- |
 | Source authorization | `source-auth-v1` |
 | Responsibility retrieval | `responsibility-retrieval-v1` |
+| Listing requirement parser | `listing-requirements-v3` |
 | Requirement evaluation | `requirement-engine-v1` |
 | Tool clusters | `tool-clusters-v1` |
 | Salary comparison | `salary-rules-v1` |
-| Fit, preference, confidence, and gate rules | `matching-rules-v1` |
+| Fit, preference, confidence, and gate rules | `matching-rules-v2` |
 | Duplicate graph | `dedup-graph-v1` |
-| Diversity selector | `bounded-diversity-v1` |
+| Diversity selector | `bounded-diversity-v2` |
 | Feasibility plan and outcome | `feasibility-v1` |
 | Feasibility worker | `feasibility-worker-v1` |
 
@@ -32,6 +33,8 @@ These weights and mappings are versioned product hypotheses for ranking and cali
 9. Require documented human review and a final pairwise duplicate check before an atomic exact-ten release.
 
 Search breadth, title similarity, industry familiarity, salary, source, career break, presentation risk, and soft preferences add no fit points. Preferences never rescue a hard failure.
+
+The evaluation API accepts only immutable snapshot, inventory-member, job-snapshot, and human-review identifiers. It reloads the requirement tree, candidate fact versions, source authorization, salary policies, and reviewer evidence from protected storage. Gate results, salary-policy values, fit factors, confidence inputs, preferences, readiness, and scores are derived by the server and are not accepted from the caller.
 
 ## Retrieval and source policy
 
@@ -64,6 +67,8 @@ Active hard trees contain only `ALL_OF`, `ANY_OF`, and typed `CRITERION` nodes. 
 | `ANY_OF` | otherwise | `UNKNOWN` |
 
 Nested structure is preserved. A passing `ANY_OF` uses one deterministic satisfaction path: highest summed importance, then evidence confidence, then stable node ID. Unused unknown alternatives become `IMMATERIAL_ALTERNATIVE`; they ask no question and do not enter required-branch denominators.
+
+`listing-requirements-v3` preserves supported employer `OR` alternatives as `ANY_OF` subtrees. Any material hard wording that it cannot type makes the whole parse incomplete; a strict evaluation requires `requirement_completeness = 100` and executes the stored tree through `evaluateRequirementTree`.
 
 | Outcome-determinative unknown | Stored mapping | Derived action |
 | --- | --- | --- |
@@ -115,6 +120,10 @@ Labels are HIGH `80..100`, MEDIUM `60..<80`, and LOW `<60`. Low requires protect
 Application readiness and presentation risk remain separate. Presentation-risk reasons are restricted to `CONTACT_DETAIL_CONFIRMATION`, `FORMAT_REPAIR`, `CLAIM_WORDING_REVIEW`, and `APPLICATION_QUESTION_REVIEW`. Career break, caregiving, unemployment, identity, graduation year, prestige, chronology alone, or appearance cannot create a risk or alter eligibility, fit, confidence, salary, or readiness.
 
 At each diversity slot, the anchor is the highest remaining base-ranked candidate. A candidate may displace it only when unrounded fit decrease is inclusively at most `5.00`, confidence label is not lower, and preference decrease is inclusively at most `0.05`. If the customer selected no preferences, that constraint is omitted for all candidates. Choose the lexicographically smallest hypothetical `(employer count, title-family count, discovery-source count)`, then stable job ID. Ineligible, evidence-insufficient, and Liveops records are removed before selection. Every displacement is recorded.
+
+Each selection writes an immutable, idempotent `ap_match_selection_runs` record and one `ap_match_selection_members` row per base-ranked evaluation. Those members persist contiguous base/selected ranks, unrounded inputs, rank explanations, diversity displacement details, and selector version. Search, release, and conflict-replacement paths require the persisted selection-run identity; in-memory displacement results cannot be delivered.
+
+The five customer explanation sections are bound in the usefulness review to exact employer evidence-node and candidate-fact-version IDs. Matching-experience text is rendered only from current confirmed/independently verified candidate facts; listing evidence describes the employer role and requirements. Final selection and release reload the latest authorization record for the linked source. A newer revoked or superseding authorization makes the evaluation nondeliverable even when it was authorized at ingestion.
 
 ## Deduplication and feasibility
 

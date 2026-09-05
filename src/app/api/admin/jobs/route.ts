@@ -4,8 +4,8 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { canonicalSha256, semanticComparisonKey } from "@/lib/domain/foundation";
 import { assertAuthorizedSource } from "@/lib/matching/retrieval";
-import { loadPersistedEvaluationsForSnapshot, persistedFitSummary, selectPersistedEvaluations } from "@/lib/matching/persisted-runtime";
-import { LISTING_PARSER_VERSION, parseListingRequirements } from "@/lib/matching/listing-parser";
+import { loadPersistedEvaluationsForSnapshot, persistedFitSummary, selectAndPersistEvaluations } from "@/lib/matching/persisted-runtime";
+import { LISTING_PARSER_VERSION, parseListingRequirements, requirementPersistenceRows } from "@/lib/matching/listing-parser";
 import { normalizeJob } from "@/lib/jobs/normalize";
 import { persistNormalizedJob } from "@/lib/jobs/persistence";
 import { stableNormalizedJobId } from "@/lib/matching/deduplication";
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "A valid immutable criteria snapshot is required." }, { status: 400 });
   try {
     const evaluations = await loadPersistedEvaluationsForSnapshot(auth.admin, parsed.data.snapshotId);
-    const ranked = selectPersistedEvaluations(evaluations, 500).selected;
+    const ranked = (await selectAndPersistEvaluations(auth.admin, evaluations, 500, "ADMIN_PREVIEW", parsed.data.snapshotId)).selected;
     return NextResponse.json({
       snapshotId: parsed.data.snapshotId,
       jobs: ranked.map((evaluation) => ({
@@ -141,27 +141,7 @@ export async function POST(request: Request) {
       canonicalization_version: "applypack-c14n-v1",
       legacy_compatibility: false,
     };
-    const rootId = randomUUID();
-    const requirementNodes = [
-      { id: rootId, parent_id: null, position: 0, node_kind: "ALL_OF", criterion_type: null, stable_criterion_id: null, semantic_key: null, requirement_strength: null, source_locator: null, parser_certainty: null, criterion_version: null, typed_value: null, source_excerpt: null, classification_method: LISTING_PARSER_VERSION, human_correction_history: [] },
-      ...parser.criteria.map((criterion, position) => ({
-        id: criterion.stableCriterionId,
-        parent_id: rootId,
-        position,
-        node_kind: "CRITERION",
-        criterion_type: criterion.kind,
-        stable_criterion_id: criterion.stableCriterionId,
-        semantic_key: criterion.semanticKey,
-        requirement_strength: criterion.strength,
-        source_locator: criterion.sourceLocator,
-        parser_certainty: criterion.parserCertainty,
-        criterion_version: criterion.version,
-        typed_value: criterion,
-        source_excerpt: parsed.data.listingText.split(/\r?\n/u)[Number(criterion.sourceLocator.split(":")[1]) - 1]?.trim() || criterion.semanticKey,
-        classification_method: LISTING_PARSER_VERSION,
-        human_correction_history: [],
-      })),
-    ];
+    const requirementNodes = requirementPersistenceRows(parser, parsed.data.listingText);
     const { data: memberId, error: memberError } = await auth.admin.rpc("ap_persist_parsed_inventory_job", { p_criteria_snapshot_id: parsed.data.snapshotId, p_inventory_version_id: coveragePlan.inventory_version_id, p_stable_normalized_job_id: stableJobId, p_job_snapshot: snapshotRow, p_requirement_nodes: requirementNodes });
     if (memberError || !memberId) throw memberError || new Error("inventory_member_not_persisted");
     return NextResponse.json({ jobSnapshotId, inventoryMemberId: memberId, legacyJobId, parserStatus: parser.status, issues: parser.issues }, { status: parser.status === "COMPLETE" ? 201 : 202 });

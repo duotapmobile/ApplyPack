@@ -13,6 +13,6 @@ describe("Chunk 3 protected review record", () => {
 
   it("builds deterministic evidence links with reviewer, time, and rules version", () => {
     const parsed = matchingReviewRequestSchema.parse({ ...valid, sourceEvidenceNodeIds: [valid.sourceEvidenceNodeIds[0], valid.sourceEvidenceNodeIds[0]] });
-    expect(buildMatchingReviewDecision(parsed, "reviewer", "2026-09-05T00:00:00.000Z")).toEqual({ disposition: "RESOLVED_PASS", sourceEvidenceNodeIds: [valid.sourceEvidenceNodeIds[0]], candidateFactIds: [], evidenceChanges: valid.evidenceChanges, rulesVersion: "matching-rules-v1", reviewerId: "reviewer", resolvedAt: "2026-09-05T00:00:00.000Z" });
+    expect(buildMatchingReviewDecision(parsed, "reviewer", "2026-09-05T00:00:00.000Z")).toEqual({ disposition: "RESOLVED_PASS", sourceEvidenceNodeIds: [valid.sourceEvidenceNodeIds[0]], candidateFactIds: [], evidenceChanges: valid.evidenceChanges, rulesVersion: "matching-rules-v2", reviewerId: "reviewer", resolvedAt: "2026-09-05T00:00:00.000Z" });
   });
 });

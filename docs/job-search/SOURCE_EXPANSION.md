@@ -99,7 +99,7 @@ The predicate can be non-transitive. The corrected engine builds the full undire
 
 For corrected-contract evaluations, soft defaults never filter inventory. Only confirmed hard restrictions exclude a job. The prior weighted filter/rank functions remain explicitly named `rankLegacyJob(s)` and exist only so historical paid records and their admin workflow stay readable.
 
-New evaluations use the evidence-backed `matching-rules-v1` engine: hard gates, categorical usefulness, 35/25/20/10/10 fit, exact-fit-only equal-weight preferences, evidence confidence, stable freshness, and bounded diversity. Caller-assigned totals and title/search-breadth score points are rejected. The protected legacy search API does not create corrected-contract evaluations.
+New evaluations use the evidence-backed `matching-rules-v2` engine: the server reloads the immutable intake, stored Boolean requirement tree, exact candidate-fact versions, evidence reviews, and current source authorization before deriving hard gates, categorical usefulness, 35/25/20/10/10 fit, exact-fit-only equal-weight preferences, evidence confidence, stable freshness, and bounded diversity. Caller-assigned decisions, factors, totals, and title/search-breadth score points are rejected. Ranking stages are stored in immutable `bounded-diversity-v2` selection runs. The protected legacy search API does not create corrected-contract evaluations.
 
 ## Freshness and health
 

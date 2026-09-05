@@ -1,9 +1,9 @@
 import type { CriterionResult, EligibilityDisposition, EmployerUnknownPolicy, ResolutionIssue, SalaryGateDisposition, SalaryStatus, UnknownTreatment } from "@/lib/domain/foundation";
 import { isLiveopsReference } from "@/lib/jobs/canonicalize";
 
-export const MATCHING_RULES_VERSION = "matching-rules-v1";
+export const MATCHING_RULES_VERSION = "matching-rules-v2";
 export const SALARY_RULES_VERSION = "salary-rules-v1";
-export const SELECTOR_VERSION = "bounded-diversity-v1";
+export const SELECTOR_VERSION = "bounded-diversity-v2";
 
 export type GateResult = { rootKey: string; result: CriterionResult; resolutionIssue: ResolutionIssue; unknownTreatment: UnknownTreatment; warning?: string; consentVersion?: string; unwaivable?: boolean };
 
@@ -150,7 +150,10 @@ export function calculateFit(disposition: EligibilityDisposition, categoricalEvi
     const coverage = numerator / denominator; weighted += fitWeights[component.name] * coverage; applicableWeight += fitWeights[component.name];
     return { name: component.name, coverage };
   });
-  return { score: 100 * weighted / applicableWeight, components: details };
+  if (applicableWeight === 0) return { score: null, components: details, uncomputableReason: "NO_APPLICABLE_COMPONENTS" as const };
+  const score = 100 * weighted / applicableWeight;
+  if (!Number.isFinite(score)) throw new Error("invalid_fit_result");
+  return { score, components: details, uncomputableReason: null };
 }
 
 export type PreferenceComponent = { preferenceId: string; value: 0 | 0.5 | 0.75 | 1 };

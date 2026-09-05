@@ -9,7 +9,7 @@ import { deduplicateJobs } from "@/lib/jobs/deduplicate";
 import { normalizeJob } from "@/lib/jobs/normalize";
 import { persistNormalizedJob } from "@/lib/jobs/persistence";
 import { jobSources, sourceMayBeAccessedAutomatically } from "@/lib/jobs/source-registry";
-import { loadPersistedEvaluationsForOrder, searchCandidateRow, selectPersistedEvaluations } from "@/lib/matching/persisted-runtime";
+import { loadPersistedEvaluationsForOrder, searchCandidateRow, selectAndPersistEvaluations } from "@/lib/matching/persisted-runtime";
 import { workflowErrorCode } from "@/lib/workflow/errors";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -71,12 +71,12 @@ async function processSearchDiscovery(admin: AdminClient, task: WorkflowTask) {
   }
 
   const evaluations = await loadPersistedEvaluationsForOrder(admin, task.order_id);
-  const ranked = selectPersistedEvaluations(evaluations, 30).selected;
+  const ranked = (await selectAndPersistEvaluations(admin, evaluations, 30, "SEARCH_WORKFLOW", task.order_id)).selected;
 
   await admin.from("search_candidates").delete().eq("search_order_id", task.order_id).eq("review_status", "proposed");
   if (ranked.length) {
     const { error: candidateError } = await admin.from("search_candidates").upsert(
-      ranked.map((evaluation, index) => searchCandidateRow(task.order_id, evaluation, index + 1)),
+      ranked.map((evaluation) => searchCandidateRow(task.order_id, evaluation)),
       { onConflict: "search_order_id,job_id" },
     );
     if (candidateError) throw candidateError;

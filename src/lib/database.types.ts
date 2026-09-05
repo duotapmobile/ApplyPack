@@ -2494,6 +2494,7 @@ export type Database = {
           customer_id: string
           eligibility: Database["public"]["Enums"]["ap_eligibility_disposition"]
           evidence_confidence: number | null
+          explanation_evidence: Json
           fit_components: Json
           fit_score: number | null
           human_review_id: string | null
@@ -2538,6 +2539,7 @@ export type Database = {
           customer_id: string
           eligibility: Database["public"]["Enums"]["ap_eligibility_disposition"]
           evidence_confidence?: number | null
+          explanation_evidence?: Json
           fit_components: Json
           fit_score?: number | null
           human_review_id?: string | null
@@ -2582,6 +2584,7 @@ export type Database = {
           customer_id?: string
           eligibility?: Database["public"]["Enums"]["ap_eligibility_disposition"]
           evidence_confidence?: number | null
+          explanation_evidence?: Json
           fit_components?: Json
           fit_score?: number | null
           human_review_id?: string | null
@@ -2650,6 +2653,92 @@ export type Database = {
           },
           {
             foreignKeyName: "ap_match_evaluations_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_match_selection_members: {
+        Row: {
+          base_rank: number
+          evaluation_id: string
+          rank_explanation: Json
+          selected_rank: number | null
+          selection_run_id: string
+          selector_explanation: Json
+        }
+        Insert: {
+          base_rank: number
+          evaluation_id: string
+          rank_explanation: Json
+          selected_rank?: number | null
+          selection_run_id: string
+          selector_explanation: Json
+        }
+        Update: {
+          base_rank?: number
+          evaluation_id?: string
+          rank_explanation?: Json
+          selected_rank?: number | null
+          selection_run_id?: string
+          selector_explanation?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_match_selection_members_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_match_evaluations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_match_selection_members_selection_run_id_fkey"
+            columns: ["selection_run_id"]
+            isOneToOne: false
+            referencedRelation: "ap_match_selection_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_match_selection_runs: {
+        Row: {
+          content_sha256: string
+          created_at: string
+          evaluation_set_sha256: string
+          id: string
+          purpose: string
+          requested_count: number
+          scope_key: string
+          selector_version: string
+          snapshot_id: string
+        }
+        Insert: {
+          content_sha256: string
+          created_at?: string
+          evaluation_set_sha256: string
+          id?: string
+          purpose: string
+          requested_count: number
+          scope_key: string
+          selector_version: string
+          snapshot_id: string
+        }
+        Update: {
+          content_sha256?: string
+          created_at?: string
+          evaluation_set_sha256?: string
+          id?: string
+          purpose?: string
+          requested_count?: number
+          scope_key?: string
+          selector_version?: string
+          snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_match_selection_runs_snapshot_id_fkey"
             columns: ["snapshot_id"]
             isOneToOne: false
             referencedRelation: "ap_intake_snapshots"
@@ -6626,6 +6715,19 @@ export type Database = {
           p_request_id: string
           p_rules_version: string
           p_worker_id: string
+        }
+        Returns: string
+      }
+      ap_persist_match_selection: {
+        Args: {
+          p_content_sha256: string
+          p_evaluation_set_sha256: string
+          p_members: Json
+          p_purpose: string
+          p_requested_count: number
+          p_scope_key: string
+          p_selector_version: string
+          p_snapshot_id: string
         }
         Returns: string
       }

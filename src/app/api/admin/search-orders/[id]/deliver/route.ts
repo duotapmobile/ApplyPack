@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { notifyCustomer } from "@/lib/email/notify";
-import { deliveryRow, loadPersistedEvaluationsForOrder, selectPersistedEvaluations } from "@/lib/matching/persisted-runtime";
+import { deliveryRow, loadPersistedEvaluationsForOrder, selectAndPersistEvaluations } from "@/lib/matching/persisted-runtime";
 import { releaseVerification } from "@/lib/matching/verification";
 import { isSameOriginRequest } from "@/lib/security/origin";
 
@@ -32,7 +32,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   let evaluations;
   try {
     const current = await loadPersistedEvaluationsForOrder(auth.admin, orderId);
-    const selected = selectPersistedEvaluations(current, 10).selected;
+    const selected = (await selectAndPersistEvaluations(auth.admin, current, 10, "RELEASE", orderId)).selected;
     const expected = new Set(selected.map((item) => item.id));
     if (selected.length !== 10 || parsed.data.evaluationIds.some((id) => !expected.has(id))) {
       return NextResponse.json({ error: "Delivery must use the current persisted ten-match selection for the active criteria snapshot." }, { status: 409 });
@@ -50,6 +50,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       sourceId: evaluation.job_snapshot.discovery_source,
       company: evaluation.job_snapshot.company,
       urls: [evaluation.job_snapshot.canonical_application_url],
+      sourceAuthorized: evaluation.job_snapshot.source_authorization?.id === evaluation.job_snapshot.current_source_authorization?.id
+        && ["AUTHORIZED_AUTOMATED", "AUTHORIZED_MANUAL_ONLY"].includes(evaluation.job_snapshot.current_source_authorization?.state ?? ""),
       listingActive: evaluation.job_snapshot.listing_activity_result === "PASS",
       applicationActionable: evaluation.job_snapshot.application_path_result === "PASS",
       lastLiveVerifiedAt: evaluation.job_snapshot.live_verified_at,

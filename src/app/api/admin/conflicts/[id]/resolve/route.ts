@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { notifyCustomer } from "@/lib/email/notify";
-import { deliveryRow, loadPersistedEvaluationsForOrder } from "@/lib/matching/persisted-runtime";
+import { deliveryRow, loadPersistedEvaluationsForOrder, selectAndPersistEvaluations } from "@/lib/matching/persisted-runtime";
 import { releaseVerification } from "@/lib/matching/verification";
 import { isSameOriginRequest } from "@/lib/security/origin";
 
@@ -35,12 +35,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     try {
       if (!searchOrderId) throw new Error("search_order_required");
       const evaluations = await loadPersistedEvaluationsForOrder(auth.admin, searchOrderId);
-      const evaluation = evaluations.find((item) => item.id === parsed.data.replacementEvaluationId);
+      const selection = await selectAndPersistEvaluations(auth.admin, evaluations, 500, "CONFLICT_REPLACEMENT", reviewId);
+      const evaluation = selection.selected.find((item) => item.id === parsed.data.replacementEvaluationId);
       if (!evaluation) throw new Error("persisted_replacement_not_current");
       const verification = releaseVerification({
         sourceId: evaluation.job_snapshot.discovery_source,
         company: evaluation.job_snapshot.company,
         urls: [evaluation.job_snapshot.canonical_application_url],
+        sourceAuthorized: evaluation.job_snapshot.source_authorization?.id === evaluation.job_snapshot.current_source_authorization?.id
+          && ["AUTHORIZED_AUTOMATED", "AUTHORIZED_MANUAL_ONLY"].includes(evaluation.job_snapshot.current_source_authorization?.state ?? ""),
         listingActive: evaluation.job_snapshot.listing_activity_result === "PASS",
         applicationActionable: evaluation.job_snapshot.application_path_result === "PASS",
         lastLiveVerifiedAt: evaluation.job_snapshot.live_verified_at,

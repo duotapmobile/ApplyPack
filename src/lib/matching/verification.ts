@@ -12,8 +12,9 @@ export function assessLegitimacy(signals: readonly FraudSignal[]) {
   return { signals: unique.sort(), disposition: material ? "FAIL" as const : unique.length >= 2 ? "NEEDS_HUMAN_REVIEW" as const : "PASS" as const };
 }
 
-export function releaseVerification(input: { sourceId: string; company: string; urls: readonly string[]; listingActive: boolean | null; applicationActionable: boolean | null; lastLiveVerifiedAt: string | null; now: string; ttlSeconds?: number }) {
+export function releaseVerification(input: { sourceId: string; company: string; urls: readonly string[]; sourceAuthorized: boolean; listingActive: boolean | null; applicationActionable: boolean | null; lastLiveVerifiedAt: string | null; now: string; ttlSeconds?: number }) {
   if (isLiveopsReference(input.sourceId, input.company, ...input.urls)) return { eligible: false, reason: "BLOCKED_SOURCE" as const };
+  if (!input.sourceAuthorized) return { eligible: false, reason: "SOURCE_AUTHORIZATION_REVOKED" as const };
   if (!Number.isFinite(input.ttlSeconds) || !Number.isInteger(input.ttlSeconds) || input.ttlSeconds! <= 0) return { eligible: false, reason: "UNSET_BLOCKING" as const };
   if (!input.listingActive || !input.applicationActionable || !input.lastLiveVerifiedAt) return { eligible: false, reason: "VERIFICATION_INCOMPLETE" as const };
   const age = Date.parse(input.now) - Date.parse(input.lastLiveVerifiedAt);
