@@ -430,7 +430,16 @@ Normal rollback returns code/traffic to the preceding compatible build while lea
 | C3-BUILD | `npm run build` | Production compilation and route generation pass without activating providers |
 | C3-E2E | `npm run test:e2e` | Existing public/admin flows regress cleanly; no public redesign is introduced |
 | C3-INTEGRATION-EXTERNAL | `npm run test:integration` | External scanner tests remain local N/A; deterministic fail-closed coverage remains mandatory |
+| C3-TRACE | Chunk 3 ownership/status audit | All 243 Chunk 3 rows map to implementation, tests, evidence, and `IMPLEMENTED` status |
 | C3-FORMAT | `git diff --check` plus staged check | No whitespace errors |
+
+### Chunk 3 verified result
+
+Tested implementation commit `152fc529cbf39652cd59dedc734f50433419bb31` (tree `8691c03a09acd2ce9bfb528f71b31a0c21521b31`) passed all 12 applicable Chunk 3 checks: all 25 migrations from zero; all three transactional Chunk 1-3 database fixtures; legacy paid-order preservation and idempotent backfill; self-restoring rollback with the complete 25-migration schema; generated database-type equality; lint; strict TypeScript; 253/253 unit and property tests in 41 files; production build with 48 generated routes/pages; 70 passing desktop/mobile Playwright cases with two intentional duplicate-platform skips among 72 scheduled cases; 243/243 implemented Chunk 3 traceability rows; and both unstaged and staged whitespace checks. Failed applicable tests: none. Blocked applicable tests: none.
+
+The real-scanner integration suite reported three tests skipped in two files because no approved production scanner is configured. This is `NOT_APPLICABLE_LOCAL`, is excluded from the applicable-test denominator, and leaves production processing fail closed. The cumulative verified ledger is 44/44 applicable checks: 9/9 from Phase 0, 11/11 from Chunk 1, 12/12 from Chunk 2, and 12/12 from Chunk 3.
+
+The evidence-only closeout is `evidence/chunk-3/manifest.json`. No source was contacted, no production database changed, and no payment, Checkout, push, merge, deploy, public redesign, or Chunk 4 work occurred.
 
 ### Remaining release blockers
 

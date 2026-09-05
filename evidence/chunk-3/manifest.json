@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "chunk": 3,
+  "chunk_status": "COMPLETE",
+  "created_at": "2026-09-05T01:30:48.2111918-04:00",
+  "worktree": "C:\\Users\\mskir\\Desktop\\Apply_Pack\\applypack-phase0-e9c3aea0d45447bfaa6517e488356e0d",
+  "branch": "codex/applypack-corrected-build-2026-09-04",
+  "base_commit": "aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8",
+  "required_phase_0_commit": "0595ae7cec5c2f36d06b11b691fd319742cb692c",
+  "accepted_chunk_1_commit": "e8c77426b892a54b802dde516552449825754df8",
+  "accepted_chunk_2_final_evidence_commit": "93644d52c53340cef187fa08e3d574a75d42a97a",
+  "start_head": "93644d52c53340cef187fa08e3d574a75d42a97a",
+  "tested_code_commit": "152fc529cbf39652cd59dedc734f50433419bb31",
+  "tested_tree": "8691c03a09acd2ce9bfb528f71b31a0c21521b31",
+  "contract_sha256": "df4e32e2ea0c37abd3f39904c36576c0af3935f9754bb1b81979782dc002d69f",
+  "environment": {
+    "git": "2.50.0.windows.2",
+    "node": "22.22.0",
+    "npm": "10.9.4",
+    "os": "Windows 11",
+    "supabase_cli": "2.116.0",
+    "timezone": "America/New_York"
+  },
+  "checks": [
+    {
+      "id": "C3-MIGRATE",
+      "command": "npm exec -- supabase db reset --local",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 25,
+      "evidence": "All 25 migrations applied from zero through additive migration 202609040025_chunk3_matching_engine.sql."
+    },
+    {
+      "id": "C3-DB",
+      "command": "npm run test:database",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 3,
+      "evidence": "All three transactional SQL fixtures passed, including default-deny source authorization, bounded coverage, immutable inventory/evaluation/review records, guarded feasibility-worker transitions, and prior Chunk 1-2 invariants."
+    },
+    {
+      "id": "C3-LEGACY",
+      "command": "npm run test:legacy-backfill",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 2,
+      "evidence": "The pre-Chunk-1 paid order survived migrations 202609040022 through 202609040025; compatibility validation passed before and after the idempotent rerun, then the complete schema was restored."
+    },
+    {
+      "id": "C3-ROLLBACK",
+      "command": "npm run test:rollback",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 2,
+      "evidence": "The guarded disposable rollback returned ROLLBACK_OK and self-restored all 25 migrations before returning RESTORE_OK."
+    },
+    {
+      "id": "C3-TYPES",
+      "command": "npm run types:database:check",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 1,
+      "evidence": "Checked-in TypeScript database types exactly matched the fully migrated local schema."
+    },
+    {
+      "id": "C3-LINT",
+      "command": "npm run lint",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": null,
+      "evidence": "ESLint completed without findings."
+    },
+    {
+      "id": "C3-TYPE",
+      "command": "npm run typecheck",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": null,
+      "evidence": "TypeScript no-emit validation completed without errors."
+    },
+    {
+      "id": "C3-UNIT",
+      "command": "npm test",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 253,
+      "evidence": "All 253 tests in 41 files passed, including the 13-persona governed fixture, requirement truth tables, source policy, provenance, deduplication properties, fit/confidence/readiness, feasibility, reviewer constraints, and prior regressions."
+    },
+    {
+      "id": "C3-BUILD",
+      "command": "npm run build",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 48,
+      "evidence": "Next.js production compilation, TypeScript phase, page-data collection, and all 48 generated routes/pages passed without activating any provider."
+    },
+    {
+      "id": "C3-E2E",
+      "command": "npm run test:e2e",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 70,
+      "evidence": "All 70 applicable desktop/mobile Playwright cases passed. Two of 72 scheduled cases were intentional duplicate-platform skips: mobile evidence recapture and the Chromium-only browser-metrics scaling check. No public intake redesign or payment activation occurred."
+    },
+    {
+      "id": "C3-TRACE",
+      "command": "Chunk 3 traceability ownership/status audit",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 243,
+      "evidence": "All 243 Chunk 3-owned rows map to implementation, tests, evidence, and IMPLEMENTED status; pending, unmapped, and unimplemented Chunk 3 rows are zero."
+    },
+    {
+      "id": "C3-FORMAT",
+      "command": "git diff --check and git diff --cached --check",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 2,
+      "evidence": "Both the unstaged and staged implementation diffs completed without whitespace errors."
+    },
+    {
+      "id": "C3-INTEGRATION-EXTERNAL",
+      "command": "npm run test:integration",
+      "status": "NOT_APPLICABLE_LOCAL",
+      "exit_code": 0,
+      "assertion_count": 3,
+      "evidence": "Two real-scanner adapter files and all three tests were explicitly skipped because no approved production scanner is configured. Deterministic fail-closed coverage passed and processing remains disabled.",
+      "excluded_from_required_denominator": true
+    }
+  ],
+  "required_tests": {
+    "numerator": 12,
+    "denominator": 12,
+    "failed": [],
+    "blocked": [],
+    "not_applicable_local": [
+      "C3-INTEGRATION-EXTERNAL"
+    ]
+  },
+  "cumulative_required_tests": {
+    "numerator": 44,
+    "denominator": 44,
+    "phase_0": "9/9",
+    "chunk_1": "11/11",
+    "chunk_2": "12/12",
+    "chunk_3": "12/12"
+  },
+  "traceability": {
+    "owning_rows": 243,
+    "implemented_rows": 243,
+    "unmapped_rows": 0
+  },
+  "artifacts": [
+    { "path": "supabase/migrations/202609040025_chunk3_matching_engine.sql", "bytes": 23584, "sha256": "c40db6163eae7bb4d99e7e0d21364b548a173eafdbbea9133214942607a1cd96" },
+    { "path": "src/lib/database.types.ts", "bytes": 250823, "sha256": "ab03cffd13bb6618126ffdf14de5b362846a0d3d9f44117a61b8e90aff84aac7" },
+    { "path": "src/lib/matching/retrieval.ts", "bytes": 6125, "sha256": "b279b18d5fb7253581c2da29d965931df517d3bdd18ff22c081123524d564a3b" },
+    { "path": "src/lib/matching/requirements.ts", "bytes": 11052, "sha256": "88ab45e4d00b2da8f32b1dbcfdcebf7860e6de0e91775bcbc92adc5615df9dae" },
+    { "path": "src/lib/matching/evaluation-engine.ts", "bytes": 20778, "sha256": "e987156eb95e740e5ae2a4976726c44722d3fccdba955b6fe93cd7025d2e75a2" },
+    { "path": "src/lib/matching/deduplication.ts", "bytes": 4338, "sha256": "8838cc6de8358c0ec33e27481005c66f8b9ca0740fcb48c4b30bbb28f2320beb" },
+    { "path": "src/lib/matching/feasibility.ts", "bytes": 8148, "sha256": "3f4585ca38dd9c39c71241b9989387d290d2b27c18edc1006f4030ab101e93c9" },
+    { "path": "src/lib/matching/feasibility-worker.ts", "bytes": 2276, "sha256": "ef291d90ae5544774d680a8ef5e8e99198dc12385307153956ececf543ec6797" },
+    { "path": "src/lib/matching/verification.ts", "bytes": 2382, "sha256": "0670524ae585880cb8c6f70b9a03f646d49d60cf4bcb0ecafc74f64674a9ba39" },
+    { "path": "src/lib/matching/tool-clusters.ts", "bytes": 3079, "sha256": "14e1a90dcc170618cf47d7614a553e420b67d7318ce69e1e973ae0bd06c491a5" },
+    { "path": "src/app/api/admin/matching-reviews/route.ts", "bytes": 3297, "sha256": "ed9bf56bc980aa0c8a1f86a02e88ce5abe47c24e2ff311aa19cf11b3e70a4cd3" },
+    { "path": "tests/integration/chunk3-matching-engine.sql", "bytes": 11559, "sha256": "c40a4b103cdf8e65974d1960a4ef714419089e928d78bc20102290f9f898600a" },
+    { "path": "tests/fixtures/chunk3-personas.ts", "bytes": 1127, "sha256": "07f88876e70b510337a4e967299f77eba19a851eb7e09a6d4526f4dbd155087a" },
+    { "path": "docs/MATCHING_POLICY.md", "bytes": 13415, "sha256": "cf7d43e9be894834982912d6f9b39cf1fce8584dee7b0df3590bc29f752bb0c5" },
+    { "path": "docs/DEPLOYMENT_RUNBOOK.md", "bytes": 20656, "sha256": "9f4a9021c94952fc0dc477f3fa88e9bbd4a6735e42ea74fd0ce5820afbb48aca" },
+    { "path": "docs/IMPLEMENTATION_STATUS.md", "bytes": 53392, "sha256": "609e0efb7b311457cae9ce927f16562184ed6d67000b61b831ebf6826ccb02db" },
+    { "path": "docs/REQUIREMENT_TRACEABILITY.md", "bytes": 605015, "sha256": "21a6e221de25c86e156c7907dd99e1c1cc1767118e4a1e7b8f4aca53df26293f" },
+    { "path": "docs/evidence/IMPLEMENTATION_DECISIONS.md", "bytes": 17536, "sha256": "6f35e91cecb43e31b60163accb071dac9defdfab5ac499e44a254970dbc29f51" }
+  ],
+  "unimplemented_chunk_requirements": [],
+  "unresolved_release_blockers": [
+    "No job source has documentary AUTHORIZED_AUTOMATED approval; all automated retrieval remains default deny.",
+    "The production source/query matrix, exact result/lookback/pagination bounds, and release-verification TTL are not approved or configured.",
+    "Production KMS, malware scanning, sandbox parsing/OCR, reference isolation/leak scanning, and permitted-model policy remain unconfigured; document processing remains fail closed.",
+    "Approved retention/deletion durations and matching Privacy Policy language remain unset.",
+    "Stripe tax-inclusive configuration, capacity/staffing, monitoring, worker scheduling, and trained protected staff remain unconfigured.",
+    "Real-provider integration evidence is unavailable locally and no production-looking mock substitutes for it.",
+    "Chunks 4 through 7 remain unimplemented and require explicit authorization."
+  ],
+  "next_chunk_started": false,
+  "next_chunk_authorized": false,
+  "provider_contacted": false,
+  "production_database_changed": false,
+  "payment_or_checkout_activated": false,
+  "pushed_or_deployed": false
+}
