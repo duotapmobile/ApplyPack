@@ -114,12 +114,11 @@ npm.cmd run types:database:check
 git diff --check
 ```
 
-The real private malware-scanner integration requires its external test service. When absent, the scanner integration is `NOT_APPLICABLE_LOCAL`, not a pass; the deterministic secure-pipeline suite must pass and `APP_FILE_PROCESSING_ENABLED=false` must keep processing fail-closed. Test migration rollback separately only in a newly reset disposable database:
+The real private malware-scanner integration requires its external test service. When absent, the scanner integration is `NOT_APPLICABLE_LOCAL`, not a pass; the deterministic secure-pipeline suite must pass and `APP_FILE_PROCESSING_ENABLED=false` must keep processing fail-closed. Test migration rollback separately only in a newly reset disposable database. The rollback command now resets all migrations itself and verifies the final foundation table, function, and migration ledger before returning success:
 
 ```powershell
 supabase db reset
 npm.cmd run test:rollback
-supabase db reset
 npm.cmd run test:database
 npm.cmd run test:legacy-backfill
 npm.cmd run types:database:check
