@@ -1,13 +1,13 @@
-import { assessFeasibility, type CoveragePlan, type InventoryEvaluation } from "@/lib/matching/feasibility";
+import { assessFeasibility, type CoveragePlan, type PersistedInventoryEvaluation } from "@/lib/matching/feasibility";
 
 export const FEASIBILITY_WORKER_VERSION = "feasibility-worker-v1";
 
-export type ClaimedFeasibilityRequest = { requestId: string; snapshotId: string; draftId: string };
+export type ClaimedFeasibilityRequest = { requestId: string; snapshotId: string; draftId: string; workerId: string };
 export type PersistedFeasibilityInput = {
   plan: CoveragePlan;
-  inventory: readonly InventoryEvaluation[];
+  inventory: readonly PersistedInventoryEvaluation[];
+  currentSnapshotId: string;
   currentSnapshotHash: string;
-  resolutionBlocker: "NONE" | "NEEDS_CANDIDATE_INPUT" | "NEEDS_HUMAN_REVIEW";
   expiresAt: string;
 };
 

@@ -28,6 +28,7 @@ export type CoverageCell = {
 
 export type CoveragePlan = {
   id: string;
+  inventoryVersionId: string;
   snapshotHash: string;
   breadth: string;
   requiredFamilyIds: string[];
@@ -64,23 +65,47 @@ export function coverageComplete(plan: CoveragePlan) {
   return { complete: true, error: null };
 }
 
-export type InventoryEvaluation = { eligibility: "ELIGIBLE" | "ELIGIBLE_WITH_ALLOWED_UNKNOWNS" | "INELIGIBLE" | "NEEDS_CANDIDATE_INPUT" | "NEEDS_HUMAN_REVIEW" | "INVALID"; sourcePermitted: boolean; legitimate: boolean; evidenceSufficient: boolean; preliminaryUsefulness: boolean; otherwisePlausible: boolean; soleExclusion?: "COMPENSATION_BELOW_MINIMUM" | "COMPENSATION_UNCONFIRMED" | "QUALIFICATION_GAP" | "EVIDENCE_GAP" | "CONSTRAINT_COLLISION" };
+export type PersistedInventoryEvaluation = {
+  inventoryMemberId: string;
+  inventoryVersionId: string;
+  evaluationId: string;
+  snapshotId: string;
+  jobSnapshotId: string;
+  classification: "PRELIMINARILY_DELIVERABLE" | "REVIEWABLE" | "EXCLUDED";
+  resolutionBlocker: "NONE" | "NEEDS_CANDIDATE_INPUT" | "NEEDS_HUMAN_REVIEW";
+  exclusionReason: Exclude<FeasibilityReason, "INVENTORY_SHORTAGE"> | null;
+};
 
-export function assessFeasibility(input: { plan: CoveragePlan; inventory: readonly InventoryEvaluation[]; currentSnapshotHash: string; resolutionBlocker: "NONE" | "NEEDS_CANDIDATE_INPUT" | "NEEDS_HUMAN_REVIEW"; expiresAt?: string | null; now?: string }) {
+export function assessFeasibility(input: { plan: CoveragePlan; inventory: readonly PersistedInventoryEvaluation[]; currentSnapshotId: string; currentSnapshotHash: string; expiresAt?: string | null; now?: string }) {
   if (input.plan.snapshotHash !== input.currentSnapshotHash) return { runState: "STALE" as const, outcome: null, preliminarilyDeliverableCount: 0, reviewableCount: 0, excludedCount: input.inventory.length, reasons: [] as FeasibilityReason[], primaryReason: null, checkoutEligible: false };
   if (input.expiresAt && new Date(input.expiresAt).getTime() <= new Date(input.now ?? new Date().toISOString()).getTime()) return { runState: "STALE" as const, outcome: null, preliminarilyDeliverableCount: 0, reviewableCount: 0, excludedCount: input.inventory.length, reasons: [] as FeasibilityReason[], primaryReason: null, checkoutEligible: false };
   const completeness = coverageComplete(input.plan);
   if (!completeness.complete) return { runState: completeness.error === "PENDING" ? "PENDING" as const : "ERROR" as const, outcome: null, preliminarilyDeliverableCount: 0, reviewableCount: 0, excludedCount: input.inventory.length, reasons: [] as FeasibilityReason[], primaryReason: null, checkoutEligible: false };
-  const deliverable = input.inventory.filter((job) => ["ELIGIBLE", "ELIGIBLE_WITH_ALLOWED_UNKNOWNS"].includes(job.eligibility) && job.sourcePermitted && job.legitimate && job.evidenceSufficient && job.preliminaryUsefulness).length;
-  const reviewable = input.inventory.filter((job) => !(["ELIGIBLE", "ELIGIBLE_WITH_ALLOWED_UNKNOWNS"].includes(job.eligibility) && job.sourcePermitted && job.legitimate && job.evidenceSufficient && job.preliminaryUsefulness) && (job.eligibility === "NEEDS_CANDIDATE_INPUT" || job.eligibility === "NEEDS_HUMAN_REVIEW" || !job.sourcePermitted || !job.evidenceSufficient) && job.otherwisePlausible).length;
+  const memberIds = new Set<string>();
+  const evaluationIds = new Set<string>();
+  for (const item of input.inventory) {
+    if (!item.inventoryMemberId || !item.evaluationId || !item.jobSnapshotId
+      || item.inventoryVersionId !== input.plan.inventoryVersionId
+      || item.snapshotId !== input.currentSnapshotId
+      || memberIds.has(item.inventoryMemberId)
+      || evaluationIds.has(item.evaluationId)) {
+      return { runState: "ERROR" as const, outcome: null, preliminarilyDeliverableCount: 0, reviewableCount: 0, excludedCount: input.inventory.length, reasons: [] as FeasibilityReason[], primaryReason: null, checkoutEligible: false };
+    }
+    memberIds.add(item.inventoryMemberId);
+    evaluationIds.add(item.evaluationId);
+  }
+  const deliverable = input.inventory.filter((job) => job.classification === "PRELIMINARILY_DELIVERABLE").length;
+  const reviewable = input.inventory.filter((job) => job.classification === "REVIEWABLE").length;
   const excluded = input.inventory.length - deliverable - reviewable;
   const outcome = deliverable >= 10 ? "LIKELY" as const : deliverable + reviewable >= 1 ? "LIMITED" as const : "INFEASIBLE" as const;
   const reasonSet = new Set<FeasibilityReason>();
-  for (const job of input.inventory.filter((item) => item.otherwisePlausible && item.soleExclusion)) reasonSet.add(job.soleExclusion!);
-  if (!input.inventory.some((item) => item.otherwisePlausible)) reasonSet.add("INVENTORY_SHORTAGE");
+  for (const job of input.inventory) if (job.exclusionReason) reasonSet.add(job.exclusionReason);
+  if (!input.inventory.length || deliverable + reviewable === 0) reasonSet.add("INVENTORY_SHORTAGE");
   if (input.plan.disposition === "NOT_REQUIRED_CONSTRAINT_COLLISION") reasonSet.add("CONSTRAINT_COLLISION");
   const reasons = feasibilityReasonPrecedence.filter((reason) => reasonSet.has(reason));
-  return { runState: "COMPLETE" as const, outcome, preliminarilyDeliverableCount: deliverable, reviewableCount: reviewable, excludedCount: excluded, reasons, primaryReason: reasons[0] ?? null, checkoutEligible: outcome === "LIKELY" && input.resolutionBlocker === "NONE" };
+  const resolutionBlocker = input.inventory.some((item) => item.resolutionBlocker === "NEEDS_CANDIDATE_INPUT") ? "NEEDS_CANDIDATE_INPUT" as const
+    : input.inventory.some((item) => item.resolutionBlocker === "NEEDS_HUMAN_REVIEW") ? "NEEDS_HUMAN_REVIEW" as const : "NONE" as const;
+  return { runState: "COMPLETE" as const, outcome, resolutionBlocker, preliminarilyDeliverableCount: deliverable, reviewableCount: reviewable, excludedCount: excluded, reasons, primaryReason: reasons[0] ?? null, checkoutEligible: outcome === "LIKELY" && resolutionBlocker === "NONE" };
 }
 
 export function customerFeasibilityMessage(outcome: "LIKELY" | "LIMITED" | "INFEASIBLE", reason: FeasibilityReason | null) {

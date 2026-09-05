@@ -110,7 +110,36 @@ export function relatedEducationPass(input: { exact: boolean; employerAllowsRela
   return input.exact || (input.employerAllowsRelated && Boolean(input.mappingVersion && input.rationale));
 }
 
-export type ExperiencePeriod = { startMonth: string; endMonth: string; intensityLower: number | null; intensityUpper: number | null; verified: boolean; relation: "DIRECT" | "ADJACENT" | "TRANSFERABLE" | "UNSUPPORTED"; kind: "PAID_EMPLOYMENT" | "SELF_EMPLOYMENT_BUSINESS" | "CONTRACT_FREELANCE" | "VOLUNTEER" | "PROJECT" | "EDUCATION" | "CAREER_BREAK" | "CAREGIVING"; equivalentForCriterion?: boolean };
+export type AdjacentEquivalenceReview = {
+  reviewId: string;
+  criterionId: string;
+  jobSnapshotId: string;
+  candidateFactVersionIds: string[];
+  equivalentForCriterion: true;
+  comparedTasks: string[];
+  taskSimilarity: "STRONG";
+  complexity: string;
+  autonomy: string;
+  scope: string;
+  domainContext: string;
+  durationAndIntensity: string;
+  essentialTools: string[];
+  rationale: string;
+  reviewerId: string;
+  reviewedAt: string;
+  rulesVersion: string;
+  catalogVersion: string;
+};
+
+export type DurationCriterionContext = {
+  criterionId: string;
+  jobSnapshotId: string;
+  candidateFactVersionIds: readonly string[];
+  rulesVersion: string;
+  catalogVersion: string;
+};
+
+export type ExperiencePeriod = { startMonth: string; endMonth: string; intensityLower: number | null; intensityUpper: number | null; verified: boolean; relation: "DIRECT" | "ADJACENT" | "TRANSFERABLE" | "UNSUPPORTED"; kind: "PAID_EMPLOYMENT" | "SELF_EMPLOYMENT_BUSINESS" | "CONTRACT_FREELANCE" | "VOLUNTEER" | "PROJECT" | "EDUCATION" | "CAREER_BREAK" | "CAREGIVING"; equivalenceReview?: AdjacentEquivalenceReview };
 
 function monthIndex(value: string) {
   const match = /^(\d{4})-(0[1-9]|1[0-2])$/u.exec(value);
@@ -118,8 +147,17 @@ function monthIndex(value: string) {
   return Number(match[1]) * 12 + Number(match[2]) - 1;
 }
 
-export function calculateVerifiedDuration(periods: readonly ExperiencePeriod[]) {
-  const eligible = periods.filter((p) => p.verified && occupationalCreditAllowed(p.kind) && (p.relation === "DIRECT" || (p.relation === "ADJACENT" && p.equivalentForCriterion)));
+function exactAdjacentReview(review: AdjacentEquivalenceReview | undefined, context: DurationCriterionContext | undefined) {
+  if (!review || !context || !review.reviewId || !review.reviewerId || !review.rationale.trim() || !review.reviewedAt) return false;
+  if (review.criterionId !== context.criterionId || review.jobSnapshotId !== context.jobSnapshotId || review.rulesVersion !== context.rulesVersion || review.catalogVersion !== context.catalogVersion) return false;
+  if (!review.comparedTasks.length || !review.complexity.trim() || !review.autonomy.trim() || !review.scope.trim() || !review.domainContext.trim() || !review.durationAndIntensity.trim() || !review.essentialTools.length) return false;
+  const expectedFacts = [...new Set(context.candidateFactVersionIds)].sort();
+  const reviewedFacts = [...new Set(review.candidateFactVersionIds)].sort();
+  return expectedFacts.length > 0 && expectedFacts.length === reviewedFacts.length && expectedFacts.every((id, index) => id === reviewedFacts[index]);
+}
+
+export function calculateVerifiedDuration(periods: readonly ExperiencePeriod[], context?: DurationCriterionContext) {
+  const eligible = periods.filter((p) => p.verified && occupationalCreditAllowed(p.kind) && (p.relation === "DIRECT" || (p.relation === "ADJACENT" && exactAdjacentReview(p.equivalenceReview, context))));
   if (eligible.some((p) => p.kind === "PROJECT" && (p.intensityLower == null || p.intensityUpper == null))) return { calendarMonths: 0, fteLowerMonths: 0, fteUpperMonths: 0, unresolvedIntensity: true };
   const ranges = eligible.map((p) => ({ ...p, start: monthIndex(p.startMonth), end: monthIndex(p.endMonth) })).map((p) => {
     if (p.end < p.start) throw new Error("invalid_month_range");

@@ -2,10 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { notifyCustomer } from "@/lib/email/notify";
-import { deduplicateJobs } from "@/lib/jobs/deduplicate";
-import { normalizeJob } from "@/lib/jobs/normalize";
-import { persistNormalizedJob, rankingDatabaseValues } from "@/lib/jobs/persistence";
-import { jobPayloadSchema, payloadToRawJob } from "@/lib/jobs/schemas";
+import { deliveryRow, loadPersistedEvaluationsForOrder, selectPersistedEvaluations } from "@/lib/matching/persisted-runtime";
+import { releaseVerification } from "@/lib/matching/verification";
 import { isSameOriginRequest } from "@/lib/security/origin";
 
 const schema = z.object({
@@ -17,8 +15,8 @@ const schema = z.object({
     humanReleaseApproved: z.literal(true),
     reviewerNote: z.string().trim().min(20).max(2000),
   }),
-  matches: z.array(jobPayloadSchema).length(10),
-});
+  evaluationIds: z.array(z.string().uuid()).length(10).refine((ids) => new Set(ids).size === ids.length, "Evaluation IDs must be distinct."),
+}).strict();
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   if (!isSameOriginRequest(request)) return NextResponse.json({ error: "This delivery request was rejected." }, { status: 403 });
@@ -26,68 +24,66 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
   const parsed = schema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Exactly 10 complete, current matches are required.", details: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: "Exactly 10 persisted match evaluations are required.", details: parsed.error.flatten() }, { status: 400 });
   const { data: order, error: orderError } = await auth.admin.from("orders").select("id,customer_id,intake_id,product_kind,status").eq("id", orderId).maybeSingle();
   if (orderError) return NextResponse.json({ error: "The search order could not be loaded." }, { status: 502 });
-  if (!order || order.product_kind !== "job_search" || !["paid", "in_fulfillment"].includes(order.status)) {
-    return NextResponse.json({ error: "Search order is not deliverable." }, { status: 409 });
+  if (!order || order.product_kind !== "job_search" || !["paid", "in_fulfillment"].includes(order.status)) return NextResponse.json({ error: "Search order is not deliverable." }, { status: 409 });
+
+  let evaluations;
+  try {
+    const current = await loadPersistedEvaluationsForOrder(auth.admin, orderId);
+    const selected = selectPersistedEvaluations(current, 10).selected;
+    const expected = new Set(selected.map((item) => item.id));
+    if (selected.length !== 10 || parsed.data.evaluationIds.some((id) => !expected.has(id))) {
+      return NextResponse.json({ error: "Delivery must use the current persisted ten-match selection for the active criteria snapshot." }, { status: 409 });
+    }
+    const byId = new Map(selected.map((item) => [item.id, item]));
+    evaluations = parsed.data.evaluationIds.map((id) => byId.get(id)!);
+  } catch {
+    return NextResponse.json({ error: "Current persisted evaluations could not be verified." }, { status: 502 });
   }
-  const freshnessMs = Number(process.env.APP_JOB_FRESHNESS_HOURS || 24) * 60 * 60 * 1000;
-  if (parsed.data.matches.some((match) => Date.now() - new Date(match.checkedAt).getTime() > freshnessMs)) {
-    return NextResponse.json({ error: "Every listing must be rechecked within the configured freshness window." }, { status: 409 });
+
+  const ttlSeconds = Number(process.env.APP_RELEASE_VERIFICATION_TTL_SECONDS);
+  const now = new Date().toISOString();
+  for (const evaluation of evaluations) {
+    const verification = releaseVerification({
+      sourceId: evaluation.job_snapshot.discovery_source,
+      company: evaluation.job_snapshot.company,
+      urls: [evaluation.job_snapshot.canonical_application_url],
+      listingActive: evaluation.job_snapshot.listing_activity_result === "PASS",
+      applicationActionable: evaluation.job_snapshot.application_path_result === "PASS",
+      lastLiveVerifiedAt: evaluation.job_snapshot.live_verified_at,
+      now,
+      ttlSeconds,
+    });
+    if (!verification.eligible) return NextResponse.json({ error: "Every persisted listing must pass the configured release-time verification.", reason: verification.reason }, { status: 409 });
   }
-  const normalized = parsed.data.matches.map((match) => normalizeJob(payloadToRawJob(match)));
-  const excluded = normalized.find((job) => job.rejectionReason);
-  if (excluded) return NextResponse.json({ error: "An excluded or held employer/source cannot be saved.", reason: excluded.rejectionReason }, { status: 400 });
-  const deduplicated = deduplicateJobs(normalized);
-  if (deduplicated.length !== 10) {
-    return NextResponse.json({ error: "The 10 delivered matches must be distinct after canonical employer and cross-source deduplication." }, { status: 409 });
-  }
-  const { data: claimed, error: claimError } = await auth.admin.rpc("claim_order_delivery", {
-    p_order_id: orderId,
-    p_kind: "job_search",
-  });
-  if (claimError || !claimed) {
-    return NextResponse.json({ error: "The order is already being delivered, refunded, or is no longer eligible." }, { status: 409 });
-  }
+
+  const { data: claimed, error: claimError } = await auth.admin.rpc("claim_order_delivery", { p_order_id: orderId, p_kind: "job_search" });
+  if (claimError || !claimed) return NextResponse.json({ error: "The order is already being delivered, refunded, or is no longer eligible." }, { status: 409 });
   const releaseClaim = () => auth.admin.rpc("release_order_delivery", { p_order_id: orderId });
   const { count, error: countError } = await auth.admin.from("job_matches").select("id", { count: "exact", head: true }).eq("search_order_id", orderId);
-  if (countError) {
+  if (countError || count) {
     await releaseClaim();
-    return NextResponse.json({ error: "Existing delivery state could not be verified." }, { status: 502 });
+    return NextResponse.json({ error: count ? "Matches already exist for this order." : "Existing delivery state could not be verified." }, { status: count ? 409 : 502 });
   }
-  if (count) {
-    await releaseClaim();
-    return NextResponse.json({ error: "Matches already exist for this order." }, { status: 409 });
-  }
-  const jobIds: string[] = [];
+  let rows;
   try {
-    for (let index = 0; index < normalized.length; index += 1) {
-      jobIds.push(await persistNormalizedJob(auth.admin, normalized[index], parsed.data.matches[index].salary || null));
-    }
+    rows = evaluations.map((evaluation, index) => deliveryRow(evaluation, index + 1));
   } catch {
     await releaseClaim();
-    return NextResponse.json({ error: "Jobs could not be normalized and saved." }, { status: 502 });
+    return NextResponse.json({ error: "A persisted evaluation is incomplete or no longer deliverable." }, { status: 409 });
   }
-  if (new Set(jobIds).size !== 10) {
+  if (new Set(rows.map((row) => row.job_id)).size !== 10) {
     await releaseClaim();
     return NextResponse.json({ error: "Duplicate jobs cannot occupy more than one delivered position." }, { status: 409 });
   }
-  const rows = parsed.data.matches.map((match, index) => ({
-    job_id: jobIds[index],
-    position: index + 1,
-    fit_summary: match.fitSummary,
-    matching_experience: match.matchingExperience,
-    primary_outcome: match.primaryOutcome,
-    core_responsibilities: match.coreResponsibilities,
-    requirements: match.requirements,
-    hidden_job_functions: match.hiddenJobFunctions,
-    concerns: match.concerns,
-    criteria_checks: match.criteriaChecks,
-    ...rankingDatabaseValues(normalized[index]),
-  }));
   const deliveredAt = new Date();
-  const retentionDays = Math.max(1, Number(process.env.APP_SOURCE_DOCUMENT_RETENTION_DAYS || 30));
+  const retentionDays = Number(process.env.APP_SOURCE_DOCUMENT_RETENTION_DAYS);
+  if (!Number.isInteger(retentionDays) || retentionDays <= 0) {
+    await releaseClaim();
+    return NextResponse.json({ error: "Approved source-document retention is not configured." }, { status: 503 });
+  }
   const { data: completed, error: completeError } = await auth.admin.rpc("complete_search_delivery", {
     p_order_id: orderId,
     p_actor_id: auth.user.id,
@@ -100,12 +96,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     await releaseClaim();
     return NextResponse.json({ error: "The reviewed matches could not be committed atomically." }, { status: 502 });
   }
-  await notifyCustomer({
-    customerId: order.customer_id,
-    orderId,
-    template: "search_delivery",
-    subject: "Your 10 ApplyPack job matches are ready",
-    lines: ["Your researched job matches are ready in My ApplyPack.", "Review each employer listing before deciding whether to apply."],
-  });
+  await notifyCustomer({ customerId: order.customer_id, orderId, template: "search_delivery", subject: "Your 10 ApplyPack job matches are ready", lines: ["Your researched job matches are ready in My ApplyPack.", "Review each employer listing before deciding whether to apply."] });
   return NextResponse.json({ ok: true });
 }

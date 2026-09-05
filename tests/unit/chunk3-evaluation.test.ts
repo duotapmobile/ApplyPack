@@ -65,8 +65,12 @@ describe("Chunk 3 eligibility, salary, fit, confidence, and selection", () => {
     expect(evaluateSalary({ ...salaryBase, period: "HOUR", lowerCents: 2500, upperCents: 3000 }).disposition).toBe("FAIL");
     expect(evaluateSalary({ ...salaryBase, period: "HOUR", lowerCents: 2500, upperCents: 3000, conversion: { hoursPerWeek: 40, weeksPerYear: 50, version: "conversion-v1", accepted: true } })).toMatchObject({ status: "PUBLISHED_MEETS_MINIMUM", conversionVersion: "conversion-v1" });
     expect(evaluateSalary({ ...salaryBase, hardMinimumCents: null, flexibleMinimum: false, minimumPeriod: null, minimumBasis: null }).disposition).toBe("NOT_APPLICABLE");
+    expect(evaluateSalary({ ...salaryBase, hardMinimumCents: null, flexibleMinimum: false, minimumPeriod: null, minimumBasis: null }).status).toBe("PUBLISHED_NONCOMPARABLE");
+    expect(evaluateSalary({ ...salaryBase, estimateOnly: true, currency: "CAD", includeUnpublished: true }).disposition).toBe("FAIL");
+    expect(evaluateSalary({ ...salaryBase, endpointMeaning: "UP_TO", lowerCents: null, upperCents: 4_999_999, includeNoncomparableUsd: true })).toMatchObject({ status: "PUBLISHED_BELOW_MINIMUM", disposition: "FAIL" });
     expect(evaluateSalary({ ...salaryBase, period: null, includeNoncomparableUsd: true }).disposition).toBe("ALLOWED_WITH_WARNING");
     expect(() => evaluateSalary({ ...salaryBase, lowerCents: 50.5 })).toThrow("invalid_salary_amount");
+    expect(() => evaluateSalary({ ...salaryBase, lowerCents: 6_000_000, upperCents: 5_000_000 })).toThrow("reversed_salary_range");
   });
 
   it("calculates exact normalized applicable-weight fit and no score for ineligible jobs", () => {

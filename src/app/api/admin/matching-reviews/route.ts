@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   const [{ data: snapshot }, { data: jobSnapshot }, { data: nodes }] = await Promise.all([
     auth.admin.from("ap_intake_snapshots").select("id,customer_id,draft_id").eq("id", review.snapshotId).maybeSingle(),
     auth.admin.from("ap_job_snapshots").select("id").eq("id", review.jobSnapshotId).maybeSingle(),
-    auth.admin.from("ap_requirement_nodes").select("id,job_snapshot_id,node_kind,source_locator,source_excerpt").in("id", review.sourceEvidenceNodeIds),
+    auth.admin.from("ap_requirement_nodes").select("id,job_snapshot_id,node_kind,stable_criterion_id,source_locator,source_excerpt").in("id", review.sourceEvidenceNodeIds),
   ]);
   if (!snapshot || !jobSnapshot) return NextResponse.json({ error: "The immutable snapshot or job evidence is unavailable." }, { status: 404 });
   if ((nodes || []).length !== new Set(review.sourceEvidenceNodeIds).size || (nodes || []).some((node) => node.job_snapshot_id !== review.jobSnapshotId || node.node_kind !== "CRITERION" || !node.source_locator || !node.source_excerpt)) {
@@ -26,6 +26,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Candidate evidence must belong to this snapshot and be customer-confirmed or independently human-verified." }, { status: 409 });
     }
   }
+  if (review.reviewKind === "ADJACENT_EQUIVALENCE" && !(nodes || []).some((node) => node.stable_criterion_id === review.stableCriterionId)) {
+    return NextResponse.json({ error: "Adjacent equivalence must cite its exact stable criterion in this job snapshot." }, { status: 409 });
+  }
   const resolvedAt = new Date().toISOString();
   const decision = buildMatchingReviewDecision(review, auth.user.id, resolvedAt);
   const { data, error } = await auth.admin.from("ap_human_review_records").insert({
@@ -36,6 +39,13 @@ export async function POST(request: Request) {
     job_snapshot_id: review.jobSnapshotId,
     review_kind: review.reviewKind,
     compared_tasks: review.comparedTasks,
+    task_similarity: review.taskSimilarity ?? null,
+    complexity: review.complexity ?? null,
+    autonomy: review.autonomy ?? null,
+    scope: review.scope ?? null,
+    domain_context: review.domainContext ?? null,
+    duration_and_intensity: review.durationAndIntensity ?? null,
+    essential_tools: review.essentialTools ?? null,
     rationale: review.rationale,
     catalog_version: MATCHING_RULES_VERSION,
     decision,

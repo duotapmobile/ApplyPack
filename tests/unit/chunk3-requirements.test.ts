@@ -115,7 +115,8 @@ describe("Chunk 3 requirement semantics", () => {
 
   it("does not count ordinary adjacent evidence, but counts criterion-specific reviewed equivalence", () => {
     const ordinary = calculateVerifiedDuration([{ startMonth: "2025-01", endMonth: "2025-12", intensityLower: 1, intensityUpper: 1, verified: true, relation: "ADJACENT", kind: "PROJECT" }]);
-    const reviewed = calculateVerifiedDuration([{ startMonth: "2025-01", endMonth: "2025-12", intensityLower: 1, intensityUpper: 1, verified: true, relation: "ADJACENT", kind: "PROJECT", equivalentForCriterion: true }]);
+    const context = { criterionId: uuid(), jobSnapshotId: uuid(), candidateFactVersionIds: [uuid()], rulesVersion: "matching-rules-v1", catalogVersion: "catalog-v1" };
+    const reviewed = calculateVerifiedDuration([{ startMonth: "2025-01", endMonth: "2025-12", intensityLower: 1, intensityUpper: 1, verified: true, relation: "ADJACENT", kind: "PROJECT", equivalenceReview: { reviewId: uuid(), criterionId: context.criterionId, jobSnapshotId: context.jobSnapshotId, candidateFactVersionIds: [...context.candidateFactVersionIds], equivalentForCriterion: true, comparedTasks: ["coordinate escalations", "coordinate service recovery"], taskSimilarity: "STRONG", complexity: "comparable", autonomy: "comparable", scope: "comparable", domainContext: "adjacent", durationAndIntensity: "12 calendar months at full intensity", essentialTools: ["case system"], rationale: "The exact tasks and operating scope are strongly equivalent for this criterion.", reviewerId: uuid(), reviewedAt: "2026-09-05T12:00:00.000Z", rulesVersion: context.rulesVersion, catalogVersion: context.catalogVersion } }], context);
     expect(ordinary.calendarMonths).toBe(0);
     expect(reviewed.calendarMonths).toBe(12);
   });

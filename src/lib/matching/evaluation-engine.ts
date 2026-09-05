@@ -62,15 +62,23 @@ export type SalaryInput = {
 };
 
 export function evaluateSalary(input: SalaryInput): { status: SalaryStatus; disposition: SalaryGateDisposition; warning: string | null; comparedLowerCents: number | null; comparedUpperCents: number | null; conversionVersion: string | null } {
-  if (input.hardMinimumCents == null || input.flexibleMinimum) return { status: "UNPUBLISHED", disposition: "NOT_APPLICABLE", warning: null, comparedLowerCents: null, comparedUpperCents: null, conversionVersion: null };
-  if (!Number.isInteger(input.hardMinimumCents) || input.hardMinimumCents < 0 || !input.minimumPeriod || !input.minimumBasis) throw new Error("invalid_salary_minimum");
   if ([input.lowerCents, input.upperCents].some((value) => value != null && (!Number.isInteger(value) || value < 0))) throw new Error("invalid_salary_amount");
+  if (input.lowerCents != null && input.upperCents != null && input.lowerCents > input.upperCents) throw new Error("reversed_salary_range");
+  const hasHardGate = input.hardMinimumCents != null && !input.flexibleMinimum;
+  if (hasHardGate && (!Number.isInteger(input.hardMinimumCents) || input.hardMinimumCents! < 0 || !input.minimumPeriod || !input.minimumBasis)) throw new Error("invalid_salary_minimum");
   const allowedUnknown = (status: SalaryStatus, policy: boolean, warning: string) => ({ status, disposition: policy ? "ALLOWED_WITH_WARNING" as const : "FAIL" as const, warning: policy ? warning : null, comparedLowerCents: null, comparedUpperCents: null, conversionVersion: null });
+  const employerPublishedAmount = input.publishedByEmployer && (input.lowerCents != null || input.upperCents != null);
+  if ((employerPublishedAmount || input.estimateOnly) && input.currency != null && input.currency !== "USD") return { status: "PUBLISHED_NONCOMPARABLE", disposition: "FAIL", warning: null, comparedLowerCents: null, comparedUpperCents: null, conversionVersion: null };
+  if (!hasHardGate) {
+    if (input.estimateOnly) return { status: "ESTIMATE_ONLY", disposition: "NOT_APPLICABLE", warning: null, comparedLowerCents: null, comparedUpperCents: null, conversionVersion: null };
+    if (!employerPublishedAmount) return { status: "UNPUBLISHED", disposition: "NOT_APPLICABLE", warning: null, comparedLowerCents: null, comparedUpperCents: null, conversionVersion: null };
+    return { status: "PUBLISHED_NONCOMPARABLE", disposition: "NOT_APPLICABLE", warning: null, comparedLowerCents: input.lowerCents, comparedUpperCents: input.upperCents, conversionVersion: null };
+  }
   if (input.estimateOnly) return allowedUnknown("ESTIMATE_ONLY", input.includeUnpublished, "Pay is a third-party estimate, not employer-confirmed compensation.");
   if (!input.publishedByEmployer || (input.lowerCents == null && input.upperCents == null)) return allowedUnknown("UNPUBLISHED", input.includeUnpublished, "The employer did not publish compensation.");
   if (input.currency !== "USD") return { status: "PUBLISHED_NONCOMPARABLE", disposition: "FAIL", warning: null, comparedLowerCents: null, comparedUpperCents: null, conversionVersion: null };
   if (!input.period || !input.basis) return allowedUnknown("PUBLISHED_NONCOMPARABLE", input.includeNoncomparableUsd, "Published USD compensation was missing a comparable period or basis.");
-  if (!input.correctLocationRange || !input.workerBasisComparable || input.basis === "VARIABLE_OTE" || (input.minimumBasis === "BASE" && input.basis !== "BASE") || (input.minimumBasis === "GUARANTEED_TOTAL" && !["BASE", "GUARANTEED_TOTAL"].includes(input.basis ?? "")) || input.endpointMeaning === "UP_TO") {
+  if (!input.correctLocationRange || !input.workerBasisComparable || input.basis === "VARIABLE_OTE" || (input.minimumBasis === "BASE" && input.basis !== "BASE") || (input.minimumBasis === "GUARANTEED_TOTAL" && !["BASE", "GUARANTEED_TOTAL"].includes(input.basis ?? ""))) {
     return allowedUnknown("PUBLISHED_NONCOMPARABLE", input.includeNoncomparableUsd, "Published USD compensation could not be compared like for like.");
   }
   if (input.variableMaterial && !input.variableAccepted) return { status: "PUBLISHED_NONCOMPARABLE", disposition: "FAIL", warning: null, comparedLowerCents: null, comparedUpperCents: null, conversionVersion: null };
@@ -85,10 +93,16 @@ export function evaluateSalary(input: SalaryInput): { status: SalaryStatus; disp
     conversionVersion = conversion.version;
   }
   if (input.endpointMeaning === "STARTING_AT") upper = null;
-  if (input.endpointMeaning === "FIXED") upper = lower;
-  if (lower != null && lower >= input.hardMinimumCents) return { status: "PUBLISHED_MEETS_MINIMUM", disposition: "PASS", warning: input.variableMaterial ? "Published pay includes a material variable component you accepted." : null, comparedLowerCents: lower, comparedUpperCents: upper, conversionVersion };
-  if (upper != null && upper < input.hardMinimumCents) return { status: "PUBLISHED_BELOW_MINIMUM", disposition: "FAIL", warning: null, comparedLowerCents: lower, comparedUpperCents: upper, conversionVersion };
-  if (upper != null && upper >= input.hardMinimumCents) return { status: "PUBLISHED_OVERLAPS_MINIMUM", disposition: input.includeOverlap ? "ALLOWED_WITH_WARNING" : "FAIL", warning: input.includeOverlap ? "The published range starts below your minimum but reaches it." : null, comparedLowerCents: lower, comparedUpperCents: upper, conversionVersion };
+  if (input.endpointMeaning === "FIXED") { lower = lower ?? upper; upper = lower; }
+  if (input.endpointMeaning === "UP_TO") {
+    upper = upper ?? lower;
+    lower = null;
+    if (upper != null && upper < input.hardMinimumCents!) return { status: "PUBLISHED_BELOW_MINIMUM", disposition: "FAIL", warning: null, comparedLowerCents: null, comparedUpperCents: upper, conversionVersion };
+    return allowedUnknown("PUBLISHED_NONCOMPARABLE", input.includeNoncomparableUsd, "The employer published only a maximum, so no guaranteed floor could be confirmed.");
+  }
+  if (lower != null && lower >= input.hardMinimumCents!) return { status: "PUBLISHED_MEETS_MINIMUM", disposition: "PASS", warning: input.variableMaterial ? "Published pay includes a material variable component you accepted." : null, comparedLowerCents: lower, comparedUpperCents: upper, conversionVersion };
+  if (upper != null && upper < input.hardMinimumCents!) return { status: "PUBLISHED_BELOW_MINIMUM", disposition: "FAIL", warning: null, comparedLowerCents: lower, comparedUpperCents: upper, conversionVersion };
+  if (upper != null && upper >= input.hardMinimumCents!) return { status: "PUBLISHED_OVERLAPS_MINIMUM", disposition: input.includeOverlap ? "ALLOWED_WITH_WARNING" : "FAIL", warning: input.includeOverlap ? "The published range starts below your minimum but reaches it." : null, comparedLowerCents: lower, comparedUpperCents: upper, conversionVersion };
   return allowedUnknown("PUBLISHED_NONCOMPARABLE", input.includeNoncomparableUsd, "The employer did not publish a comparable upper bound.");
 }
 

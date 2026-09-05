@@ -1360,3 +1360,18 @@ Generated from the checksum-verified corrected packet, version 2026-09-04. Each 
 - C7 acceptance units: 149
 - IR acceptance units: 3
 - Unitization rule: every non-empty, non-heading source line is a separate row; fenced code is one hash-preserving row per code block; Markdown separator rows are excluded as syntax only.
+
+## Chunk 3 audit-remediation traceability
+
+The prior Chunk 3 evidence manifest is superseded by an audit-remediation manifest. The following mappings preserve the original stable contract rows while recording the corrected reachable implementation and tests.
+
+| Audit finding | Contract rows | Corrected implementation | Regression evidence |
+| --- | --- | --- | --- |
+| Active runtime used legacy ranking and caller-authored release explanations | APC-C3-0013; APC-PI-0314; APC-PI-0315; APC-PI-0391 | `src/lib/matching/persisted-runtime.ts`; `src/lib/workflow/process.ts`; admin jobs, matching-evaluations, delivery, and conflict routes; `search_candidates.evaluation_id` in migration `202609050026` | `tests/unit/chunk3-remediation.test.ts`; `tests/integration/chunk3-matching-engine.sql` |
+| Feasibility accepted unbound booleans | APC-PI-0144; APC-PI-0146; APC-PI-0150; APC-PI-0151 | `src/lib/matching/feasibility.ts`; `src/lib/matching/supabase-feasibility-store.ts`; database-derived `ap_persist_derived_feasibility_assessment` | `tests/unit/chunk3-dedup-feasibility.test.ts`; `tests/unit/chunk3-feasibility-worker.test.ts`; database fixture |
+| Migration/type evidence was not reproducible | APC-C3-0083 and Chunk 3 verification contract | additive migration `202609050026`; regenerated `src/lib/database.types.ts`; explicit 26-migration runbook sequence | from-zero reset, `test:database`, and `types:database:check` in the remediation manifest |
+| Root set checked cardinality instead of equality | APC-PI-0342 | bidirectional SQL set-difference guard in migration `202609050026`; exact persisted-root check in matching-evaluations route | wrong-key/same-cardinality database fixture; eligibility unit tests |
+| Salary edge behavior broke policy | APC-PI-0344; APC-PI-0345; APC-PI-0359; APC-PI-0360 | `src/lib/matching/evaluation-engine.ts` | published/no-minimum, non-USD estimate, up-to-below-floor, and reversed-range cases in `tests/unit/chunk3-evaluation.test.ts` |
+| Adjacent equivalence was a bare Boolean | APC-PI-0107; APC-PI-0292; APC-PI-0295; APC-C3-0028; APC-C3-0083 | exact `AdjacentEquivalenceReview` context in requirements/review modules and route; SQL review guard | `tests/unit/chunk3-requirements.test.ts`; `tests/unit/chunk3-review.test.ts`; sparse-review database rejection |
+| Deduplication failed the OR rule and used mutable content in stable identity | APC-PI-0381; APC-C3-0013 | `src/lib/matching/deduplication.ts` | cross-employer canonical-application URL and content-change identity regressions in `tests/unit/chunk3-dedup-feasibility.test.ts` |
+| Evidence-manifest hash was absent from the ledger | Chunk 3 evidence closeout contract | `docs/IMPLEMENTATION_STATUS.md` records both the superseded manifest hash and the remediation manifest hash | SHA-256 commands and hashes in the final remediation evidence record |

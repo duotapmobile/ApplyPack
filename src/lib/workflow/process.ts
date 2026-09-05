@@ -6,12 +6,10 @@ import { validateDocumentBytes } from "@/lib/files/document-safety";
 import { docxMimeType } from "@/lib/files/signatures";
 import { createSourceAdapter } from "@/lib/jobs/adapters";
 import { deduplicateJobs } from "@/lib/jobs/deduplicate";
-import { filterJobs } from "@/lib/jobs/filter";
 import { normalizeJob } from "@/lib/jobs/normalize";
-import { fromJobDatabaseRow, persistNormalizedJob } from "@/lib/jobs/persistence";
-import { rankLegacyJobs } from "@/lib/jobs/rank";
+import { persistNormalizedJob } from "@/lib/jobs/persistence";
 import { jobSources, sourceMayBeAccessedAutomatically } from "@/lib/jobs/source-registry";
-import type { RankedJob } from "@/lib/jobs/types";
+import { loadPersistedEvaluationsForOrder, searchCandidateRow, selectPersistedEvaluations } from "@/lib/matching/persisted-runtime";
 import { workflowErrorCode } from "@/lib/workflow/errors";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -72,29 +70,13 @@ async function processSearchDiscovery(admin: AdminClient, task: WorkflowTask) {
     }
   }
 
-  const state = await stateForOrder(admin, task.order_id);
-  const { data: rows, error: jobsError } = await admin.from("jobs")
-    .select("*").eq("is_active", true).neq("review_status", "rejected").limit(500);
-  if (jobsError) throw jobsError;
-  const idByJob = new WeakMap<object, string>();
-  const normalizedJobs = (rows || []).map((row) => {
-    const job = fromJobDatabaseRow(row as Record<string, unknown>);
-    idByJob.set(job, String(row.id));
-    return job;
-  });
-  const ranked = rankLegacyJobs(filterJobs(normalizedJobs, {
-    workerRelationship: "w2",
-    includeSales: false,
-    includeMarketing: false,
-    includeApplicantCost: false,
-    includeStale: false,
-    state: state || undefined,
-  }), { state: state || undefined }).slice(0, 30);
+  const evaluations = await loadPersistedEvaluationsForOrder(admin, task.order_id);
+  const ranked = selectPersistedEvaluations(evaluations, 30).selected;
 
   await admin.from("search_candidates").delete().eq("search_order_id", task.order_id).eq("review_status", "proposed");
   if (ranked.length) {
     const { error: candidateError } = await admin.from("search_candidates").upsert(
-      ranked.map((candidate) => candidateRow(task.order_id, idByJob.get(candidate.job)!, candidate)),
+      ranked.map((evaluation, index) => searchCandidateRow(task.order_id, evaluation, index + 1)),
       { onConflict: "search_order_id,job_id" },
     );
     if (candidateError) throw candidateError;
@@ -104,7 +86,7 @@ async function processSearchDiscovery(admin: AdminClient, task: WorkflowTask) {
     status: "awaiting_review",
     locked_at: null,
     last_error_code: ranked.length < 10 ? "fewer_than_ten_candidates" : null,
-    summary: { fetched, candidates: ranked.length, state: state || null },
+    summary: { fetched, candidates: ranked.length, evaluationSource: "PERSISTED_MATCH_EVALUATIONS" },
     updated_at: new Date().toISOString(),
   }).eq("id", task.id).eq("status", "processing");
   await notifyAdmin(admin, task.order_id, "search_qa_ready", "ApplyPack search candidates need review", [
@@ -171,35 +153,6 @@ async function processDocumentDraft(admin: AdminClient, task: WorkflowTask) {
   await admin.from("workflow_tasks").update({ status: "awaiting_review", locked_at: null, last_error_code: null, summary: { generator: drafts.generatorVersion, generated_at: generatedAt }, updated_at: generatedAt }).eq("id", task.id).eq("status", "processing");
   await notifyAdmin(admin, task.order_id, "document_qa_ready", "ApplyPack document drafts need review", ["Private first-party drafts are ready for factual and job-specific review.", "Download both drafts, edit as needed, and use the reviewed delivery upload before anything reaches the customer."]);
   return { id: task.id, status: "awaiting_review" };
-}
-
-function candidateRow(orderId: string, jobId: string, candidate: RankedJob) {
-  return {
-    search_order_id: orderId,
-    job_id: jobId,
-    ranking_score: candidate.score,
-    ranking_reason_codes: candidate.reasonCodes,
-    fit_summary: candidateFitSummary(candidate),
-    requirements: [],
-    concerns: candidate.reasonCodes.filter((reason) => reason.points < 0).map((reason) => reason.explanation),
-  };
-}
-
-export function candidateFitSummary(candidate: RankedJob): string {
-  const positives = candidate.reasonCodes.filter((reason) => reason.points > 0).slice(0, 3).map((reason) => reason.explanation);
-  return positives.length
-    ? positives.join(" ")
-    : "This posting requires operator review against the customer's approved search criteria before delivery.";
-}
-
-async function stateForOrder(admin: AdminClient, orderId: string): Promise<string | null> {
-  const { data } = await admin.from("orders").select("intake:intakes(intake_answers(answers))").eq("id", orderId).maybeSingle();
-  const intake = Array.isArray(data?.intake) ? data.intake[0] : data?.intake;
-  const answerRow = Array.isArray(intake?.intake_answers) ? intake.intake_answers[0] : intake?.intake_answers;
-  const value = answerRow?.answers && typeof answerRow.answers === "object" && "state" in answerRow.answers
-    ? String(answerRow.answers.state || "").toUpperCase()
-    : "";
-  return /^[A-Z]{2}$/.test(value) ? value : null;
 }
 
 async function notifyAdmin(admin: AdminClient, orderId: string, template: string, subject: string, lines: string[]) {

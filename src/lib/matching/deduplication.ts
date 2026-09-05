@@ -6,24 +6,28 @@ export type DuplicateEdgeReason = "external_job_id" | "canonical_url" | "fingerp
 export type DuplicateEdge = { leftId: string; rightId: string; reason: DuplicateEdgeReason };
 
 export function stableNormalizedJobId(job: NormalizedJob) {
-  return [job.canonicalEmployerId, job.sourceId, job.externalJobId ?? "", normalizeUrl(job.canonicalEmployerListingUrl || job.officialApplicationUrl || job.sourceJobUrl) ?? "", job.contentHash || job.deduplicationKey].join("|");
+  if (job.externalJobIdReliable !== false && job.externalJobId) return `requisition|${job.canonicalEmployerId}|${job.externalJobId}`;
+  const applicationUrl = normalizeUrl(job.officialApplicationUrl);
+  if (applicationUrl) return `application-url|${applicationUrl}`;
+  const listingUrl = normalizeUrl(job.canonicalEmployerListingUrl);
+  if (listingUrl) return `employer-listing-url|${listingUrl}`;
+  return `fingerprint|${job.canonicalEmployerId}|${job.deduplicationKey}`;
 }
 
 function reliableRequisition(job: NormalizedJob) {
   return job.externalJobIdReliable !== false && Boolean(job.externalJobId);
 }
-function canonicalUrl(job: NormalizedJob) {
-  return normalizeUrl(job.canonicalEmployerListingUrl || job.officialApplicationUrl);
+function canonicalUrls(job: NormalizedJob) {
+  return new Set([normalizeUrl(job.canonicalEmployerListingUrl), normalizeUrl(job.officialApplicationUrl)].filter((value): value is string => Boolean(value)));
 }
 function hasStrongIdentifier(job: NormalizedJob) {
-  return reliableRequisition(job) || Boolean(canonicalUrl(job));
+  return reliableRequisition(job) || canonicalUrls(job).size > 0;
 }
 
 export function duplicateEdgeReason(a: NormalizedJob, b: NormalizedJob): DuplicateEdgeReason | null {
-  if (a.canonicalEmployerId !== b.canonicalEmployerId) return null;
-  if (reliableRequisition(a) && reliableRequisition(b) && a.externalJobId === b.externalJobId) return "external_job_id";
-  const leftUrl = canonicalUrl(a), rightUrl = canonicalUrl(b);
-  if (leftUrl && rightUrl && leftUrl === rightUrl) return "canonical_url";
+  if (a.canonicalEmployerId === b.canonicalEmployerId && reliableRequisition(a) && reliableRequisition(b) && a.externalJobId === b.externalJobId) return "external_job_id";
+  const leftUrls = canonicalUrls(a), rightUrls = canonicalUrls(b);
+  if ([...leftUrls].some((url) => rightUrls.has(url))) return "canonical_url";
   if ((!hasStrongIdentifier(a) || !hasStrongIdentifier(b)) && a.deduplicationKey && a.deduplicationKey === b.deduplicationKey) return "fingerprint";
   return null;
 }

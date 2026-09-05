@@ -353,3 +353,64 @@ Failure recovery:
 6. Use a forward compensating migration only after the database owner proves it safe and receives separate approval. Destructive rollback or legacy rewrites are prohibited.
 
 Release blockers remain: documentary source authorization; approved required source/query matrix and positive bounds; release-verification TTL; staff roles/training; production worker identity and monitoring; KMS/file/OCR/parser/reference-isolation/leak/model controls; retention/privacy approvals; Stripe/tax; and staffing/capacity. The repository fixtures are not production proof.
+
+## Chunk 3 audit-remediation addendum
+
+Migration `202609050026_chunk3_audit_remediation.sql` is an additive correction after `202609040025`. It adds exact inventory-member/version provenance to each strict evaluation, links operator candidates to immutable evaluation IDs, enforces equality (not just cardinality) between active root keys and stored root results, and binds adjacent-equivalence review records to the exact criterion, job snapshot, fact versions, reviewer evidence, and rules version. It also makes the service role read-only on feasibility assessments and exposes a security-definer function that derives counts from current persisted inventory members and evaluations.
+
+Deployment order:
+
+1. Keep job-source synchronization, feasibility scheduling, Checkout, payment, and customer release disabled. Record the target database project, application commit, database migration head, and backup/restore checkpoint.
+2. Apply migrations through `202609050026` in order. Do not mark `025` or `026` applied without executing them. Verify both checkpoint rows.
+3. Regenerate database types from the migrated target. Deploy code that uses `ap_match_evaluations`, never `rankLegacyJobs`, in search, operator listing, delivery, and replacement paths.
+4. Populate a synthetic authorized-manual inventory member, parsed requirement tree, and evidence-bound evaluation. Confirm a wrong root-key set fails with `root_set_mismatch`, a sparse adjacent review fails with `adjacent_equivalence_exact_review_required`, and direct service-role insert to `ap_feasibility_assessments` is denied.
+5. Configure `APP_FEASIBILITY_WORKER_ID` only after the production worker identity, lease/monitoring owner, retry alerting, required manual coverage plan, immutable inventory, and evaluations are present. An unset value intentionally returns `disabled`; it is not a permissive default.
+6. Configure `APP_RELEASE_VERIFICATION_TTL_SECONDS` only from the separately approved release record. Until then, search delivery and replacements fail closed. No repository fixture approves a production TTL.
+7. Run a synthetic feasibility request. Verify the database-derived assessment references the request snapshot and latest coverage plan, has exactly a 60-minute expiration, and its three counts equal the current selected inventory classification. Reconcile the audit event before enabling any customer traffic.
+
+Read-only production validation:
+
+```sql
+select migration_id, checkpoint, completed_at
+from public.ap_migration_checkpoints
+where (migration_id, checkpoint) in (
+  ('202609040025','CHUNK3_MATCHING_ENGINE_EXPAND'),
+  ('202609050026','CHUNK3_AUDIT_REMEDIATION_EXPAND')
+)
+order by migration_id;
+
+select count(*) as strict_evaluation_without_inventory_provenance
+from public.ap_match_evaluations e
+left join public.ap_inventory_members m on m.id=e.inventory_member_id
+where not e.legacy_compatibility and (
+  m.id is null or e.inventory_version_id<>m.inventory_version_id
+  or e.job_snapshot_id<>m.job_snapshot_id or not m.selected_by_deduplication
+);
+
+select count(*) as root_set_mismatch
+from public.ap_match_evaluations e
+where not e.legacy_compatibility and exists (
+  select 1 from (
+    (select unnest(e.active_root_keys) except select item->>'rootKey' from jsonb_array_elements(e.root_results) item)
+    union all
+    (select item->>'rootKey' from jsonb_array_elements(e.root_results) item except select unnest(e.active_root_keys))
+  ) difference
+);
+
+select has_table_privilege('service_role','public.ap_feasibility_assessments','insert') as service_role_can_insert,
+       has_function_privilege('service_role','public.ap_persist_derived_feasibility_assessment(uuid,text,text)','execute') as service_role_can_derive;
+
+select a.id,a.snapshot_id,a.preliminarily_deliverable_count,a.reviewable_count,a.excluded_count,
+       a.outcome,a.resolution_blocker,a.expires_at,a.created_at
+from public.ap_feasibility_assessments a
+where a.rules_version='feasibility-worker-v1' and a.invalidated_at is null
+order by a.created_at desc;
+
+select count(*) as proposed_candidate_without_evaluation
+from public.search_candidates
+where review_status='proposed' and evaluation_id is null;
+```
+
+Required results: both checkpoints exist once; both anomaly counts and `proposed_candidate_without_evaluation` are zero for corrected-contract work; `service_role_can_insert` is false; `service_role_can_derive` is true; every current assessment reconciles to its inventory and expires exactly 60 minutes after creation. Legacy compatibility rows may retain null provenance but cannot enter the corrected runtime selector or release path.
+
+Failure recovery leaves both additive migrations in place. Stop the feasibility worker, unset its worker identity and release TTL, disable application traffic to the new endpoints, and revert code/traffic to the previous compatible build. Preserve inventory, evaluations, reviews, assessments, requests, and audit events. Repair forward with another additive migration after database-owner review; do not edit migration history, fabricate counts, drop evidence, or rewrite legacy paid data.

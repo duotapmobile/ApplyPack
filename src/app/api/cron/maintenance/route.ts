@@ -5,6 +5,7 @@ import { retryFailedEmails } from "@/lib/email/retry";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { processWorkflowTasks } from "@/lib/workflow/process";
 import { processPendingFileScans } from "@/lib/files/process-scans";
+import { processPendingFeasibilityRequests } from "@/lib/matching/supabase-feasibility-store";
 
 export const dynamic = "force-dynamic";
 
@@ -163,6 +164,7 @@ export async function POST(request: Request) {
     }
   }
   const fileScans = await processPendingFileScans(admin, 5);
+  const feasibility = await processPendingFeasibilityRequests(admin, 5);
   const workflow = await processWorkflowTasks(admin, 2);
   const emailRetries = await retryFailedEmails(admin, 10);
   return NextResponse.json({
@@ -176,6 +178,7 @@ export async function POST(request: Request) {
     staleJobs: Number(staleJobs || 0),
     alerts,
     workflow,
+    feasibility,
     fileScans,
     emailRetries,
   });

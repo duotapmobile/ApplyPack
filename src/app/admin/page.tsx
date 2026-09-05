@@ -30,7 +30,7 @@ export default async function AdminPage() {
     admin.from("conflict_reviews").select("id,explanation,job_match:job_matches(job:jobs(company,title))").eq("status", "submitted").order("created_at"),
     admin.from("correction_requests").select("id,correction_text,apply_pack_item:apply_pack_items(job_match:job_matches(job:jobs(company,title)))").eq("status", "submitted").order("created_at"),
     admin.from("capacity_limits").select("kind,units_per_24h,enabled").order("kind"),
-    admin.from("search_candidates").select("search_order_id,ranking_score,fit_summary,requirements,concerns,job:jobs(*)").eq("review_status", "proposed").order("ranking_score", { ascending: false }),
+    admin.from("search_candidates").select("search_order_id,evaluation_id,ranking_score,fit_summary,requirements,concerns,job:jobs(*)").eq("review_status", "proposed").order("ranking_score", { ascending: false }),
   ]);
   const { data: pendingRequests } = await admin.from("ap_feasibility_requests").select("id,snapshot_id,state,created_at").eq("state", "PENDING").order("created_at");
   const pendingSnapshotIds = (pendingRequests || []).map((request) => request.snapshot_id);

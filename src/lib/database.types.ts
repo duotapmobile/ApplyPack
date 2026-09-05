@@ -2499,6 +2499,8 @@ export type Database = {
           human_review_id: string | null
           id: string
           invalidated_at: string | null
+          inventory_member_id: string | null
+          inventory_version_id: string | null
           job_evidence: Json
           job_snapshot_id: string
           leaf_results: Json
@@ -2541,6 +2543,8 @@ export type Database = {
           human_review_id?: string | null
           id?: string
           invalidated_at?: string | null
+          inventory_member_id?: string | null
+          inventory_version_id?: string | null
           job_evidence: Json
           job_snapshot_id: string
           leaf_results: Json
@@ -2583,6 +2587,8 @@ export type Database = {
           human_review_id?: string | null
           id?: string
           invalidated_at?: string | null
+          inventory_member_id?: string | null
+          inventory_version_id?: string | null
           job_evidence?: Json
           job_snapshot_id?: string
           leaf_results?: Json
@@ -2619,6 +2625,20 @@ export type Database = {
             columns: ["human_review_id"]
             isOneToOne: false
             referencedRelation: "ap_human_review_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_match_evaluations_inventory_member_id_fkey"
+            columns: ["inventory_member_id"]
+            isOneToOne: false
+            referencedRelation: "ap_inventory_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_match_evaluations_inventory_version_id_fkey"
+            columns: ["inventory_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_inventory_versions"
             referencedColumns: ["id"]
           },
           {
@@ -6003,6 +6023,7 @@ export type Database = {
         Row: {
           concerns: Json
           created_at: string
+          evaluation_id: string | null
           fit_summary: string
           id: string
           job_id: string
@@ -6017,6 +6038,7 @@ export type Database = {
         Insert: {
           concerns?: Json
           created_at?: string
+          evaluation_id?: string | null
           fit_summary: string
           id?: string
           job_id: string
@@ -6031,6 +6053,7 @@ export type Database = {
         Update: {
           concerns?: Json
           created_at?: string
+          evaluation_id?: string | null
           fit_summary?: string
           id?: string
           job_id?: string
@@ -6043,6 +6066,13 @@ export type Database = {
           search_order_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "search_candidates_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_match_evaluations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "search_candidates_job_id_fkey"
             columns: ["job_id"]
@@ -6590,6 +6620,24 @@ export type Database = {
           p_secret_hash: string
         }
         Returns: boolean
+      }
+      ap_persist_derived_feasibility_assessment: {
+        Args: {
+          p_request_id: string
+          p_rules_version: string
+          p_worker_id: string
+        }
+        Returns: string
+      }
+      ap_persist_parsed_inventory_job: {
+        Args: {
+          p_criteria_snapshot_id: string
+          p_inventory_version_id: string
+          p_job_snapshot: Json
+          p_requirement_nodes: Json
+          p_stable_normalized_job_id: string
+        }
+        Returns: string
       }
       ap_read_anonymous_draft: {
         Args: { p_draft_id: string; p_secret_hash: string }
