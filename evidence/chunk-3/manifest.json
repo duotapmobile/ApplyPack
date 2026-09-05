@@ -1,62 +1,110 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "chunk": 3,
   "chunk_status": "COMPLETE",
-  "created_at": "2026-09-05T01:30:48.2111918-04:00",
+  "remediation_round": 2,
+  "created_at": "2026-09-05T15:15:40.1805777-04:00",
   "worktree": "C:\\Users\\mskir\\Desktop\\Apply_Pack\\applypack-phase0-e9c3aea0d45447bfaa6517e488356e0d",
   "branch": "codex/applypack-corrected-build-2026-09-04",
   "base_commit": "aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8",
   "required_phase_0_commit": "0595ae7cec5c2f36d06b11b691fd319742cb692c",
   "accepted_chunk_1_commit": "e8c77426b892a54b802dde516552449825754df8",
   "accepted_chunk_2_final_evidence_commit": "93644d52c53340cef187fa08e3d574a75d42a97a",
-  "start_head": "93644d52c53340cef187fa08e3d574a75d42a97a",
-  "tested_code_commit": "152fc529cbf39652cd59dedc734f50433419bb31",
-  "tested_tree": "8691c03a09acd2ce9bfb528f71b31a0c21521b31",
+  "remediation_start_head": "077c55d1b57366de929223886379eca14255355a",
+  "tested_code_commit": "4fbf4edb6ac703ae5eb06326f89b49c065f550a2",
+  "tested_tree": "459d085ede03f72130d3d8de162d8de97a7c676d",
+  "artifact_hash_scope": "tested_code_commit",
   "contract_sha256": "df4e32e2ea0c37abd3f39904c36576c0af3935f9754bb1b81979782dc002d69f",
+  "superseded_evidence": {
+    "original_tested_code_commit": "152fc529cbf39652cd59dedc734f50433419bb31",
+    "original_final_evidence_commit": "1ec2eb6ffdb7b942acbe76f87e53c5bcbbe7c3c6",
+    "original_manifest_bytes": 9671,
+    "original_manifest_sha256": "2cea9aae5ef4f8bdc7925084cfac94d695db38facf90664fbb1d250cc52ee89f",
+    "first_remediation_commit": "077c55d1b57366de929223886379eca14255355a",
+    "acceptance_state": "REJECTED_SUPERSEDED"
+  },
   "environment": {
     "git": "2.50.0.windows.2",
     "node": "22.22.0",
     "npm": "10.9.4",
-    "os": "Windows 11",
+    "os": "Microsoft Windows NT 10.0.26200.0",
     "supabase_cli": "2.116.0",
     "timezone": "America/New_York"
   },
+  "remediated_findings": [
+    {
+      "id": "C3-R2-01",
+      "finding": "CALLER_ASSIGNED_DECISIONS_AND_SCORES",
+      "status": "CLOSED",
+      "evidence": "The strict evaluation request accepts only immutable record IDs. The server reloads the intake, job tree, fact versions, current reviews, and source authorization before deriving gates, salary, fit, confidence, preferences, readiness, and risk."
+    },
+    {
+      "id": "C3-R2-02",
+      "finding": "INCOMPLETE_PARSE_AND_BOOLEAN_BYPASS",
+      "status": "CLOSED",
+      "evidence": "listing-requirements-v3 preserves supported ANY_OF alternatives, incomplete material hard parsing blocks evaluation, and the active route evaluates the reconstructed persisted tree with evaluateRequirementTree."
+    },
+    {
+      "id": "C3-R2-03",
+      "finding": "RANKING_STAGES_NOT_PERSISTED",
+      "status": "CLOSED",
+      "evidence": "Immutable idempotent selection runs and members persist base rank, selected rank, rank explanation, selector explanation, and each diversity displacement. Active search, release, and replacement paths require the run identity."
+    },
+    {
+      "id": "C3-R2-04",
+      "finding": "CUSTOMER_EXPLANATIONS_NOT_CANDIDATE_DERIVED",
+      "status": "CLOSED",
+      "evidence": "Five explanation sections bind exact evidence nodes and candidate fact versions. Matching-experience output is rendered from current confirmed or independently verified candidate facts; typed criteria checks and employer sections use their persisted evidence."
+    },
+    {
+      "id": "C3-R2-05",
+      "finding": "ALL_NOT_APPLICABLE_FIT_NAN",
+      "status": "CLOSED",
+      "evidence": "The fit calculator returns null with NO_APPLICABLE_COMPONENTS for a zero applicable denominator and rejects non-finite results. The product path still enforces the contract's always-applicable core-responsibility component."
+    },
+    {
+      "id": "C3-R2-06",
+      "finding": "SOURCE_AUTHORIZATION_NOT_RECHECKED_AT_RELEASE",
+      "status": "CLOSED",
+      "evidence": "Persisted evaluation loading fetches the latest authorization per source; selection, deliverability, and release verification reject a superseded or revoked linked authorization."
+    }
+  ],
   "checks": [
     {
       "id": "C3-MIGRATE",
-      "command": "npm exec -- supabase db reset --local",
+      "command": "npx.cmd supabase db reset --local",
       "status": "PASS",
       "exit_code": 0,
-      "assertion_count": 25,
-      "evidence": "All 25 migrations applied from zero through additive migration 202609040025_chunk3_matching_engine.sql."
+      "assertion_count": 27,
+      "evidence": "All 27 migrations applied from zero through additive migration 202609050027_chunk3_persisted_evidence_remediation.sql."
     },
     {
       "id": "C3-DB",
-      "command": "npm run test:database",
+      "command": "npm.cmd run test:database",
       "status": "PASS",
       "exit_code": 0,
       "assertion_count": 3,
-      "evidence": "All three transactional SQL fixtures passed, including default-deny source authorization, bounded coverage, immutable inventory/evaluation/review records, guarded feasibility-worker transitions, and prior Chunk 1-2 invariants."
+      "evidence": "All three transactional fixtures passed, including exact review/fact/criterion binding, zero-fact hard-pass rejection, idempotent rank-stage persistence, client denial, non-current source-authorization rejection, and prior Chunk 1-3 invariants."
     },
     {
       "id": "C3-LEGACY",
-      "command": "npm run test:legacy-backfill",
+      "command": "npm.cmd run test:legacy-backfill",
       "status": "PASS",
       "exit_code": 0,
       "assertion_count": 2,
-      "evidence": "The pre-Chunk-1 paid order survived migrations 202609040022 through 202609040025; compatibility validation passed before and after the idempotent rerun, then the complete schema was restored."
+      "evidence": "The legacy paid order survived migrations 022 through 027; compatibility validation passed before and after the idempotent rerun, and the complete schema was restored."
     },
     {
       "id": "C3-ROLLBACK",
-      "command": "npm run test:rollback",
+      "command": "npm.cmd run test:rollback",
       "status": "PASS",
       "exit_code": 0,
       "assertion_count": 2,
-      "evidence": "The guarded disposable rollback returned ROLLBACK_OK and self-restored all 25 migrations before returning RESTORE_OK."
+      "evidence": "The disposable rollback returned ROLLBACK_OK and self-restored all 27 migrations before returning RESTORE_OK."
     },
     {
       "id": "C3-TYPES",
-      "command": "npm run types:database:check",
+      "command": "npm.cmd run types:database:check",
       "status": "PASS",
       "exit_code": 0,
       "assertion_count": 1,
@@ -64,7 +112,7 @@
     },
     {
       "id": "C3-LINT",
-      "command": "npm run lint",
+      "command": "npm.cmd run lint",
       "status": "PASS",
       "exit_code": 0,
       "assertion_count": null,
@@ -72,7 +120,7 @@
     },
     {
       "id": "C3-TYPE",
-      "command": "npm run typecheck",
+      "command": "npm.cmd run typecheck",
       "status": "PASS",
       "exit_code": 0,
       "assertion_count": null,
@@ -80,27 +128,27 @@
     },
     {
       "id": "C3-UNIT",
-      "command": "npm test",
+      "command": "npm.cmd test -- --pool=threads --maxWorkers=1 --reporter=dot",
       "status": "PASS",
       "exit_code": 0,
-      "assertion_count": 253,
-      "evidence": "All 253 tests in 41 files passed, including the 13-persona governed fixture, requirement truth tables, source policy, provenance, deduplication properties, fit/confidence/readiness, feasibility, reviewer constraints, and prior regressions."
+      "assertion_count": 267,
+      "evidence": "All 267 tests in 43 files passed, including identifier-only evaluation input, exact evidence binding, immutable salary-gate derivation, ANY_OF parsing, incomplete-parse blocking, all-N/A fit, persisted selection provenance, candidate-derived explanations, source revocation, and prior regressions."
     },
     {
       "id": "C3-BUILD",
-      "command": "npm run build",
+      "command": "npm.cmd run build",
       "status": "PASS",
       "exit_code": 0,
-      "assertion_count": 48,
-      "evidence": "Next.js production compilation, TypeScript phase, page-data collection, and all 48 generated routes/pages passed without activating any provider."
+      "assertion_count": 49,
+      "evidence": "Next.js production compilation, strict TypeScript, page-data collection, and all 49 generated routes/pages passed without activating a provider."
     },
     {
       "id": "C3-E2E",
-      "command": "npm run test:e2e",
+      "command": "npm.cmd run test:e2e",
       "status": "PASS",
       "exit_code": 0,
       "assertion_count": 70,
-      "evidence": "All 70 applicable desktop/mobile Playwright cases passed. Two of 72 scheduled cases were intentional duplicate-platform skips: mobile evidence recapture and the Chromium-only browser-metrics scaling check. No public intake redesign or payment activation occurred."
+      "evidence": "All 70 applicable desktop/mobile Playwright cases passed in the exact-commit run. Two of 72 scheduled cases were intentional duplicate-platform skips. Generated Chunk 2 screenshot changes were restored from the implementation commit and were not included."
     },
     {
       "id": "C3-TRACE",
@@ -108,7 +156,7 @@
       "status": "PASS",
       "exit_code": 0,
       "assertion_count": 243,
-      "evidence": "All 243 Chunk 3-owned rows map to implementation, tests, evidence, and IMPLEMENTED status; pending, unmapped, and unimplemented Chunk 3 rows are zero."
+      "evidence": "All 243 literal Chunk 3 traceability rows end in IMPLEMENTED; pending/unimplemented rows are zero, and the persisted-evidence remediation mapping supplements the stable IDs."
     },
     {
       "id": "C3-FORMAT",
@@ -116,15 +164,15 @@
       "status": "PASS",
       "exit_code": 0,
       "assertion_count": 2,
-      "evidence": "Both the unstaged and staged implementation diffs completed without whitespace errors."
+      "evidence": "Both exact-commit whitespace checks completed without errors."
     },
     {
       "id": "C3-INTEGRATION-EXTERNAL",
-      "command": "npm run test:integration",
+      "command": "npm.cmd run test:integration",
       "status": "NOT_APPLICABLE_LOCAL",
       "exit_code": 0,
       "assertion_count": 3,
-      "evidence": "Two real-scanner adapter files and all three tests were explicitly skipped because no approved production scanner is configured. Deterministic fail-closed coverage passed and processing remains disabled.",
+      "evidence": "Two real-scanner files and all three tests were explicitly skipped because no approved production scanner is configured. Deterministic fail-closed coverage passed and production processing remains disabled.",
       "excluded_from_required_denominator": true
     }
   ],
@@ -152,23 +200,41 @@
   },
   "artifacts": [
     { "path": "supabase/migrations/202609040025_chunk3_matching_engine.sql", "bytes": 23584, "sha256": "c40db6163eae7bb4d99e7e0d21364b548a173eafdbbea9133214942607a1cd96" },
-    { "path": "src/lib/database.types.ts", "bytes": 250823, "sha256": "ab03cffd13bb6618126ffdf14de5b362846a0d3d9f44117a61b8e90aff84aac7" },
+    { "path": "supabase/migrations/202609050026_chunk3_audit_remediation.sql", "bytes": 19518, "sha256": "3b781c8ab2ee167329a9ebd8f2e6bf43a79d031e3f7e9cff6c7b44a98a1769a3" },
+    { "path": "supabase/migrations/202609050027_chunk3_persisted_evidence_remediation.sql", "bytes": 19508, "sha256": "998cc8db34f61cc64f766c1d0e088605c7c8cacd69f5425984fbe8ca27707e77" },
+    { "path": "src/lib/database.types.ts", "bytes": 255549, "sha256": "2c986da5bbff6529eb88af96593919bb5864f7676bef06aea7367df003b523f9" },
     { "path": "src/lib/matching/retrieval.ts", "bytes": 6125, "sha256": "b279b18d5fb7253581c2da29d965931df517d3bdd18ff22c081123524d564a3b" },
-    { "path": "src/lib/matching/requirements.ts", "bytes": 11052, "sha256": "88ab45e4d00b2da8f32b1dbcfdcebf7860e6de0e91775bcbc92adc5615df9dae" },
-    { "path": "src/lib/matching/evaluation-engine.ts", "bytes": 20778, "sha256": "e987156eb95e740e5ae2a4976726c44722d3fccdba955b6fe93cd7025d2e75a2" },
-    { "path": "src/lib/matching/deduplication.ts", "bytes": 4338, "sha256": "8838cc6de8358c0ec33e27481005c66f8b9ca0740fcb48c4b30bbb28f2320beb" },
-    { "path": "src/lib/matching/feasibility.ts", "bytes": 8148, "sha256": "3f4585ca38dd9c39c71241b9989387d290d2b27c18edc1006f4030ab101e93c9" },
-    { "path": "src/lib/matching/feasibility-worker.ts", "bytes": 2276, "sha256": "ef291d90ae5544774d680a8ef5e8e99198dc12385307153956ececf543ec6797" },
-    { "path": "src/lib/matching/verification.ts", "bytes": 2382, "sha256": "0670524ae585880cb8c6f70b9a03f646d49d60cf4bcb0ecafc74f64674a9ba39" },
+    { "path": "src/lib/matching/requirements.ts", "bytes": 12827, "sha256": "22b12fada148703c955195811e42bd2a10d05aba9238ff34a14064e35b342e57" },
+    { "path": "src/lib/matching/evaluation-engine.ts", "bytes": 22498, "sha256": "28d6ad026e816465c56dfba2e245b6292e68ac9098796391ccdf90f67f9c8926" },
+    { "path": "src/lib/matching/evidence-derived.ts", "bytes": 26456, "sha256": "a6734b863084d2bf92e7eae382c17bddd07763edc18add657abdc07206cc4933" },
+    { "path": "src/lib/matching/listing-parser.ts", "bytes": 11543, "sha256": "b5d848324b17bfdd54f1e2d1f6606807e4e6c607aca6f194d56dea8834003bfa" },
+    { "path": "src/lib/matching/persisted-runtime.ts", "bytes": 18233, "sha256": "8b8f46a5ed0a100dd9373caa5eafecc8485b11c1e88ed8f6cc7631bbfd80d903" },
+    { "path": "src/lib/matching/review.ts", "bytes": 9177, "sha256": "5280a9f72662940989c07a24b9822f9b50207a93daa381a0a49ab6902238ae2b" },
+    { "path": "src/lib/matching/verification.ts", "bytes": 2517, "sha256": "c9eeaec5fae605e43835f6c34aff3cadd1175ef5c5e064a290da2e33d1ec54ea" },
+    { "path": "src/lib/matching/deduplication.ts", "bytes": 4649, "sha256": "2a981d5b6e55cd40b60da1205602ef2524b6a6704e7e65b36502d412d6c9df1a" },
+    { "path": "src/lib/matching/feasibility.ts", "bytes": 8675, "sha256": "5d5486f1d9028e871171bae7e38bf5bc5422ca93c2437d3195a62cdd9bbc7d92" },
+    { "path": "src/lib/matching/feasibility-worker.ts", "bytes": 2263, "sha256": "90982c221485b4856668ea2aa2a7019374df4672410b09df9148103e4577ffa7" },
+    { "path": "src/lib/matching/supabase-feasibility-store.ts", "bytes": 11537, "sha256": "6447ef49ec35c055081088b1a2fcedac8f6c7563c7924caedb36df256dbb1ad4" },
     { "path": "src/lib/matching/tool-clusters.ts", "bytes": 3079, "sha256": "14e1a90dcc170618cf47d7614a553e420b67d7318ce69e1e973ae0bd06c491a5" },
-    { "path": "src/app/api/admin/matching-reviews/route.ts", "bytes": 3297, "sha256": "ed9bf56bc980aa0c8a1f86a02e88ce5abe47c24e2ff311aa19cf11b3e70a4cd3" },
-    { "path": "tests/integration/chunk3-matching-engine.sql", "bytes": 11559, "sha256": "c40a4b103cdf8e65974d1960a4ef714419089e928d78bc20102290f9f898600a" },
+    { "path": "src/lib/jobs/source-registry.ts", "bytes": 14441, "sha256": "30332bace68ad3190c53243219164ebaf8c6721bd769267c258bb10f296d40d9" },
+    { "path": "src/app/api/admin/matching-evaluations/route.ts", "bytes": 12839, "sha256": "f219a7387a3b7c42dd08afa72732cff86bb8fcd511b5a851c1da8b6f7e674fb4" },
+    { "path": "src/app/api/admin/matching-reviews/route.ts", "bytes": 6166, "sha256": "0d6fed216800488864d5aa86371aaee2b6849485caf2f562f118e53cc834a9dd" },
+    { "path": "src/app/api/admin/jobs/route.ts", "bytes": 10015, "sha256": "1c8f3050d7a4bde542f441789bceb59ea9fa6a210d3bb51ac3e2b4b47cbb822b" },
+    { "path": "src/app/api/admin/search-orders/[id]/deliver/route.ts", "bytes": 6407, "sha256": "9c2976dc28231918ee1dcd4bc0b44dc68340a760c618b8fa07bbbcc99018d930" },
+    { "path": "src/app/api/admin/conflicts/[id]/resolve/route.ts", "bytes": 6094, "sha256": "c1074fd2afe8d323f8adc789bfcfabb002397ce7cb66ec810e785c58e4c9e52a" },
+    { "path": "src/lib/workflow/process.ts", "bytes": 10668, "sha256": "ee78aa163ebff89cd43d51218920a79535b52d45b89ff1c6f0efc8351aa610e3" },
+    { "path": "tests/integration/chunk3-matching-engine.sql", "bytes": 31718, "sha256": "4f074aa32e0a1061ec1685d54d2ebdbaa09f1d81a8f4f4e6f6a31e79b7ac2d21" },
     { "path": "tests/fixtures/chunk3-personas.ts", "bytes": 1127, "sha256": "07f88876e70b510337a4e967299f77eba19a851eb7e09a6d4526f4dbd155087a" },
-    { "path": "docs/MATCHING_POLICY.md", "bytes": 13415, "sha256": "cf7d43e9be894834982912d6f9b39cf1fce8584dee7b0df3590bc29f752bb0c5" },
-    { "path": "docs/DEPLOYMENT_RUNBOOK.md", "bytes": 20656, "sha256": "9f4a9021c94952fc0dc477f3fa88e9bbd4a6735e42ea74fd0ce5820afbb48aca" },
-    { "path": "docs/IMPLEMENTATION_STATUS.md", "bytes": 53392, "sha256": "609e0efb7b311457cae9ce927f16562184ed6d67000b61b831ebf6826ccb02db" },
-    { "path": "docs/REQUIREMENT_TRACEABILITY.md", "bytes": 605015, "sha256": "21a6e221de25c86e156c7907dd99e1c1cc1767118e4a1e7b8f4aca53df26293f" },
-    { "path": "docs/evidence/IMPLEMENTATION_DECISIONS.md", "bytes": 17536, "sha256": "6f35e91cecb43e31b60163accb071dac9defdfab5ac499e44a254970dbc29f51" }
+    { "path": "tests/unit/chunk3-evaluation.test.ts", "bytes": 17691, "sha256": "aa0e55158ec2635232670ba63d515a84dde87624a5d7b672ae18ea6580aa1b43" },
+    { "path": "tests/unit/chunk3-persisted-evidence.test.ts", "bytes": 10968, "sha256": "0cec449f0ec7ab91bc778333fbe260652036ff9591cdb9d26e7d49d7eb7300b3" },
+    { "path": "tests/unit/chunk3-remediation.test.ts", "bytes": 8866, "sha256": "363978965a57dab6fe66a1980dbfe0d9e80b9333fefec11b1d031db9ae425fd9" },
+    { "path": "tests/unit/chunk3-retrieval-source.test.ts", "bytes": 9153, "sha256": "4c513ae35c7c921b679f0f72f0094a51cf594d6a1dabdd2ef07315ae332cfc70" },
+    { "path": "tests/unit/chunk3-review.test.ts", "bytes": 1779, "sha256": "5b6ce5855db94c786491653516755db2ab1fa88c03e2b420dd6d616eff0beacb" },
+    { "path": "docs/MATCHING_POLICY.md", "bytes": 15162, "sha256": "ac5f995920a75652eac92f1926d6a0431cb5ee5499e241f77977ae23688194d7" },
+    { "path": "docs/job-search/SOURCE_EXPANSION.md", "bytes": 10936, "sha256": "9ec6dfeae907145ac49df8782fdc868733ab375912c22e5aa8973849c468997a" },
+    { "path": "docs/DEPLOYMENT_RUNBOOK.md", "bytes": 27902, "sha256": "6ff6eea6f290570563346ddd2654f420dd8fc52b63312f9af0f9c75333cff774" },
+    { "path": "docs/IMPLEMENTATION_STATUS.md", "bytes": 56206, "sha256": "871b5853023797217c0d7f2d6e1b0fc803bce32397e87a3d131fba19ef6fc858" },
+    { "path": "docs/REQUIREMENT_TRACEABILITY.md", "bytes": 609225, "sha256": "0a572bd6006e4054ca9242f91f7e029a8824d9ebc852393bd9c2487c14a649cc" }
   ],
   "unimplemented_chunk_requirements": [],
   "unresolved_release_blockers": [
