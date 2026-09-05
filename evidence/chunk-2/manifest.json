@@ -2,15 +2,15 @@
   "schema_version": 1,
   "chunk": 2,
   "chunk_status": "COMPLETE",
-  "created_at": "2026-09-04T15:55:41.6574137-04:00",
+  "created_at": "2026-09-04T20:16:11.2431196-04:00",
   "worktree": "C:\\Users\\mskir\\Desktop\\Apply_Pack\\applypack-phase0-e9c3aea0d45447bfaa6517e488356e0d",
   "branch": "codex/applypack-corrected-build-2026-09-04",
   "base_commit": "aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8",
   "required_phase_0_commit": "0595ae7cec5c2f36d06b11b691fd319742cb692c",
   "accepted_chunk_1_commit": "e8c77426b892a54b802dde516552449825754df8",
-  "start_head": "e8c77426b892a54b802dde516552449825754df8",
-  "tested_code_commit": "d3e56351ffb09f9b67063d4ed5e1f34e2d4caeb1",
-  "tested_tree": "a4e26eadbdd77802d84e764a24d5441e11d99e17",
+  "start_head": "6256250693adefe2762a5f921c81fbfbcc305c75",
+  "tested_code_commit": "425e857b4976cbedfdd99a68385c71ee1a41714a",
+  "tested_tree": "d9ccc394e5e1ac0cb807f25646fac0d38073e43d",
   "contract_sha256": "df4e32e2ea0c37abd3f39904c36576c0af3935f9754bb1b81979782dc002d69f",
   "environment": {
     "git": "2.50.0.windows.2",
@@ -26,8 +26,8 @@
       "command": "supabase db reset --local",
       "status": "PASS",
       "exit_code": 0,
-      "assertion_count": 23,
-      "evidence": "All 23 migrations applied from zero through 202609040023; the latest schema was restored after rollback rehearsal."
+      "assertion_count": 24,
+      "evidence": "All 24 migrations applied from zero through additive remediation migration 202609040024; the latest schema was restored after rollback rehearsal."
     },
     {
       "id": "C2-DB",
@@ -35,7 +35,7 @@
       "status": "PASS",
       "exit_code": 0,
       "assertion_count": 2,
-      "evidence": "Both transactional SQL fixtures passed, including capability access, conflicts, documents, fact decisions, snapshots, pending feasibility, invalidation, telemetry, task capabilities, and non-occupational life-context invariants."
+      "evidence": "Both transactional SQL fixtures passed, including capability access, conflicts, lossless preferred-mode/type and work-condition persistence, typed correction supersession, server-side NEITHER prior-cover deactivation, immutable snapshots, and pending feasibility."
     },
     {
       "id": "C2-LEGACY",
@@ -43,7 +43,7 @@
       "status": "PASS",
       "exit_code": 0,
       "assertion_count": 2,
-      "evidence": "The pre-Chunk-1 paid order/payment survived both additive migrations; checkpoint and compatibility validation passed before and after idempotent rerun and rollback restoration."
+      "evidence": "The pre-Chunk-1 paid order/payment survived migrations 202609040022 through 202609040024; checkpoint and compatibility validation passed before and after idempotent rerun and final schema restoration."
     },
     {
       "id": "C2-ROLLBACK",
@@ -51,7 +51,7 @@
       "status": "PASS",
       "exit_code": 0,
       "assertion_count": 2,
-      "evidence": "The guarded rollback completed only in the disposable empty state, preserved legacy orders, and was followed by full latest-schema restoration and verification."
+      "evidence": "The guarded disposable rollback returned ROLLBACK_OK and preserved legacy orders; a subsequent reset reapplied all 24 migrations successfully."
     },
     {
       "id": "C2-TYPES",
@@ -82,8 +82,8 @@
       "command": "npm test",
       "status": "PASS",
       "exit_code": 0,
-      "assertion_count": 144,
-      "evidence": "34 test files and all 144 tests passed, including four-step, provenance, duration, lifecycle, upload, and fail-closed KMS coverage."
+      "assertion_count": 148,
+      "evidence": "34 test files and all 148 tests passed, including normalization of hidden state, every structured correction discriminator, invalid generic/incomplete correction rejection, hard-criterion unknown policies, provenance, lifecycle, upload, and fail-closed KMS coverage."
     },
     {
       "id": "C2-BUILD",
@@ -98,24 +98,24 @@
       "command": "npm run test:e2e",
       "status": "PASS",
       "exit_code": 0,
-      "assertion_count": 61,
-      "evidence": "61 desktop/mobile Playwright cases passed in 15.3 minutes. One of 62 scheduled cases was an intentional duplicate-capture skip; none failed or blocked."
+      "assertion_count": 68,
+      "evidence": "68 desktop/mobile Playwright cases passed in 18.6 minutes. Two of 70 scheduled cases were intentional duplicate-platform skips: mobile screenshot recapture and the Chromium-only browser-metrics scale check. None failed or blocked."
     },
     {
       "id": "C2-A11Y-VISUAL",
-      "command": "tests/e2e/chunk2-evidence.spec.ts and Chunk 2 assertions in tests/e2e/public.spec.ts",
+      "command": "tests/e2e/chunk2-remediation.spec.ts, tests/e2e/chunk2-evidence.spec.ts, and Chunk 2 assertions in tests/e2e/public.spec.ts",
       "status": "PASS",
       "exit_code": 0,
       "assertion_count": 9,
-      "evidence": "Axe, keyboard, linked errors, reduced motion, forced colors, 200 percent zoom, seven responsive widths, and nine 1440/390 step/adaptive/error captures passed. The Codex image viewer was unavailable due to its Windows ACL helper, so no separate manual image-inspection claim is made."
+      "evidence": "Axe, complete keyboard-only operation, stable error IDs and aria-describedby links, retained summary focus, reduced motion, forced colors, 2:1 Chromium browser-metrics reflow without CSS zoom, seven responsive widths, and nine deterministic captures passed. The repository image viewer could not traverse the isolated worktree because of its Windows ACL helper, so no manual image or assistive-technology certification is claimed."
     },
     {
       "id": "C2-FORMAT",
       "command": "git diff --cached --check",
       "status": "PASS",
       "exit_code": 0,
-      "assertion_count": 37,
-      "evidence": "All 37 implementation-commit files passed staged whitespace validation; the evidence-only delta also passed."
+      "assertion_count": 25,
+      "evidence": "The 16-file implementation commit and 9-file evidence delta both passed staged whitespace validation."
     },
     {
       "id": "C2-INTEGRATION-EXTERNAL",
@@ -132,7 +132,9 @@
     "denominator": 12,
     "failed": [],
     "blocked": [],
-    "not_applicable_local": ["C2-INTEGRATION-EXTERNAL"]
+    "not_applicable_local": [
+      "C2-INTEGRATION-EXTERNAL"
+    ]
   },
   "cumulative_required_tests": {
     "numerator": 32,
@@ -147,31 +149,166 @@
     "unmapped_rows": 0
   },
   "artifacts": [
-    { "path": "supabase/migrations/202609040023_chunk2_four_step_intake.sql", "bytes": 23540, "sha256": "e22ae4d1b4bd98c75054ba7227f6b2a6505ee81a5017e0f37e62c4dc65c0fba6" },
-    { "path": "src/lib/database.types.ts", "bytes": 235299, "sha256": "e920c70732377a21ae031de44ff46810c5aed88fff7b3ef91680899d8adc6129" },
-    { "path": "src/lib/intake/four-step.ts", "bytes": 18644, "sha256": "257c6f606e0cac7b450c5f7ce3ee8c4ad42a2c3f1a3c7464940270f1c45e079e" },
-    { "path": "src/lib/intake/four-step-server.ts", "bytes": 3337, "sha256": "66d0922f9606d14c590cdf8a02e8886e939b597e7ae56801703fbd093caaebff" },
-    { "path": "src/lib/security/remote-kms.ts", "bytes": 2223, "sha256": "8ca2def00ee0dc5eac6bd1eefad569edfc3b0f56b40a863f05dd38452a08e63d" },
-    { "path": "src/app/get-started/wizard-v3.tsx", "bytes": 48414, "sha256": "091b3b34685a8dc6619680172dac5c54e2e0c601dd6ecf7fed0a2d22e9413684" },
-    { "path": "src/app/get-started/chunk2.css", "bytes": 5239, "sha256": "4cd79d73be97f5518f6262824b3c0088162b2f7f6c84a546607a53a1c0361a19" },
-    { "path": "src/app/api/intake/anonymous-draft/finalize/route.ts", "bytes": 6742, "sha256": "011f22b4c6471096382f7b80020bf785ab72af0d2fbde42908fd48c192790ab3" },
-    { "path": "tests/integration/chunk2-four-step.sql", "bytes": 10716, "sha256": "02e94c257dc62fcdf4c0fab5b5f45e3af8ecaab83433855fbb7bc6a16cdd831f" },
-    { "path": "tests/unit/four-step-intake.test.ts", "bytes": 4444, "sha256": "f0d5f76a601cede8736f4dc8e9b2816149b9c4cbf109012e47ce4ec537eb40e9" },
-    { "path": "tests/unit/remote-kms.test.ts", "bytes": 2140, "sha256": "695e6732bb4013df5bbd432df6aeab726e63f3221012a585221195965cfc855c" },
-    { "path": "tests/e2e/public.spec.ts", "bytes": 6242, "sha256": "552dff605a607f66a91604c22648f20625a1bc58157f997d2fa5b0e813075828" },
-    { "path": "tests/e2e/chunk2-evidence.spec.ts", "bytes": 2399, "sha256": "cbf71bf01ff473c5a6ba5c3190cc0af0fe1668af0e2a157c8e3c8150f6550aad" },
-    { "path": "docs/DEPLOYMENT_RUNBOOK.md", "bytes": 13025, "sha256": "ddb66b0e51144e0155e6350be323d55fc34c3c4e10951a1691d86b52106fe9a5" },
-    { "path": "docs/IMPLEMENTATION_STATUS.md", "bytes": 41456, "sha256": "a5adfaea8c0f2022e3a669e7f6ef7de2b09d87b30c0bcc69471205ef2bf005df" },
-    { "path": "docs/REQUIREMENT_TRACEABILITY.md", "bytes": 558688, "sha256": "f7cbbe8f987fceaeb6c225dfa4e622eef1285da363806e5a51abdd89d961a94c" },
-    { "path": "evidence/chunk-2/screenshots/1440-step-1.png", "bytes": 141619, "sha256": "0bc992da8ec1db916a319ea0a33c9a0bae0bbd7763a0c678c2d607115feb93d6" },
-    { "path": "evidence/chunk-2/screenshots/1440-step-2.png", "bytes": 269765, "sha256": "77612404ded8cd1b5d4648bd12ad7bed9ea88b9fe53b45013ef150369be5fdbb" },
-    { "path": "evidence/chunk-2/screenshots/1440-step-3-adaptive.png", "bytes": 170310, "sha256": "245f4fc8a5a4ad533a9360b69db41bae5f604ce2a71709bb77887a07089c556d" },
-    { "path": "evidence/chunk-2/screenshots/1440-step-4.png", "bytes": 257643, "sha256": "50c710e30b08b031f4a347bfa20a105b3fb0a86ac5ea7cac73681f88412e6eb3" },
-    { "path": "evidence/chunk-2/screenshots/390-error-summary.png", "bytes": 117428, "sha256": "dcaf377cb87908e61d50223b1f0ae783cbfec4519abab4111c103fc66cbf41bf" },
-    { "path": "evidence/chunk-2/screenshots/390-step-1.png", "bytes": 101986, "sha256": "f577217bc4368d7cbd66de32ee9d063028b856eca394ccc0d5a3fe6adc75efb2" },
-    { "path": "evidence/chunk-2/screenshots/390-step-2.png", "bytes": 253937, "sha256": "f43c8ad29b64414c834984fe86da1877e559528d9bcaceabdf00de693951f61b" },
-    { "path": "evidence/chunk-2/screenshots/390-step-3-adaptive.png", "bytes": 131302, "sha256": "519dd73094c44123ae42f7356e7a78b417225e0b361c34cae300b8de6222cd83" },
-    { "path": "evidence/chunk-2/screenshots/390-step-4.png", "bytes": 211365, "sha256": "52c625a4c624b5d34bbf388451352fa2d3addab9852b1106f1506b7bbe70fddb" }
+    {
+      "path": "supabase/migrations/202609040023_chunk2_four_step_intake.sql",
+      "bytes": 23540,
+      "sha256": "e22ae4d1b4bd98c75054ba7227f6b2a6505ee81a5017e0f37e62c4dc65c0fba6"
+    },
+    {
+      "path": "supabase/migrations/202609040024_chunk2_remediation.sql",
+      "bytes": 14314,
+      "sha256": "a1bd5df5bfaea108268e0f281590d71a84533098cd24ce2a21a60a8b79330f2d"
+    },
+    {
+      "path": "src/lib/database.types.ts",
+      "bytes": 235722,
+      "sha256": "615196d493c755595969b594f3918d5bd9ce4c28def64a11f5ca35c08f441250"
+    },
+    {
+      "path": "src/lib/intake/four-step.ts",
+      "bytes": 27488,
+      "sha256": "bb75ba312d7f165a51d7b11a75c06e9b5c6b5971f181286623195215621c1240"
+    },
+    {
+      "path": "src/lib/intake/four-step-server.ts",
+      "bytes": 3337,
+      "sha256": "66d0922f9606d14c590cdf8a02e8886e939b597e7ae56801703fbd093caaebff"
+    },
+    {
+      "path": "src/lib/security/remote-kms.ts",
+      "bytes": 2223,
+      "sha256": "8ca2def00ee0dc5eac6bd1eefad569edfc3b0f56b40a863f05dd38452a08e63d"
+    },
+    {
+      "path": "src/app/get-started/wizard-v3.tsx",
+      "bytes": 60527,
+      "sha256": "529e8bec49ecbf2015e495ce54f83be7a098cfdf66fab448463d0f568b2c13a2"
+    },
+    {
+      "path": "src/app/get-started/chunk2.css",
+      "bytes": 5239,
+      "sha256": "4cd79d73be97f5518f6262824b3c0088162b2f7f6c84a546607a53a1c0361a19"
+    },
+    {
+      "path": "src/app/api/intake/anonymous-draft/finalize/route.ts",
+      "bytes": 5183,
+      "sha256": "925d557c5c2d0a7724dfe706777ca70d78c164e652ce8bcec45877c604c936bd"
+    },
+    {
+      "path": "src/app/api/intake/anonymous-draft/document/route.ts",
+      "bytes": 5968,
+      "sha256": "a971efc9610b82fcafaf5e3a835b8d90e9556c826713d473e1c5526b0539f9fa"
+    },
+    {
+      "path": "src/app/admin/page.tsx",
+      "bytes": 9901,
+      "sha256": "d7ee32610b448cba187b8153ad670e29dbc66c3bd94e34715d645216ef8cb16e"
+    },
+    {
+      "path": "src/components/admin/pending-intakes.tsx",
+      "bytes": 3430,
+      "sha256": "55600fcb5d23bf5ae3f85f924ba9438162179fe0d6499d5c52ad3621935a8f1d"
+    },
+    {
+      "path": "tests/integration/chunk2-four-step.sql",
+      "bytes": 13089,
+      "sha256": "7060e8cdf988f9f6c05808dffaf95d4ab1b510d6fd9ac8b1732ba88f9f76180e"
+    },
+    {
+      "path": "tests/unit/four-step-intake.test.ts",
+      "bytes": 9938,
+      "sha256": "22576515c607a1a6d5c8b77432b4aef506db07d23e6112fef95155d7d1fee4d0"
+    },
+    {
+      "path": "tests/unit/remote-kms.test.ts",
+      "bytes": 2140,
+      "sha256": "695e6732bb4013df5bbd432df6aeab726e63f3221012a585221195965cfc855c"
+    },
+    {
+      "path": "tests/e2e/public.spec.ts",
+      "bytes": 5862,
+      "sha256": "5238a9916ca30ebb04c808e65826b3a5b43dfbb01cbba25325f065b393286bcb"
+    },
+    {
+      "path": "tests/e2e/chunk2-evidence.spec.ts",
+      "bytes": 2399,
+      "sha256": "cbf71bf01ff473c5a6ba5c3190cc0af0fe1668af0e2a157c8e3c8150f6550aad"
+    },
+    {
+      "path": "tests/e2e/chunk2-remediation.spec.ts",
+      "bytes": 7799,
+      "sha256": "76104fc20759219f4eb48090a8bf07b435707ef089a07a32904f229bb2c84640"
+    },
+    {
+      "path": "docs/DEPLOYMENT_RUNBOOK.md",
+      "bytes": 14059,
+      "sha256": "d0af32de791a205268efca8fbc6b99d72e3dee770cd0d2aa25433a6c49560b54"
+    },
+    {
+      "path": "docs/IMPLEMENTATION_STATUS.md",
+      "bytes": 44691,
+      "sha256": "8660086a70d184a11db100ac0f104862d8779229250e4fc4810fb194369d8b07"
+    },
+    {
+      "path": "docs/REQUIREMENT_TRACEABILITY.md",
+      "bytes": 554663,
+      "sha256": "725cd330a6ded5a2a162b17e81d75fd32a0211a70e89e082ed7496abafde7b73"
+    },
+    {
+      "path": "docs/evidence/IMPLEMENTATION_DECISIONS.md",
+      "bytes": 14960,
+      "sha256": "ec274107d561d6435cf51fdedb4c552609886336436aabc0ebbdb5e56af015da"
+    },
+    {
+      "path": "evidence/chunk-0/manifest.json",
+      "bytes": 7611,
+      "sha256": "014f915b603b9baa127dd86c1854884e4c5bc3aaac21c69f0ac2d0bc1126f2b8"
+    },
+    {
+      "path": "evidence/chunk-2/screenshots/1440-step-1.png",
+      "bytes": 141764,
+      "sha256": "bee0a8e0940b53df783c25b808af62c8883da9e10f41d7cba2a890d9e98cae06"
+    },
+    {
+      "path": "evidence/chunk-2/screenshots/1440-step-2.png",
+      "bytes": 277629,
+      "sha256": "524f1706fc84b87652b929f8e3e9475385489e6efd29102dc78be791e7bf7ac1"
+    },
+    {
+      "path": "evidence/chunk-2/screenshots/1440-step-3-adaptive.png",
+      "bytes": 170310,
+      "sha256": "245f4fc8a5a4ad533a9360b69db41bae5f604ce2a71709bb77887a07089c556d"
+    },
+    {
+      "path": "evidence/chunk-2/screenshots/1440-step-4.png",
+      "bytes": 290911,
+      "sha256": "6dc58db915ed42818980f8f5d765c6517daf7e7b89afb55f3eae567dd98af9b5"
+    },
+    {
+      "path": "evidence/chunk-2/screenshots/390-error-summary.png",
+      "bytes": 115077,
+      "sha256": "2201663b00eeb6525cef8d3e6a89a2d6270ddc928f70afe05ddeea5722189fb5"
+    },
+    {
+      "path": "evidence/chunk-2/screenshots/390-step-1.png",
+      "bytes": 101986,
+      "sha256": "f577217bc4368d7cbd66de32ee9d063028b856eca394ccc0d5a3fe6adc75efb2"
+    },
+    {
+      "path": "evidence/chunk-2/screenshots/390-step-2.png",
+      "bytes": 253375,
+      "sha256": "f1cbbe2976bce0dfa233f275cf187d567b7d0d6734aac3a0b9c723ae5d674f07"
+    },
+    {
+      "path": "evidence/chunk-2/screenshots/390-step-3-adaptive.png",
+      "bytes": 131482,
+      "sha256": "dbc3dac7371a44a172949fb238a527e0a727c355128a9ac9e0666e29c9f8790c"
+    },
+    {
+      "path": "evidence/chunk-2/screenshots/390-step-4.png",
+      "bytes": 245849,
+      "sha256": "70d742b6ea700f5c7683a32687bdef6b5768b6556addfceb8dc7eb24f0620d9a"
+    }
   ],
   "unimplemented_chunk_requirements": [],
   "unresolved_release_blockers": [
@@ -183,5 +320,12 @@
     "Chunks 3 through 7 remain unimplemented and require explicit authorization."
   ],
   "next_chunk_started": false,
-  "next_chunk_authorized": false
+  "next_chunk_authorized": false,
+  "original_chunk_start_head": "e8c77426b892a54b802dde516552449825754df8",
+  "superseded_chunk_2_evidence_commit": "6256250693adefe2762a5f921c81fbfbcc305c75",
+  "oversight_findings_remediated": 7,
+  "manual_accessibility_inspection": {
+    "status": "NOT_CLAIMED_TOOL_UNAVAILABLE",
+    "evidence": "Automated checks and screenshots are retained; direct image viewing failed because the Windows ACL helper could not traverse the isolated worktree."
+  }
 }
