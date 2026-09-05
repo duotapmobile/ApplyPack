@@ -331,6 +331,7 @@ export function normalizedFourStepDraft(draft: FourStepDraft): FourStepDraft {
     preferredWorkMode: draft.workModes.length > 1 && draft.preferredWorkMode && draft.workModes.includes(draft.preferredWorkMode) ? draft.preferredWorkMode : "",
     preferredEmploymentType: draft.employmentTypes.length > 1 && draft.preferredEmploymentType && draft.employmentTypes.includes(draft.preferredEmploymentType) ? draft.preferredEmploymentType : "",
     workConditionPreferences: applicableWorkConditions,
+    salaryNoncomparablePolicy: "EXCLUDE",
   });
   const activeCriteria = new Set(hardEmployerCriteria(base).map(({ key }) => key));
   const employerUnknownPolicies = Object.fromEntries(Object.entries(base.employerUnknownPolicies).flatMap(([key, value]) => {

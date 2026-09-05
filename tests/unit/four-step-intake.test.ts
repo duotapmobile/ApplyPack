@@ -75,12 +75,14 @@ describe("four-step intake contract", () => {
       avoidedActivities: [],
       workConditionPreferences: { "activity:SALES": "DEALBREAKER", TRAVEL: "WOULD_PREFER" },
       employerUnknownPolicies: { "work_condition:activity:SALES": "EXCLUDE_IF_UNKNOWN", stale: "EXCLUDE_IF_UNKNOWN" },
+      salaryNoncomparablePolicy: "INCLUDE_WITH_WARNING",
     });
     expect(normalized.titleRestrictionConfirmed).toBe(false);
     expect(normalized.preferredWorkMode).toBe("");
     expect(normalized.preferredEmploymentType).toBe("");
     expect(normalized.workConditionPreferences).toEqual({ TRAVEL: "WOULD_PREFER" });
     expect(normalized.employerUnknownPolicies).toEqual({});
+    expect(normalized.salaryNoncomparablePolicy).toBe("EXCLUDE");
   });
 
   it("preserves every selected preference in the immutable snapshot mapping", () => {

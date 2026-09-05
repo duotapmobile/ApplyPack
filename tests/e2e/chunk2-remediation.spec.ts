@@ -115,6 +115,18 @@ test("review exposes every section and an earlier edit returns directly to revie
   await expect(page.locator("#benefits-preferences")).toBeFocused();
 });
 
+test("employment preferences use friendly labels and noncomparable pay stays conservative", async ({ page }) => {
+  await reachReview(page);
+  await page.getByRole("checkbox", { name: "Part Time" }).check();
+  await expect(page.getByLabel("Preferred employment type").locator("option")).toHaveText(["No preference", "Full Time", "Part Time"]);
+  expect(await page.locator("body").innerText()).not.toMatch(/\b(?:FULL_TIME|PART_TIME)\b/);
+
+  await page.getByLabel("Target compensation").fill("70000");
+  await page.getByLabel("Target compensation").blur();
+  await expect(page.getByText("Materially variable compensation")).toBeVisible();
+  await expect(page.getByText("Published pay that cannot be compared directly")).toHaveCount(0);
+});
+
 test("choosing neither removes the prior cover letter and its processing eligibility", async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto("/get-started");
