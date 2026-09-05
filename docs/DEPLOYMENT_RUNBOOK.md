@@ -248,3 +248,108 @@ Failure recovery:
 6. Use a compensating migration only after the database owner proves the affected tables have no operational/customer data and obtains separate approval. Do not drop or rewrite legacy data.
 
 Before any production cutover, the release ticket must record the exact application/database commits, target project identity, KMS approval/version, file-processing adapter approvals, retention/privacy approval, validation-query results, staff role proof, monitoring owner, rollback decision, and an explicit go/no-go. Chunk 2 completion alone does not authorize production deployment or Chunk 3.
+
+## Chunk 3 additive matching and feasibility sequence
+
+Owner: database/platform owner for schema and rollback; product/legal owner for source authorization; operations owner for manual coverage and human review; security owner for worker credentials and monitoring. Chunk 3 authorization covers repository implementation only and does not authorize these owners to deploy or activate production.
+
+Order:
+
+1. Record target project identity, current application/database commit, and a restorable backup checkpoint. Stop on mismatch.
+2. Keep `APP_JOB_SOURCE_SYNC_ENABLED=false`, payment/Checkout disabled, and feasibility workers stopped.
+3. Apply `202609040025_chunk3_matching_engine.sql` after migrations `022`, `023`, and `024`. It is expand-only.
+4. Regenerate database types from that exact migrated schema and deploy compatibility code. Existing rows remain explicitly `legacy_compatibility=true`; new strict rows default false.
+5. Verify checkpoint `202609040025 / CHUNK3_MATCHING_ENGINE_EXPAND`, table/RPC privileges, default-deny source states, and zero unexpected automated sources.
+6. Separately obtain documentary business/legal authorization before inserting any `AUTHORIZED_AUTOMATED` record. Then separately approve positive source bounds and release TTL. No permissive defaults exist.
+7. Populate immutable inventory, requirement/evaluation, coverage, review, and displacement evidence through protected service-role workflows. Do not accept caller totals.
+8. Start the feasibility worker only after required coverage configuration, staff roles, monitoring, retry/dead-letter procedures, and TTL are approved. Run a synthetic canary first. A pending/error run creates no outcome or Checkout.
+9. A separate later authorization is required for any payment, Checkout, customer release, production source access, or Chunk 4 cutover.
+
+Repository/disposable verification commands:
+
+```powershell
+npm.cmd exec -- supabase db reset --local
+npm.cmd run test:database
+npm.cmd run test:legacy-backfill
+npm.cmd run test:rollback
+npm.cmd run types:database:check
+npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run build
+npm.cmd run test:e2e
+npm.cmd run test:integration
+git diff --check
+```
+
+Production validation queries (read-only):
+
+```sql
+select migration_id, checkpoint, completed_at
+from public.ap_migration_checkpoints
+where migration_id = '202609040025';
+
+select source_id, state, access_method, authorization_version,
+       evidence_reference is not null as has_evidence,
+       verified_by_role is not null as has_owner
+from public.ap_source_authorizations
+order by source_id, authorization_version;
+
+select count(*) as unexpected_automated_sources
+from public.ap_source_authorizations
+where state = 'AUTHORIZED_AUTOMATED';
+
+select r.state, count(*)
+from public.ap_feasibility_requests r
+group by r.state order by r.state;
+
+select count(*) as strict_complete_with_incomplete_coverage
+from public.ap_feasibility_assessments a
+join public.ap_feasibility_coverage_plans p on p.id = a.coverage_plan_id
+where a.state = 'COMPLETE' and p.plan_version = 'feasibility-v1'
+  and (
+    jsonb_typeof(p.typed_inputs->'requiredFamilyIds') is distinct from 'array'
+    or jsonb_array_length(p.typed_inputs->'requiredFamilyIds') = 0
+    or exists (
+      select 1 from jsonb_array_elements_text(p.typed_inputs->'requiredFamilyIds') family
+      where not exists (
+        select 1 from public.ap_feasibility_coverage_cells c
+        where c.plan_id = p.id and c.query_family_id = family
+          and c.terminal_outcome in ('SUCCEEDED_WITH_RESULTS','SUCCEEDED_EMPTY')
+          and c.normalized_and_deduplicated and c.result_changing_error_code is null
+      )
+    )
+  );
+
+select count(*) as strict_job_without_authorization
+from public.ap_job_snapshots j
+left join public.ap_source_authorizations a on a.id = j.source_authorization_id
+where not j.legacy_compatibility
+  and (a.id is null or a.state not in ('AUTHORIZED_AUTOMATED','AUTHORIZED_MANUAL_ONLY'));
+
+select count(*) as liveops_boundary_failure
+from public.ap_job_snapshots
+where lower(concat_ws(' ', discovery_source, company, source_url, canonical_application_url, canonical_employer_listing_url)) ~ 'live[[:space:]]*ops|liveops';
+
+select count(*) as invalid_scored_evaluation
+from public.ap_match_evaluations
+where not legacy_compatibility and fit_score is not null
+  and (eligibility not in ('ELIGIBLE','ELIGIBLE_WITH_ALLOWED_UNKNOWNS') or usefulness_result <> 'PASS');
+
+select count(*) as low_confidence_without_review
+from public.ap_match_evaluations
+where not legacy_compatibility and evidence_confidence < 60 and human_review_id is null;
+```
+
+Required results before even considering worker activation: one completed checkpoint; the authorized-source list exactly matches the signed approval record; `unexpected_automated_sources` is zero until separately approved; and every anomaly query is zero. Confirm service-role-only access to authorization, inventory membership, displacement, and worker RPCs. Confirm request claim/defer/stale/error/completion audit behavior with synthetic noncustomer data.
+
+Failure recovery:
+
+1. Stop feasibility workers and keep source sync, Checkout, and payment disabled.
+2. Revert application traffic to the preceding compatible commit. Leave migration `202609040025` and immutable evidence in place.
+3. Do not delete authorization, source configuration, coverage, inventory, evaluation, review, displacement, request, assessment, or audit rows.
+4. Move a retryable claimed request back through the guarded defer path; mark stale only when its snapshot is no longer active; mark result-changing configuration/retrieval/parser defects `ERROR`. Never convert an incomplete run to `LIMITED` or `INFEASIBLE`.
+5. Reconcile each request to its exact snapshot hash, coverage plan, inventory version, rules version, and assessment before retry. Never create a replacement success with a new caller total.
+6. Use a forward compensating migration only after the database owner proves it safe and receives separate approval. Destructive rollback or legacy rewrites are prohibited.
+
+Release blockers remain: documentary source authorization; approved required source/query matrix and positive bounds; release-verification TTL; staff roles/training; production worker identity and monitoring; KMS/file/OCR/parser/reference-isolation/leak/model controls; retention/privacy approvals; Stripe/tax; and staffing/capacity. The repository fixtures are not production proof.

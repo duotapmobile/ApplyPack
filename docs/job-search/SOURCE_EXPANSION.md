@@ -1,10 +1,10 @@
 # ApplyPack job-source expansion
 
-Last updated: September 2, 2026
+Last updated: September 5, 2026
 
 ## Decision and operating boundary
 
-The owner's September 2, 2026 instruction authorizes bounded source automation for approved official sources. It supersedes the earlier manual-only restriction only for source discovery, normalization, classification, deduplication, filtering, freshness, and ranking. It does not change the paid product: an admin still reviews and delivers exactly 10 matches, ApplyPack does not auto-apply, and resume and cover-letter production remains human-reviewed.
+The corrected product contract supersedes the September 2 source assumptions. Source access is default deny. A source name, official-looking URL, or public endpoint is not authorization. Every automated path requires an immutable `ap_source_authorizations` record in `AUTHORIZED_AUTOMATED`, documentary evidence, an approved bounded `ap_feasibility_source_configurations` row, and the server feature flag. No source currently meets those conditions, so automated retrieval is disabled. Codex has not decided legality.
 
 An employer's presence in the registry is not a claim that it currently has remote work. Work mode, location restrictions, schedule, employment relationship, benefits, pay, equipment, language, and costs are stored per posting and remain unknown when the posting does not disclose them.
 
@@ -32,7 +32,7 @@ Twenty-five are `official_link_only`. notifyMD is `pending_verification`: the em
 
 NexRep, ModSquad, Working Solutions, VIPdesk Connect, Kelly Services, TEKsystems, and Five Star Call Centers are always stored in `contractor_staffing_flexible`. NexRep, ModSquad, and Working Solutions default to contractor metadata; Kelly Services and TEKsystems default to staffing metadata. Unknown fields remain unknown.
 
-VIPdesk Connect and Five Star Call Centers use the public published-job endpoint of Lever's Postings API. These are the only automated adapters. The adapter performs bounded unauthenticated GETs, accepts only `api.lever.co`, does not apply, does not follow redirects, has a configurable timeout and request interval, stops on rate limits, limits response size, and does not invent missing fields.
+VIPdesk Connect and Five Star Call Centers retain legacy Lever adapter metadata, but their authorization state is `UNVERIFIED_DISABLED`. The adapter rechecks documentary authorization and configured bounds and therefore cannot run. Any later authorization is a separate business/legal decision and must be recorded before the feature flag can have effect.
 
 ### Compatibility/import sources
 
@@ -87,34 +87,34 @@ Phone intensity is `none_or_unknown`, `low`, `mixed`, or `high`; phone work is c
 
 ## Deduplication and preferred source
 
-Exact deduplication order is:
+Corrected-contract duplicate edges are evaluated as null-safe OR conditions in this order:
 
 1. canonical employer plus external ATS job ID;
-2. canonical employer plus normalized source URL;
-3. canonical employer plus normalized title, location, and content hash.
+2. canonical employer plus canonical employer-listing URL, otherwise canonical application URL;
+3. only when at least one record lacks both stronger reliable identifiers, canonical employer plus normalized title/location fingerprint.
 
-Fuzzy title similarity is exposed only as a review aid and never auto-merges. Source references are stored in `job_source_references`. An official direct record replaces an aggregator record, but a later aggregator update cannot overwrite an existing official direct record.
+The predicate can be non-transitive. The corrected engine builds the full undirected conflict graph, applies the strict quality comparator, then selects a deterministic greedy maximal independent set and records every displacement. Connected components and input-order clustering are prohibited. A final pairwise check is mandatory. The earlier `job_source_references` behavior remains a legacy compatibility path.
 
 ## Default filtering and ranking
 
-Default filters show active, non-stale W-2 work; hide sales, marketing, applicant-paid-cost, contractor, and staffing results; and never return rejected sources. High-phone work remains available but receives a negative ranking reason.
+For corrected-contract evaluations, soft defaults never filter inventory. Only confirmed hard restrictions exclude a job. The prior weighted filter/rank functions remain explicitly named `rankLegacyJob(s)` and exist only so historical paid records and their admin workflow stay readable.
 
-The protected admin search API supports worker relationship, remote scope, state, timezone, phone intensity, sales, marketing, entry-level, employment type, schedule type, salary minimum, source category, direct-employer-only, and applicant-cost overrides. Ranking returns a numeric sum plus every adjustment code and explanation. Official direct links, W-2, early-career, fresh, explicitly state-eligible, salary-transparent, and direct-application records receive positive reasons. Aggregators, contractor/staffing, high-phone, sales, marketing, stale, and unclear remote claims receive negative reasons.
+New evaluations use the evidence-backed `matching-rules-v1` engine: hard gates, categorical usefulness, 35/25/20/10/10 fit, exact-fit-only equal-weight preferences, evidence confidence, stable freshness, and bounded diversity. Caller-assigned totals and title/search-breadth score points are rejected. The protected legacy search API does not create corrected-contract evaluations.
 
 ## Freshness and health
 
-- Fresh: verified within 24 hours by default.
-- Aging: 24 through 72 hours.
-- Stale: older than 72 hours; normalized as inactive and excluded.
+- Corrected-contract release validity uses required `release_verification_ttl` configuration. It has no permissive default; an unset or expired TTL blocks release.
+- Employer-posted date, when known, is used for ranking; otherwise ApplyPack first-seen date is used. `last_live_verified_at` controls validity and never makes an old listing rank as new.
+- The old 24/72-hour labels remain legacy compatibility metadata only and are not universal corrected-contract gates.
 - A successful automated source run deactivates source references no longer returned and closes a job when no active source reference remains.
 - Scheduled maintenance calls `mark_stale_jobs_inactive`.
-- Automated Lever sources perform a real bounded endpoint health check. Link-only and pending sources report their configured state without pretending a network check occurred.
+- Unauthorized sources report disabled state without a network request. Live smoke tests can begin only after documentary authorization and production bounds exist; recorded fixtures remain separate evidence.
 
 ## API compatibility
 
 `POST /api/admin/search-orders/[id]/deliver` keeps the existing required fields and `{ "ok": true }` response. The extended posting fields are optional, so current admin clients continue to work. The route still requires exactly 10 reviewed matches and a current `checkedAt`; it now rejects hard-excluded jobs and exact duplicates before delivery.
 
-`GET /api/admin/jobs` is a new protected filter/ranking endpoint. `GET|POST /api/admin/job-sources` lists sources, reports health, and runs only explicitly automated adapters when `APP_JOB_SOURCE_SYNC_ENABLED=true`.
+`GET /api/admin/jobs` is the historical protected compatibility view. `GET|POST /api/admin/job-sources` lists authorization state and performs no network request for an unauthorized source. `APP_JOB_SOURCE_SYNC_ENABLED=true` alone authorizes nothing.
 
 ## Migration policy
 

@@ -139,3 +139,18 @@ The oversight verdict supersedes the earlier Chunk 2 completion and accessibilit
 - The Phase 0 bundle inventory is corrected to 14 regular files plus 2 directories, Chunk 3 through 7 boundaries are corrected, and full-file versus authoritative-body contract checksums are distinguished.
 
 No provider was activated, no production database was changed, and no Chunk 3 work was started.
+
+## September 5, 2026 Chunk 3 deterministic matching boundary
+
+Chunk 3 replaces the corrected-contract path's implicit/title-led and caller-scored behavior with versioned evidence calculations while retaining the old point rank under explicit `rankLegacyJob(s)` names for historical paid/admin compatibility.
+
+- Source access is default deny. Named employer, ATS, Indeed, HiringCafe, and retained Lever entries stay `UNVERIFIED_DISABLED`; no automated source is authorized. The repository records policy state and evidence but makes no legal determination.
+- Responsibility-first retrieval preserves neutral families under title, industry, target-pay, and soft-avoidance changes. Search breadth expands only into verified nearby/adjacent/broad families and never grants speculative qualifications or points.
+- Requirements retain Boolean structure, locators, excerpts, classification, confidence, corrections, and stable identities. Unknowns remain typed; active N/A is rejected; one deterministic passing alternative supplies required-branch denominators.
+- Tool matching is task-level. CRM, reporting/BI, SQL, system administration, and spreadsheets are distinct explicit Boolean clusters. Posting-named tasks override generic clusters, and equivalent mappings need a version plus rationale.
+- Only eligible and categorically useful jobs are scored. Fit is 35/25/20/10/10, preferences are an exact-fit-only equal-weight tie-break, confidence is separate 40/25/20/15, and readiness/presentation risk remain independent. Career break and other identity/proxy fields cannot alter these values by themselves.
+- Deduplication uses the non-transitive pairwise graph algorithm and stores immutable membership/displacement evidence. Bounded diversity filters ineligible, evidence-insufficient, and Liveops records before applying the exact inclusive bounds.
+- Feasibility owns immutable coverage plans and guarded request transitions. Missing authorization, required-family coverage, positive bounds, parser completion, normalization, manual checklist, or TTL/configuration cannot produce an outcome or Checkout.
+- Migration `202609040025_chunk3_matching_engine.sql` is additive and legacy-compatible. Normal rollback reverts code/traffic and stops workers while leaving immutable expanded data in place.
+
+This decision activates no source, Checkout, payment, production migration, push, merge, deployment, or Chunk 4 work. Production authorization, bounds, TTL, staff/monitoring, provider, retention/privacy, KMS/file-processing, and capacity dependencies remain explicit blockers.

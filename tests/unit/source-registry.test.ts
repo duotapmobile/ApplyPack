@@ -18,12 +18,15 @@ describe("approved source registry", () => {
         adapterKind: "existing_import",
         isOfficial: false,
         isDirectEmployer: false,
+        authorizationStatus: "UNVERIFIED_DISABLED",
+        isActive: false,
       });
     }
   });
 
-  it("automates only the verified public Lever endpoints", () => {
-    expect(jobSources.filter((source) => source.automationStatus === "automated").map((source) => source.id).sort()).toEqual(["five-star-call-centers", "vipdesk-connect"]);
+  it("keeps every automated connector disabled until documentary authorization exists", () => {
+    expect(jobSources.filter((source) => source.authorizationStatus === "AUTHORIZED_AUTOMATED")).toEqual([]);
+    expect(jobSources.filter((source) => source.adapterKind === "lever").every((source) => source.authorizationStatus === "UNVERIFIED_DISABLED")).toBe(true);
     expect(jobSources.filter((source) => source.adapterKind === "lever").every((source) => Boolean(source.adapterKey))).toBe(true);
   });
 

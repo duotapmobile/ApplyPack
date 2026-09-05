@@ -9,8 +9,8 @@ import { deduplicateJobs } from "@/lib/jobs/deduplicate";
 import { filterJobs } from "@/lib/jobs/filter";
 import { normalizeJob } from "@/lib/jobs/normalize";
 import { fromJobDatabaseRow, persistNormalizedJob } from "@/lib/jobs/persistence";
-import { rankJobs } from "@/lib/jobs/rank";
-import { jobSources } from "@/lib/jobs/source-registry";
+import { rankLegacyJobs } from "@/lib/jobs/rank";
+import { jobSources, sourceMayBeAccessedAutomatically } from "@/lib/jobs/source-registry";
 import type { RankedJob } from "@/lib/jobs/types";
 import { workflowErrorCode } from "@/lib/workflow/errors";
 
@@ -55,7 +55,7 @@ async function processSearchDiscovery(admin: AdminClient, task: WorkflowTask) {
 
   let fetched = 0;
   if (process.env.APP_JOB_SOURCE_SYNC_ENABLED === "true") {
-    for (const source of jobSources.filter((item) => item.automationStatus === "automated" && item.isActive)) {
+    for (const source of jobSources.filter(sourceMayBeAccessedAutomatically)) {
       try {
         const raw = await createSourceAdapter(source.id).fetchJobs();
         fetched += raw.length;
@@ -82,7 +82,7 @@ async function processSearchDiscovery(admin: AdminClient, task: WorkflowTask) {
     idByJob.set(job, String(row.id));
     return job;
   });
-  const ranked = rankJobs(filterJobs(normalizedJobs, {
+  const ranked = rankLegacyJobs(filterJobs(normalizedJobs, {
     workerRelationship: "w2",
     includeSales: false,
     includeMarketing: false,

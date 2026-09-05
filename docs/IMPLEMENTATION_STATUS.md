@@ -371,4 +371,67 @@ Tested implementation commit `0717a60c1440aac9eb8af09c339b2059f23303eb` (tree `4
 
 The real-scanner integration suite reported 3/3 tests skipped in two files because no approved production scanner is configured. This remains `NOT_APPLICABLE_LOCAL`, is excluded from the applicable-test denominator, and leaves production processing fail closed. The corrected Chunk 2 ledger is 161/161 `IMPLEMENTED`; unmapped and unimplemented Chunk 2 requirements are zero. The cumulative verified ledger is 32/32 applicable checks: 9/9 from Phase 0, 11/11 from Chunk 1, and 12/12 from Chunk 2. Failed applicable tests: none. Blocked applicable tests: none.
 
-Production KMS, malware scanning, sandbox parsing/OCR, leak scanning and permitted-model policy, approved retention durations and matching Privacy Policy language, Stripe tax-inclusive configuration, capacity/staffing, monitoring, staff roles, documentary job-source authorization, and manual image/assistive-technology verification remain explicit release blockers. Chunks 3 through 7 remain unimplemented and unauthorized. No push, merge, deployment, production migration, or provider activation occurred.
+Production KMS, malware scanning, sandbox parsing/OCR, leak scanning and permitted-model policy, approved retention durations and matching Privacy Policy language, Stripe tax-inclusive configuration, capacity/staffing, monitoring, staff roles, documentary job-source authorization, and manual image/assistive-technology verification remain explicit release blockers. Chunks 3 through 7 were unimplemented at the Chunk 2 closeout. No push, merge, deployment, production migration, or provider activation occurred.
+
+## Chunk 3 implementation: deterministic matching and feasibility
+
+### Relationship summary
+
+```text
+confirmed snapshot + candidate facts -> neutral responsibility query families
+                                      -> immutable coverage plan --< required source/query cells
+
+authorized source record + bounded source configuration -> normalized job snapshots
+                                                        -> immutable inventory version --< members
+                                                        -> duplicate graph --< displacements
+
+job requirement tree + candidate evidence -> root/leaf evaluation -> eligibility
+eligibility + categorical usefulness      -> fit + preference + confidence + readiness/risk
+evaluations + complete coverage            -> feasibility worker -> immutable assessment
+pending request -> claimed -> completed | pending retry | stale | error
+```
+
+Migration `202609040025_chunk3_matching_engine.sql` is additive. It adds immutable source-authorization evidence, mandatory bounded source configuration, normalized inventory membership, query-family coverage links, deduplication displacements, deterministic rank/explanation fields, and service-role-only feasibility request transitions. Generated database types are regenerated from all 25 migrations.
+
+### Ownership and invariants
+
+- `responsibility-retrieval-v1` owns neutral query families. Search breadth changes verified expansion scope only. Optional title, industry, target-pay, and soft-avoidance hints cannot delete families or filter inventory; confirmed hard restrictions remain filters.
+- `source-auth-v1` is default deny. Indeed, HiringCafe, every named employer/ATS source, and the retained Lever adapters are `UNVERIFIED_DISABLED`; no automated source is authorized. `manual-reviewed` is the documentary compatibility path for approved human research. Liveops is blocked at registry, ingestion, selection, and release boundaries.
+- Discovery and application provenance are distinct. The engine prefers an authorized active employer-hosted application path, retains third-party discovery, and accurately labels an approved actionable third-party path.
+- `dedup-graph-v1` evaluates null-safe requisition, canonical-URL, and conditional fingerprint OR edges, applies the strict quality order, selects a deterministic greedy maximal independent set, records displacement edges, and preserves a final pairwise check. Connected-component and input-order clustering are not used.
+- `requirement-engine-v1` validates typed, nonempty, acyclic Boolean trees; preserves nested alternatives; rejects active `NOT_APPLICABLE`; tracks outcome-determinative unknowns; and records one deterministic satisfaction path. Duration is overlap-safe and separates calendar/FTE intensity. Caregiving and career breaks receive no occupational credit.
+- `tool-clusters-v1` defines explicit Boolean task trees for spreadsheet, CRM, reporting/BI, SQL, and system-administration work. Posting-named tasks override generic clusters; equivalent-tool mappings require version and rationale.
+- Eligibility validates exact active-root equality and uses the binding precedence. Employer omissions remain unknown and need criterion-specific consent/warning. Candidate unknowns create targeted input needs. Parser/conflict/unwaivable uncertainty requires protected resolution. A reviewer cannot override a confirmed hard failure.
+- `salary-rules-v1` uses integer cents, employer-published like-for-like USD evidence, exact endpoint/basis/location/worker rules, stored schedule conversions, and separate target-pay preference. Non-USD always fails at launch.
+- `matching-rules-v1` requires categorical usefulness before the normalized 35/25/20/10/10 fit calculation. Equal-weight preferences apply only on an exact fit tie. Confidence uses 40/25/20/15 and minimum material-source quality. Readiness and allowlisted presentation risk are separate; career break, breadth, title, and industry labels add no fit points.
+- `bounded-diversity-v1` filters ineligible, evidence-insufficient, and Liveops candidates before its inclusive 5.00-fit/0.05-preference, non-lower-confidence reordering. It uses the hypothetical concentration vector and stable ID, and records each displacement.
+- `feasibility-v1` requires an immutable plan with every required family and authorized source cell, positive bounds, terminal result, parser completion, normalization/deduplication, and manual checklist where applicable. Missing configuration and any result-changing defect are pending/error, never limited/infeasible. Only a current complete `LIKELY` result with no blocker can later support Checkout; Chunk 3 creates no Checkout.
+- `feasibility-worker-v1` owns claim, calculation, immutable assessment persistence, and guarded complete/defer/stale/error transitions. It derives counts and outcomes server-side; caller totals are rejected. Human corrections must add evidence and rerun.
+- The previous point-based `rankLegacyJob(s)` surface is explicitly compatibility-only for historical paid/admin records. It does not create corrected-contract evaluations.
+
+### Migration, compatibility, and rollback
+
+Deployment remains expand -> regenerate database types -> deploy compatibility code -> validate checkpoint `202609040025 / CHUNK3_MATCHING_ENGINE_EXPAND` -> configure documentary source authorization and bounded matrices -> separately authorized cutover. Existing job snapshots/evaluations are marked `legacy_compatibility=true`; new strict records default false. Earlier fixtures now mark legacy inserts explicitly. No legacy paid order, payment, match, source reference, or evaluation is rewritten or dropped.
+
+Normal rollback returns code/traffic to the preceding compatible build while leaving the additive schema and immutable evidence in place. Disable feasibility workers and source synchronization first. Do not drop inventory, coverage, evaluation, displacement, or authorization history. A compensating migration requires database-owner proof and separate authorization.
+
+### Chunk 3 verification inventory
+
+| Check ID | Procedure | Intended result |
+| --- | --- | --- |
+| C3-MIGRATE | `supabase db reset --local` | All 25 migrations apply from zero |
+| C3-DB | `npm run test:database` | All Chunk 1-3 transactional fixtures and guarded worker/source/coverage invariants pass |
+| C3-LEGACY | `npm run test:legacy-backfill` | Legacy paid data and idempotent compatibility records remain intact |
+| C3-ROLLBACK | `npm run test:rollback` | Self-restoring guarded rollback retains the expanded compatible schema |
+| C3-TYPES | `npm run types:database:check` | Generated database types match all 25 migrations |
+| C3-LINT | `npm run lint` | Static lint passes |
+| C3-TYPE | `npm run typecheck` | Strict TypeScript passes |
+| C3-UNIT | `npm test` | Matching truth tables, source policy, deduplication, scoring, feasibility, and prior regressions pass |
+| C3-BUILD | `npm run build` | Production compilation and route generation pass without activating providers |
+| C3-E2E | `npm run test:e2e` | Existing public/admin flows regress cleanly; no public redesign is introduced |
+| C3-INTEGRATION-EXTERNAL | `npm run test:integration` | External scanner tests remain local N/A; deterministic fail-closed coverage remains mandatory |
+| C3-FORMAT | `git diff --check` plus staged check | No whitespace errors |
+
+### Remaining release blockers
+
+No source has documentary `AUTHORIZED_AUTOMATED` approval or an approved production source/query matrix, result/lookback/pagination bounds, or release-verification TTL. KMS, malware scanning, sandbox parser/OCR, reference isolation/leak scanning and permitted-model policy, retention durations and matching Privacy Policy language, Stripe/tax, capacity/staffing, monitoring, and trained protected staff remain `UNSET_BLOCKING`. Synthetic tests and the manual compatibility record are not production authorization. No source was contacted, no production database changed, and no payment, Checkout, push, merge, deploy, or Chunk 4 work occurred.

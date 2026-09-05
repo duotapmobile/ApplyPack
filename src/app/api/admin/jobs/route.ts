@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { filterJobs } from "@/lib/jobs/filter";
 import { fromJobDatabaseRow } from "@/lib/jobs/persistence";
-import { rankJobs } from "@/lib/jobs/rank";
+import { rankLegacyJobs } from "@/lib/jobs/rank";
 import { isLiveopsReference } from "@/lib/jobs/canonicalize";
 import { employmentTypes, phoneIntensities, sourceCategories, workModes, workerRelationships } from "@/lib/jobs/types";
 
@@ -73,7 +73,7 @@ export async function GET(request: Request) {
     directEmployerOnly: parsed.data.directEmployerOnly,
     includeApplicantCost: parsed.data.includeApplicantCost,
   };
-  const ranked = rankJobs(filterJobs(jobs, filters), { state: parsed.data.state });
+  const ranked = rankLegacyJobs(filterJobs(jobs, filters), { state: parsed.data.state });
   return NextResponse.json({
     jobs: ranked.map(({ job, score, reasonCodes }) => ({
       id: idByJob.get(job),

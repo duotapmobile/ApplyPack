@@ -52,6 +52,14 @@ export const experienceLevels = ["entry_level", "early_career", "mid_level", "se
 export type ExperienceLevel = (typeof experienceLevels)[number];
 
 export type SourceAdapterKind = "lever" | "official_link_only" | "existing_import";
+export const sourceAuthorizationStates = [
+  "AUTHORIZED_AUTOMATED",
+  "AUTHORIZED_MANUAL_ONLY",
+  "UNVERIFIED_DISABLED",
+  "BLOCKED",
+] as const;
+export type SourceAuthorizationState = (typeof sourceAuthorizationStates)[number];
+/** @deprecated Historical database/UI compatibility only. Never authorizes access. */
 export type SourceAutomationStatus = "automated" | "official_link_only" | "existing_import" | "pending_verification";
 
 export type SourceDefinition = {
@@ -64,6 +72,9 @@ export type SourceDefinition = {
   alternateOfficialUrls?: readonly string[];
   adapterKind: SourceAdapterKind;
   adapterKey?: string;
+  authorizationStatus: SourceAuthorizationState;
+  authorizationEvidenceId: string | null;
+  authorizationVersion: string;
   automationStatus: SourceAutomationStatus;
   isOfficial: boolean;
   isDirectEmployer: boolean;
@@ -127,6 +138,11 @@ export type NormalizedJob = {
   sourceJobUrl: string | null;
   normalizedSourceUrl: string | null;
   externalJobId: string | null;
+  externalJobIdReliable?: boolean;
+  canonicalEmployerListingUrl?: string | null;
+  firstSeenAt?: string;
+  verifiedRequirementCount?: number;
+  verifiedCompensationFieldCount?: number;
   normalizedTitle: string;
   rawTitle: string;
   description: string | null;
@@ -183,6 +199,7 @@ export type DeduplicatedJob = {
   job: NormalizedJob;
   sourceReferences: JobSourceReference[];
   matchedBy: "external_job_id" | "source_url" | "content" | "new";
+  displaced?: Array<{ displacedId: string; selectedId: string; edgeReason: "external_job_id" | "canonical_url" | "fingerprint" }>;
 };
 
 export type JobFilterOptions = {

@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSourceAdapter } from "@/lib/jobs/adapters";
+import { LeverAdapter } from "@/lib/jobs/adapters/lever";
+import { getSource } from "@/lib/jobs/source-registry";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  delete process.env.APP_JOB_SOURCE_MAX_POSTINGS;
 });
+
+function syntheticAuthorizedLever(sourceId: string) {
+  return new LeverAdapter({ ...getSource(sourceId)!, isActive: true, authorizationStatus: "AUTHORIZED_AUTOMATED", authorizationEvidenceId: "synthetic-recorded-fixture-v1" });
+}
 
 describe("job source adapters", () => {
   it("keeps unsupported employer pages as official-link-only instead of scraping", async () => {
@@ -13,6 +20,7 @@ describe("job source adapters", () => {
   });
 
   it("maps a bounded public Lever posting without applying or inventing fields", async () => {
+    process.env.APP_JOB_SOURCE_MAX_POSTINGS = "250";
     const responseBody = [{
       id: "lever-123",
       text: "Customer Care Associate",
@@ -27,7 +35,7 @@ describe("job source adapters", () => {
       headers: { "content-type": "application/json" },
     });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
-    const adapter = createSourceAdapter("vipdesk-connect");
+    const adapter = syntheticAuthorizedLever("vipdesk-connect");
     const jobs = await adapter.fetchJobs();
     expect(jobs).toEqual([expect.objectContaining({
       sourceId: "vipdesk-connect",
@@ -45,8 +53,12 @@ describe("job source adapters", () => {
   it("reports a rate-limited Lever source without retrying", async () => {
     const mocked = vi.fn().mockResolvedValue(new Response("", { status: 429, headers: { "retry-after": "60" } }));
     vi.stubGlobal("fetch", mocked);
-    const health = await createSourceAdapter("five-star-call-centers").healthCheck();
+    const health = await syntheticAuthorizedLever("five-star-call-centers").healthCheck();
     expect(health).toMatchObject({ status: "rate_limited", httpStatus: 429 });
     expect(mocked).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed before an unverified connector can access the network", () => {
+    expect(() => createSourceAdapter("vipdesk-connect")).toThrow("documentarily authorized");
   });
 });

@@ -15,7 +15,10 @@ const direct = (
   category,
   officialUrl,
   adapterKind: "official_link_only",
-  automationStatus: officialUrl ? "official_link_only" : "pending_verification",
+  authorizationStatus: "UNVERIFIED_DISABLED",
+  authorizationEvidenceId: null,
+  authorizationVersion: "source-auth-v1",
+  automationStatus: "pending_verification",
   isOfficial: true,
   isDirectEmployer: true,
   isActive: true,
@@ -89,10 +92,10 @@ export const jobSources: readonly SourceDefinition[] = [
   direct("nexrep", "NexRep", "contractor_staffing_flexible", "https://nexrep.com/agents/opportunities/", 30, { defaultWorkerRelationship: "contractor", defaultEmploymentType: "independent_contractor", defaultBenefitsStatus: "not_provided" }),
   direct("modsquad", "ModSquad", "contractor_staffing_flexible", "https://modsquad.wd5.myworkdayjobs.com/ModSquad_Contractor", 30, { alternateOfficialUrls: ["https://join.modsquad.com/careers/"], defaultWorkerRelationship: "contractor", defaultEmploymentType: "independent_contractor", defaultBenefitsStatus: "varies" }),
   direct("working-solutions", "Working Solutions", "contractor_staffing_flexible", "https://jobs.workingsolutions.com/", 30, { defaultWorkerRelationship: "contractor", defaultEmploymentType: "independent_contractor", defaultBenefitsStatus: "not_provided" }),
-  direct("vipdesk-connect", "VIPdesk Connect", "contractor_staffing_flexible", "https://jobs.lever.co/vipdesk", 30, { adapterKind: "lever", adapterKey: "vipdesk", automationStatus: "automated", defaultWorkerRelationship: "unknown", defaultEmploymentType: "unknown", defaultBenefitsStatus: "varies" }),
+  direct("vipdesk-connect", "VIPdesk Connect", "contractor_staffing_flexible", "https://jobs.lever.co/vipdesk", 30, { adapterKind: "lever", adapterKey: "vipdesk", defaultWorkerRelationship: "unknown", defaultEmploymentType: "unknown", defaultBenefitsStatus: "varies" }),
   direct("kelly-services", "Kelly Services", "contractor_staffing_flexible", "https://www.mykelly.com/", 30, { defaultWorkerRelationship: "staffing", defaultEmploymentType: "staffing_assignment", defaultBenefitsStatus: "varies" }),
   direct("teksystems", "TEKsystems", "contractor_staffing_flexible", "https://www.teksystems.com/en/careers", 30, { defaultWorkerRelationship: "staffing", defaultEmploymentType: "staffing_assignment", defaultBenefitsStatus: "varies" }),
-  direct("five-star-call-centers", "Five Star Call Centers", "contractor_staffing_flexible", "https://jobs.lever.co/getfivestar", 30, { adapterKind: "lever", adapterKey: "getfivestar", automationStatus: "automated", defaultWorkerRelationship: "unknown", defaultEmploymentType: "unknown", defaultBenefitsStatus: "unknown" }),
+  direct("five-star-call-centers", "Five Star Call Centers", "contractor_staffing_flexible", "https://jobs.lever.co/getfivestar", 30, { adapterKind: "lever", adapterKey: "getfivestar", defaultWorkerRelationship: "unknown", defaultEmploymentType: "unknown", defaultBenefitsStatus: "unknown" }),
 
   {
     id: "manual-reviewed",
@@ -102,6 +105,9 @@ export const jobSources: readonly SourceDefinition[] = [
     category: "third_party_aggregator",
     officialUrl: null,
     adapterKind: "existing_import",
+    authorizationStatus: "AUTHORIZED_MANUAL_ONLY",
+    authorizationEvidenceId: "repository-manual-review-contract-v1",
+    authorizationVersion: "source-auth-v1",
     automationStatus: "existing_import",
     isOfficial: false,
     isDirectEmployer: false,
@@ -117,10 +123,13 @@ export const jobSources: readonly SourceDefinition[] = [
     category: "third_party_aggregator",
     officialUrl: "https://www.indeed.com/",
     adapterKind: "existing_import",
-    automationStatus: "existing_import",
+    authorizationStatus: "UNVERIFIED_DISABLED",
+    authorizationEvidenceId: null,
+    authorizationVersion: "source-auth-v1",
+    automationStatus: "pending_verification",
     isOfficial: false,
     isDirectEmployer: false,
-    isActive: true,
+    isActive: false,
     priority: 10,
     notes: "Compatibility record for externally supplied Indeed results. Direct employer links outrank duplicates.",
   },
@@ -132,10 +141,13 @@ export const jobSources: readonly SourceDefinition[] = [
     category: "third_party_aggregator",
     officialUrl: "https://hiring.cafe/",
     adapterKind: "existing_import",
-    automationStatus: "existing_import",
+    authorizationStatus: "UNVERIFIED_DISABLED",
+    authorizationEvidenceId: null,
+    authorizationVersion: "source-auth-v1",
+    automationStatus: "pending_verification",
     isOfficial: false,
     isDirectEmployer: false,
-    isActive: true,
+    isActive: false,
     priority: 10,
     notes: "Compatibility record for externally supplied HiringCafe results. Direct employer links outrank duplicates.",
   },
@@ -168,6 +180,21 @@ export const heldOrExcludedSources = [
   { name: "Destination Knot", status: "held", reason: "Employer identity and official career source are unverified." },
   { name: "NoGigiddy", status: "held", reason: "Employer identity, job freshness, and application process are unverified." },
 ] as const;
+
+export const blockedSource = {
+  id: "liveops",
+  authorizationStatus: "BLOCKED",
+  authorizationEvidenceId: "product-contract-liveops-block",
+  authorizationVersion: "source-auth-v1",
+} as const;
+
+export function sourceMayBeResearchedManually(source: SourceDefinition): boolean {
+  return source.isActive && source.authorizationStatus === "AUTHORIZED_MANUAL_ONLY" && Boolean(source.authorizationEvidenceId);
+}
+
+export function sourceMayBeAccessedAutomatically(source: SourceDefinition): boolean {
+  return source.isActive && source.authorizationStatus === "AUTHORIZED_AUTOMATED" && Boolean(source.authorizationEvidenceId);
+}
 
 export function getSource(sourceId: string): SourceDefinition | undefined {
   return jobSources.find((source) => source.id === sourceId);

@@ -925,6 +925,61 @@ export type Database = {
           },
         ]
       }
+      ap_deduplication_displacements: {
+        Row: {
+          comparator_version: string
+          created_at: string
+          displaced_job_snapshot_id: string
+          edge_reason: string
+          evidence: Json
+          id: string
+          inventory_version_id: string
+          selected_job_snapshot_id: string
+        }
+        Insert: {
+          comparator_version: string
+          created_at?: string
+          displaced_job_snapshot_id: string
+          edge_reason: string
+          evidence: Json
+          id?: string
+          inventory_version_id: string
+          selected_job_snapshot_id: string
+        }
+        Update: {
+          comparator_version?: string
+          created_at?: string
+          displaced_job_snapshot_id?: string
+          edge_reason?: string
+          evidence?: Json
+          id?: string
+          inventory_version_id?: string
+          selected_job_snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_deduplication_displacements_displaced_job_snapshot_id_fkey"
+            columns: ["displaced_job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_deduplication_displacements_inventory_version_id_fkey"
+            columns: ["inventory_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_inventory_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_deduplication_displacements_selected_job_snapshot_id_fkey"
+            columns: ["selected_job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_document_versions: {
         Row: {
           claimed_mime_type: string
@@ -1363,16 +1418,23 @@ export type Database = {
         Row: {
           authorization_mode: string
           completed_at: string | null
+          configuration_id: string | null
+          configured_bound_satisfied: boolean
           cursor_or_stop_reason: string | null
           execution_path: string
           id: string
           lookback_bound: string
+          manual_checklist_complete: boolean
+          normalized_and_deduplicated: boolean
           pagination_bound: number
           parser_result: Json | null
           plan_id: string
+          query_family_id: string | null
           query_fingerprint: string
           result_bound: number
+          result_changing_error_code: string | null
           result_count: number | null
+          source_authorization_id: string | null
           source_id: string
           started_at: string | null
           terminal_outcome: string | null
@@ -1380,16 +1442,23 @@ export type Database = {
         Insert: {
           authorization_mode: string
           completed_at?: string | null
+          configuration_id?: string | null
+          configured_bound_satisfied?: boolean
           cursor_or_stop_reason?: string | null
           execution_path: string
           id?: string
           lookback_bound: string
+          manual_checklist_complete?: boolean
+          normalized_and_deduplicated?: boolean
           pagination_bound: number
           parser_result?: Json | null
           plan_id: string
+          query_family_id?: string | null
           query_fingerprint: string
           result_bound: number
+          result_changing_error_code?: string | null
           result_count?: number | null
+          source_authorization_id?: string | null
           source_id: string
           started_at?: string | null
           terminal_outcome?: string | null
@@ -1397,26 +1466,47 @@ export type Database = {
         Update: {
           authorization_mode?: string
           completed_at?: string | null
+          configuration_id?: string | null
+          configured_bound_satisfied?: boolean
           cursor_or_stop_reason?: string | null
           execution_path?: string
           id?: string
           lookback_bound?: string
+          manual_checklist_complete?: boolean
+          normalized_and_deduplicated?: boolean
           pagination_bound?: number
           parser_result?: Json | null
           plan_id?: string
+          query_family_id?: string | null
           query_fingerprint?: string
           result_bound?: number
+          result_changing_error_code?: string | null
           result_count?: number | null
+          source_authorization_id?: string | null
           source_id?: string
           started_at?: string | null
           terminal_outcome?: string | null
         }
         Relationships: [
           {
+            foreignKeyName: "ap_feasibility_coverage_cells_configuration_id_fkey"
+            columns: ["configuration_id"]
+            isOneToOne: false
+            referencedRelation: "ap_feasibility_source_configurations"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "ap_feasibility_coverage_cells_plan_id_fkey"
             columns: ["plan_id"]
             isOneToOne: false
             referencedRelation: "ap_feasibility_coverage_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_feasibility_coverage_cells_source_authorization_id_fkey"
+            columns: ["source_authorization_id"]
+            isOneToOne: false
+            referencedRelation: "ap_source_authorizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1538,6 +1628,62 @@ export type Database = {
             columns: ["snapshot_id"]
             isOneToOne: true
             referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_feasibility_source_configurations: {
+        Row: {
+          approved_at: string
+          approved_by_role: string
+          config_version: string
+          content_sha256: string
+          created_at: string
+          cutoff_version: string
+          id: string
+          lookback_bound: string
+          pagination_bound: number
+          parser_version: string
+          release_verification_ttl: string
+          result_bound: number
+          source_authorization_id: string
+        }
+        Insert: {
+          approved_at: string
+          approved_by_role: string
+          config_version: string
+          content_sha256: string
+          created_at?: string
+          cutoff_version: string
+          id?: string
+          lookback_bound: string
+          pagination_bound: number
+          parser_version: string
+          release_verification_ttl: string
+          result_bound: number
+          source_authorization_id: string
+        }
+        Update: {
+          approved_at?: string
+          approved_by_role?: string
+          config_version?: string
+          content_sha256?: string
+          created_at?: string
+          cutoff_version?: string
+          id?: string
+          lookback_bound?: string
+          pagination_bound?: number
+          parser_version?: string
+          release_verification_ttl?: string
+          result_bound?: number
+          source_authorization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_feasibility_source_configuratio_source_authorization_id_fkey"
+            columns: ["source_authorization_id"]
+            isOneToOne: false
+            referencedRelation: "ap_source_authorizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1757,13 +1903,15 @@ export type Database = {
           compared_tasks: Json | null
           complexity: string | null
           created_at: string
-          customer_id: string
+          customer_id: string | null
           decision: Json
           domain_context: string | null
+          draft_id: string | null
           duration_and_intensity: Json | null
           essential_tools: Json | null
           id: string
           invalidated_at: string | null
+          job_snapshot_id: string | null
           rationale: string
           review_kind: string
           reviewer_id: string
@@ -1777,13 +1925,15 @@ export type Database = {
           compared_tasks?: Json | null
           complexity?: string | null
           created_at?: string
-          customer_id: string
+          customer_id?: string | null
           decision: Json
           domain_context?: string | null
+          draft_id?: string | null
           duration_and_intensity?: Json | null
           essential_tools?: Json | null
           id?: string
           invalidated_at?: string | null
+          job_snapshot_id?: string | null
           rationale: string
           review_kind: string
           reviewer_id: string
@@ -1797,13 +1947,15 @@ export type Database = {
           compared_tasks?: Json | null
           complexity?: string | null
           created_at?: string
-          customer_id?: string
+          customer_id?: string | null
           decision?: Json
           domain_context?: string | null
+          draft_id?: string | null
           duration_and_intensity?: Json | null
           essential_tools?: Json | null
           id?: string
           invalidated_at?: string | null
+          job_snapshot_id?: string | null
           rationale?: string
           review_kind?: string
           reviewer_id?: string
@@ -1817,6 +1969,20 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_human_review_records_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_human_review_records_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
             referencedColumns: ["id"]
           },
           {
@@ -2106,6 +2272,51 @@ export type Database = {
           },
         ]
       }
+      ap_inventory_members: {
+        Row: {
+          created_at: string
+          exclusion_reason: string | null
+          id: string
+          inventory_version_id: string
+          job_snapshot_id: string
+          selected_by_deduplication: boolean
+          stable_normalized_job_id: string
+        }
+        Insert: {
+          created_at?: string
+          exclusion_reason?: string | null
+          id?: string
+          inventory_version_id: string
+          job_snapshot_id: string
+          selected_by_deduplication: boolean
+          stable_normalized_job_id: string
+        }
+        Update: {
+          created_at?: string
+          exclusion_reason?: string | null
+          id?: string
+          inventory_version_id?: string
+          job_snapshot_id?: string
+          selected_by_deduplication?: boolean
+          stable_normalized_job_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_inventory_members_inventory_version_id_fkey"
+            columns: ["inventory_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_inventory_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_inventory_members_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_inventory_versions: {
         Row: {
           content_sha256: string
@@ -2139,77 +2350,116 @@ export type Database = {
       ap_job_snapshots: {
         Row: {
           application_host_type: string
+          application_path_result: string | null
           canonical_application_url: string
+          canonical_employer_domain: string | null
           canonical_employer_listing_url: string | null
+          canonicalization_version: string | null
           captured_listing: Json
           company: string
+          compensation_completeness: number
           compensation_source: string | null
           compensation_text: string | null
           content_sha256: string
           created_at: string
           discovery_source: string
+          employer_identity_result: string | null
           exact_title: string
           external_job_id: string | null
+          first_seen_at: string | null
+          fraud_signals: string[]
           id: string
+          legacy_compatibility: boolean
           legacy_job_id: string | null
+          legitimacy_result: string | null
+          listing_activity_result: string | null
           live_verified_at: string
           location_and_work_mode: Json
+          material_restrictions: Json
           normalized_fingerprint: string
           origin: Database["public"]["Enums"]["ap_job_origin"]
           parser_version: string
           posted_date_unknown: boolean
           posted_on: string | null
+          requirement_completeness: number
           retrieved_at: string
+          source_authorization_id: string | null
           source_url: string
         }
         Insert: {
           application_host_type: string
+          application_path_result?: string | null
           canonical_application_url: string
+          canonical_employer_domain?: string | null
           canonical_employer_listing_url?: string | null
+          canonicalization_version?: string | null
           captured_listing: Json
           company: string
+          compensation_completeness?: number
           compensation_source?: string | null
           compensation_text?: string | null
           content_sha256: string
           created_at?: string
           discovery_source: string
+          employer_identity_result?: string | null
           exact_title: string
           external_job_id?: string | null
+          first_seen_at?: string | null
+          fraud_signals?: string[]
           id?: string
+          legacy_compatibility?: boolean
           legacy_job_id?: string | null
+          legitimacy_result?: string | null
+          listing_activity_result?: string | null
           live_verified_at: string
           location_and_work_mode: Json
+          material_restrictions?: Json
           normalized_fingerprint: string
           origin: Database["public"]["Enums"]["ap_job_origin"]
           parser_version: string
           posted_date_unknown: boolean
           posted_on?: string | null
+          requirement_completeness?: number
           retrieved_at: string
+          source_authorization_id?: string | null
           source_url: string
         }
         Update: {
           application_host_type?: string
+          application_path_result?: string | null
           canonical_application_url?: string
+          canonical_employer_domain?: string | null
           canonical_employer_listing_url?: string | null
+          canonicalization_version?: string | null
           captured_listing?: Json
           company?: string
+          compensation_completeness?: number
           compensation_source?: string | null
           compensation_text?: string | null
           content_sha256?: string
           created_at?: string
           discovery_source?: string
+          employer_identity_result?: string | null
           exact_title?: string
           external_job_id?: string | null
+          first_seen_at?: string | null
+          fraud_signals?: string[]
           id?: string
+          legacy_compatibility?: boolean
           legacy_job_id?: string | null
+          legitimacy_result?: string | null
+          listing_activity_result?: string | null
           live_verified_at?: string
           location_and_work_mode?: Json
+          material_restrictions?: Json
           normalized_fingerprint?: string
           origin?: Database["public"]["Enums"]["ap_job_origin"]
           parser_version?: string
           posted_date_unknown?: boolean
           posted_on?: string | null
+          requirement_completeness?: number
           retrieved_at?: string
+          source_authorization_id?: string | null
           source_url?: string
         }
         Relationships: [
@@ -2220,14 +2470,26 @@ export type Database = {
             referencedRelation: "jobs"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "ap_job_snapshots_source_authorization_id_fkey"
+            columns: ["source_authorization_id"]
+            isOneToOne: false
+            referencedRelation: "ap_source_authorizations"
+            referencedColumns: ["id"]
+          },
         ]
       }
       ap_match_evaluations: {
         Row: {
+          active_root_keys: string[] | null
           application_readiness: Database["public"]["Enums"]["ap_application_readiness"]
+          base_rank: number | null
+          calculation_input_sha256: string | null
+          calculation_version: string | null
           candidate_fact_ids: string[]
           categorical_evidence_sufficient: boolean
           confidence_components: Json
+          confidence_label: string | null
           created_at: string
           customer_id: string
           eligibility: Database["public"]["Enums"]["ap_eligibility_disposition"]
@@ -2240,24 +2502,36 @@ export type Database = {
           job_evidence: Json
           job_snapshot_id: string
           leaf_results: Json
+          legacy_compatibility: boolean
+          preference_alignment: number | null
           presentation_risk: Database["public"]["Enums"]["ap_presentation_risk"]
           presentation_risk_reasons: Json
+          rank_explanation: Json | null
           resolution_issues: Database["public"]["Enums"]["ap_resolution_issue"][]
           root_result: Database["public"]["Enums"]["ap_criterion_result"]
+          root_results: Json | null
           salary_disposition: Database["public"]["Enums"]["ap_salary_gate_disposition"]
           salary_status: Database["public"]["Enums"]["ap_salary_status"]
           satisfaction_paths: Json
+          selected_rank: number | null
+          selector_explanation: Json | null
           snapshot_id: string
           soft_preferences: Json
           unknown_treatments: Database["public"]["Enums"]["ap_unknown_treatment"][]
+          usefulness_result: string | null
           version_bundle: Json
           warnings: Json
         }
         Insert: {
+          active_root_keys?: string[] | null
           application_readiness: Database["public"]["Enums"]["ap_application_readiness"]
+          base_rank?: number | null
+          calculation_input_sha256?: string | null
+          calculation_version?: string | null
           candidate_fact_ids: string[]
           categorical_evidence_sufficient: boolean
           confidence_components: Json
+          confidence_label?: string | null
           created_at?: string
           customer_id: string
           eligibility: Database["public"]["Enums"]["ap_eligibility_disposition"]
@@ -2270,24 +2544,36 @@ export type Database = {
           job_evidence: Json
           job_snapshot_id: string
           leaf_results: Json
+          legacy_compatibility?: boolean
+          preference_alignment?: number | null
           presentation_risk: Database["public"]["Enums"]["ap_presentation_risk"]
           presentation_risk_reasons: Json
+          rank_explanation?: Json | null
           resolution_issues: Database["public"]["Enums"]["ap_resolution_issue"][]
           root_result: Database["public"]["Enums"]["ap_criterion_result"]
+          root_results?: Json | null
           salary_disposition: Database["public"]["Enums"]["ap_salary_gate_disposition"]
           salary_status: Database["public"]["Enums"]["ap_salary_status"]
           satisfaction_paths: Json
+          selected_rank?: number | null
+          selector_explanation?: Json | null
           snapshot_id: string
           soft_preferences: Json
           unknown_treatments: Database["public"]["Enums"]["ap_unknown_treatment"][]
+          usefulness_result?: string | null
           version_bundle: Json
           warnings: Json
         }
         Update: {
+          active_root_keys?: string[] | null
           application_readiness?: Database["public"]["Enums"]["ap_application_readiness"]
+          base_rank?: number | null
+          calculation_input_sha256?: string | null
+          calculation_version?: string | null
           candidate_fact_ids?: string[]
           categorical_evidence_sufficient?: boolean
           confidence_components?: Json
+          confidence_label?: string | null
           created_at?: string
           customer_id?: string
           eligibility?: Database["public"]["Enums"]["ap_eligibility_disposition"]
@@ -2300,16 +2586,23 @@ export type Database = {
           job_evidence?: Json
           job_snapshot_id?: string
           leaf_results?: Json
+          legacy_compatibility?: boolean
+          preference_alignment?: number | null
           presentation_risk?: Database["public"]["Enums"]["ap_presentation_risk"]
           presentation_risk_reasons?: Json
+          rank_explanation?: Json | null
           resolution_issues?: Database["public"]["Enums"]["ap_resolution_issue"][]
           root_result?: Database["public"]["Enums"]["ap_criterion_result"]
+          root_results?: Json | null
           salary_disposition?: Database["public"]["Enums"]["ap_salary_gate_disposition"]
           salary_status?: Database["public"]["Enums"]["ap_salary_status"]
           satisfaction_paths?: Json
+          selected_rank?: number | null
+          selector_explanation?: Json | null
           snapshot_id?: string
           soft_preferences?: Json
           unknown_treatments?: Database["public"]["Enums"]["ap_unknown_treatment"][]
+          usefulness_result?: string | null
           version_bundle?: Json
           warnings?: Json
         }
@@ -3467,12 +3760,17 @@ export type Database = {
       }
       ap_requirement_nodes: {
         Row: {
+          classification_method: string | null
           created_at: string
           criterion_type:
             | Database["public"]["Enums"]["ap_criterion_type"]
             | null
           criterion_version: string | null
+          duration_basis: string | null
+          equivalent_review_id: string | null
+          human_correction_history: Json
           id: string
+          importance: number | null
           job_snapshot_id: string
           node_kind: Database["public"]["Enums"]["ap_requirement_node_kind"]
           parent_id: string | null
@@ -3480,17 +3778,23 @@ export type Database = {
           position: number
           requirement_strength: string | null
           semantic_key: string | null
+          source_excerpt: string | null
           source_locator: string | null
           stable_criterion_id: string | null
           typed_value: Json | null
         }
         Insert: {
+          classification_method?: string | null
           created_at?: string
           criterion_type?:
             | Database["public"]["Enums"]["ap_criterion_type"]
             | null
           criterion_version?: string | null
+          duration_basis?: string | null
+          equivalent_review_id?: string | null
+          human_correction_history?: Json
           id?: string
+          importance?: number | null
           job_snapshot_id: string
           node_kind: Database["public"]["Enums"]["ap_requirement_node_kind"]
           parent_id?: string | null
@@ -3498,17 +3802,23 @@ export type Database = {
           position: number
           requirement_strength?: string | null
           semantic_key?: string | null
+          source_excerpt?: string | null
           source_locator?: string | null
           stable_criterion_id?: string | null
           typed_value?: Json | null
         }
         Update: {
+          classification_method?: string | null
           created_at?: string
           criterion_type?:
             | Database["public"]["Enums"]["ap_criterion_type"]
             | null
           criterion_version?: string | null
+          duration_basis?: string | null
+          equivalent_review_id?: string | null
+          human_correction_history?: Json
           id?: string
+          importance?: number | null
           job_snapshot_id?: string
           node_kind?: Database["public"]["Enums"]["ap_requirement_node_kind"]
           parent_id?: string | null
@@ -3516,11 +3826,19 @@ export type Database = {
           position?: number
           requirement_strength?: string | null
           semantic_key?: string | null
+          source_excerpt?: string | null
           source_locator?: string | null
           stable_criterion_id?: string | null
           typed_value?: Json | null
         }
         Relationships: [
+          {
+            foreignKeyName: "ap_requirement_nodes_equivalent_review_id_fkey"
+            columns: ["equivalent_review_id"]
+            isOneToOne: false
+            referencedRelation: "ap_human_review_records"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ap_requirement_nodes_job_snapshot_id_fkey"
             columns: ["job_snapshot_id"]
@@ -3817,6 +4135,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ap_source_authorizations: {
+        Row: {
+          access_method: string
+          allowed_actions: string[]
+          allowed_hosts: string[]
+          authorization_version: string
+          content_sha256: string
+          created_at: string
+          evidence_reference: string | null
+          evidence_sha256: string | null
+          id: string
+          rate_and_result_bounds: Json
+          source_display_name: string
+          source_id: string
+          state: Database["public"]["Enums"]["ap_source_authorization_state"]
+          verified_at: string | null
+          verified_by_role: string | null
+        }
+        Insert: {
+          access_method: string
+          allowed_actions?: string[]
+          allowed_hosts?: string[]
+          authorization_version: string
+          content_sha256: string
+          created_at?: string
+          evidence_reference?: string | null
+          evidence_sha256?: string | null
+          id?: string
+          rate_and_result_bounds?: Json
+          source_display_name: string
+          source_id: string
+          state: Database["public"]["Enums"]["ap_source_authorization_state"]
+          verified_at?: string | null
+          verified_by_role?: string | null
+        }
+        Update: {
+          access_method?: string
+          allowed_actions?: string[]
+          allowed_hosts?: string[]
+          authorization_version?: string
+          content_sha256?: string
+          created_at?: string
+          evidence_reference?: string | null
+          evidence_sha256?: string | null
+          id?: string
+          rate_and_result_bounds?: Json
+          source_display_name?: string
+          source_id?: string
+          state?: Database["public"]["Enums"]["ap_source_authorization_state"]
+          verified_at?: string | null
+          verified_by_role?: string | null
+        }
+        Relationships: []
       }
       ap_targeted_intake_questions: {
         Row: {
@@ -6049,6 +6421,14 @@ export type Database = {
         Returns: boolean
       }
       ap_capacity_available: { Args: { p_bucket_id: string }; Returns: number }
+      ap_claim_feasibility_request: {
+        Args: { p_request_id: string; p_worker_id: string }
+        Returns: {
+          draft_id: string
+          request_id: string
+          snapshot_id: string
+        }[]
+      }
       ap_claim_material_entitlement: {
         Args: { p_entitlement_history_id: string }
         Returns: boolean
@@ -6114,6 +6494,14 @@ export type Database = {
         }
         Returns: string
       }
+      ap_complete_feasibility_request: {
+        Args: {
+          p_assessment_id: string
+          p_request_id: string
+          p_worker_id: string
+        }
+        Returns: boolean
+      }
       ap_confirm_reference_version: {
         Args: { p_customer_id: string; p_reference_version_id: string }
         Returns: boolean
@@ -6139,6 +6527,18 @@ export type Database = {
           p_payload_sha256: string
         }
         Returns: string
+      }
+      ap_defer_feasibility_request: {
+        Args: { p_reason: string; p_request_id: string; p_worker_id: string }
+        Returns: boolean
+      }
+      ap_fail_feasibility_request: {
+        Args: {
+          p_error_code: string
+          p_request_id: string
+          p_worker_id: string
+        }
+        Returns: boolean
       }
       ap_finalize_four_step_intake: {
         Args: {
@@ -6372,6 +6772,10 @@ export type Database = {
           state: Database["public"]["Enums"]["ap_draft_state"]
           version: number
         }[]
+      }
+      ap_stale_feasibility_request: {
+        Args: { p_reason: string; p_request_id: string; p_worker_id: string }
+        Returns: boolean
       }
       available_capacity: {
         Args: { p_kind: Database["public"]["Enums"]["product_kind"] }
@@ -6818,6 +7222,11 @@ export type Database = {
         | "READY_TO_RELEASE"
         | "DELIVERED"
         | "CANCELED"
+      ap_source_authorization_state:
+        | "AUTHORIZED_AUTOMATED"
+        | "AUTHORIZED_MANUAL_ONLY"
+        | "UNVERIFIED_DISABLED"
+        | "BLOCKED"
       ap_unknown_treatment:
         | "BLOCK"
         | "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING"
@@ -7191,6 +7600,12 @@ export const Constants = {
         "READY_TO_RELEASE",
         "DELIVERED",
         "CANCELED",
+      ],
+      ap_source_authorization_state: [
+        "AUTHORIZED_AUTOMATED",
+        "AUTHORIZED_MANUAL_ONLY",
+        "UNVERIFIED_DISABLED",
+        "BLOCKED",
       ],
       ap_unknown_treatment: [
         "BLOCK",

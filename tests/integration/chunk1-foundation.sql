@@ -192,11 +192,11 @@ do $$ begin
   raise exception 'outbox deduplication failed';
 exception when unique_violation then null; end $$;
 
-insert into public.ap_job_snapshots(id,origin,discovery_source,canonical_application_url,application_host_type,source_url,company,exact_title,normalized_fingerprint,captured_listing,retrieved_at,posted_on,posted_date_unknown,live_verified_at,location_and_work_mode,parser_version,content_sha256)
-values ('82000000-0000-4000-8000-000000000001','APPLYPACK_FOUND','fixture','https://example.invalid/apply','EMPLOYER_HOSTED','https://example.invalid/job','Example','Coordinator',repeat('a',64),'{}',now(),null,true,now(),'{}','v1',repeat('b',64));
+insert into public.ap_job_snapshots(id,origin,discovery_source,canonical_application_url,application_host_type,source_url,company,exact_title,normalized_fingerprint,captured_listing,retrieved_at,posted_on,posted_date_unknown,live_verified_at,location_and_work_mode,parser_version,content_sha256,legacy_compatibility)
+values ('82000000-0000-4000-8000-000000000001','APPLYPACK_FOUND','fixture','https://example.invalid/apply','EMPLOYER_HOSTED','https://example.invalid/job','Example','Coordinator',repeat('a',64),'{}',now(),null,true,now(),'{}','v1',repeat('b',64),true);
 do $$ begin
-  insert into public.ap_job_snapshots(origin,discovery_source,canonical_application_url,application_host_type,source_url,company,exact_title,normalized_fingerprint,captured_listing,retrieved_at,posted_on,posted_date_unknown,live_verified_at,location_and_work_mode,parser_version,content_sha256)
-  values ('CUSTOMER_SUPPLIED','fixture','https://example.invalid/customer','EMPLOYER_HOSTED','https://example.invalid/customer','Example','Customer Job',repeat('c',64),'{}',now(),null,true,now(),'{}','v1',repeat('d',64));
+  insert into public.ap_job_snapshots(origin,discovery_source,canonical_application_url,application_host_type,source_url,company,exact_title,normalized_fingerprint,captured_listing,retrieved_at,posted_on,posted_date_unknown,live_verified_at,location_and_work_mode,parser_version,content_sha256,legacy_compatibility)
+  values ('CUSTOMER_SUPPLIED','fixture','https://example.invalid/customer','EMPLOYER_HOSTED','https://example.invalid/customer','Example','Customer Job',repeat('c',64),'{}',now(),null,true,now(),'{}','v1',repeat('d',64),true);
   raise exception 'customer supplied ingestion enabled by default';
 exception when others then if sqlerrm='customer supplied ingestion enabled by default' then raise; end if; end $$;
 

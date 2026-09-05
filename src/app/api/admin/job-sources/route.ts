@@ -6,7 +6,7 @@ import { createSourceAdapter } from "@/lib/jobs/adapters";
 import { deduplicateJobs } from "@/lib/jobs/deduplicate";
 import { normalizeJob } from "@/lib/jobs/normalize";
 import { persistNormalizedJob } from "@/lib/jobs/persistence";
-import { affiliateDirectories, getSource, jobSources } from "@/lib/jobs/source-registry";
+import { affiliateDirectories, getSource, jobSources, sourceMayBeAccessedAutomatically } from "@/lib/jobs/source-registry";
 import { isSameOriginRequest } from "@/lib/security/origin";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +35,10 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Choose a registered source and action." }, { status: 400 });
   const source = getSource(parsed.data.sourceId);
   if (!source || !source.isActive) return NextResponse.json({ error: "Unknown or inactive source." }, { status: 404 });
+  if (!sourceMayBeAccessedAutomatically(source)) {
+    if (parsed.data.action === "health") return NextResponse.json({ health: { sourceId: source.id, status: "disabled", checkedAt: new Date().toISOString(), httpStatus: null, message: "No automated access occurs without documentary authorization." } });
+    return NextResponse.json({ error: "Automated access is disabled until documentary authorization and bounded production configuration are recorded." }, { status: 409 });
+  }
   const adapter = createSourceAdapter(source.id);
   const health = await adapter.healthCheck();
   await auth.admin.from("job_sources").update({
@@ -45,10 +49,6 @@ export async function POST(request: Request) {
   if (parsed.data.action === "health") return NextResponse.json({ health });
   if (process.env.APP_JOB_SOURCE_SYNC_ENABLED !== "true") {
     return NextResponse.json({ error: "Automated source synchronization is disabled by configuration.", health }, { status: 409 });
-  }
-  if (source.automationStatus !== "automated") {
-    await auth.admin.from("job_source_runs").insert({ source_id: source.id, status: "link_only", completed_at: new Date().toISOString() });
-    return NextResponse.json({ sourceId: source.id, status: "official_link_only", fetched: 0, accepted: 0 });
   }
 
   const { data: run, error: runError } = await auth.admin.from("job_source_runs").insert({ source_id: source.id, status: "started" }).select("id").single();
