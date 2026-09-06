@@ -257,9 +257,9 @@ Order:
 
 1. Record target project identity, current application/database commit, and a restorable backup checkpoint. Stop on mismatch.
 2. Keep `APP_JOB_SOURCE_SYNC_ENABLED=false`, payment/Checkout disabled, and feasibility workers stopped.
-3. Apply `202609040025_chunk3_matching_engine.sql` after migrations `022`, `023`, and `024`. It is expand-only.
-4. Regenerate database types from that exact migrated schema and deploy compatibility code. Existing rows remain explicitly `legacy_compatibility=true`; new strict rows default false.
-5. Verify checkpoint `202609040025 / CHUNK3_MATCHING_ENGINE_EXPAND`, table/RPC privileges, default-deny source states, and zero unexpected automated sources.
+3. Apply `202609040025_chunk3_matching_engine.sql`, `202609050026_chunk3_audit_remediation.sql`, `202609050027_chunk3_persisted_evidence_remediation.sql`, and `202609050028_chunk3_contract_completion.sql` in order after migrations `022`, `023`, and `024`. All four are expand-only.
+4. Regenerate database types from that exact 28-migration schema and deploy compatibility code. Existing rows remain explicitly `legacy_compatibility=true`; new strict rows default false.
+5. Verify all four Chunk 3 checkpoints, table/RPC privileges, default-deny source states, and zero unexpected automated sources.
 6. Separately obtain documentary business/legal authorization before inserting any `AUTHORIZED_AUTOMATED` record. Then separately approve positive source bounds and release TTL. No permissive defaults exist.
 7. Populate immutable inventory, requirement/evaluation, coverage, review, and displacement evidence through protected service-role workflows. Do not accept caller totals.
 8. Start the feasibility worker only after required coverage configuration, staff roles, monitoring, retry/dead-letter procedures, and TTL are approved. Run a synthetic canary first. A pending/error run creates no outcome or Checkout.
@@ -346,7 +346,7 @@ Required results before even considering worker activation: one completed checkp
 Failure recovery:
 
 1. Stop feasibility workers and keep source sync, Checkout, and payment disabled.
-2. Revert application traffic to the preceding compatible commit. Leave migration `202609040025` and immutable evidence in place.
+2. Revert application traffic to the preceding compatible commit. Leave migrations `202609040025` through `202609050028` and immutable evidence in place.
 3. Do not delete authorization, source configuration, coverage, inventory, evaluation, review, displacement, request, assessment, or audit rows.
 4. Move a retryable claimed request back through the guarded defer path; mark stale only when its snapshot is no longer active; mark result-changing configuration/retrieval/parser defects `ERROR`. Never convert an incomplete run to `LIMITED` or `INFEASIBLE`.
 5. Reconcile each request to its exact snapshot hash, coverage plan, inventory version, rules version, and assessment before retry. Never create a replacement success with a new caller total.
@@ -360,12 +360,14 @@ Migration `202609050026_chunk3_audit_remediation.sql` is an additive correction 
 
 Migration `202609050027_chunk3_persisted_evidence_remediation.sql` is the additive second correction. It stores five-section explanation evidence on evaluations, adds immutable selection runs/members for both ranking stages, strengthens exact review/fact/criterion guards, rejects incomplete parses and non-current source authorizations at evaluation insert, and exposes only the service-role `ap_persist_match_selection` idempotent function. It does not rewrite an existing evaluation, paid order, or legacy match.
 
+Migration `202609050028_chunk3_contract_completion.sql` is the additive third correction. It persists minimum-across-material-source quality, makes matching review subjects unique and atomically superseding, records parser-correction job lineage, rejects evaluations of superseded job snapshots, and replaces strict evaluation persistence with `matching-rules-v3` guards. Parser corrections create a new immutable job snapshot, requirement tree, inventory version/member, and coverage lineage; they invalidate the old snapshot's evaluations and never mutate the old parse.
+
 Deployment order:
 
 1. Keep job-source synchronization, feasibility scheduling, Checkout, payment, and customer release disabled. Record the target database project, application commit, database migration head, and backup/restore checkpoint.
-2. Apply migrations through `202609050027` in order. Do not mark `025`, `026`, or `027` applied without executing them. Verify all three checkpoint rows.
-3. Regenerate database types from the migrated target. Deploy code that uses `ap_match_evaluations` and immutable `ap_match_selection_runs/members`, never `rankLegacyJobs`, in search, operator listing, delivery, and replacement paths.
-4. Populate a synthetic authorized-manual inventory member, complete parsed requirement tree, exact candidate facts, criterion-bound match reviews, a five-section usefulness review, and a server-derived evaluation. Confirm an incomplete parse, wrong evidence-to-criterion link, zero-fact hard pass, wrong root-key set, sparse adjacent review, non-current authorization, noncontiguous selection ranks, and direct service-role insert to `ap_feasibility_assessments` all fail closed.
+2. Apply migrations through `202609050028` in order. Do not mark `025`, `026`, `027`, or `028` applied without executing them. Verify all four checkpoint rows.
+3. Regenerate database types from the migrated target. Deploy code that uses `matching-rules-v3`, current exact-subject reviews, `ap_match_evaluations`, and immutable `ap_match_selection_runs/members`, never `rankLegacyJobs`, in search, operator listing, delivery, and replacement paths.
+4. Populate a synthetic authorized-manual inventory member, complete parsed requirement tree, exact candidate facts, criterion-bound match reviews, a five-section usefulness review, every applicable customer hard gate and soft preference, and a server-derived evaluation. Confirm an incomplete parse, wrong evidence-to-criterion link, zero-fact hard pass, wrong root-key set, sparse adjacent review, stale review ID, superseded job snapshot, non-current authorization, noncontiguous selection ranks, and direct service-role insert to `ap_feasibility_assessments` all fail closed.
 5. Configure `APP_FEASIBILITY_WORKER_ID` only after the production worker identity, lease/monitoring owner, retry alerting, required manual coverage plan, immutable inventory, and evaluations are present. An unset value intentionally returns `disabled`; it is not a permissive default.
 6. Configure `APP_RELEASE_VERIFICATION_TTL_SECONDS` only from the separately approved release record. Until then, search delivery and replacements fail closed. No repository fixture approves a production TTL.
 7. Run a synthetic feasibility request. Verify the database-derived assessment references the request snapshot and latest coverage plan, has exactly a 60-minute expiration, and its three counts equal the current selected inventory classification. Reconcile the audit event before enabling any customer traffic.
@@ -378,7 +380,8 @@ from public.ap_migration_checkpoints
 where (migration_id, checkpoint) in (
   ('202609040025','CHUNK3_MATCHING_ENGINE_EXPAND'),
   ('202609050026','CHUNK3_AUDIT_REMEDIATION_EXPAND'),
-  ('202609050027','CHUNK3_PERSISTED_EVIDENCE_EXPAND')
+  ('202609050027','CHUNK3_PERSISTED_EVIDENCE_EXPAND'),
+  ('202609050028','CHUNK3_CONTRACT_COMPLETION_EXPAND')
 )
 order by migration_id;
 
@@ -390,9 +393,9 @@ where not e.legacy_compatibility and (
   or e.job_snapshot_id<>m.job_snapshot_id or not m.selected_by_deduplication
 );
 
-select count(*) as strict_v2_evaluation_without_selection_storage_pointer
+select count(*) as strict_v3_evaluation_without_selection_storage_pointer
 from public.ap_match_evaluations
-where not legacy_compatibility and calculation_version='matching-rules-v2'
+where not legacy_compatibility and calculation_version='matching-rules-v3'
   and (
     rank_explanation->>'storage' is distinct from 'ap_match_selection_members'
     or selector_explanation->>'storage' is distinct from 'ap_match_selection_members'
@@ -420,6 +423,22 @@ where not evaluation.legacy_compatibility and linked.id is distinct from (
   limit 1
 );
 
+select count(*) as multiple_current_reviews_for_subject
+from (
+  select snapshot_id, job_snapshot_id, review_subject_key
+  from public.ap_matching_human_reviews
+  where invalidated_at is null and review_subject_key is not null
+  group by snapshot_id, job_snapshot_id, review_subject_key
+  having count(*) > 1
+) duplicate_subjects;
+
+select count(*) as current_evaluation_for_superseded_job
+from public.ap_match_evaluations evaluation
+where evaluation.invalidated_at is null and exists (
+  select 1 from public.ap_job_snapshots successor
+  where successor.supersedes_job_snapshot_id = evaluation.job_snapshot_id
+);
+
 select count(*) as root_set_mismatch
 from public.ap_match_evaluations e
 where not e.legacy_compatibility and exists (
@@ -444,6 +463,6 @@ from public.search_candidates
 where review_status='proposed' and evaluation_id is null;
 ```
 
-Required results: all three checkpoints exist once; every anomaly count and `proposed_candidate_without_evaluation` is zero for corrected-contract work; `service_role_can_insert` is false; `service_role_can_derive` is true; every current assessment reconciles to its inventory and expires exactly 60 minutes after creation. Legacy compatibility rows may retain null provenance but cannot enter the corrected runtime selector or release path.
+Required results: all four checkpoints exist once; every anomaly count and `proposed_candidate_without_evaluation` is zero for corrected-contract work; `service_role_can_insert` is false; `service_role_can_derive` is true; every current assessment reconciles to its inventory and expires exactly 60 minutes after creation. Legacy compatibility rows may retain null provenance but cannot enter the corrected runtime selector or release path.
 
-Failure recovery leaves all three additive migrations in place. Stop the feasibility worker, unset its worker identity and release TTL, disable application traffic to the new endpoints, and revert code/traffic to the previous compatible build. Preserve inventory, evaluations, reviews, selection runs, assessments, requests, and audit events. Repair forward with another additive migration after database-owner review; do not edit migration history, fabricate counts, drop evidence, or rewrite legacy paid data.
+Failure recovery leaves all four additive migrations in place. Stop the feasibility worker, unset its worker identity and release TTL, disable application traffic to the new endpoints, and revert code/traffic to the previous compatible build. Preserve inventory, evaluations, reviews, parser-correction lineage, selection runs, assessments, requests, and audit events. Repair forward with another additive migration after database-owner review; do not edit migration history, fabricate counts, drop evidence, or rewrite legacy paid data.

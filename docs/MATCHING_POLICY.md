@@ -8,11 +8,11 @@ Status: Chunk 3 repository implementation. This policy is subordinate to `APPLYP
 | --- | --- |
 | Source authorization | `source-auth-v1` |
 | Responsibility retrieval | `responsibility-retrieval-v1` |
-| Listing requirement parser | `listing-requirements-v3` |
+| Listing requirement parser | `listing-requirements-v4` |
 | Requirement evaluation | `requirement-engine-v1` |
 | Tool clusters | `tool-clusters-v1` |
 | Salary comparison | `salary-rules-v1` |
-| Fit, preference, confidence, and gate rules | `matching-rules-v2` |
+| Fit, preference, confidence, and gate rules | `matching-rules-v3` |
 | Duplicate graph | `dedup-graph-v1` |
 | Diversity selector | `bounded-diversity-v2` |
 | Feasibility plan and outcome | `feasibility-v1` |
@@ -34,7 +34,7 @@ These weights and mappings are versioned product hypotheses for ranking and cali
 
 Search breadth, title similarity, industry familiarity, salary, source, career break, presentation risk, and soft preferences add no fit points. Preferences never rescue a hard failure.
 
-The evaluation API accepts only immutable snapshot, inventory-member, job-snapshot, and human-review identifiers. It reloads the requirement tree, candidate fact versions, source authorization, salary policies, and reviewer evidence from protected storage. Gate results, salary-policy values, fit factors, confidence inputs, preferences, readiness, and scores are derived by the server and are not accepted from the caller.
+The evaluation API accepts only immutable snapshot, inventory-member, job-snapshot, and current human-review identifiers. It reloads every persisted customer criterion, the requirement tree, candidate fact versions, source authorization, compensation evidence, and reviewer evidence from protected storage. Gate results, salary-policy values, fit factors, confidence inputs, preferences, readiness, and scores are derived by the server and are not accepted from the caller. Only the current review for the exact review subject may participate; a newer review atomically supersedes the prior current record.
 
 ## Retrieval and source policy
 
@@ -68,7 +68,7 @@ Active hard trees contain only `ALL_OF`, `ANY_OF`, and typed `CRITERION` nodes. 
 
 Nested structure is preserved. A passing `ANY_OF` uses one deterministic satisfaction path: highest summed importance, then evidence confidence, then stable node ID. Unused unknown alternatives become `IMMATERIAL_ALTERNATIVE`; they ask no question and do not enter required-branch denominators.
 
-`listing-requirements-v3` preserves supported employer `OR` alternatives as `ANY_OF` subtrees. Any material hard wording that it cannot type makes the whole parse incomplete; a strict evaluation requires `requirement_completeness = 100` and executes the stored tree through `evaluateRequirementTree`.
+`listing-requirements-v4` preserves supported employer `OR` alternatives as `ANY_OF` subtrees. Any material hard wording that it cannot type makes the whole parse incomplete; a strict evaluation requires `requirement_completeness = 100` and executes the stored tree through `evaluateRequirementTree`. A passing parser correction is not an override: it atomically creates a new immutable job snapshot, requirement tree, inventory version/member, and coverage lineage, records correction history, supersedes the old snapshot, and invalidates evaluations tied to the old parse.
 
 | Outcome-determinative unknown | Stored mapping | Derived action |
 | --- | --- | --- |
@@ -86,9 +86,9 @@ Generic tool clusters use explicit Boolean task trees; posting-named tasks overr
 
 ## Eligibility and salary
 
-Exactly one result must exist for every active root. Missing, extra, duplicate, conflicting, or empty roots produce `INVALID`. Precedence is `INVALID`, confirmed hard `INELIGIBLE`, `NEEDS_CANDIDATE_INPUT`, `NEEDS_HUMAN_REVIEW`, disallowed employer unknown `INELIGIBLE`, `ELIGIBLE`, then `ELIGIBLE_WITH_ALLOWED_UNKNOWNS`.
+Exactly one result must exist for every active employer root and every persisted customer hard gate. Customer gates cover accepted work modes and employment types, state/geography and conditional commute, hard title restriction, each blocked industry, each selected schedule, each must-have benefit, each dealbreaker including the custom dealbreaker, and each hard work condition. Missing employer evidence stays `UNKNOWN` and blocks unless the exact stored criterion carries the matching immutable consent version and warning policy. Missing, extra, duplicate, conflicting, or empty roots produce `INVALID`. Precedence is `INVALID`, confirmed hard `INELIGIBLE`, `NEEDS_CANDIDATE_INPUT`, `NEEDS_HUMAN_REVIEW`, disallowed employer unknown `INELIGIBLE`, `ELIGIBLE`, then `ELIGIBLE_WITH_ALLOWED_UNKNOWNS`. No review can override a confirmed customer or employer hard failure.
 
-Salary uses integer cents, USD launch currency, employer-published evidence, the correct location and worker basis, and no assumed 2,080-hour conversion. A comparable lower bound at or above the hard floor passes. A maximum below fails. A range crossing the floor requires overlap consent and warning. Unpublished or estimate-only pay requires unpublished-pay consent and warning. Non-USD always fails at launch. USD noncomparable pay may use only the specific noncomparable policy. Total/OTE cannot prove a base floor; unsupported schedules, `up to`, location mismatch, or worker-basis mismatch are noncomparable. Accepted hourly/annual conversion stores hours/week, weeks/year, original values, and version.
+Salary uses integer cents, USD launch currency, employer-published evidence, the correct location and worker basis, and no assumed 2,080-hour conversion. Parsed compensation preserves the three-letter currency, whether the amount is a range, starting-at, up-to, or fixed endpoint, and the location applicability of each range. A comparable lower bound at or above the hard floor passes. A maximum below fails. A range crossing the floor requires overlap consent and warning. Unpublished or estimate-only pay requires unpublished-pay consent and warning. Non-USD always fails at launch. USD noncomparable pay may use only the specific noncomparable policy. Total/OTE cannot prove a base floor; unsupported schedules, `up to`, location mismatch, worker-basis mismatch, or ambiguous multiple-location ranges are noncomparable. A production salary comparison also requires the current review for the exact selected compensation criterion and exact cited listing node. Accepted hourly/annual conversion stores hours/week, weeks/year, original values, and version.
 
 Target compensation is a soft preference: lower bound at/above target `1.00`; range reaches target `0.75`; comparable pay meets the hard floor but cannot reach target `0.50`; expressly allowed unknown `0.50` with warning; otherwise `0`. The hard minimum remains a gate and neither value is silently lowered.
 
@@ -106,7 +106,7 @@ fit_score = 100 * sum(base_weight_d * component_coverage_d)
 
 Evidence factors are direct `1.00`, adjacent `0.80`, transferable `0.50` only for non-hard scored criteria, unsupported `0`, and candidate unknown `0`. A component with no employer criterion is not applicable and contributes neither points nor denominator. Core responsibility is always applicable. Required `ANY_OF` leaves use only the satisfaction path. Empty denominators, duplicate criteria, non-finite or out-of-range factors, missing evidence links, and caller totals are rejected.
 
-Equal-weight preference alignment uses selected preferences once each: supported `1`, permitted employer unknown `0.5` with warning, unmet `0`; no selected preference is `null`. It is consulted only on an exact fit tie.
+Equal-weight preference alignment uses each selected soft preference once: desired responsibility, exact title, optional industry, preferred work mode, preferred employment type, would-prefer benefit, schedule, soft avoidance, and target compensation. Supported is `1`, permitted employer unknown is `0.5` with warning, and unmet is `0`; no selected preference is `null`. Merely accepted hard choices are not counted again as preferences. Preference alignment is consulted only on an exact fit tie.
 
 ```text
 confidence = 40 * candidate_completeness
@@ -114,6 +114,8 @@ confidence = 40 * candidate_completeness
            + 20 * minimum_material_source_quality
            + 15 * parser_certainty
 ```
+
+Every material source quality is persisted. An official employer-hosted listing/application source contributes `1.00`; a material third-party discovery source contributes `0.80`. Confidence uses the minimum across the persisted material sources, so an official application link cannot erase third-party discovery quality. Legacy or omitted material-source arrays default conservatively to `0.80`.
 
 Labels are HIGH `80..100`, MEDIUM `60..<80`, and LOW `<60`. Low requires protected human review. Categorical usefulness requires an employer-identified core responsibility, a confirmed direct or reviewed strong-adjacent connection, evidence for all five explanation sections, non-blocked application readiness, and reviewer certification that the job is worthwhile and not quota filler.
 
