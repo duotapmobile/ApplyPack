@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { filterJobs } from "@/lib/jobs/filter";
 import { jobSources } from "@/lib/jobs/source-registry";
@@ -64,6 +65,14 @@ describe("Chunk 3 source and retrieval policy", () => {
   it("accurately labels an approved third-party path and never bypasses unavailable paths", () => {
     expect(chooseApplicationProvenance({ discoverySourceId: "manual-reviewed", discoveryUrl: "https://discovery.invalid/1", candidates: [{ sourceId: "approved-third-party", url: "https://third.invalid/apply/1", hostType: "APPROVED_THIRD_PARTY", authorized: true, active: true, actionable: true }] }).applicationHostType).toBe("APPROVED_THIRD_PARTY");
     expect(() => chooseApplicationProvenance({ discoverySourceId: "manual-reviewed", discoveryUrl: "https://discovery.invalid/1", candidates: [{ sourceId: "paywalled", url: "https://locked.invalid/1", hostType: "APPROVED_THIRD_PARTY", authorized: false, active: true, actionable: true }] })).toThrow("actionable_application_path_missing");
+  });
+
+  it("does not let a caller-supplied URL self-identify as employer hosted", () => {
+    const route = readFileSync("src/app/api/admin/jobs/route.ts", "utf8");
+    expect(route).toContain("chooseApplicationProvenance");
+    expect(route).toContain("normalized.officialApplicationUrl");
+    expect(route).not.toContain('application_host_type: "EMPLOYER_HOSTED"');
+    expect(route).toContain('applicationHostType === "EMPLOYER_HOSTED" ? [0.8, 1] : [0.8]');
   });
 
   it("treats listing injection as inert evidence", () => {

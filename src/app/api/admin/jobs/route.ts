@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { canonicalSha256, semanticComparisonKey } from "@/lib/domain/foundation";
-import { assertAuthorizedSource } from "@/lib/matching/retrieval";
+import { assertAuthorizedSource, chooseApplicationProvenance } from "@/lib/matching/retrieval";
 import { loadPersistedEvaluationsForSnapshot, persistedFitSummary, selectAndPersistEvaluations } from "@/lib/matching/persisted-runtime";
 import { LISTING_PARSER_VERSION, parseListingRequirements, requirementPersistenceRows } from "@/lib/matching/listing-parser";
 import { normalizeJob } from "@/lib/jobs/normalize";
@@ -86,6 +86,14 @@ export async function POST(request: Request) {
     lastVerifiedAt: parsed.data.checkedAt,
   });
   if (normalized.rejectionReason || !normalized.isActive) return NextResponse.json({ error: "The listing failed source and safety normalization." }, { status: 409 });
+  const applicationProvenance = chooseApplicationProvenance({
+    discoverySourceId: "manual-reviewed",
+    discoveryUrl: parsed.data.sourceUrl,
+    candidates: [
+      ...(normalized.officialApplicationUrl ? [{ sourceId: normalized.canonicalEmployerId, url: normalized.officialApplicationUrl, hostType: "EMPLOYER_HOSTED" as const, authorized: true, active: normalized.isActive, actionable: true }] : []),
+      { sourceId: "manual-reviewed", url: parsed.data.officialApplicationUrl, hostType: "APPROVED_THIRD_PARTY" as const, authorized: ["AUTHORIZED_AUTOMATED", "AUTHORIZED_MANUAL_ONLY"].includes(authorization.state), active: normalized.isActive, actionable: parsed.data.manualReview.applicationPathConfirmed },
+    ],
+  });
   const [{ data: snapshot }, { data: coveragePlan }] = await Promise.all([
     auth.admin.from("ap_intake_snapshots").select("id").eq("id", parsed.data.snapshotId).maybeSingle(),
     auth.admin.from("ap_feasibility_coverage_plans").select("id,inventory_version_id").eq("snapshot_id", parsed.data.snapshotId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
@@ -97,16 +105,15 @@ export async function POST(request: Request) {
   const duplicate = (existingMembers || []).some((member) => {
     const existing = Array.isArray(member.job_snapshot) ? member.job_snapshot[0] : member.job_snapshot;
     return member.stable_normalized_job_id === stableJobId
-      || existing?.canonical_application_url === parsed.data.officialApplicationUrl
-      || existing?.canonical_employer_listing_url === parsed.data.sourceUrl
-      || (Boolean(parsed.data.externalJobId) && existing?.external_job_id === parsed.data.externalJobId && existing?.canonical_employer_domain === new URL(parsed.data.officialApplicationUrl).hostname.toLocaleLowerCase("en-US"));
+      || existing?.canonical_application_url === applicationProvenance.canonicalApplicationUrl
+      || existing?.canonical_employer_listing_url === (normalized.isDirectEmployerSource ? normalized.sourceJobUrl : null)
+      || (Boolean(parsed.data.externalJobId) && existing?.external_job_id === parsed.data.externalJobId && existing?.canonical_employer_domain === (applicationProvenance.applicationHostType === "EMPLOYER_HOSTED" ? new URL(applicationProvenance.canonicalApplicationUrl).hostname.toLocaleLowerCase("en-US") : normalized.canonicalEmployerId));
   });
   if (duplicate) return NextResponse.json({ error: "The listing duplicates a current inventory member under the requisition-or-canonical-URL rule." }, { status: 409 });
   try {
     const legacyJobId = await persistNormalizedJob(auth.admin, normalized);
-    const applicationHost = new URL(parsed.data.officialApplicationUrl).hostname.toLocaleLowerCase("en-US");
-    const listingHost = new URL(parsed.data.sourceUrl).hostname.toLocaleLowerCase("en-US");
-    const materialSourceQualities = listingHost === applicationHost ? [1] : [0.8, 1];
+    const applicationHost = new URL(applicationProvenance.canonicalApplicationUrl).hostname.toLocaleLowerCase("en-US");
+    const materialSourceQualities = applicationProvenance.applicationHostType === "EMPLOYER_HOSTED" ? [0.8, 1] : [0.8];
     const capturedListing = { text: parsed.data.listingText, parserIssues: parser.issues };
     const snapshotRow = {
       id: jobSnapshotId,
@@ -114,13 +121,13 @@ export async function POST(request: Request) {
       origin: "APPLYPACK_FOUND" as const,
       discovery_source: "manual-reviewed",
       external_job_id: parsed.data.externalJobId,
-      canonical_application_url: parsed.data.officialApplicationUrl,
-      application_host_type: "EMPLOYER_HOSTED",
-      canonical_employer_listing_url: parsed.data.sourceUrl,
+      canonical_application_url: applicationProvenance.canonicalApplicationUrl,
+      application_host_type: applicationProvenance.applicationHostType,
+      canonical_employer_listing_url: normalized.isDirectEmployerSource ? normalized.sourceJobUrl : null,
       source_url: parsed.data.sourceUrl,
       company: parsed.data.company,
       exact_title: parsed.data.title,
-      normalized_fingerprint: canonicalSha256({ employer: semanticComparisonKey(parsed.data.company), title: semanticComparisonKey(parsed.data.title), applicationUrl: parsed.data.officialApplicationUrl }),
+      normalized_fingerprint: canonicalSha256({ employer: semanticComparisonKey(parsed.data.company), title: semanticComparisonKey(parsed.data.title), applicationUrl: applicationProvenance.canonicalApplicationUrl }),
       captured_listing: capturedListing,
       retrieved_at: parsed.data.checkedAt,
       posted_on: parsed.data.postedAt?.slice(0, 10) ?? null,
@@ -128,12 +135,12 @@ export async function POST(request: Request) {
       live_verified_at: parsed.data.checkedAt,
       compensation_text: parser.criteria.find((criterion) => criterion.kind === "COMPENSATION")?.semanticKey ?? null,
       compensation_source: parser.criteria.some((criterion) => criterion.kind === "COMPENSATION") ? "EMPLOYER_LISTING" : null,
-      location_and_work_mode: { applicationHost },
+      location_and_work_mode: { applicationHost, applicationHostType: applicationProvenance.applicationHostType, discoverySourceId: applicationProvenance.discoverySourceId, canonicalApplicationSourceId: applicationProvenance.canonicalApplicationSourceId },
       parser_version: LISTING_PARSER_VERSION,
       content_sha256: canonicalSha256(capturedListing),
       source_authorization_id: authorization.id,
       first_seen_at: parsed.data.checkedAt,
-      canonical_employer_domain: applicationHost,
+      canonical_employer_domain: applicationProvenance.applicationHostType === "EMPLOYER_HOSTED" ? applicationHost : normalized.canonicalEmployerId,
       employer_identity_result: "PASS",
       application_path_result: "PASS",
       listing_activity_result: "PASS",

@@ -119,6 +119,8 @@ insert into public.ap_requirement_nodes(id,job_snapshot_id,parent_id,position,no
 values('85000000-0000-4000-8000-000000000001','83000000-0000-4000-8000-000000000001',null,0,'ALL_OF','listing-requirements-v2','[]');
 insert into public.ap_requirement_nodes(id,job_snapshot_id,parent_id,position,node_kind,criterion_type,stable_criterion_id,semantic_key,requirement_strength,source_locator,parser_certainty,criterion_version,typed_value,source_excerpt,classification_method,human_correction_history)
 values('85000000-0000-4000-8000-000000000002','83000000-0000-4000-8000-000000000001','85000000-0000-4000-8000-000000000001',0,'CRITERION','EXPERIENCE','85000000-0000-4000-8000-000000000003','experience.customer-operations','REQUIRED','line:1',1,'listing-requirements-v2','{"kind":"EXPERIENCE"}','Three years of customer operations experience required.','listing-requirements-v2','[]');
+insert into public.ap_requirement_nodes(id,job_snapshot_id,parent_id,position,node_kind,criterion_type,stable_criterion_id,semantic_key,requirement_strength,source_locator,parser_certainty,criterion_version,typed_value,source_excerpt,classification_method,human_correction_history)
+values('85000000-0000-4000-8000-000000000004','83000000-0000-4000-8000-000000000001','85000000-0000-4000-8000-000000000001',1,'CRITERION','EMPLOYMENT_TYPE','85000000-0000-4000-8000-000000000005','employment.full-time','INFORMATIONAL','line:2',1,'listing-requirements-v5','{"kind":"EMPLOYMENT_TYPE","employmentTypes":["FULL_TIME"]}','Full-time employment.','listing-requirements-v5','[]');
 
 insert into public.ap_inventory_versions(id,cutoff_at,source_registry_version,query_version,parser_version,content_sha256)
 values('72000000-0000-4000-8000-000000000005',now(),'source-auth-v1','responsibility-retrieval-v1','listing-requirements-v2',repeat('c',64));
@@ -182,7 +184,7 @@ begin
       'catalog_version','matching-rules-v3','decision',jsonb_build_object(
         'disposition','RESOLVED_PASS','result','PASS','resolutionIssue','NONE','unknownTreatment','BLOCK',
         'customerCriterionKey','customer:employment-type','evidenceChanges',jsonb_build_array('Reviewed the exact employment-type evidence.'),
-        'sourceEvidenceNodeIds',jsonb_build_array('85000000-0000-4000-8000-000000000002'),'candidateFactIds','[]'::jsonb,
+        'sourceEvidenceNodeIds',jsonb_build_array('85000000-0000-4000-8000-000000000004'),'candidateFactIds','[]'::jsonb,
         'rulesVersion','matching-rules-v3'
       )
     ),null
@@ -197,7 +199,7 @@ begin
       'catalog_version','matching-rules-v3','decision',jsonb_build_object(
         'disposition','RESOLVED_FAIL','result','FAIL','resolutionIssue','NONE','unknownTreatment','BLOCK',
         'customerCriterionKey','customer:employment-type','evidenceChanges',jsonb_build_array('Recorded the newer conflicting employment-type evidence.'),
-        'sourceEvidenceNodeIds',jsonb_build_array('85000000-0000-4000-8000-000000000002'),'candidateFactIds','[]'::jsonb,
+        'sourceEvidenceNodeIds',jsonb_build_array('85000000-0000-4000-8000-000000000004'),'candidateFactIds','[]'::jsonb,
         'rulesVersion','matching-rules-v3'
       )
     ),null
@@ -207,6 +209,31 @@ begin
   if not exists(select 1 from public.ap_human_review_records where id=second_id and invalidated_at is null and supersedes_review_id=first_id and decision->>'result'='FAIL') then raise exception 'newer_review_not_current'; end if;
   if (select count(*) from public.ap_human_review_records where snapshot_id='53000000-0000-4000-8000-000000000003' and job_snapshot_id='83000000-0000-4000-8000-000000000001' and review_kind='CUSTOMER_CRITERION' and review_subject_key='customer:employment-type' and invalidated_at is null)<>1 then raise exception 'current_review_uniqueness_failed'; end if;
 end $$;
+
+do $$ begin
+  begin
+    perform public.ap_record_matching_review(
+      jsonb_build_object(
+        'customer_id','13000000-0000-4000-8000-000000000003','draft_id','33000000-0000-4000-8000-000000000003',
+        'reviewer_id','13000000-0000-4000-8000-000000000003','snapshot_id','53000000-0000-4000-8000-000000000003',
+        'job_snapshot_id','83000000-0000-4000-8000-000000000001','review_kind','CUSTOMER_CRITERION',
+        'review_subject_key','customer:employment-type','rationale','An unrelated experience node must not resolve employment type.',
+        'catalog_version','matching-rules-v3','decision',jsonb_build_object(
+          'disposition','RESOLVED_PASS','result','PASS','resolutionIssue','NONE','unknownTreatment','BLOCK',
+          'customerCriterionKey','customer:employment-type','evidenceChanges',jsonb_build_array('Attempted unrelated evidence.'),
+          'sourceEvidenceNodeIds',jsonb_build_array('85000000-0000-4000-8000-000000000002'),'candidateFactIds','[]'::jsonb,
+          'rulesVersion','matching-rules-v3'
+        )
+      ),null
+    );
+    raise exception 'unrelated_customer_gate_evidence_was_accepted';
+  exception when raise_exception then
+    if sqlerrm='unrelated_customer_gate_evidence_was_accepted' then raise; end if;
+    if sqlerrm<>'customer_criterion_not_exact_typed_evidence' then raise; end if;
+  end;
+end $$;
+
+select pg_temp.assert_true(exists(select 1 from public.ap_migration_checkpoints where migration_id='202609060029' and checkpoint='CHUNK3_FINAL_ACCEPTANCE_EXPAND'),'chunk3_final_acceptance_checkpoint_missing');
 
 do $$ begin
   begin

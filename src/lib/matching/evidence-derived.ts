@@ -1,4 +1,4 @@
-import { canonicalSha256, semanticComparisonKey, typedCriterionSchema, type TypedCriterion } from "@/lib/domain/foundation";
+import { canonicalSha256, overlapSafeCalendarDays, semanticComparisonKey, typedCriterionSchema, type CapabilityStatus, type TypedCriterion } from "@/lib/domain/foundation";
 import {
   MATCHING_RULES_VERSION,
   SELECTOR_VERSION,
@@ -15,7 +15,7 @@ import {
   type FitComponentInput,
   type FitComponentName,
 } from "@/lib/matching/evaluation-engine";
-import { evaluateRequirementTree, type EvaluatableRequirementNode, type LeafDecision } from "@/lib/matching/requirements";
+import { evaluateRequirementTree, evaluateToolCapability, type EvaluatableRequirementNode, type LeafDecision } from "@/lib/matching/requirements";
 import { activityCatalog, dealbreakerCatalog, industryCatalog } from "@/lib/intake/four-step";
 
 export type PersistedRequirementRow = {
@@ -46,6 +46,9 @@ export type PersistedCandidateFact = {
   superseded_at: string | null;
   capability_status: string | null;
   calendar_duration_days: number | null;
+  starts_on?: string | null;
+  ends_on?: string | null;
+  intensity_percent?: number | null;
   customer_display_label: string | null;
   customer_display_value: unknown;
 };
@@ -186,6 +189,111 @@ function relationFromReview(review: PersistedReview | null): EvidenceRelation {
   return ["DIRECT", "ADJACENT", "TRANSFERABLE", "UNSUPPORTED"].includes(String(value)) ? value as EvidenceRelation : "UNSUPPORTED";
 }
 
+const insignificantWords = new Set(["a", "an", "and", "at", "for", "in", "of", "or", "the", "to", "with", "required", "requirement", "experience", "responsibilities", "responsibility"]);
+
+function evidenceTokens(value: unknown): Set<string> {
+  const stringsFound: string[] = [];
+  const visit = (item: unknown) => {
+    if (typeof item === "string") stringsFound.push(item);
+    else if (Array.isArray(item)) item.forEach(visit);
+    else if (item && typeof item === "object") Object.values(item as Record<string, unknown>).forEach(visit);
+  };
+  visit(value);
+  return new Set(semanticComparisonKey(stringsFound.join(" ")).split(/[^a-z0-9]+/u).filter((token) => token.length >= 3 && !insignificantWords.has(token)).map((token) => token.slice(0, 6)));
+}
+
+function factText(fact: PersistedCandidateFact) {
+  return { semanticKey: fact.semantic_key, valueKind: fact.value_kind, value: fact.typed_value, label: fact.customer_display_label, displayValue: fact.customer_display_value };
+}
+
+function tokensOverlap(left: unknown, right: unknown) {
+  const expected = evidenceTokens(left);
+  const actual = evidenceTokens(right);
+  if (!expected.size || !actual.size) return false;
+  const matches = [...expected].filter((token) => actual.has(token)).length;
+  return matches >= Math.min(2, expected.size) || matches / expected.size >= 0.5;
+}
+
+function factRelevantToCriterion(fact: PersistedCandidateFact, criterion: TypedCriterion) {
+  if (criterion.kind === "EXPERIENCE") return !["CAREGIVING", "CAREER_BREAK", "OTHER_RELEVANT_LIFE_CONTEXT"].includes(fact.value_kind) && tokensOverlap(criterion.responsibilityOrDomain, factText(fact));
+  if (criterion.kind === "RESPONSIBILITY") return tokensOverlap(criterion.activity, factText(fact));
+  if (criterion.kind === "TOOL_CAPABILITY") return tokensOverlap(criterion.toolOrTaskCluster, factText(fact));
+  if (criterion.kind === "EDUCATION") return /EDUCATION/iu.test(fact.value_kind) && (!criterion.allowedFields.length || tokensOverlap(criterion.allowedFields, factText(fact)));
+  if (criterion.kind === "CERTIFICATION_LICENSE") return tokensOverlap(criterion.credential, factText(fact));
+  if (criterion.kind === "AUTHORIZATION_SPONSORSHIP") return /AUTHORIZATION|SPONSOR|WORK_ELIGIBILITY/iu.test(fact.value_kind) || tokensOverlap(criterion.employerRule, factText(fact));
+  return tokensOverlap(criterion.semanticKey, factText(fact));
+}
+
+function exactDatedDurationDays(facts: readonly PersistedCandidateFact[], fte: boolean) {
+  const intervals = facts.map((fact) => ({
+    start: Date.parse(`${fact.starts_on}T00:00:00.000Z`),
+    end: Date.parse(`${fact.ends_on}T00:00:00.000Z`) + 86_400_000,
+    intensity: fact.intensity_percent == null ? null : fact.intensity_percent / 100,
+  }));
+  if (intervals.some((interval) => !Number.isFinite(interval.start) || !Number.isFinite(interval.end) || interval.end <= interval.start || fte && interval.intensity == null)) return null;
+  if (!fte) return overlapSafeCalendarDays(facts.map((fact) => ({ start: fact.starts_on!, end: fact.ends_on! })));
+  const boundaries = [...new Set(intervals.flatMap((interval) => [interval.start, interval.end]))].sort((a, b) => a - b);
+  let days = 0;
+  for (let index = 0; index < boundaries.length - 1; index += 1) {
+    const start = boundaries[index], end = boundaries[index + 1];
+    const intensity = Math.min(1, intervals.filter((interval) => interval.start <= start && interval.end >= end).reduce((sum, interval) => sum + (interval.intensity ?? 0), 0));
+    days += (end - start) / 86_400_000 * intensity;
+  }
+  return days;
+}
+
+function typedBoolean(value: unknown, keys: readonly string[]) {
+  const data = object(value);
+  for (const key of keys) if (typeof data[key] === "boolean") return data[key] as boolean;
+  return null;
+}
+
+function educationRank(value: unknown) {
+  const text = semanticComparisonKey(JSON.stringify(value));
+  if (/doctorate|phd|ph d/u.test(text)) return 5;
+  if (/master/u.test(text)) return 4;
+  if (/bachelor/u.test(text)) return 3;
+  if (/associate/u.test(text)) return 2;
+  if (/high school|secondary/u.test(text)) return 1;
+  return 0;
+}
+
+function deterministicallyEvaluateCandidateCriterion(criterion: TypedCriterion, facts: readonly PersistedCandidateFact[], relation: EvidenceRelation) {
+  const relevant = facts.filter((fact) => factRelevantToCriterion(fact, criterion));
+  if (!relevant.length || relation === "UNSUPPORTED" || relation === "TRANSFERABLE") return "UNKNOWN" as const;
+  if (criterion.kind === "EXPERIENCE") {
+    const dated = relevant.filter((fact) => fact.starts_on && fact.ends_on);
+    const days = dated.length === relevant.length
+      ? exactDatedDurationDays(dated, criterion.fteExplicit)
+      : Math.max(...relevant.map((fact) => fact.calendar_duration_days == null || criterion.fteExplicit && fact.intensity_percent == null ? Number.NaN : fact.calendar_duration_days * (criterion.fteExplicit ? fact.intensity_percent! / 100 : 1)).filter(Number.isFinite));
+    if (days == null || !Number.isFinite(days)) return "UNKNOWN" as const;
+    return days / 30.4375 >= criterion.minimumMonths ? "PASS" as const : "FAIL" as const;
+  }
+  if (criterion.kind === "TOOL_CAPABILITY") {
+    const wording = criterion.proficiency === "CURRENT" ? "CURRENT_PROFICIENCY" : criterion.proficiency === "PRIOR_USE" ? "PRIOR_EXPERIENCE" : "FAMILIARITY";
+    const results = relevant.flatMap((fact) => fact.capability_status && ["CAN_DO_NOW", "DONE_BEFORE_NEEDS_REFRESHER", "BASIC_EXPOSURE", "NOT_DONE", "UNSURE"].includes(fact.capability_status)
+      ? [evaluateToolCapability(wording, fact.capability_status as CapabilityStatus).result] : []);
+    return results.includes("PASS") ? "PASS" as const : results.includes("UNKNOWN") || !results.length ? "UNKNOWN" as const : "FAIL" as const;
+  }
+  if (criterion.kind === "EDUCATION") {
+    const required = educationRank(criterion.level);
+    const actual = Math.max(...relevant.map((fact) => educationRank(factText(fact))));
+    return !required || !actual ? "UNKNOWN" as const : actual >= required ? "PASS" as const : "FAIL" as const;
+  }
+  if (criterion.kind === "CERTIFICATION_LICENSE") {
+    const states = relevant.map((fact) => semanticComparisonKey(JSON.stringify(fact.typed_value)));
+    if (states.some((value) => /active|current|valid|completed/u.test(value))) return "PASS" as const;
+    if (states.some((value) => /expired|revoked|not done|not held/u.test(value))) return "FAIL" as const;
+    return "UNKNOWN" as const;
+  }
+  if (criterion.kind === "AUTHORIZATION_SPONSORSHIP") {
+    const values = relevant.map((fact) => typedBoolean(fact.typed_value, ["authorizedToWork", "meetsEmployerRule", "eligibleWithoutSponsorship"]));
+    return values.includes(true) ? "PASS" as const : values.includes(false) ? "FAIL" as const : "UNKNOWN" as const;
+  }
+  if (criterion.kind === "RESPONSIBILITY") return "PASS" as const;
+  return "UNKNOWN" as const;
+}
+
 function automaticLeafDecision(criterion: TypedCriterion, snapshot: PersistedIntakeForMatching, row: PersistedRequirementRow): LeafDecision | null {
   if (criterion.kind === "WORK_MODE") {
     const allowed = new Set(strings(snapshot.work_modes));
@@ -217,16 +325,19 @@ function reviewedLeafDecision(row: PersistedRequirementRow, review: PersistedRev
   const relation = relationFromReview(review);
   const activeFacts = candidateFactIds.map((id) => facts.get(id)).filter((fact): fact is PersistedCandidateFact => Boolean(fact) && currentFact(fact!, snapshot.id));
   if (activeFacts.length !== candidateFactIds.length || !jobEvidenceIds.includes(row.id)) throw new Error("review_evidence_not_current_or_not_criterion_bound");
-  const disposition = decision.disposition;
-  if (disposition === "RESOLVED_PASS" && (!candidateFactIds.length || relation === "UNSUPPORTED" || relation === "TRANSFERABLE" || relation === "ADJACENT" && !decision.adjacentEquivalenceReviewId)) {
+  if (decision.disposition === "RESOLVED_PASS" && (!candidateFactIds.length || relation === "UNSUPPORTED" || relation === "TRANSFERABLE" || relation === "ADJACENT" && !decision.adjacentEquivalenceReviewId)) {
     throw new Error("hard_requirement_pass_missing_bound_candidate_evidence");
   }
+  const derivedResult = decision.disposition === "REQUIRES_MORE_EVIDENCE" ? "UNKNOWN" : deterministicallyEvaluateCandidateCriterion(criterion, activeFacts, relation);
+  if (decision.disposition === "RESOLVED_PASS" && derivedResult !== "PASS" || decision.disposition === "RESOLVED_FAIL" && derivedResult !== "FAIL") {
+    throw new Error("review_disposition_conflicts_with_persisted_fact_derivation");
+  }
   return {
-    result: disposition === "RESOLVED_PASS" ? "PASS" : disposition === "RESOLVED_FAIL" ? "FAIL" : "UNKNOWN",
-    resolutionIssue: disposition === "REQUIRES_MORE_EVIDENCE" ? "EVIDENCE_CONFLICT" : "NONE",
+    result: derivedResult,
+    resolutionIssue: derivedResult === "UNKNOWN" ? decision.disposition === "REQUIRES_MORE_EVIDENCE" ? "EVIDENCE_CONFLICT" : "CANDIDATE_MISSING" : "NONE",
     unknownTreatment: "BLOCK",
     importance: importance(row),
-    evidenceConfidence: disposition === "REQUIRES_MORE_EVIDENCE" ? 0 : relation === "ADJACENT" ? 0.8 : 1,
+    evidenceConfidence: derivedResult === "UNKNOWN" ? 0 : relation === "ADJACENT" ? 0.8 : 1,
     candidateFactIds,
     jobEvidenceIds,
     relation,
@@ -293,9 +404,9 @@ function fitComponents(rows: readonly PersistedRequirementRow[], reviews: readon
     const factIds = strings(decision.candidateFactVersionIds);
     const relation = relationFromReview(review);
     const evidenceFactor = evidenceFactorForRelation(relation, row.requirement_strength === "REQUIRED");
-    const evidenceIds = [...strings(decision.sourceEvidenceNodeIds), ...factIds];
     let capabilityOrDepthFactor: number | null = null;
-    const linkedFacts = factIds.map((id) => facts.get(id)).filter((fact): fact is PersistedCandidateFact => Boolean(fact));
+    const linkedFacts = factIds.map((id) => facts.get(id)).filter((fact): fact is PersistedCandidateFact => Boolean(fact) && factRelevantToCriterion(fact!, parsed.data));
+    const evidenceIds = [...strings(decision.sourceEvidenceNodeIds), ...linkedFacts.map((fact) => fact.id)];
     if (parsed.data.kind === "EXPERIENCE") {
       const conservativeMonths = linkedFacts.reduce((max, fact) => Math.max(max, (fact.calendar_duration_days ?? 0) / 30.4375), 0);
       capabilityOrDepthFactor = experienceDepthFactor({ conservativeVerifiedMonths: conservativeMonths, employerTargetMonths: parsed.data.minimumMonths || null, statedScopeConfirmed: object(review.decision).disposition === "RESOLVED_PASS" });
@@ -338,6 +449,23 @@ function criterionText(criterion: TypedCriterion) {
   return semanticComparisonKey(parts.filter(Boolean).join(" "));
 }
 
+export function customerCriterionEvidenceMatches(rootKey: string, value: unknown) {
+  const parsed = typedCriterionSchema.safeParse(value);
+  if (!parsed.success) return false;
+  const criterion = parsed.data;
+  if (rootKey === "customer:work-mode") return criterion.kind === "WORK_MODE";
+  if (rootKey === "customer:geography-state") return criterion.kind === "GEOGRAPHY" || criterion.kind === "WORK_MODE";
+  if (rootKey.startsWith("customer:commute")) return criterion.kind === "COMMUTE";
+  if (rootKey === "customer:employment-type") return criterion.kind === "EMPLOYMENT_TYPE";
+  if (rootKey === "customer:title-restriction") return criterion.kind === "CUSTOMER_TITLE_RESTRICTION";
+  const suffix = rootKey.split(":").slice(rootKey.startsWith("customer:work-condition:") ? 2 : rootKey.startsWith("customer:dealbreaker:custom:") ? 3 : 2).join("-");
+  if (rootKey.startsWith("customer:blocked-industry:")) return criterion.kind === "INDUSTRY_DOMAIN" && tokensOverlap(suffix, [criterion.domain, criterion.semanticKey]);
+  if (rootKey.startsWith("customer:benefit:")) return criterion.kind === "BENEFIT" && tokensOverlap(suffix, [criterion.benefit, criterion.semanticKey]);
+  if (rootKey.startsWith("customer:dealbreaker:")) return ["TRAVEL_PHYSICAL", "DUTY_EXCLUSION", "RESPONSIBILITY", "COMPENSATION", "CUSTOM_EXCLUSION"].includes(criterion.kind) && tokensOverlap(suffix, criterionText(criterion));
+  if (rootKey.startsWith("customer:work-condition:")) return tokensOverlap(suffix, criterionText(criterion));
+  return false;
+}
+
 function labelFor(value: string) {
   return activityCatalog.find(([id]) => id === value)?.[1]
     ?? dealbreakerCatalog.find(([id]) => id === value)?.[1]
@@ -374,12 +502,21 @@ function employerOmissionGate(snapshot: PersistedIntakeForMatching, rootKey: str
   };
 }
 
-function applyCustomerReview(snapshot: PersistedIntakeForMatching, automatic: CustomerHardGate, review: PersistedReview | null): CustomerHardGate {
-  if (automatic.result === "FAIL" || !review) return automatic;
+function applyCustomerReview(snapshot: PersistedIntakeForMatching, criteria: readonly TypedCriterion[], automatic: CustomerHardGate, review: PersistedReview | null): CustomerHardGate {
+  if (!review || automatic.result !== "UNKNOWN") return automatic;
   const decision = object(review.decision);
   if (decision.customerCriterionKey !== automatic.rootKey) throw new Error("customer_criterion_review_key_mismatch");
-  if (decision.result === "FAIL") return { rootKey: automatic.rootKey, result: "FAIL", resolutionIssue: "NONE", unknownTreatment: "BLOCK" };
-  if (decision.result === "PASS") return { rootKey: automatic.rootKey, result: "PASS", resolutionIssue: "NONE", unknownTreatment: "BLOCK" };
+  const cited = new Set(strings(decision.sourceEvidenceNodeIds));
+  const exactEvidence = criteria.filter((criterion) => cited.has(criterion.stableCriterionId) && customerCriterionEvidenceMatches(automatic.rootKey, criterion));
+  if (!exactEvidence.length) throw new Error("customer_criterion_review_not_bound_to_exact_typed_evidence");
+  if (decision.result === "PASS" || decision.result === "FAIL") {
+    const workCondition = automatic.rootKey.startsWith("customer:work-condition:")
+      ? Object.entries(object(snapshot.work_condition_preferences)).find(([condition]) => slug(condition) === automatic.rootKey.slice("customer:work-condition:".length))?.[1]
+      : null;
+    const expected = automatic.rootKey.startsWith("customer:blocked-industry:") || automatic.rootKey.startsWith("customer:dealbreaker:") || workCondition === "DO_NOT_SHOW" || workCondition === "DEALBREAKER" ? "FAIL" : "PASS";
+    if (decision.result !== expected) throw new Error("customer_criterion_review_conflicts_with_typed_evidence");
+    return { rootKey: automatic.rootKey, result: expected, resolutionIssue: "NONE", unknownTreatment: "BLOCK" };
+  }
   if (decision.result !== "UNKNOWN" || !["EMPLOYER_OMITTED", "PARSER_UNCERTAIN", "EVIDENCE_CONFLICT"].includes(String(decision.resolutionIssue))) throw new Error("customer_criterion_review_result_invalid");
   const allowed = decision.unknownTreatment === "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING";
   const expectedConsent = `${snapshot.schema_version}:${snapshot.content_sha256}`;
@@ -409,7 +546,7 @@ export function deriveCustomerHardGates(input: {
 }) {
   const { snapshot, job, criteria, reviews } = input;
   const gates: CustomerHardGate[] = [];
-  const add = (gate: CustomerHardGate) => gates.push(applyCustomerReview(snapshot, gate, customerReviewFor(reviews, gate.rootKey)));
+  const add = (gate: CustomerHardGate) => gates.push(applyCustomerReview(snapshot, criteria, gate, customerReviewFor(reviews, gate.rootKey)));
   const workModes = new Set(criteria.filter((criterion): criterion is Extract<TypedCriterion, { kind: "WORK_MODE" }> => criterion.kind === "WORK_MODE").flatMap((criterion) => criterion.modes));
   const allowedModes = strings(snapshot.work_modes);
   add(workModes.size === 0
@@ -427,7 +564,7 @@ export function deriveCustomerHardGates(input: {
   } else if (state && workRestrictions.length) geographyGate = workRestrictions.includes(state) ? passGate("customer:geography-state") : failGate("customer:geography-state");
   add(geographyGate);
 
-  if (allowedModes.some((mode) => mode === "HYBRID" || mode === "ONSITE")) {
+  if ([...workModes].some((mode) => mode === "HYBRID" || mode === "ONSITE")) {
     const travel = object(snapshot.travel);
     const commuteDistance = snapshot.commute_distance_miles ?? (typeof travel.commuteDistanceMiles === "number" ? travel.commuteDistanceMiles : null);
     const commuteKey = commuteDistance == null ? "customer:commute" : `customer:commute:${commuteDistance}-miles`;
@@ -455,13 +592,6 @@ export function deriveCustomerHardGates(input: {
     const key = `customer:blocked-industry:${slug(blocked)}`;
     const state = criterionFactState(industries, blocked, ["INDUSTRY_DOMAIN"]);
     add(state === "PRESENT" ? failGate(key) : industries.length ? passGate(key) : employerOmissionGate(snapshot, key, null, `The employer did not confirm whether the role is in ${labelFor(blocked)}.`));
-  }
-
-  for (const schedule of strings(snapshot.schedules)) {
-    const key = `customer:schedule:${slug(schedule)}`;
-    const scheduleCriteria = criteria.filter((criterion) => criterion.kind === "SCHEDULE");
-    const state = criterionFactState(scheduleCriteria, schedule, ["SCHEDULE"]);
-    add(state === "PRESENT" ? passGate(key) : state === "ABSENT" || scheduleCriteria.length ? failGate(key) : employerOmissionGate(snapshot, key, null, `The employer did not confirm the ${schedule} schedule.`));
   }
 
   const benefits = object(snapshot.benefits);

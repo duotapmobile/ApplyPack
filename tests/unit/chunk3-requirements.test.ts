@@ -31,6 +31,14 @@ describe("Chunk 3 requirement semantics", () => {
     expect(result.outcomeDeterminativeUnknownNodeIds).toEqual([]);
   });
 
+  it("marks only UNKNOWN leaves capable of changing the current root outcome", () => {
+    const a = leaf("a-determinative", "a-determinative"), b = leaf("b-pass", "b-pass"), c = leaf("c-immaterial", "c-immaterial");
+    const tree = { nodeId: "root-determinative", semanticKey: "root-determinative", kind: "ALL_OF" as const, children: [a, { nodeId: "or-pass", semanticKey: "or-pass", kind: "ANY_OF" as const, children: [b, c] }] };
+    const result = evaluateRequirementTree(tree, new Map([[a.nodeId, decision("UNKNOWN")], [b.nodeId, decision("PASS")], [c.nodeId, decision("UNKNOWN")]]));
+    expect(result.result).toBe("UNKNOWN");
+    expect(result.outcomeDeterminativeUnknownNodeIds).toEqual([a.nodeId]);
+  });
+
   it("chooses a deterministic satisfaction path by importance, confidence, then ID", () => {
     const tree = { nodeId: "root", semanticKey: "root", kind: "ANY_OF" as const, children: [leaf("b", "b"), leaf("a", "a")] };
     expect(evaluateRequirementTree(tree, new Map([["a", decision("PASS", { importance: 2, evidenceConfidence: 0.9 })], ["b", decision("PASS", { importance: 2, evidenceConfidence: 0.9 })]])).selectedSatisfactionPath).toEqual(["root", "a"]);

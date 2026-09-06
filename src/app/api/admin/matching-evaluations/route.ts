@@ -75,7 +75,7 @@ export async function POST(request: Request) {
     return typeof id === "string" ? [id] : [];
   }))];
   const { data: facts } = candidateFactIds.length
-    ? await auth.admin.from("ap_candidate_facts").select("id,snapshot_id,semantic_key,value_kind,typed_value,verification,source_kind,supplied_source_id,superseded_at,capability_status,calendar_duration_days,customer_display_label,customer_display_value").in("id", candidateFactIds)
+    ? await auth.admin.from("ap_candidate_facts").select("id,snapshot_id,semantic_key,value_kind,typed_value,verification,source_kind,supplied_source_id,superseded_at,capability_status,calendar_duration_days,starts_on,ends_on,intensity_percent,customer_display_label,customer_display_value").in("id", candidateFactIds)
     : { data: [] as PersistedCandidateFact[] };
   if ((facts || []).length !== candidateFactIds.length || (facts || []).some((fact) => fact.snapshot_id !== input.snapshotId || fact.superseded_at || !["CUSTOMER_CONFIRMED", "HUMAN_VERIFIED"].includes(fact.verification) || fact.verification === "HUMAN_VERIFIED" && (fact.source_kind !== "HUMAN_VERIFICATION" || !fact.supplied_source_id))) {
     return NextResponse.json({ error: "All candidate evidence must be current and customer-confirmed or independently human-verified." }, { status: 409 });

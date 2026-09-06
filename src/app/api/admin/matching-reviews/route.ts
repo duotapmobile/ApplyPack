@@ -6,6 +6,7 @@ import { matchingReviewRequestSchema, buildMatchingReviewDecision, buildReviewSu
 import { MATCHING_RULES_VERSION } from "@/lib/matching/evaluation-engine";
 import { parseListingRequirements, requirementPersistenceRows } from "@/lib/matching/listing-parser";
 import { isSameOriginRequest } from "@/lib/security/origin";
+import { customerCriterionEvidenceMatches } from "@/lib/matching/evidence-derived";
 
 export async function POST(request: Request) {
   if (!isSameOriginRequest(request)) return NextResponse.json({ error: "This review request was rejected." }, { status: 403 });
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
   const [{ data: snapshot }, { data: jobSnapshot }, { data: nodes }, { data: inventoryMember }, { data: successor, error: successorError }] = await Promise.all([
     auth.admin.from("ap_intake_snapshots").select("id,customer_id,draft_id,content_sha256,schema_version").eq("id", review.snapshotId).maybeSingle(),
     auth.admin.from("ap_job_snapshots").select("id,requirement_completeness,source_authorization:ap_source_authorizations(state)").eq("id", review.jobSnapshotId).maybeSingle(),
-    auth.admin.from("ap_requirement_nodes").select("id,job_snapshot_id,node_kind,criterion_type,stable_criterion_id,source_locator,source_excerpt").in("id", review.sourceEvidenceNodeIds),
+    auth.admin.from("ap_requirement_nodes").select("id,job_snapshot_id,node_kind,criterion_type,stable_criterion_id,source_locator,source_excerpt,typed_value").in("id", review.sourceEvidenceNodeIds),
     review.inventoryMemberId
       ? auth.admin.from("ap_inventory_members").select("id,job_snapshot_id,inventory_version_id,stable_normalized_job_id,selected_by_deduplication").eq("id", review.inventoryMemberId).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
@@ -49,6 +50,9 @@ export async function POST(request: Request) {
   if (review.reviewKind === "CUSTOMER_CRITERION" && review.unknownTreatment === "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING") {
     const expectedConsent = `${snapshot.schema_version}:${snapshot.content_sha256}`;
     if (review.consentVersion !== expectedConsent) return NextResponse.json({ error: "Allowed employer omission must use the exact immutable customer-consent version." }, { status: 409 });
+  }
+  if (review.reviewKind === "CUSTOMER_CRITERION" && !(nodes || []).some((node) => customerCriterionEvidenceMatches(review.customerCriterionKey!, node.typed_value))) {
+    return NextResponse.json({ error: "Customer-criterion review evidence must be the exact typed employer criterion for that gate." }, { status: 409 });
   }
   if (review.reviewKind === "MATCH_EVIDENCE" && review.evidenceRelation === "ADJACENT" && review.adjacentEquivalenceReviewId) {
     const { data: adjacent } = await auth.admin.from("ap_human_review_records").select("id,snapshot_id,job_snapshot_id,review_kind,decision,invalidated_at").eq("id", review.adjacentEquivalenceReviewId).maybeSingle();

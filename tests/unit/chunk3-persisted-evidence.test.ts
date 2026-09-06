@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { deriveEvaluationFromPersistedEvidence, type PersistedCandidateFact, type PersistedReview } from "@/lib/matching/evidence-derived";
+import { customerCriterionEvidenceMatches, deriveCustomerHardGates, deriveEvaluationFromPersistedEvidence, type PersistedCandidateFact, type PersistedReview } from "@/lib/matching/evidence-derived";
 import { parseListingRequirements, requirementPersistenceRows } from "@/lib/matching/listing-parser";
 
 const jobId = "91000000-0000-4000-8000-000000000001";
@@ -97,6 +97,22 @@ describe("Chunk 3 persisted-evidence remediation", () => {
     expect(parsed.issues).toContainEqual(expect.objectContaining({ code: "UNSUPPORTED_REQUIREMENT" }));
   });
 
+  it("parses negated modes and schedules without turning the negated value into a positive fact", () => {
+    const parsed = parseListingRequirements({ jobSnapshotId: jobId, listingText: "This role is not remote; onsite only.\nNo weekdays; weekends only." });
+    const workMode = parsed.criteria.find((criterion) => criterion.kind === "WORK_MODE");
+    const schedule = parsed.criteria.find((criterion) => criterion.kind === "SCHEDULE");
+    expect(workMode).toMatchObject({ modes: ["ONSITE"] });
+    expect(schedule).toMatchObject({ days: ["WEEKENDS"], weekend: true });
+  });
+
+  it("places required physical demands in the hard tree and holds untyped hard wording", () => {
+    const physical = parseListingRequirements({ jobSnapshotId: jobId, listingText: "Ability to lift 50 pounds." });
+    expect(physical.status).toBe("COMPLETE");
+    expect(physical.tree).toMatchObject({ children: [{ criterion: { kind: "TRAVEL_PHYSICAL", threshold: 50, unit: "POUNDS" } }] });
+    const mixed = parseListingRequirements({ jobSnapshotId: jobId, listingText: "Required: 3 years of operations experience.\nSuccessful candidate must satisfy the bespoke matrix." });
+    expect(mixed.status).toBe("NEEDS_HUMAN_REVIEW");
+  });
+
   it("derives gates, salary policy, fit, confidence, and explanations from persisted evidence", () => {
     const data = fixture();
     const derived = deriveEvaluationFromPersistedEvidence({
@@ -169,6 +185,49 @@ describe("Chunk 3 persisted-evidence remediation", () => {
       usefulnessReview: data.usefulnessReview,
       compensationReview: null,
     })).toThrow("hard_requirement_pass_missing_bound_candidate_evidence");
+  });
+
+  it("rejects reviewer PASS when persisted duration is below the employer minimum", () => {
+    const data = fixture();
+    data.facts[0].calendar_duration_days = 300;
+    expect(() => deriveEvaluationFromPersistedEvidence({
+      snapshot: matchingSnapshot(),
+      job: { id: jobId, exact_title: "Operations Specialist", content_sha256: "b".repeat(64), parser_version: data.parsed.parserVersion, requirement_completeness: 100, compensation_completeness: 0, application_host_type: "EMPLOYER_HOSTED", legitimacy_result: "PASS", listing_activity_result: "PASS", application_path_result: "PASS", material_source_qualities: [1] },
+      sourceAuthorization: { id: "91000000-0000-4000-8000-000000000007", state: "AUTHORIZED_MANUAL_ONLY", access_method: "MANUAL", authorization_version: "source-auth-v1" },
+      nodes: data.nodes as never, facts: data.facts, evidenceReviews: data.evidenceReviews, customerCriteriaReviews: [], usefulnessReview: data.usefulnessReview, compensationReview: null,
+    })).toThrow("review_disposition_conflicts_with_persisted_fact_derivation");
+  });
+
+  it("does not satisfy occupational experience with caregiving or insufficient FTE intensity", () => {
+    for (const change of [
+      { value_kind: "CAREGIVING" },
+      { starts_on: "2023-01-01", ends_on: "2025-12-31", intensity_percent: 50, calendar_duration_days: null },
+    ]) {
+      const data = fixture();
+      Object.assign(data.facts[0], change);
+      const experience = (data.nodes as Array<{ typed_value?: { kind?: string; fteExplicit?: boolean } }>).find((node) => node.typed_value?.kind === "EXPERIENCE");
+      if ("intensity_percent" in change && experience?.typed_value) experience.typed_value.fteExplicit = true;
+      expect(() => deriveEvaluationFromPersistedEvidence({
+        snapshot: matchingSnapshot(),
+        job: { id: jobId, exact_title: "Operations Specialist", content_sha256: "b".repeat(64), parser_version: data.parsed.parserVersion, requirement_completeness: 100, compensation_completeness: 0, application_host_type: "EMPLOYER_HOSTED", legitimacy_result: "PASS", listing_activity_result: "PASS", application_path_result: "PASS", material_source_qualities: [1] },
+        sourceAuthorization: { id: "91000000-0000-4000-8000-000000000007", state: "AUTHORIZED_MANUAL_ONLY", access_method: "MANUAL", authorization_version: "source-auth-v1" },
+        nodes: data.nodes as never, facts: data.facts, evidenceReviews: data.evidenceReviews, customerCriteriaReviews: [], usefulnessReview: data.usefulnessReview, compensationReview: null,
+      })).toThrow("review_disposition_conflicts_with_persisted_fact_derivation");
+    }
+  });
+
+  it("does not create a commute hard gate for a remote job or duplicate schedule preferences as hard gates", () => {
+    const parsed = parseListingRequirements({ jobSnapshotId: jobId, listingText: "Remote full-time role in Virginia." });
+    const gates = deriveCustomerHardGates({ snapshot: matchingSnapshot({ work_modes: ["REMOTE", "HYBRID"], schedules: ["weekends"] }), job: { id: jobId, exact_title: "Remote Specialist", content_sha256: "b".repeat(64), parser_version: parsed.parserVersion, requirement_completeness: 100, compensation_completeness: 0, application_host_type: "EMPLOYER_HOSTED", legitimacy_result: "PASS", listing_activity_result: "PASS", application_path_result: "PASS" }, criteria: parsed.criteria, reviews: [] });
+    expect(gates.some((gate) => gate.rootKey.startsWith("customer:commute"))).toBe(false);
+    expect(gates.some((gate) => gate.rootKey.startsWith("customer:schedule"))).toBe(false);
+  });
+
+  it("requires customer review evidence to match the exact typed gate", () => {
+    const parsed = parseListingRequirements({ jobSnapshotId: jobId, listingText: "Health insurance is offered.\n401k retirement benefit is offered." });
+    const health = parsed.criteria.find((criterion) => criterion.kind === "BENEFIT" && criterion.benefit.toLowerCase().includes("health"))!;
+    expect(customerCriterionEvidenceMatches("customer:benefit:health-insurance", health)).toBe(true);
+    expect(customerCriterionEvidenceMatches("customer:benefit:retirement", health)).toBe(false);
   });
 
   it("does not expose caller-assigned gates, salary policy, fit factors, or confidence numbers", () => {

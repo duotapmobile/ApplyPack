@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { semanticComparisonKey, type TypedCriterion } from "@/lib/domain/foundation";
 import { industryCatalog, stateOrDcOptions } from "@/lib/intake/four-step";
 
-export const LISTING_PARSER_VERSION = "listing-requirements-v4";
+export const LISTING_PARSER_VERSION = "listing-requirements-v5";
 
 export type ListingParserIssue = {
   locator: string;
@@ -50,7 +50,7 @@ function parseMoney(text: string) {
 }
 
 function strengthFor(line: string): TypedCriterion["strength"] {
-  if (/\b(required|must|minimum|need to|shall)\b/iu.test(line)) return "REQUIRED";
+  if (/\b(required|must|minimum|need to|shall|required to|ability to|must be able to|capable of|essential function|successful candidate)\b/iu.test(line)) return "REQUIRED";
   if (/\b(preferred|nice to have|plus)\b/iu.test(line)) return "PREFERRED";
   return "INFORMATIONAL";
 }
@@ -58,7 +58,10 @@ function strengthFor(line: string): TypedCriterion["strength"] {
 function stateCodesFrom(text: string) {
   const matches: string[] = [];
   for (const [code, name] of stateOrDcOptions) {
-    if (new RegExp(`\\b${name.replaceAll(" ", "\\s+")}\\b`, "iu").test(text) || new RegExp(`\\b${code}\\b`, "u").test(text)) matches.push(code);
+    const codeMatch = code === "OR"
+      ? /(?:,\s*OR\b|\bOR\s+\d{5}(?:-\d{4})?\b)/u.test(text)
+      : new RegExp(`\\b${code}\\b`, "u").test(text);
+    if (new RegExp(`\\b${name.replaceAll(" ", "\\s+")}\\b`, "iu").test(text) || codeMatch) matches.push(code);
   }
   return [...new Set(matches)];
 }
@@ -75,9 +78,11 @@ function listingFactsFor(snapshotId: string, locator: string, text: string): Typ
   const strength = strengthFor(text);
   const criteria: TypedCriterion[] = [];
   const makeBase = (kind: string) => base(snapshotId, locator, text, strength, kind);
+  const remoteNegated = /\b(?:not|no)\s+(?:available\s+)?remote\b|\bremote\s+(?:work\s+)?(?:is\s+)?(?:not|unavailable)\b/iu.test(text);
+  const hybridNegated = /\b(?:not|no)\s+hybrid\b/iu.test(text);
   const modes = [
-    /\bremote\b/iu.test(text) ? "REMOTE" as const : null,
-    /\bhybrid\b/iu.test(text) ? "HYBRID" as const : null,
+    /\bremote\b/iu.test(text) && !remoteNegated ? "REMOTE" as const : null,
+    /\bhybrid\b/iu.test(text) && !hybridNegated ? "HYBRID" as const : null,
     /\b(on[ -]?site|in[ -]?office)\b/iu.test(text) ? "ONSITE" as const : null,
   ].filter((value): value is "REMOTE" | "HYBRID" | "ONSITE" => value !== null);
   const states = stateCodesFrom(text);
@@ -116,11 +121,11 @@ function listingFactsFor(snapshotId: string, locator: string, text: string): Typ
     });
   }
 
-  if (/\b(weekday|weekend|evening|night shift|day shift|on[ -]?call|flexible schedule)\b/iu.test(text)) {
+  if (/\b(weekdays?|weekends?|evenings?|night shift|day shift|on[ -]?call|flexible schedule)\b/iu.test(text)) {
     criteria.push({
       ...makeBase("SCHEDULE"),
       kind: "SCHEDULE",
-      days: [/\bweekday/iu.test(text) ? "WEEKDAYS" : null, /\bweekend/iu.test(text) ? "WEEKENDS" : null].filter((value): value is string => Boolean(value)),
+      days: [/\bweekdays?\b/iu.test(text) && !/\bno\s+weekdays?\b/iu.test(text) ? "WEEKDAYS" : null, /\bweekends?\b/iu.test(text) && !/\bno\s+weekends?\b/iu.test(text) ? "WEEKENDS" : null].filter((value): value is string => Boolean(value)),
       startTime: null,
       endTime: null,
       timeZone: null,
@@ -137,7 +142,8 @@ function listingFactsFor(snapshotId: string, locator: string, text: string): Typ
         : /\bcold call/iu.test(text) ? "COLD_CALLING"
           : /\bphone work\b/iu.test(text) ? "HEAVY_PHONE"
             : /\bsales\b/iu.test(text) ? "SALES" : "PHYSICAL_LABOR";
-    criteria.push({ ...makeBase("TRAVEL_PHYSICAL"), kind: "TRAVEL_PHYSICAL", normalizedDemand: demand, threshold: null, unit: null, accommodationNeutral: true });
+    const threshold = text.match(/\b(\d+(?:\.\d+)?)\s*(pounds?|lbs?|percent|%)\b/iu);
+    criteria.push({ ...makeBase("TRAVEL_PHYSICAL"), kind: "TRAVEL_PHYSICAL", normalizedDemand: demand, threshold: threshold ? Number(threshold[1]) : null, unit: threshold ? threshold[2].toLocaleUpperCase("en-US") : null, accommodationNeutral: true });
   }
   if (/\b(benefits?|health insurance|medical insurance|paid time off|pto|retirement|401\s*\(?k\)?)\b/iu.test(text)) {
     criteria.push({ ...makeBase("BENEFIT"), kind: "BENEFIT", benefit: text.slice(0, 300), employerConfirmation: /\b(no|not offered|without)\b/iu.test(text) ? "UNKNOWN" : "CONFIRMED" });
@@ -171,6 +177,12 @@ function criterionFor(snapshotId: string, locator: string, text: string, strengt
 
   const education = text.match(/\b(high school|associate(?:'s)?|bachelor(?:'s)?|master(?:'s)?|doctorate|ph\.?d\.?)\b/iu);
   if (education) return { ...common, kind: "EDUCATION", level: education[1], allowedFields: [], completionStatus: "REQUIRED_BY_LISTING", equivalencyLanguage: /equivalent/iu.test(text) ? text : null };
+
+  const credential = text.match(/\b(?:[A-Z][A-Z0-9-]{1,15}\s+(?:certification|certificate|license)|(?:certification|certificate|license)\s+(?:in|as)\s+[^.;]{2,80})\b/u);
+  if (credential) return { ...common, kind: "CERTIFICATION_LICENSE", credential: credential[0].slice(0, 300), status: "UNKNOWN", jurisdiction: null };
+
+  const tool = text.match(/\b(?:proficien(?:t|cy)|experience|familiar(?:ity)?|skilled)\s+(?:in|with)\s+([^.;]{2,120})/iu);
+  if (tool && !experience) return { ...common, kind: "TOOL_CAPABILITY", toolOrTaskCluster: tool[1].trim(), proficiency: /familiar/iu.test(text) ? "FAMILIARITY" : /experience/iu.test(text) ? "PRIOR_USE" : "CURRENT" };
 
   if (/\b(responsibilit(?:y|ies)|you will|duties include)\b/iu.test(text)) return { ...common, strength: strength === "INFORMATIONAL" ? "PREFERRED" : strength, kind: "RESPONSIBILITY", activity: text.slice(0, 300), centrality: "CENTRAL", complexity: null, autonomy: null, scope: null, frequency: null };
   return null;
@@ -208,8 +220,10 @@ export function parseListingRequirements(input: { jobSnapshotId: string; listing
   const hardNodes: ParsedRequirementNode[] = [];
   const issues: ListingParserIssue[] = [];
   for (const line of lines) {
-    for (const fact of listingFactsFor(input.jobSnapshotId, line.locator, line.text)) {
+    const facts = listingFactsFor(input.jobSnapshotId, line.locator, line.text);
+    for (const fact of facts) {
       if (!criteria.some((criterion) => criterion.stableCriterionId === fact.stableCriterionId)) criteria.push(fact);
+      if (fact.strength === "REQUIRED" && !hardNodes.some((node) => node.nodeId === fact.stableCriterionId)) hardNodes.push(criterionNode(fact));
     }
     const alternative = alternativeNode(input.jobSnapshotId, line.locator, line.text);
     if (alternative) {
@@ -226,7 +240,7 @@ export function parseListingRequirements(input: { jobSnapshotId: string; listing
       criteria.push(criterion);
       if (criterion.strength === "REQUIRED") hardNodes.push(criterionNode(criterion));
     }
-    else if (/\b(required|must|minimum|qualification|license|certification|experience|degree|clearance)\b/iu.test(line.text)) {
+    else if (/\b(required|must|minimum|qualification|license|certification|experience|degree|clearance|required to|ability to|must be able to|capable of|essential function|successful candidate)\b/iu.test(line.text) && !facts.some((fact) => fact.strength === "REQUIRED")) {
       issues.push({ locator: line.locator, code: "UNSUPPORTED_REQUIREMENT", text: line.text });
     }
   }

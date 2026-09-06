@@ -257,9 +257,9 @@ Order:
 
 1. Record target project identity, current application/database commit, and a restorable backup checkpoint. Stop on mismatch.
 2. Keep `APP_JOB_SOURCE_SYNC_ENABLED=false`, payment/Checkout disabled, and feasibility workers stopped.
-3. Apply `202609040025_chunk3_matching_engine.sql`, `202609050026_chunk3_audit_remediation.sql`, `202609050027_chunk3_persisted_evidence_remediation.sql`, and `202609050028_chunk3_contract_completion.sql` in order after migrations `022`, `023`, and `024`. All four are expand-only.
-4. Regenerate database types from that exact 28-migration schema and deploy compatibility code. Existing rows remain explicitly `legacy_compatibility=true`; new strict rows default false.
-5. Verify all four Chunk 3 checkpoints, table/RPC privileges, default-deny source states, and zero unexpected automated sources.
+3. Apply `202609040025_chunk3_matching_engine.sql`, `202609050026_chunk3_audit_remediation.sql`, `202609050027_chunk3_persisted_evidence_remediation.sql`, `202609050028_chunk3_contract_completion.sql`, and `202609060029_chunk3_final_acceptance_remediation.sql` in order after migrations `022`, `023`, and `024`. All five are expand-only.
+4. Regenerate database types from that exact 29-migration schema and deploy compatibility code. Existing rows remain explicitly `legacy_compatibility=true`; new strict rows default false.
+5. Verify all five Chunk 3 checkpoints, table/RPC privileges, default-deny source states, and zero unexpected automated sources.
 6. Separately obtain documentary business/legal authorization before inserting any `AUTHORIZED_AUTOMATED` record. Then separately approve positive source bounds and release TTL. No permissive defaults exist.
 7. Populate immutable inventory, requirement/evaluation, coverage, review, and displacement evidence through protected service-role workflows. Do not accept caller totals.
 8. Start the feasibility worker only after required coverage configuration, staff roles, monitoring, retry/dead-letter procedures, and TTL are approved. Run a synthetic canary first. A pending/error run creates no outcome or Checkout.
@@ -346,7 +346,7 @@ Required results before even considering worker activation: one completed checkp
 Failure recovery:
 
 1. Stop feasibility workers and keep source sync, Checkout, and payment disabled.
-2. Revert application traffic to the preceding compatible commit. Leave migrations `202609040025` through `202609050028` and immutable evidence in place.
+2. Revert application traffic to the preceding compatible commit. Leave migrations `202609040025` through `202609060029` and immutable evidence in place.
 3. Do not delete authorization, source configuration, coverage, inventory, evaluation, review, displacement, request, assessment, or audit rows.
 4. Move a retryable claimed request back through the guarded defer path; mark stale only when its snapshot is no longer active; mark result-changing configuration/retrieval/parser defects `ERROR`. Never convert an incomplete run to `LIMITED` or `INFEASIBLE`.
 5. Reconcile each request to its exact snapshot hash, coverage plan, inventory version, rules version, and assessment before retry. Never create a replacement success with a new caller total.
@@ -365,7 +365,7 @@ Migration `202609050028_chunk3_contract_completion.sql` is the additive third co
 Deployment order:
 
 1. Keep job-source synchronization, feasibility scheduling, Checkout, payment, and customer release disabled. Record the target database project, application commit, database migration head, and backup/restore checkpoint.
-2. Apply migrations through `202609050028` in order. Do not mark `025`, `026`, `027`, or `028` applied without executing them. Verify all four checkpoint rows.
+2. Apply migrations through `202609060029` in order. Do not mark `025`, `026`, `027`, `028`, or `029` applied without executing them. Verify all five checkpoint rows.
 3. Regenerate database types from the migrated target. Deploy code that uses `matching-rules-v3`, current exact-subject reviews, `ap_match_evaluations`, and immutable `ap_match_selection_runs/members`, never `rankLegacyJobs`, in search, operator listing, delivery, and replacement paths.
 4. Populate a synthetic authorized-manual inventory member, complete parsed requirement tree, exact candidate facts, criterion-bound match reviews, a five-section usefulness review, every applicable customer hard gate and soft preference, and a server-derived evaluation. Confirm an incomplete parse, wrong evidence-to-criterion link, zero-fact hard pass, wrong root-key set, sparse adjacent review, stale review ID, superseded job snapshot, non-current authorization, noncontiguous selection ranks, and direct service-role insert to `ap_feasibility_assessments` all fail closed.
 5. Configure `APP_FEASIBILITY_WORKER_ID` only after the production worker identity, lease/monitoring owner, retry alerting, required manual coverage plan, immutable inventory, and evaluations are present. An unset value intentionally returns `disabled`; it is not a permissive default.
@@ -381,7 +381,8 @@ where (migration_id, checkpoint) in (
   ('202609040025','CHUNK3_MATCHING_ENGINE_EXPAND'),
   ('202609050026','CHUNK3_AUDIT_REMEDIATION_EXPAND'),
   ('202609050027','CHUNK3_PERSISTED_EVIDENCE_EXPAND'),
-  ('202609050028','CHUNK3_CONTRACT_COMPLETION_EXPAND')
+  ('202609050028','CHUNK3_CONTRACT_COMPLETION_EXPAND'),
+  ('202609060029','CHUNK3_FINAL_ACCEPTANCE_EXPAND')
 )
 order by migration_id;
 
@@ -463,6 +464,25 @@ from public.search_candidates
 where review_status='proposed' and evaluation_id is null;
 ```
 
-Required results: all four checkpoints exist once; every anomaly count and `proposed_candidate_without_evaluation` is zero for corrected-contract work; `service_role_can_insert` is false; `service_role_can_derive` is true; every current assessment reconciles to its inventory and expires exactly 60 minutes after creation. Legacy compatibility rows may retain null provenance but cannot enter the corrected runtime selector or release path.
+Required results: all five checkpoints exist once; every anomaly count and `proposed_candidate_without_evaluation` is zero for corrected-contract work; `service_role_can_insert` is false; `service_role_can_derive` is true; every current assessment reconciles to its inventory and expires exactly 60 minutes after creation. Legacy compatibility rows may retain null provenance but cannot enter the corrected runtime selector or release path.
 
-Failure recovery leaves all four additive migrations in place. Stop the feasibility worker, unset its worker identity and release TTL, disable application traffic to the new endpoints, and revert code/traffic to the previous compatible build. Preserve inventory, evaluations, reviews, parser-correction lineage, selection runs, assessments, requests, and audit events. Repair forward with another additive migration after database-owner review; do not edit migration history, fabricate counts, drop evidence, or rewrite legacy paid data.
+Failure recovery leaves all five additive migrations in place. Stop the feasibility worker, unset its worker identity and release TTL, disable application traffic to the new endpoints, and revert code/traffic to the previous compatible build. Preserve inventory, evaluations, reviews, parser-correction lineage, selection runs, assessments, requests, and audit events. Repair forward with another additive migration after database-owner review; do not edit migration history, fabricate counts, drop evidence, or rewrite legacy paid data.
+
+### Chunk 3 final acceptance remediation deployment
+
+Apply `202609060029_chunk3_final_acceptance_remediation.sql` after `202609050028_chunk3_contract_completion.sql`. It is an expand-only insert guard and checkpoint; do not edit or squash migrations 025 through 029. Then regenerate `src/lib/database.types.ts`, deploy the compatible code, and verify the checkpoint before enabling matching evaluation traffic:
+
+```powershell
+npx.cmd supabase migration up --local
+npm.cmd run test:database
+npm.cmd run types:database:check
+npm.cmd test -- --pool=threads --maxWorkers=1 --reporter=dot
+npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd run build
+npm.cmd run test:e2e
+```
+
+Production validation must show exactly one `202609060029 / CHUNK3_FINAL_ACCEPTANCE_EXPAND` checkpoint and zero newly accepted customer-criterion reviews whose cited node type does not match the gate family. Review a sample of new manual-source job snapshots: discovery quality must include `0.80`; `application_host_type='EMPLOYER_HOSTED'` is permitted only when normalization resolved a registry-verified employer application URL. Confirm remote-only jobs have no commute root and schedule preferences occur only in `soft_preferences` unless a separate hard work-condition criterion exists.
+
+Failure recovery leaves all five Chunk 3 migrations in place, stops new matching evaluation traffic and the feasibility worker, and rolls code/traffic back to the preceding compatible build. Do not delete review, job, fact, selection, feasibility, or audit history. Repair forward with a new additive migration after database-owner review.

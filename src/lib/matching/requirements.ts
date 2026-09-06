@@ -84,7 +84,15 @@ export function evaluateRequirementTree(raw: unknown, decisions: ReadonlyMap<str
     return { node, result, leaves, path: result === "PASS" ? [node.nodeId, ...selected.flatMap((c) => c.path ?? [])] : null, quality };
   };
   const evaluated = walk(root);
-  const determinative = evaluated.result === "UNKNOWN" ? evaluated.leaves.filter((leaf) => leaf.result === "UNKNOWN").map((leaf) => leaf.nodeId) : [];
+  const resultWithOverride = (node: EvaluatableRequirementNode, leafId: string, override: CriterionResult): CriterionResult => {
+    if (node.kind === "CRITERION") return node.nodeId === leafId ? override : decisions.get(node.nodeId)!.result;
+    const results = node.children.map((child) => resultWithOverride(child, leafId, override));
+    return node.kind === "ALL_OF"
+      ? results.some((result) => result === "FAIL") ? "FAIL" : results.every((result) => result === "PASS") ? "PASS" : "UNKNOWN"
+      : results.some((result) => result === "PASS") ? "PASS" : results.every((result) => result === "FAIL") ? "FAIL" : "UNKNOWN";
+  };
+  const determinative = evaluated.result === "UNKNOWN" ? evaluated.leaves.filter((leaf) => leaf.result === "UNKNOWN"
+    && (resultWithOverride(root, leaf.nodeId, "PASS") !== evaluated.result || resultWithOverride(root, leaf.nodeId, "FAIL") !== evaluated.result)).map((leaf) => leaf.nodeId) : [];
   const selected = new Set(evaluated.path ?? []);
   return {
     nodeId: root.nodeId,

@@ -113,7 +113,7 @@ describe("Chunk 3 audit remediation", () => {
       reviews: [{ id: "10000000-0000-4000-8000-000000000099", snapshot_id: uuid, job_snapshot_id: uuid, review_kind: "CUSTOMER_CRITERION", review_subject_key: "customer:employment-type", decision: { disposition: "RESOLVED_PASS", customerCriterionKey: "customer:employment-type", sourceEvidenceNodeIds: [] }, invalidated_at: null, reviewer_id: uuid, created_at: "2026-09-05T00:00:00.000Z" }],
     });
     expect(gates.map((gate) => gate.rootKey)).toEqual(expect.arrayContaining([
-      "customer:work-mode", "customer:geography-state", "customer:employment-type", "customer:schedule:weekdays",
+      "customer:work-mode", "customer:geography-state", "customer:employment-type",
       "customer:blocked-industry:healthcare", "customer:benefit:health-insurance", "customer:dealbreaker:required-travel", "customer:work-condition:travel",
     ]));
     expect(gates.find((gate) => gate.rootKey === "customer:employment-type")?.result).toBe("FAIL");
@@ -152,7 +152,9 @@ describe("Chunk 3 audit remediation", () => {
     const jobsRoute = readFileSync("src/app/api/admin/jobs/route.ts", "utf8");
     const evaluationRoute = readFileSync("src/app/api/admin/matching-evaluations/route.ts", "utf8");
     const reviewRoute = readFileSync("src/app/api/admin/matching-reviews/route.ts", "utf8");
-    expect(jobsRoute).toContain("listingHost === applicationHost ? [1] : [0.8, 1]");
+    expect(jobsRoute).toContain("chooseApplicationProvenance");
+    expect(jobsRoute).toContain('applicationHostType === "EMPLOYER_HOSTED" ? [0.8, 1] : [0.8]');
+    expect(jobsRoute).not.toContain('application_host_type: "EMPLOYER_HOSTED"');
     expect(evaluationRoute).toContain('.is("invalidated_at", null)');
     expect(evaluationRoute).toContain('eq("supersedes_job_snapshot_id", input.jobSnapshotId)');
     expect(reviewRoute).toContain('rpc("ap_record_matching_review"');

@@ -6576,6 +6576,10 @@ export type Database = {
         Returns: boolean
       }
       ap_capacity_available: { Args: { p_bucket_id: string }; Returns: number }
+      ap_chunk3_customer_criterion_node_matches: {
+        Args: { p_key: string; p_type: string; p_value: Json }
+        Returns: boolean
+      }
       ap_claim_feasibility_request: {
         Args: { p_request_id: string; p_worker_id: string }
         Returns: {
