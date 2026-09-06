@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { semanticComparisonKey, type TypedCriterion } from "@/lib/domain/foundation";
+import { industryCatalog, stateOrDcOptions } from "@/lib/intake/four-step";
 
-export const LISTING_PARSER_VERSION = "listing-requirements-v3";
+export const LISTING_PARSER_VERSION = "listing-requirements-v4";
 
 export type ListingParserIssue = {
   locator: string;
@@ -28,9 +29,9 @@ function stableUuid(seed: string) {
   return `${value.slice(0, 8).join("")}-${value.slice(8, 12).join("")}-${value.slice(12, 16).join("")}-${value.slice(16, 20).join("")}-${value.slice(20).join("")}`;
 }
 
-function base(snapshotId: string, locator: string, text: string, strength: TypedCriterion["strength"]) {
+function base(snapshotId: string, locator: string, text: string, strength: TypedCriterion["strength"], discriminator = "requirement") {
   return {
-    stableCriterionId: stableUuid(`${snapshotId}|${locator}|${semanticComparisonKey(text)}`),
+    stableCriterionId: stableUuid(`${snapshotId}|${locator}|${discriminator}|${semanticComparisonKey(text)}`),
     semanticKey: semanticComparisonKey(text),
     strength,
     sourceLocator: locator,
@@ -40,8 +41,12 @@ function base(snapshotId: string, locator: string, text: string, strength: Typed
 }
 
 function parseMoney(text: string) {
-  const matches = [...text.matchAll(/\$\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*([kK])?/gu)];
-  return matches.map((match) => Math.round(Number(match[1].replaceAll(",", "")) * (match[2] ? 100_000 : 100)));
+  const matches = [...text.matchAll(/(?:(USD|CAD|EUR|GBP)\s*)?(US\$|CA\$|C\$|\$)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*([kK])?(?:\s*(USD|CAD|EUR|GBP))?/giu)];
+  return matches.map((match) => {
+    const symbol = match[2].toLocaleUpperCase("en-US");
+    const currency = (match[5] || match[1] || (symbol === "C$" || symbol === "CA$" ? "CAD" : "USD")).toLocaleUpperCase("en-US");
+    return { cents: Math.round(Number(match[3].replaceAll(",", "")) * (match[4] ? 100_000 : 100)), currency };
+  });
 }
 
 function strengthFor(line: string): TypedCriterion["strength"] {
@@ -50,15 +55,104 @@ function strengthFor(line: string): TypedCriterion["strength"] {
   return "INFORMATIONAL";
 }
 
-function criterionFor(snapshotId: string, locator: string, text: string, strengthOverride?: TypedCriterion["strength"]): TypedCriterion | null {
-  const strength = strengthOverride ?? strengthFor(text);
-  const common = base(snapshotId, locator, text, strength);
+function stateCodesFrom(text: string) {
+  const matches: string[] = [];
+  for (const [code, name] of stateOrDcOptions) {
+    if (new RegExp(`\\b${name.replaceAll(" ", "\\s+")}\\b`, "iu").test(text) || new RegExp(`\\b${code}\\b`, "u").test(text)) matches.push(code);
+  }
+  return [...new Set(matches)];
+}
+
+function locationApplicability(text: string) {
+  const beforeColon = text.match(/^\s*([^:]{2,80})\s*:/u)?.[1]?.trim() ?? null;
+  if (beforeColon && !/^(salary|pay|compensation|range)$/iu.test(beforeColon)) return beforeColon;
+  const states = stateCodesFrom(text);
+  if (states.length === 1) return stateOrDcOptions.find(([code]) => code === states[0])?.[1] ?? states[0];
+  return null;
+}
+
+function listingFactsFor(snapshotId: string, locator: string, text: string): TypedCriterion[] {
+  const strength = strengthFor(text);
+  const criteria: TypedCriterion[] = [];
+  const makeBase = (kind: string) => base(snapshotId, locator, text, strength, kind);
   const modes = [
     /\bremote\b/iu.test(text) ? "REMOTE" as const : null,
     /\bhybrid\b/iu.test(text) ? "HYBRID" as const : null,
     /\b(on[ -]?site|in[ -]?office)\b/iu.test(text) ? "ONSITE" as const : null,
   ].filter((value): value is "REMOTE" | "HYBRID" | "ONSITE" => value !== null);
-  if (modes.length) return { ...common, kind: "WORK_MODE", modes: [...new Set(modes)], locationRestrictions: [] };
+  const states = stateCodesFrom(text);
+  if (modes.length) criteria.push({ ...makeBase("WORK_MODE"), kind: "WORK_MODE", modes: [...new Set(modes)], locationRestrictions: states });
+  if (states.length && /\b(location|located|based|role|position|remote|hybrid|on[ -]?site|in)\b/iu.test(text)) {
+    criteria.push({ ...makeBase("GEOGRAPHY"), kind: "GEOGRAPHY", country: "US", statesOrDc: states, polarity: /\b(not available|excluding|except)\b/iu.test(text) ? "DENY" : "ALLOW", relocationRequired: /\brelocat/iu.test(text) ? true : null });
+  }
+  const employmentTypes = [
+    /\bfull[ -]?time\b/iu.test(text) ? "FULL_TIME" as const : null,
+    /\bpart[ -]?time\b/iu.test(text) ? "PART_TIME" as const : null,
+    /\b(contract(?:or)?|1099)\b/iu.test(text) ? "CONTRACT" as const : null,
+    /\b(temp(?:orary)?)\b/iu.test(text) ? "TEMPORARY" as const : null,
+  ].filter((value): value is "FULL_TIME" | "PART_TIME" | "CONTRACT" | "TEMPORARY" => value !== null);
+  if (employmentTypes.length) criteria.push({ ...makeBase("EMPLOYMENT_TYPE"), kind: "EMPLOYMENT_TYPE", employmentTypes: [...new Set(employmentTypes)] });
+
+  const money = parseMoney(text);
+  if (money.length) {
+    const endpointMeaning = /\b(up to|maximum|max\.?\s)\b/iu.test(text) ? "UP_TO" as const
+      : /\b(starting at|starts? at|from)\b/iu.test(text) ? "STARTING_AT" as const
+        : money.length > 1 ? "RANGE" as const : "FIXED" as const;
+    const first = money[0]?.cents ?? null;
+    const second = money[1]?.cents ?? null;
+    criteria.push({
+      ...makeBase("COMPENSATION"),
+      kind: "COMPENSATION",
+      currency: money[0]?.currency ?? "USD",
+      period: /\b(hour|hourly|\/hr|per hour)\b/iu.test(text) ? "HOUR" : "YEAR",
+      lowerCents: endpointMeaning === "UP_TO" ? null : first,
+      upperCents: endpointMeaning === "STARTING_AT" ? null : endpointMeaning === "RANGE" ? second : first,
+      endpointMeaning,
+      locationApplicability: locationApplicability(text),
+      basis: /\b(ote|commission|variable)\b/iu.test(text) ? "VARIABLE_OTE" : /\bguaranteed total\b/iu.test(text) ? "GUARANTEED_TOTAL" : "BASE",
+      workerClass: /\b(contractor|1099)\b/iu.test(text) ? "CONTRACTOR" : "EMPLOYEE",
+      source: "EMPLOYER_LISTING",
+      comparisonMethod: "PUBLISHED_TEXT_WITH_ENDPOINT_CURRENCY_AND_LOCATION",
+    });
+  }
+
+  if (/\b(weekday|weekend|evening|night shift|day shift|on[ -]?call|flexible schedule)\b/iu.test(text)) {
+    criteria.push({
+      ...makeBase("SCHEDULE"),
+      kind: "SCHEDULE",
+      days: [/\bweekday/iu.test(text) ? "WEEKDAYS" : null, /\bweekend/iu.test(text) ? "WEEKENDS" : null].filter((value): value is string => Boolean(value)),
+      startTime: null,
+      endTime: null,
+      timeZone: null,
+      shift: /\bnight shift\b/iu.test(text) ? "NIGHT" : /\bday shift\b/iu.test(text) ? "DAY" : null,
+      weekend: /\bno weekends?\b/iu.test(text) ? false : /\bweekends?\b/iu.test(text) ? true : null,
+      evening: /\bno evenings?\b/iu.test(text) ? false : /\b(evening|night shift)\b/iu.test(text) ? true : null,
+      onCall: /\bno on[ -]?call\b/iu.test(text) ? false : /\bon[ -]?call\b/iu.test(text) ? true : null,
+      flexible: /\bflexible schedule\b/iu.test(text) ? true : null,
+    });
+  }
+  if (/\b(travel|physical labor|lift(?:ing)?|standing|cold call|phone work|sales)\b/iu.test(text)) {
+    const demand = /\bno travel\b/iu.test(text) ? "NO_TRAVEL"
+      : /\btravel\b/iu.test(text) ? "TRAVEL"
+        : /\bcold call/iu.test(text) ? "COLD_CALLING"
+          : /\bphone work\b/iu.test(text) ? "HEAVY_PHONE"
+            : /\bsales\b/iu.test(text) ? "SALES" : "PHYSICAL_LABOR";
+    criteria.push({ ...makeBase("TRAVEL_PHYSICAL"), kind: "TRAVEL_PHYSICAL", normalizedDemand: demand, threshold: null, unit: null, accommodationNeutral: true });
+  }
+  if (/\b(benefits?|health insurance|medical insurance|paid time off|pto|retirement|401\s*\(?k\)?)\b/iu.test(text)) {
+    criteria.push({ ...makeBase("BENEFIT"), kind: "BENEFIT", benefit: text.slice(0, 300), employerConfirmation: /\b(no|not offered|without)\b/iu.test(text) ? "UNKNOWN" : "CONFIRMED" });
+  }
+  for (const [id, label] of industryCatalog) {
+    if (new RegExp(`\\b${label.replaceAll(" and ", "(?: and | & )").replaceAll(" ", "\\s+")}\\b`, "iu").test(text)) {
+      criteria.push({ ...makeBase(`INDUSTRY_DOMAIN:${id}`), kind: "INDUSTRY_DOMAIN", domain: id, polarity: "ALLOW" });
+    }
+  }
+  return criteria;
+}
+
+function criterionFor(snapshotId: string, locator: string, text: string, strengthOverride?: TypedCriterion["strength"]): TypedCriterion | null {
+  const strength = strengthOverride ?? strengthFor(text);
+  const common = base(snapshotId, locator, text, strength, "EMPLOYER_REQUIREMENT");
 
   if (/\b(sponsor(?:ship)?|authorized to work|work authorization|visa)\b/iu.test(text)) {
     return { ...common, kind: "AUTHORIZATION_SPONSORSHIP", employerRule: text, customerStatus: "REQUIRES_TARGETED_CONFIRMATION", inferred: false };
@@ -77,12 +171,6 @@ function criterionFor(snapshotId: string, locator: string, text: string, strengt
 
   const education = text.match(/\b(high school|associate(?:'s)?|bachelor(?:'s)?|master(?:'s)?|doctorate|ph\.?d\.?)\b/iu);
   if (education) return { ...common, kind: "EDUCATION", level: education[1], allowedFields: [], completionStatus: "REQUIRED_BY_LISTING", equivalencyLanguage: /equivalent/iu.test(text) ? text : null };
-
-  const money = parseMoney(text);
-  if (money.length) {
-    const period = /\b(hour|hourly|\/hr|per hour)\b/iu.test(text) ? "HOUR" as const : "YEAR" as const;
-    return { ...common, kind: "COMPENSATION", currency: "USD", period, lowerCents: money[0] ?? null, upperCents: money[1] ?? money[0] ?? null, basis: /\b(ote|commission|variable)\b/iu.test(text) ? "VARIABLE_OTE" : "BASE", workerClass: "EMPLOYEE", source: "EMPLOYER_LISTING", comparisonMethod: "PUBLISHED_TEXT_ONLY" };
-  }
 
   if (/\b(responsibilit(?:y|ies)|you will|duties include)\b/iu.test(text)) return { ...common, strength: strength === "INFORMATIONAL" ? "PREFERRED" : strength, kind: "RESPONSIBILITY", activity: text.slice(0, 300), centrality: "CENTRAL", complexity: null, autonomy: null, scope: null, frequency: null };
   return null;
@@ -120,6 +208,9 @@ export function parseListingRequirements(input: { jobSnapshotId: string; listing
   const hardNodes: ParsedRequirementNode[] = [];
   const issues: ListingParserIssue[] = [];
   for (const line of lines) {
+    for (const fact of listingFactsFor(input.jobSnapshotId, line.locator, line.text)) {
+      if (!criteria.some((criterion) => criterion.stableCriterionId === fact.stableCriterionId)) criteria.push(fact);
+    }
     const alternative = alternativeNode(input.jobSnapshotId, line.locator, line.text);
     if (alternative) {
       criteria.push(...alternative.criteria);

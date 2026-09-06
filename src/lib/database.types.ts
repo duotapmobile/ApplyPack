@@ -1914,9 +1914,11 @@ export type Database = {
           job_snapshot_id: string | null
           rationale: string
           review_kind: string
+          review_subject_key: string
           reviewer_id: string
           scope: string | null
           snapshot_id: string
+          supersedes_review_id: string | null
           task_similarity: string | null
         }
         Insert: {
@@ -1936,9 +1938,11 @@ export type Database = {
           job_snapshot_id?: string | null
           rationale: string
           review_kind: string
+          review_subject_key: string
           reviewer_id: string
           scope?: string | null
           snapshot_id: string
+          supersedes_review_id?: string | null
           task_similarity?: string | null
         }
         Update: {
@@ -1958,9 +1962,11 @@ export type Database = {
           job_snapshot_id?: string | null
           rationale?: string
           review_kind?: string
+          review_subject_key?: string
           reviewer_id?: string
           scope?: string | null
           snapshot_id?: string
+          supersedes_review_id?: string | null
           task_similarity?: string | null
         }
         Relationships: [
@@ -1997,6 +2003,13 @@ export type Database = {
             columns: ["snapshot_id"]
             isOneToOne: false
             referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_human_review_records_supersedes_review_id_fkey"
+            columns: ["supersedes_review_id"]
+            isOneToOne: false
+            referencedRelation: "ap_human_review_records"
             referencedColumns: ["id"]
           },
         ]
@@ -2361,6 +2374,7 @@ export type Database = {
           compensation_source: string | null
           compensation_text: string | null
           content_sha256: string
+          correction_review_id: string | null
           created_at: string
           discovery_source: string
           employer_identity_result: string | null
@@ -2376,6 +2390,7 @@ export type Database = {
           live_verified_at: string
           location_and_work_mode: Json
           material_restrictions: Json
+          material_source_qualities: number[]
           normalized_fingerprint: string
           origin: Database["public"]["Enums"]["ap_job_origin"]
           parser_version: string
@@ -2385,6 +2400,7 @@ export type Database = {
           retrieved_at: string
           source_authorization_id: string | null
           source_url: string
+          supersedes_job_snapshot_id: string | null
         }
         Insert: {
           application_host_type: string
@@ -2399,6 +2415,7 @@ export type Database = {
           compensation_source?: string | null
           compensation_text?: string | null
           content_sha256: string
+          correction_review_id?: string | null
           created_at?: string
           discovery_source: string
           employer_identity_result?: string | null
@@ -2414,6 +2431,7 @@ export type Database = {
           live_verified_at: string
           location_and_work_mode: Json
           material_restrictions?: Json
+          material_source_qualities?: number[]
           normalized_fingerprint: string
           origin: Database["public"]["Enums"]["ap_job_origin"]
           parser_version: string
@@ -2423,6 +2441,7 @@ export type Database = {
           retrieved_at: string
           source_authorization_id?: string | null
           source_url: string
+          supersedes_job_snapshot_id?: string | null
         }
         Update: {
           application_host_type?: string
@@ -2437,6 +2456,7 @@ export type Database = {
           compensation_source?: string | null
           compensation_text?: string | null
           content_sha256?: string
+          correction_review_id?: string | null
           created_at?: string
           discovery_source?: string
           employer_identity_result?: string | null
@@ -2452,6 +2472,7 @@ export type Database = {
           live_verified_at?: string
           location_and_work_mode?: Json
           material_restrictions?: Json
+          material_source_qualities?: number[]
           normalized_fingerprint?: string
           origin?: Database["public"]["Enums"]["ap_job_origin"]
           parser_version?: string
@@ -2461,8 +2482,16 @@ export type Database = {
           retrieved_at?: string
           source_authorization_id?: string | null
           source_url?: string
+          supersedes_job_snapshot_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "ap_job_snapshots_correction_review_id_fkey"
+            columns: ["correction_review_id"]
+            isOneToOne: false
+            referencedRelation: "ap_human_review_records"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ap_job_snapshots_legacy_job_id_fkey"
             columns: ["legacy_job_id"]
@@ -2475,6 +2504,13 @@ export type Database = {
             columns: ["source_authorization_id"]
             isOneToOne: false
             referencedRelation: "ap_source_authorizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_job_snapshots_supersedes_job_snapshot_id_fkey"
+            columns: ["supersedes_job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
             referencedColumns: ["id"]
           },
         ]
@@ -6773,6 +6809,10 @@ export type Database = {
           p_secret_hash: string
         }
         Returns: boolean
+      }
+      ap_record_matching_review: {
+        Args: { p_correction?: Json; p_review: Json }
+        Returns: Json
       }
       ap_record_reference_staff_access: {
         Args: {

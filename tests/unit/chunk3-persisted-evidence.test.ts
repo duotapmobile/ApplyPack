@@ -13,8 +13,23 @@ function matchingSnapshot(overrides: Record<string, unknown> = {}) {
     customer_id: "91000000-0000-4000-8000-000000000008",
     content_sha256: "a".repeat(64),
     schema_version: "applypack-intake-v3",
+    desired_activities: [],
+    avoided_activities: [],
     work_modes: ["REMOTE"],
+    preferred_work_mode: null,
     optional_titles: [],
+    confirmed_title_restriction: null,
+    optional_industries: [],
+    blocked_industries: [],
+    us_state_or_dc: "VA",
+    employment_types: ["FULL_TIME"],
+    preferred_employment_type: null,
+    schedules: [],
+    travel: {},
+    benefits: { mustHave: [], wouldPrefer: [], openTo: [] },
+    work_condition_preferences: {},
+    dealbreakers: [],
+    employer_unknown_policy: {},
     salary_target_cents: null,
     salary_hard_minimum_cents: null,
     salary_minimum_flexible: false,
@@ -33,8 +48,9 @@ function review(id: string, kind: string, decision: Record<string, unknown>): Pe
 }
 
 function fixture() {
-  const parsed = parseListingRequirements({ jobSnapshotId: jobId, listingText: "Required: 3 years of customer operations experience.\nResponsibilities: coordinate service recovery." });
-  const nodes = requirementPersistenceRows(parsed, "Required: 3 years of customer operations experience.\nResponsibilities: coordinate service recovery.") as never[];
+  const listingText = "Remote full-time role in Virginia.\nRequired: 3 years of customer operations experience.\nResponsibilities: coordinate service recovery.";
+  const parsed = parseListingRequirements({ jobSnapshotId: jobId, listingText });
+  const nodes = requirementPersistenceRows(parsed, listingText) as never[];
   const criteria = nodes.filter((node) => (node as { node_kind: string }).node_kind === "CRITERION") as Array<{ id: string; stable_criterion_id: string; typed_value: { kind: string } }>;
   const experience = criteria.find((node) => node.typed_value.kind === "EXPERIENCE")!;
   const responsibility = criteria.find((node) => node.typed_value.kind === "RESPONSIBILITY")!;
@@ -85,11 +101,12 @@ describe("Chunk 3 persisted-evidence remediation", () => {
     const data = fixture();
     const derived = deriveEvaluationFromPersistedEvidence({
       snapshot: matchingSnapshot(),
-      job: { id: jobId, exact_title: "Operations Specialist", content_sha256: "b".repeat(64), parser_version: data.parsed.parserVersion, requirement_completeness: 100, compensation_completeness: 0, application_host_type: "EMPLOYER_HOSTED", legitimacy_result: "PASS", listing_activity_result: "PASS", application_path_result: "PASS" },
+      job: { id: jobId, exact_title: "Operations Specialist", content_sha256: "b".repeat(64), parser_version: data.parsed.parserVersion, requirement_completeness: 100, compensation_completeness: 0, application_host_type: "EMPLOYER_HOSTED", legitimacy_result: "PASS", listing_activity_result: "PASS", application_path_result: "PASS", material_source_qualities: [1] },
       sourceAuthorization: { id: "91000000-0000-4000-8000-000000000007", state: "AUTHORIZED_MANUAL_ONLY", access_method: "MANUAL", authorization_version: "source-auth-v1" },
       nodes: data.nodes as never,
       facts: data.facts,
       evidenceReviews: data.evidenceReviews,
+      customerCriteriaReviews: [],
       usefulnessReview: data.usefulnessReview,
       compensationReview: null,
     });
@@ -104,11 +121,12 @@ describe("Chunk 3 persisted-evidence remediation", () => {
     const data = fixture();
     const derived = deriveEvaluationFromPersistedEvidence({
       snapshot: matchingSnapshot({ salary_hard_minimum_cents: 7_500_000, salary_period: "YEAR", salary_basis: "BASE" }),
-      job: { id: jobId, exact_title: "Operations Specialist", content_sha256: "b".repeat(64), parser_version: data.parsed.parserVersion, requirement_completeness: 100, compensation_completeness: 0, application_host_type: "EMPLOYER_HOSTED", legitimacy_result: "PASS", listing_activity_result: "PASS", application_path_result: "PASS" },
+      job: { id: jobId, exact_title: "Operations Specialist", content_sha256: "b".repeat(64), parser_version: data.parsed.parserVersion, requirement_completeness: 100, compensation_completeness: 0, application_host_type: "EMPLOYER_HOSTED", legitimacy_result: "PASS", listing_activity_result: "PASS", application_path_result: "PASS", material_source_qualities: [1] },
       sourceAuthorization: { id: "91000000-0000-4000-8000-000000000007", state: "AUTHORIZED_MANUAL_ONLY", access_method: "MANUAL", authorization_version: "source-auth-v1" },
       nodes: data.nodes as never,
       facts: data.facts,
       evidenceReviews: data.evidenceReviews,
+      customerCriteriaReviews: [],
       usefulnessReview: data.usefulnessReview,
       compensationReview: null,
     });
@@ -126,11 +144,12 @@ describe("Chunk 3 persisted-evidence remediation", () => {
     });
     expect(() => deriveEvaluationFromPersistedEvidence({
       snapshot: matchingSnapshot(),
-      job: { id: jobId, exact_title: "Operations Specialist", content_sha256: "b".repeat(64), parser_version: data.parsed.parserVersion, requirement_completeness: 100, compensation_completeness: 0, application_host_type: "EMPLOYER_HOSTED", legitimacy_result: "PASS", listing_activity_result: "PASS", application_path_result: "PASS" },
+      job: { id: jobId, exact_title: "Operations Specialist", content_sha256: "b".repeat(64), parser_version: data.parsed.parserVersion, requirement_completeness: 100, compensation_completeness: 0, application_host_type: "EMPLOYER_HOSTED", legitimacy_result: "PASS", listing_activity_result: "PASS", application_path_result: "PASS", material_source_qualities: [1] },
       sourceAuthorization: { id: "91000000-0000-4000-8000-000000000007", state: "AUTHORIZED_MANUAL_ONLY", access_method: "MANUAL", authorization_version: "source-auth-v1" },
       nodes: data.nodes as never,
       facts: data.facts,
       evidenceReviews: data.evidenceReviews,
+      customerCriteriaReviews: [],
       usefulnessReview: data.usefulnessReview,
       compensationReview: null,
     })).toThrow("review_evidence_not_current_or_not_criterion_bound");
@@ -141,11 +160,12 @@ describe("Chunk 3 persisted-evidence remediation", () => {
     data.evidenceReviews[0] = review("91000000-0000-4000-8000-000000000004", "MATCH_EVIDENCE", { disposition: "RESOLVED_PASS", stableCriterionId: (data.evidenceReviews[0].decision as Record<string, unknown>).stableCriterionId, sourceEvidenceNodeIds: (data.evidenceReviews[0].decision as Record<string, unknown>).sourceEvidenceNodeIds, candidateFactIds: [], candidateFactVersionIds: [], evidenceRelation: "DIRECT" });
     expect(() => deriveEvaluationFromPersistedEvidence({
       snapshot: matchingSnapshot(),
-      job: { id: jobId, exact_title: "Operations Specialist", content_sha256: "b".repeat(64), parser_version: data.parsed.parserVersion, requirement_completeness: 100, compensation_completeness: 0, application_host_type: "EMPLOYER_HOSTED", legitimacy_result: "PASS", listing_activity_result: "PASS", application_path_result: "PASS" },
+      job: { id: jobId, exact_title: "Operations Specialist", content_sha256: "b".repeat(64), parser_version: data.parsed.parserVersion, requirement_completeness: 100, compensation_completeness: 0, application_host_type: "EMPLOYER_HOSTED", legitimacy_result: "PASS", listing_activity_result: "PASS", application_path_result: "PASS", material_source_qualities: [1] },
       sourceAuthorization: { id: "91000000-0000-4000-8000-000000000007", state: "AUTHORIZED_MANUAL_ONLY", access_method: "MANUAL", authorization_version: "source-auth-v1" },
       nodes: data.nodes as never,
       facts: data.facts,
       evidenceReviews: data.evidenceReviews,
+      customerCriteriaReviews: [],
       usefulnessReview: data.usefulnessReview,
       compensationReview: null,
     })).toThrow("hard_requirement_pass_missing_bound_candidate_evidence");

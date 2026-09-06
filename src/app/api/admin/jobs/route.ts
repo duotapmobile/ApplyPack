@@ -105,6 +105,8 @@ export async function POST(request: Request) {
   try {
     const legacyJobId = await persistNormalizedJob(auth.admin, normalized);
     const applicationHost = new URL(parsed.data.officialApplicationUrl).hostname.toLocaleLowerCase("en-US");
+    const listingHost = new URL(parsed.data.sourceUrl).hostname.toLocaleLowerCase("en-US");
+    const materialSourceQualities = listingHost === applicationHost ? [1] : [0.8, 1];
     const capturedListing = { text: parsed.data.listingText, parserIssues: parser.issues };
     const snapshotRow = {
       id: jobSnapshotId,
@@ -140,6 +142,7 @@ export async function POST(request: Request) {
       compensation_completeness: parser.criteria.some((criterion) => criterion.kind === "COMPENSATION") ? 100 : 0,
       canonicalization_version: "applypack-c14n-v1",
       legacy_compatibility: false,
+      material_source_qualities: materialSourceQualities,
     };
     const requirementNodes = requirementPersistenceRows(parser, parsed.data.listingText);
     const { data: memberId, error: memberError } = await auth.admin.rpc("ap_persist_parsed_inventory_job", { p_criteria_snapshot_id: parsed.data.snapshotId, p_inventory_version_id: coveragePlan.inventory_version_id, p_stable_normalized_job_id: stableJobId, p_job_snapshot: snapshotRow, p_requirement_nodes: requirementNodes });

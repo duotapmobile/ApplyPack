@@ -36,29 +36,31 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Immutable evidence-review references are required; gate results and scores are not accepted.", details: parsed.error.flatten() }, { status: 400 });
   const input = parsed.data;
   const requestedReviewIds = [...new Set([...input.evidenceReviewIds, input.usefulnessReviewId, ...(input.compensationReviewId ? [input.compensationReviewId] : [])])];
-  const [{ data: snapshot }, { data: inventoryMember }, { data: nodes }, { data: requestedReviews }] = await Promise.all([
-    auth.admin.from("ap_intake_snapshots").select("id,customer_id,draft_id,content_sha256,schema_version,work_modes,optional_titles,salary_target_cents,salary_hard_minimum_cents,salary_minimum_flexible,salary_period,salary_basis,salary_overlap_policy,salary_unpublished_policy,salary_noncomparable_policy,salary_variable_pay_policy").eq("id", input.snapshotId).maybeSingle(),
-    auth.admin.from("ap_inventory_members").select("id,inventory_version_id,job_snapshot_id,selected_by_deduplication,job_snapshot:ap_job_snapshots(id,exact_title,content_sha256,parser_version,requirement_completeness,compensation_completeness,application_host_type,legitimacy_result,listing_activity_result,application_path_result,source_authorization:ap_source_authorizations(id,state,access_method,authorization_version))").eq("id", input.inventoryMemberId).maybeSingle(),
+  const [{ data: snapshot }, { data: inventoryMember }, { data: nodes }, { data: currentReviews }, { data: successor, error: successorError }] = await Promise.all([
+    auth.admin.from("ap_intake_snapshots").select("id,customer_id,draft_id,content_sha256,schema_version,desired_activities,avoided_activities,work_modes,preferred_work_mode,optional_titles,confirmed_title_restriction,optional_industries,blocked_industries,us_state_or_dc,employment_types,preferred_employment_type,schedules,travel,benefits,work_condition_preferences,dealbreakers,employer_unknown_policy,salary_target_cents,salary_hard_minimum_cents,salary_minimum_flexible,salary_period,salary_basis,salary_overlap_policy,salary_unpublished_policy,salary_noncomparable_policy,salary_variable_pay_policy").eq("id", input.snapshotId).maybeSingle(),
+    auth.admin.from("ap_inventory_members").select("id,inventory_version_id,job_snapshot_id,selected_by_deduplication,job_snapshot:ap_job_snapshots(id,exact_title,content_sha256,parser_version,requirement_completeness,compensation_completeness,application_host_type,legitimacy_result,listing_activity_result,application_path_result,material_source_qualities,source_authorization:ap_source_authorizations(id,state,access_method,authorization_version))").eq("id", input.inventoryMemberId).maybeSingle(),
     auth.admin.from("ap_requirement_nodes").select("id,parent_id,position,node_kind,criterion_type,stable_criterion_id,semantic_key,requirement_strength,source_locator,source_excerpt,parser_certainty,importance,typed_value").eq("job_snapshot_id", input.jobSnapshotId),
-    auth.admin.from("ap_human_review_records").select("id,snapshot_id,job_snapshot_id,review_kind,decision,invalidated_at,reviewer_id,created_at").in("id", requestedReviewIds),
+    auth.admin.from("ap_human_review_records").select("id,snapshot_id,job_snapshot_id,review_kind,review_subject_key,decision,invalidated_at,reviewer_id,created_at").eq("snapshot_id", input.snapshotId).eq("job_snapshot_id", input.jobSnapshotId).is("invalidated_at", null),
+    auth.admin.from("ap_job_snapshots").select("id").eq("supersedes_job_snapshot_id", input.jobSnapshotId).maybeSingle(),
   ]);
   const jobSnapshot = one(inventoryMember?.job_snapshot ?? null);
   const sourceAuthorization = jobSnapshot ? one(jobSnapshot.source_authorization) : null;
-  if (!snapshot?.customer_id || !inventoryMember?.selected_by_deduplication || inventoryMember.job_snapshot_id !== input.jobSnapshotId || !jobSnapshot || !sourceAuthorization) {
+  if (!snapshot?.customer_id || !inventoryMember?.selected_by_deduplication || inventoryMember.job_snapshot_id !== input.jobSnapshotId || !jobSnapshot || !sourceAuthorization || successorError || successor) {
     return NextResponse.json({ error: "The immutable snapshot, selected inventory member, or source authorization is unavailable." }, { status: 409 });
   }
-  if ((requestedReviews || []).length !== requestedReviewIds.length || (requestedReviews || []).some((review) => review.snapshot_id !== input.snapshotId || review.job_snapshot_id !== input.jobSnapshotId || review.invalidated_at)) {
+  const reviewById = new Map((currentReviews || []).map((review) => [review.id, review]));
+  if (requestedReviewIds.some((id) => !reviewById.has(id))) {
     return NextResponse.json({ error: "Every evaluation input must be a current immutable review for this exact snapshot and job." }, { status: 409 });
   }
-  const reviewById = new Map((requestedReviews || []).map((review) => [review.id, review]));
   const evidenceReviews = input.evidenceReviewIds.map((id) => reviewById.get(id)!).filter((review) => review.review_kind === "MATCH_EVIDENCE");
+  const customerCriteriaReviews = (currentReviews || []).filter((review) => review.review_kind === "CUSTOMER_CRITERION");
   const usefulnessReview = reviewById.get(input.usefulnessReviewId);
   const compensationReview = input.compensationReviewId ? reviewById.get(input.compensationReviewId) ?? null : null;
   if (evidenceReviews.length !== input.evidenceReviewIds.length || usefulnessReview?.review_kind !== "CATEGORICAL_USEFULNESS" || input.compensationReviewId && compensationReview?.review_kind !== "COMPENSATION_COMPARABILITY") {
     return NextResponse.json({ error: "Review references must use the exact evidence, usefulness, and compensation review kinds." }, { status: 409 });
   }
 
-  const allReviewRecords = [usefulnessReview, ...evidenceReviews, ...(compensationReview ? [compensationReview] : [])] as PersistedReview[];
+  const allReviewRecords = [usefulnessReview, ...evidenceReviews, ...customerCriteriaReviews, ...(compensationReview ? [compensationReview] : [])] as PersistedReview[];
   const candidateFactIds = [...new Set(allReviewRecords.flatMap((review) => {
     const decision = record(review.decision);
     const sections = record(decision.explanationEvidence);
@@ -72,18 +74,13 @@ export async function POST(request: Request) {
     const id = record(review.decision).adjacentEquivalenceReviewId;
     return typeof id === "string" ? [id] : [];
   }))];
-  const [{ data: facts }, { data: adjacentReviews }] = await Promise.all([
-    candidateFactIds.length
-      ? auth.admin.from("ap_candidate_facts").select("id,snapshot_id,semantic_key,value_kind,typed_value,verification,source_kind,supplied_source_id,superseded_at,capability_status,calendar_duration_days,customer_display_label,customer_display_value").in("id", candidateFactIds)
-      : Promise.resolve({ data: [] as PersistedCandidateFact[], error: null }),
-    adjacentReviewIds.length
-      ? auth.admin.from("ap_human_review_records").select("id,snapshot_id,job_snapshot_id,review_kind,decision,invalidated_at,reviewer_id,created_at").in("id", adjacentReviewIds)
-      : Promise.resolve({ data: [] as PersistedReview[], error: null }),
-  ]);
+  const { data: facts } = candidateFactIds.length
+    ? await auth.admin.from("ap_candidate_facts").select("id,snapshot_id,semantic_key,value_kind,typed_value,verification,source_kind,supplied_source_id,superseded_at,capability_status,calendar_duration_days,customer_display_label,customer_display_value").in("id", candidateFactIds)
+    : { data: [] as PersistedCandidateFact[] };
   if ((facts || []).length !== candidateFactIds.length || (facts || []).some((fact) => fact.snapshot_id !== input.snapshotId || fact.superseded_at || !["CUSTOMER_CONFIRMED", "HUMAN_VERIFIED"].includes(fact.verification) || fact.verification === "HUMAN_VERIFIED" && (fact.source_kind !== "HUMAN_VERIFICATION" || !fact.supplied_source_id))) {
     return NextResponse.json({ error: "All candidate evidence must be current and customer-confirmed or independently human-verified." }, { status: 409 });
   }
-  const adjacentById = new Map((adjacentReviews || []).map((review) => [review.id, review]));
+  const adjacentById = new Map((currentReviews || []).map((review) => [review.id, review]));
   const invalidAdjacent = evidenceReviews.some((review) => {
     const decision = record(review.decision);
     if (decision.evidenceRelation !== "ADJACENT") return false;
@@ -95,7 +92,17 @@ export async function POST(request: Request) {
       || adjacentDecision.stableCriterionId !== decision.stableCriterionId || adjacentDecision.equivalentForCriterion !== true
       || expectedFacts.length !== reviewedFacts.length || expectedFacts.some((id, index) => id !== reviewedFacts[index]);
   });
-  if ((adjacentReviews || []).length !== adjacentReviewIds.length || invalidAdjacent) return NextResponse.json({ error: "Adjacent evidence no longer has an exact current equivalence review." }, { status: 409 });
+  if (adjacentReviewIds.some((id) => !adjacentById.has(id)) || invalidAdjacent) return NextResponse.json({ error: "Adjacent evidence no longer has an exact current equivalence review." }, { status: 409 });
+
+  if (compensationReview) {
+    const decision = record(compensationReview.decision);
+    const selected = typeof decision.selectedCompensationCriterionId === "string"
+      ? (nodes || []).find((node) => node.stable_criterion_id === decision.selectedCompensationCriterionId && node.criterion_type === "COMPENSATION")
+      : null;
+    if (!selected || !strings(decision.sourceEvidenceNodeIds).includes(selected.id)) {
+      return NextResponse.json({ error: "The compensation review must cite and select the exact location-specific compensation criterion." }, { status: 409 });
+    }
+  }
 
   try {
     const derived = deriveEvaluationFromPersistedEvidence({
@@ -105,6 +112,7 @@ export async function POST(request: Request) {
       nodes: (nodes || []) as PersistedRequirementRow[],
       facts: (facts || []) as PersistedCandidateFact[],
       evidenceReviews,
+      customerCriteriaReviews: customerCriteriaReviews as PersistedReview[],
       usefulnessReview,
       compensationReview,
     });
@@ -118,7 +126,7 @@ export async function POST(request: Request) {
       eligibility: derived.eligibility.disposition,
       root_result: rootResult,
       leaf_results: [
-        ...derived.gates.slice(0, -1).map((gate) => ({ requirementNodeId: gate.rootKey, criterionType: gate.rootKey === "universal:salary" ? "COMPENSATION" : gate.rootKey.slice("universal:".length).toLocaleUpperCase("en-US").replaceAll("-", "_"), result: gate.result, resolutionIssue: gate.resolutionIssue, unknownTreatment: gate.unknownTreatment, outcomeDeterminative: gate.result !== "PASS" })),
+        ...derived.gates.slice(0, -1).map((gate) => ({ requirementNodeId: gate.rootKey, criterionType: gate.rootKey === "universal:salary" ? "COMPENSATION" : gate.rootKey.startsWith("customer:") ? "CUSTOMER_CRITERION" : gate.rootKey.slice("universal:".length).toLocaleUpperCase("en-US").replaceAll("-", "_"), result: gate.result, resolutionIssue: gate.resolutionIssue, unknownTreatment: gate.unknownTreatment, outcomeDeterminative: gate.result !== "PASS" })),
         ...derived.requirement.leafResults.map((leaf) => ({ requirementNodeId: leaf.nodeId, criterionType: (nodes || []).find((node) => node.id === leaf.nodeId)?.criterion_type ?? "UNKNOWN", ...leaf })),
       ],
       resolution_issues: [...new Set(derived.gates.map((gate) => gate.resolutionIssue))],
@@ -135,7 +143,7 @@ export async function POST(request: Request) {
       application_readiness: derived.applicationReadiness,
       presentation_risk: derived.presentationRisk,
       presentation_risk_reasons: derived.presentationRiskReasons,
-      warnings: [...derived.eligibility.warnings.map((warning) => ({ code: "EMPLOYER_UNKNOWN", messageKey: warning, evidenceIds: [] })), ...(derived.salary.warning ? [{ code: "SALARY", messageKey: derived.salary.warning, evidenceIds: [] }] : [])],
+      warnings: [...derived.eligibility.warnings.map((warning) => ({ code: "EMPLOYER_UNKNOWN", messageKey: warning, evidenceIds: [] })), ...derived.gates.flatMap((gate) => "warning" in gate && gate.warning ? [{ code: "CUSTOMER_CRITERION", messageKey: gate.warning, evidenceIds: [] }] : []), ...(derived.salary.warning ? [{ code: "SALARY", messageKey: derived.salary.warning, evidenceIds: [] }] : [])],
       candidate_fact_ids: derived.candidateFactIds,
       job_evidence: derived.jobEvidence,
       explanation_evidence: derived.explanationEvidence,

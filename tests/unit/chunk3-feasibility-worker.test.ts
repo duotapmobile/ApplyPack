@@ -8,7 +8,7 @@ const input = (cell = completeCell(), currentSnapshotHash = "a".repeat(64)): Per
   inventory: Array.from({ length: 10 }, (_, index): PersistedInventoryEvaluation => ({ inventoryMemberId: `member-${index}`, inventoryVersionId: "inventory-v1", evaluationId: `evaluation-${index}`, snapshotId: "snapshot", jobSnapshotId: `job-${index}`, classification: "PRELIMINARILY_DELIVERABLE", resolutionBlocker: "NONE", exclusionReason: null })),
   currentSnapshotId: "snapshot",
   currentSnapshotHash,
-  expiresAt: "2026-09-06T00:00:00.000Z",
+  expiresAt: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
 });
 
 function storeFor(payload: PersistedFeasibilityInput) {

@@ -38,6 +38,9 @@ do $$ begin
   if not exists(select 1 from information_schema.columns where table_schema='public' and table_name='ap_job_snapshots' and column_name='source_authorization_id') then raise exception 'source_authorization_link_missing'; end if;
   if not exists(select 1 from information_schema.columns where table_schema='public' and table_name='ap_feasibility_coverage_cells' and column_name='query_family_id') then raise exception 'query_family_id_missing'; end if;
   if not exists(select 1 from information_schema.tables where table_schema='public' and table_name='ap_inventory_members') then raise exception 'inventory_members_missing'; end if;
+  if not exists(select 1 from information_schema.columns where table_schema='public' and table_name='ap_job_snapshots' and column_name='material_source_qualities') then raise exception 'material_source_qualities_missing'; end if;
+  if not exists(select 1 from information_schema.columns where table_schema='public' and table_name='ap_human_review_records' and column_name='review_subject_key') then raise exception 'review_subject_key_missing'; end if;
+  if to_regprocedure('public.ap_record_matching_review(jsonb,jsonb)') is null then raise exception 'atomic_matching_review_function_missing'; end if;
   if has_table_privilege('anon','public.ap_inventory_members','select') then raise exception 'inventory_members_exposed'; end if;
   if not exists(select 1 from public.ap_migration_checkpoints where migration_id='202609040025' and checkpoint='CHUNK3_MATCHING_ENGINE_EXPAND') then raise exception 'chunk3_checkpoint_missing'; end if;
 end $$;
@@ -145,6 +148,7 @@ do $$ declare auth_id uuid; member_id uuid; begin
     )
   );
   if not exists(select 1 from public.ap_inventory_members where id=member_id and job_snapshot_id='83000000-0000-4000-8000-000000000002') then raise exception 'atomic_parsed_inventory_write_failed'; end if;
+  if (select material_source_qualities from public.ap_job_snapshots where id='83000000-0000-4000-8000-000000000002')<>array[0.8]::numeric[] then raise exception 'material_source_quality_default_invalid'; end if;
   begin
     perform public.ap_persist_parsed_inventory_job(
       '53000000-0000-4000-8000-000000000003','72000000-0000-4000-8000-000000000005','different-stable-id',
@@ -160,6 +164,48 @@ do $$ begin
     values('13000000-0000-4000-8000-000000000003','33000000-0000-4000-8000-000000000003','13000000-0000-4000-8000-000000000003','53000000-0000-4000-8000-000000000003','83000000-0000-4000-8000-000000000001','ADJACENT_EQUIVALENCE','["coordinate support"]','STRONG','Sparse adjacent assertion must fail.','matching-rules-v1','{"disposition":"RESOLVED_PASS","evidenceChanges":["reviewed"],"sourceEvidenceNodeIds":["85000000-0000-4000-8000-000000000002"],"candidateFactIds":["86000000-0000-4000-8000-000000000001"],"candidateFactVersionIds":["86000000-0000-4000-8000-000000000001"],"rulesVersion":"matching-rules-v1","stableCriterionId":"85000000-0000-4000-8000-000000000003","equivalentForCriterion":true}');
     raise exception 'sparse_adjacent_review_was_accepted';
   exception when raise_exception then if sqlerrm='sparse_adjacent_review_was_accepted' then raise; end if; if sqlerrm<>'adjacent_equivalence_exact_review_required' then raise; end if; end;
+end $$;
+
+do $$
+declare
+  first_result jsonb;
+  second_result jsonb;
+  first_id uuid;
+  second_id uuid;
+begin
+  first_result:=public.ap_record_matching_review(
+    jsonb_build_object(
+      'customer_id','13000000-0000-4000-8000-000000000003','draft_id','33000000-0000-4000-8000-000000000003',
+      'reviewer_id','13000000-0000-4000-8000-000000000003','snapshot_id','53000000-0000-4000-8000-000000000003',
+      'job_snapshot_id','83000000-0000-4000-8000-000000000001','review_kind','CUSTOMER_CRITERION',
+      'review_subject_key','customer:employment-type','rationale','The employer evidence initially appeared to satisfy the employment-type criterion.',
+      'catalog_version','matching-rules-v3','decision',jsonb_build_object(
+        'disposition','RESOLVED_PASS','result','PASS','resolutionIssue','NONE','unknownTreatment','BLOCK',
+        'customerCriterionKey','customer:employment-type','evidenceChanges',jsonb_build_array('Reviewed the exact employment-type evidence.'),
+        'sourceEvidenceNodeIds',jsonb_build_array('85000000-0000-4000-8000-000000000002'),'candidateFactIds','[]'::jsonb,
+        'rulesVersion','matching-rules-v3'
+      )
+    ),null
+  );
+  first_id:=(first_result->>'reviewId')::uuid;
+  second_result:=public.ap_record_matching_review(
+    jsonb_build_object(
+      'customer_id','13000000-0000-4000-8000-000000000003','draft_id','33000000-0000-4000-8000-000000000003',
+      'reviewer_id','13000000-0000-4000-8000-000000000003','snapshot_id','53000000-0000-4000-8000-000000000003',
+      'job_snapshot_id','83000000-0000-4000-8000-000000000001','review_kind','CUSTOMER_CRITERION',
+      'review_subject_key','customer:employment-type','rationale','The later exact review found that the listing conflicts with the required employment type.',
+      'catalog_version','matching-rules-v3','decision',jsonb_build_object(
+        'disposition','RESOLVED_FAIL','result','FAIL','resolutionIssue','NONE','unknownTreatment','BLOCK',
+        'customerCriterionKey','customer:employment-type','evidenceChanges',jsonb_build_array('Recorded the newer conflicting employment-type evidence.'),
+        'sourceEvidenceNodeIds',jsonb_build_array('85000000-0000-4000-8000-000000000002'),'candidateFactIds','[]'::jsonb,
+        'rulesVersion','matching-rules-v3'
+      )
+    ),null
+  );
+  second_id:=(second_result->>'reviewId')::uuid;
+  if not exists(select 1 from public.ap_human_review_records where id=first_id and invalidated_at is not null) then raise exception 'older_review_not_invalidated'; end if;
+  if not exists(select 1 from public.ap_human_review_records where id=second_id and invalidated_at is null and supersedes_review_id=first_id and decision->>'result'='FAIL') then raise exception 'newer_review_not_current'; end if;
+  if (select count(*) from public.ap_human_review_records where snapshot_id='53000000-0000-4000-8000-000000000003' and job_snapshot_id='83000000-0000-4000-8000-000000000001' and review_kind='CUSTOMER_CRITERION' and review_subject_key='customer:employment-type' and invalidated_at is null)<>1 then raise exception 'current_review_uniqueness_failed'; end if;
 end $$;
 
 do $$ begin
@@ -200,6 +246,85 @@ select pg_temp.assert_true((select count(*)=1 from public.ap_match_selection_run
 select pg_temp.assert_true((select count(*)=1 from public.ap_match_selection_members member join public.ap_match_selection_runs run on run.id=member.selection_run_id where run.content_sha256=repeat('f',64) and member.base_rank=1 and member.selected_rank=1 and member.rank_explanation->>'version'='matching-rules-v2'),'ranking_stages_not_persisted');
 select pg_temp.assert_true(not has_table_privilege('authenticated','public.ap_match_selection_runs','select'),'selection_runs_exposed_to_clients');
 
+do $$
+declare
+  correction_result jsonb;
+  expected_review_id uuid;
+begin
+  correction_result:=public.ap_record_matching_review(
+    jsonb_build_object(
+      'customer_id','13000000-0000-4000-8000-000000000003','draft_id','33000000-0000-4000-8000-000000000003',
+      'reviewer_id','13000000-0000-4000-8000-000000000003','snapshot_id','53000000-0000-4000-8000-000000000003',
+      'job_snapshot_id','83000000-0000-4000-8000-000000000001','review_kind','PARSER_CORRECTION',
+      'review_subject_key','parser-correction','rationale','The corrected text resolves the prior parser uncertainty with cited employer evidence.',
+      'catalog_version','matching-rules-v3','decision',jsonb_build_object(
+        'disposition','RESOLVED_PASS','evidenceChanges',jsonb_build_array('Corrected the listing into a complete immutable requirement tree.'),
+        'sourceEvidenceNodeIds',jsonb_build_array('85000000-0000-4000-8000-000000000002'),'candidateFactIds','[]'::jsonb,
+        'rulesVersion','matching-rules-v3','correctionMethod','NEW_IMMUTABLE_JOB_SNAPSHOT',
+        'correctedJobSnapshotId','83100000-0000-4000-8000-000000000001',
+        'correctedInventoryVersionId','72100000-0000-4000-8000-000000000001',
+        'correctedInventoryMemberId','82100000-0000-4000-8000-000000000001'
+      )
+    ),
+    jsonb_build_object(
+      'originalInventoryMemberId','82000000-0000-4000-8000-000000000001',
+      'correctedJobSnapshotId','83100000-0000-4000-8000-000000000001',
+      'correctedInventoryVersionId','72100000-0000-4000-8000-000000000001',
+      'correctedInventoryMemberId','82100000-0000-4000-8000-000000000001',
+      'correctedCoveragePlanId','73100000-0000-4000-8000-000000000001',
+      'capturedListing','{"text":"Remote full-time role in Virginia. Required: three years of customer operations experience.","parserIssues":[],"correctionOf":"83000000-0000-4000-8000-000000000001"}'::jsonb,
+      'parserVersion','listing-requirements-v4','contentSha256',repeat('a',64),'compensationText',null,'compensationCompleteness',0,
+      'locationAndWorkMode','{"modes":["REMOTE"],"statesOrDc":["VA"]}'::jsonb,
+      'requirementNodes',jsonb_build_array(
+        jsonb_build_object(
+          'id','85100000-0000-4000-8000-000000000001','parent_id',null,'position',0,'node_kind','ALL_OF',
+          'semantic_key','hard-root:corrected','classification_method','listing-requirements-v4'
+        ),
+        jsonb_build_object(
+          'id','85100000-0000-4000-8000-000000000002','parent_id','85100000-0000-4000-8000-000000000001','position',0,
+          'node_kind','CRITERION','criterion_type','EXPERIENCE','stable_criterion_id','85100000-0000-4000-8000-000000000003',
+          'semantic_key','three years customer operations experience','requirement_strength','REQUIRED','source_locator','line:1',
+          'parser_certainty',1,'criterion_version','listing-requirements-v4',
+          'typed_value','{"kind":"EXPERIENCE","stableCriterionId":"85100000-0000-4000-8000-000000000003","semanticKey":"three years customer operations experience","strength":"REQUIRED","sourceLocator":"line:1","parserCertainty":1,"version":"listing-requirements-v4","responsibilityOrDomain":"customer operations experience","minimumMonths":36,"fteExplicit":false,"permittedEquivalents":[],"seniorityOrScope":null}'::jsonb,
+          'source_excerpt','Required: three years of customer operations experience.','classification_method','listing-requirements-v4','importance',3
+        )
+      ),
+      'inventoryContentSha256',repeat('b',64),'coveragePlanContentSha256',repeat('c',64)
+    )
+  );
+  expected_review_id:=(correction_result->>'reviewId')::uuid;
+  if correction_result->>'correctedJobSnapshotId'<>'83100000-0000-4000-8000-000000000001' then raise exception 'parser_correction_result_lineage_missing'; end if;
+  if not exists(select 1 from public.ap_job_snapshots job where job.id='83100000-0000-4000-8000-000000000001' and job.supersedes_job_snapshot_id='83000000-0000-4000-8000-000000000001' and job.correction_review_id=expected_review_id and job.requirement_completeness=100 and job.parser_version='listing-requirements-v4') then raise exception 'corrected_job_snapshot_missing'; end if;
+  if not exists(select 1 from public.ap_requirement_nodes node where node.id='85100000-0000-4000-8000-000000000002' and node.job_snapshot_id='83100000-0000-4000-8000-000000000001' and node.human_correction_history->0->>'reviewId'=expected_review_id::text) then raise exception 'parser_correction_history_missing'; end if;
+  if not exists(select 1 from public.ap_inventory_members where id='82100000-0000-4000-8000-000000000001' and inventory_version_id='72100000-0000-4000-8000-000000000001' and job_snapshot_id='83100000-0000-4000-8000-000000000001' and selected_by_deduplication) then raise exception 'corrected_inventory_member_missing'; end if;
+  if not exists(select 1 from public.ap_feasibility_coverage_plans where id='73100000-0000-4000-8000-000000000001' and inventory_version_id='72100000-0000-4000-8000-000000000001') then raise exception 'corrected_coverage_plan_missing'; end if;
+  if not exists(select 1 from public.ap_match_evaluations where id='84000000-0000-4000-8000-000000000001' and invalidated_at is not null) then raise exception 'superseded_evaluation_not_invalidated'; end if;
+
+  begin
+    insert into public.ap_match_evaluations(id,customer_id,snapshot_id,job_snapshot_id,inventory_member_id,inventory_version_id,eligibility,root_result,leaf_results,resolution_issues,unknown_treatments,satisfaction_paths,categorical_evidence_sufficient,fit_score,fit_components,evidence_confidence,confidence_components,salary_status,salary_disposition,soft_preferences,application_readiness,presentation_risk,presentation_risk_reasons,warnings,candidate_fact_ids,job_evidence,explanation_evidence,version_bundle,human_review_id,active_root_keys,root_results,calculation_input_sha256,calculation_version,usefulness_result,preference_alignment,confidence_label,rank_explanation,selector_explanation,legacy_compatibility)
+    values('84000000-0000-4000-8000-000000000003','13000000-0000-4000-8000-000000000003','53000000-0000-4000-8000-000000000003','83000000-0000-4000-8000-000000000001','82000000-0000-4000-8000-000000000001','72000000-0000-4000-8000-000000000004','INELIGIBLE','FAIL','[]','{}','{}','[]',false,null,'[]',85,'{}','UNPUBLISHED','NOT_APPLICABLE','{}','READY','LOW','[]','[]','{}','[]','{}','{"matching":"matching-rules-v3"}',null,'{root-a}','[{"rootKey":"root-a","result":"FAIL"}]',repeat('d',64),'matching-rules-v3','FAIL',null,'HIGH','{"state":"AWAITING_SELECTION_RUN"}','{"state":"AWAITING_SELECTION_RUN"}',false);
+    raise exception 'superseded_job_evaluation_was_accepted';
+  exception when raise_exception then if sqlerrm='superseded_job_evaluation_was_accepted' then raise; end if; if sqlerrm<>'superseded_job_snapshot_cannot_be_evaluated' then raise; end if; end;
+
+  begin
+    perform public.ap_record_matching_review(
+      jsonb_build_object(
+        'customer_id','13000000-0000-4000-8000-000000000003','draft_id','33000000-0000-4000-8000-000000000003',
+        'reviewer_id','13000000-0000-4000-8000-000000000003','snapshot_id','53000000-0000-4000-8000-000000000003',
+        'job_snapshot_id','83000000-0000-4000-8000-000000000001','review_kind','CUSTOMER_CRITERION',
+        'review_subject_key','customer:geography-state','rationale','Superseded evidence cannot receive another review.',
+        'catalog_version','matching-rules-v3','decision',jsonb_build_object(
+          'disposition','RESOLVED_FAIL','result','FAIL','resolutionIssue','NONE','unknownTreatment','BLOCK',
+          'customerCriterionKey','customer:geography-state','evidenceChanges',jsonb_build_array('Attempted superseded review.'),
+          'sourceEvidenceNodeIds',jsonb_build_array('85000000-0000-4000-8000-000000000002'),'candidateFactIds','[]'::jsonb,
+          'rulesVersion','matching-rules-v3'
+        )
+      ),null
+    );
+    raise exception 'superseded_job_review_was_accepted';
+  exception when raise_exception then if sqlerrm='superseded_job_review_was_accepted' then raise; end if; if sqlerrm<>'superseded_job_snapshot_review_rejected' then raise; end if; end;
+end $$;
+
 insert into public.ap_source_authorizations(source_id,source_display_name,state,access_method,authorization_version,content_sha256)
 values('manual-reviewed','Manual reviewed source revoked','BLOCKED','NONE','source-auth-v2',repeat('1',64));
 do $$ begin
@@ -210,6 +335,7 @@ do $$ begin
   exception when raise_exception then if sqlerrm='evaluation_after_source_revocation_was_accepted' then raise; end if; if sqlerrm<>'current_source_authorization_required' then raise; end if; end;
 end $$;
 select pg_temp.assert_true(exists(select 1 from public.ap_migration_checkpoints where migration_id='202609050027' and checkpoint='CHUNK3_PERSISTED_EVIDENCE_EXPAND'),'chunk3_persisted_evidence_checkpoint_missing');
+select pg_temp.assert_true(exists(select 1 from public.ap_migration_checkpoints where migration_id='202609050028' and checkpoint='CHUNK3_CONTRACT_COMPLETION_EXPAND'),'chunk3_contract_completion_checkpoint_missing');
 
 rollback;
 select 'chunk3_matching_engine_ok' as result;

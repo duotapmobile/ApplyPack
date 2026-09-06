@@ -1,7 +1,7 @@
 import type { CriterionResult, EligibilityDisposition, EmployerUnknownPolicy, ResolutionIssue, SalaryGateDisposition, SalaryStatus, UnknownTreatment } from "@/lib/domain/foundation";
 import { isLiveopsReference } from "@/lib/jobs/canonicalize";
 
-export const MATCHING_RULES_VERSION = "matching-rules-v2";
+export const MATCHING_RULES_VERSION = "matching-rules-v3";
 export const SALARY_RULES_VERSION = "salary-rules-v1";
 export const SELECTOR_VERSION = "bounded-diversity-v2";
 

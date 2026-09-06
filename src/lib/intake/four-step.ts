@@ -360,7 +360,11 @@ export function buildFourStepSnapshot(draft: FourStepDraft, sensitivePayloadSha2
     employmentTypes: answers.employmentTypes,
     preferredEmploymentType: answers.preferredEmploymentType || null,
     schedules: answers.schedules,
-    travel: { preference: answers.workConditionPreferences.TRAVEL ?? null },
+    travel: {
+      preference: answers.workConditionPreferences.TRAVEL ?? null,
+      commuteDistanceMiles: answers.commuteDistanceMiles,
+      customDealbreaker: answers.customDealbreaker || null,
+    },
     benefits: answers.benefits,
     workConditionPreferences: answers.workConditionPreferences,
     dealbreakers: answers.dealbreakers,

@@ -139,7 +139,7 @@ describe("Chunk 3 eligibility, salary, fit, confidence, and selection", () => {
     expect(baseRank([candidate("lower-fit", { fit: 89, preference: 1 }), candidate("higher-fit", { fit: 90, preference: 0 })])[0].jobId).toBe("higher-fit");
     expect(baseRank([candidate("low-pref", { preference: 0.5 }), candidate("high-pref", { preference: 1 })])[0].jobId).toBe("high-pref");
     expect(baseRank([candidate("b"), candidate("a")])[0].jobId).toBe("a");
-    expect(baseRankWithExplanations([candidate("a")])[0]).toMatchObject({ baseRank: 1, explanation: { fit: 90, preference: 0.5, confidence: 80, postedDateKnown: false, stableJobId: "a", version: "matching-rules-v2" } });
+    expect(baseRankWithExplanations([candidate("a")])[0]).toMatchObject({ baseRank: 1, explanation: { fit: 90, preference: 0.5, confidence: 80, postedDateKnown: false, stableJobId: "a", version: "matching-rules-v3" } });
   });
 
   it("applies inclusive diversity bounds, concentration vectors, and null preference omission", () => {
