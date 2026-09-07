@@ -529,7 +529,19 @@ No Stripe Session, email, source, DNS, production database, or hosted setting wa
 | C4-TRACE | Chunk 4 ownership/status audit | All 115 Chunk 4 rows map to implementation, tests, evidence, and `IMPLEMENTED` status |
 | C4-FORMAT | `git diff --check` plus staged check | No whitespace errors |
 
-The 13 applicable checks exclude `C4-INTEGRATION-EXTERNAL` when the approved provider is absent. Exact final counts, the tested implementation commit/tree, screenshot inventory, manifest hashes, and evidence-only commit are recorded during closeout.
+### Chunk 4 verified result
+
+Tested implementation commit `9751222fb51953e3e49ce7a50795a44bf699e0fa` (tree `8fd898ccf4f5b6a6285ab905e14d63adc8bfd982`) passed all 13 applicable Chunk 4 checks. The local database applied all 30 migrations from zero; all four transactional fixture families passed; legacy compatibility passed before and after its idempotent rerun; guarded rollback reported `ROLLBACK_OK`, restored all 30 migrations, and reported `RESTORE_OK`; generated database types matched; lint and strict TypeScript passed; the production build generated 51 routes/pages with providers disabled; and all 115 primary Chunk 4 traceability rows are `IMPLEMENTED`.
+
+The final unit run used one thread worker to avoid the Windows host's process-start bottleneck and passed 44/44 files and 292/292 tests. A preceding resource-contended default-fork rerun is not acceptance evidence: Windows failed to start 15 workers, only 29 files ran, and that attempt returned exit 1. The complete constrained rerun used the same tested code and returned exit 0.
+
+The definitive browser run passed 72/72 applicable desktop/mobile Playwright cases, with two intentional duplicate-platform skips among 74 scheduled cases. The focused Chunk 4 evidence path passed in both projects and produced 22 deterministic PNGs: 11 at 1440 pixels and 11 at 390 pixels, covering likely review/Checkout, payment confirmation, confirmed search, capacity exception, adjustment, refund processing, exact-ten delivery, and limited/infeasible/stale/error feasibility. Each captured state passed its serious/critical axe scan. No manual assistive-technology or live-provider certification is claimed.
+
+The real-scanner integration suite reported three intentional skips in two files because no approved production scanner exists. `C4-INTEGRATION-EXTERNAL` is therefore `NOT_APPLICABLE_LOCAL`, is excluded from the applicable denominator, and leaves production processing fail closed. The cumulative verified ledger is 57/57 applicable checks: 9/9 Phase 0, 11/11 Chunk 1, 12/12 Chunk 2, 12/12 Chunk 3, and 13/13 Chunk 4. Failed applicable checks: none. Blocked applicable checks: none.
+
+`evidence/chunk-4/manifest.json` is 21,664 bytes with raw file SHA-256 `9e373c19054af5f3f8e59645dae44384556342570e29443fa57b07aa26ed43cd` and recursively key-sorted canonical-content SHA-256 `9c77ff62f085e4c8b2dc8d624e442e43e23f2661574b86e003511fe66d72e1ad`. Its 49 implementation artifact hashes are scoped to the tested implementation commit; its 22 evidence artifact hashes are scoped to the evidence-attestation content. Independent recalculation found zero byte-count or SHA-256 mismatches. The evidence-only commit contains the manifest, screenshots, and this implementation-status attestation; its containing commit hash is reported in the external handoff because a tracked artifact is not required to identify the commit that contains itself.
+
+Chunk 4 is complete, but Chunk 5 was not started and is not authorized by this closeout. A new explicit user authorization is required before any Chunk 5 work.
 
 ### Remaining release blockers
 
