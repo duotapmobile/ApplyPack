@@ -109,7 +109,13 @@ async function accessAction(admin: AdminClient, message: OutboxMessage, origin: 
 function templateKind(messageKind: string): Chunk4EmailKind {
   if (["CAPACITY_EXCEPTION_REFUND", "DUPLICATE_PAYMENT_REFUND", "STALE_PAYMENT_REFUND"].includes(messageKind)) return "CAPACITY_PAYMENT_EXCEPTION";
   if (messageKind.startsWith("PAYMENT_DISPUTE_")) return "PAYMENT_DISPUTE";
-  if (["PAYMENT_VERIFIED_SEARCH_STARTED", "ADJUSTMENT_REQUIRED", "ADJUSTMENT_ACCEPTED", "REFUND_INITIATED", "REFUND_COMPLETED", "REFUND_PROBLEM", "SEARCH_EXACT_TEN_DELIVERED", "SECURE_ACCESS_RESEND"].includes(messageKind)) return messageKind as Chunk4EmailKind;
+  if ([
+    "PAYMENT_VERIFIED_SEARCH_STARTED", "ADJUSTMENT_REQUIRED", "ADJUSTMENT_ACCEPTED",
+    "REFUND_INITIATED", "REFUND_COMPLETED", "REFUND_PROBLEM", "SEARCH_EXACT_TEN_DELIVERED",
+    "SECURE_ACCESS_RESEND", "MATERIALS_PAYMENT_VERIFIED", "MATERIAL_SUBSTITUTION_ACCEPTED",
+    "MATERIAL_FACT_REVISION_ACCEPTED", "MATERIALS_DELIVERED", "REFERENCE_REGENERATION_STARTED",
+    "REFERENCE_REGENERATION_DELIVERED", "REFERENCE_REGENERATION_FAILED",
+  ].includes(messageKind)) return messageKind as Chunk4EmailKind;
   if (messageKind === "REFUND_PROCESSING") return "REFUND_INITIATED";
   throw new Error("unsupported_chunk4_outbox_kind");
 }
@@ -131,6 +137,25 @@ async function messageDetails(admin: AdminClient, message: OutboxMessage, kind: 
     if (!result.error && result.data) details.refundAmountCents = result.data.amount_cents;
   }
   if (kind === "PAYMENT_DISPUTE") details.disputeState = message.message_kind.replace("PAYMENT_DISPUTE_", "");
+  if (kind === "MATERIALS_PAYMENT_VERIFIED") {
+    const { data, error } = await admin.from("ap_material_lines")
+      .select("materials_due_at").eq("purchase_id", message.recipient_ref).order("materials_due_at");
+    if (error || !data?.length) throw error || new Error("outbox_material_purchase_missing");
+    details.lineCount = data.length;
+    details.deadline = data[0].materials_due_at;
+  }
+  if (["MATERIAL_SUBSTITUTION_ACCEPTED", "MATERIAL_FACT_REVISION_ACCEPTED"].includes(kind)) {
+    const { data, error } = await admin.from("ap_material_lines")
+      .select("materials_due_at").eq("id", message.recipient_ref).maybeSingle();
+    if (error || !data) throw error || new Error("outbox_material_line_missing");
+    details.deadline = data.materials_due_at;
+  }
+  if (["REFERENCE_REGENERATION_STARTED", "REFERENCE_REGENERATION_FAILED"].includes(kind)) {
+    const { data, error } = await admin.from("ap_reference_regenerations")
+      .select("due_at").eq("id", message.recipient_ref).maybeSingle();
+    if (error || !data) throw error || new Error("outbox_reference_regeneration_missing");
+    details.deadline = data.due_at;
+  }
   return details;
 }
 

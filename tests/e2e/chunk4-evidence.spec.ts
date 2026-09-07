@@ -64,8 +64,8 @@ test("Chunk 4 review, eligibility, payment, exception, adjustment, refund, and e
     await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
     if (state === "delivered") {
       await expect(page.locator(".match-card")).toHaveCount(10);
-      await expect(page.getByText("What the job involves").first()).toBeVisible();
-      await expect(page.getByText("What to know before applying").first()).toBeVisible();
+      await expect(page.getByText("What this job actually involves").first()).toBeVisible();
+      await expect(page.getByText("What to know").first()).toBeVisible();
     }
     await capture(page, resolve(output, `${width}-${filename}.png`));
   }

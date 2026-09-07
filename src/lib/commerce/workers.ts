@@ -50,7 +50,7 @@ async function handleRefund(admin: AdminClient, job: ScheduledJob, owner: string
   const stripe = createStripeOperationalClient();
   if (!stripe) throw new Error("refund_provider_not_configured");
   const { data: refund, error: refundError } = await admin.from("ap_refund_operations")
-    .select("id,payment_attempt_id,amount_cents,currency,state,provider_refund_id,provider_command_id")
+    .select("id,payment_attempt_id,amount_cents,currency,state,scope,provider_refund_id,provider_command_id")
     .eq("id", job.reference_id).maybeSingle();
   if (refundError || !refund) throw refundError || new Error("refund_operation_missing");
   if (["SUCCEEDED", "FAILED"].includes(refund.state)) return completeExternal(admin, job, owner);
@@ -69,7 +69,10 @@ async function handleRefund(admin: AdminClient, job: ScheduledJob, owner: string
     providerRefund = await stripe.refunds.create({
       payment_intent: payment.provider_payment_id,
       amount: refund.amount_cents,
-      metadata: { refund_operation_id: refund.id, contract_version: "chunk4-v1" },
+      metadata: {
+        refund_operation_id: refund.id,
+        contract_version: refund.scope === "MATERIAL_LINE" ? "chunk5-v1" : "chunk4-v1",
+      },
     }, { idempotencyKey: command.provider_idempotency_key });
   }
   const recorded = await admin.rpc("ap_record_search_refund_result", {
@@ -191,6 +194,16 @@ async function handleJob(admin: AdminClient, job: ScheduledJob, owner: string) {
   if (job.job_kind === "CHECKOUT_PROVIDER_EXPIRE") return handleInvalidatedCheckout(admin, job, owner);
   if (["REFUND_SUBMIT", "REFUND_RECONCILE"].includes(job.job_kind)) return handleRefund(admin, job, owner);
   if (job.job_kind === "OUTBOX_SEND") return handleOutboxSchedule(admin, job, owner);
+  if ([
+    "MATERIAL_CHECKOUT_EXPIRY",
+    "MATERIAL_LINE_DEADLINE",
+    "MATERIAL_PROPOSAL_EXPIRY",
+    "REFERENCE_REGENERATION_DEADLINE",
+  ].includes(job.job_kind)) {
+    const result = await admin.rpc("ap_apply_chunk5_local_job", { p_job_id: job.id, p_owner: owner });
+    if (result.error) throw result.error;
+    return;
+  }
   throw new Error("unsupported_chunk4_scheduled_job");
 }
 
@@ -199,6 +212,8 @@ export async function processChunk4Workers(admin: AdminClient, limit = 20) {
   if (!owner || owner.length < 3) return { status: "disabled" as const, reason: "APP_CHUNK4_WORKER_ID_UNSET", processed: 0 };
   const enqueued = await admin.rpc("ap_enqueue_chunk4_due_jobs");
   if (enqueued.error) throw enqueued.error;
+  const chunk5Enqueued = await admin.rpc("ap_enqueue_chunk5_due_jobs");
+  if (chunk5Enqueued.error) throw chunk5Enqueued.error;
   const outbox = await processChunk4Outbox(admin, owner, Math.min(10, limit));
   const claimed = await admin.rpc("ap_claim_scheduled_jobs", { p_owner: owner, p_limit: Math.max(1, Math.min(50, limit)) });
   if (claimed.error) throw claimed.error;
@@ -214,5 +229,16 @@ export async function processChunk4Workers(admin: AdminClient, limit = 20) {
   }
   const monitor = await admin.rpc("ap_chunk4_monitor_snapshot");
   if (monitor.error) throw monitor.error;
-  return { status: "enabled" as const, processed: jobs.length, completed, outbox, enqueued: enqueued.data, monitor: monitor.data };
+  const chunk5Monitor = await admin.rpc("ap_chunk5_monitor_snapshot");
+  if (chunk5Monitor.error) throw chunk5Monitor.error;
+  return {
+    status: "enabled" as const,
+    processed: jobs.length,
+    completed,
+    outbox,
+    enqueued: enqueued.data,
+    chunk5Enqueued: chunk5Enqueued.data,
+    monitor: monitor.data,
+    chunk5Monitor: chunk5Monitor.data,
+  };
 }

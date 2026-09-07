@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AdminMfa } from "@/components/admin/admin-mfa";
 import { AdminOperations } from "@/components/admin/admin-operations";
+import { Chunk5MaterialStaffQueue } from "@/components/admin/chunk5-material-staff-queue";
 import { PendingIntakes } from "@/components/admin/pending-intakes";
 import { Chunk4StaffQueue, type StaffQueueRow, type StaffReviewCandidate } from "@/components/admin/chunk4-staff-queue";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { isAdminEmailAllowed } from "@/lib/auth/require-admin";
+import { loadMaterialStaffLines } from "@/lib/materials/admin";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { candidatePayload } from "@/lib/workflow/candidates";
@@ -159,6 +161,7 @@ export default async function AdminPage() {
       },
     }];
   });
+  const materialStaffLines = await loadMaterialStaffLines(admin).catch(() => []);
   const applyItems = (applyRows || []).map((item) => {
     const match = Array.isArray(item.job_match) ? item.job_match[0] : item.job_match;
     const job = Array.isArray(match?.job) ? match.job[0] : match?.job;
@@ -203,6 +206,7 @@ export default async function AdminPage() {
         <div className="admin-heading"><div><p className="eyebrow eyebrow--light">APPLYPACK OPERATIONS</p><h1>Fulfillment queue</h1></div><div><p>Manual-first controls. Every delivery requires human review.</p><SignOutButton /></div></div>
         <div className="admin-metrics"><article><span>Open work</span><strong>{orders?.length || 0}</strong></article><article><span>Active capacity units</span><strong>{capacity?.reduce((sum, item) => sum + item.units, 0) || 0}</strong></article><article><span>Webhook failures</span><strong>{failures?.length || 0}</strong></article></div>
         <Chunk4StaffQueue rows={staffQueue} candidates={staffReviewCandidates} />
+        <Chunk5MaterialStaffQueue lines={materialStaffLines} />
         <AdminOperations searchOrders={searchOrders} applyItems={applyItems} conflicts={conflicts} corrections={corrections} capacityLimits={capacityLimits || []} />
         <PendingIntakes requests={pendingRequests || []} snapshots={pendingSnapshots || []} />
         <section className="admin-table-wrap">

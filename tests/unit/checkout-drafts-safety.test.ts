@@ -13,13 +13,14 @@ describe("checkout preparation and private draft safety", () => {
     expect(migration).toContain("pg_advisory_xact_lock(hashtext('apply-pack:'");
     expect(migration).toContain("one_active_search_order_per_intake");
     expect(search.indexOf('rpc("ap_begin_search_checkout"')).toBeLessThan(search.indexOf("stripe.checkout.sessions.create"));
-    expect(applyPack.indexOf('rpc("prepare_apply_pack_checkout"')).toBeLessThan(applyPack.indexOf("stripe.checkout.sessions.create"));
+    expect(applyPack.indexOf('rpc("ap_begin_material_checkout"')).toBeLessThan(applyPack.indexOf("stripe.checkout.sessions.create"));
   });
 
   it("uses stable Stripe idempotency keys based on the database-owned intent", () => {
     expect(search).toContain("`search-checkout/${commandId}`");
     expect(search).toContain("idempotencyKey: String(checkout.provider_idempotency_key)");
-    expect(applyPack).toContain("`apply-pack-checkout/${cartId}`");
+    expect(applyPack).toContain("idempotencyKey: String(checkout.providerIdempotencyKey)");
+    expect(applyPack).toContain("materialCheckoutRequestKey(selectionSha256)");
     expect(search).not.toContain("randomUUID");
     expect(applyPack).not.toContain("randomUUID");
   });

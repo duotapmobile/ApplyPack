@@ -316,7 +316,25 @@ begin
   reference_id := public.ap_create_reference_record('10000000-0000-4000-8000-000000000001','9a000000-0000-4000-8000-000000000001','reference-v1',repeat('3',64));
   select id into first_version_id from public.ap_reference_record_versions where reference_record_id=reference_id and version=1;
   perform public.ap_confirm_reference_version('10000000-0000-4000-8000-000000000001',first_version_id);
-  permission_id := public.ap_grant_reference_permission('10000000-0000-4000-8000-000000000001',first_version_id,'99000000-0000-4000-8000-000000000001','82000000-0000-4000-8000-000000000001',repeat('b',64),'Example','Coordinator','permission-v1');
+  begin
+    perform public.ap_grant_reference_permission(
+      '10000000-0000-4000-8000-000000000001',first_version_id,
+      '99000000-0000-4000-8000-000000000001','82000000-0000-4000-8000-000000000001',
+      repeat('b',64),'Example','Coordinator','permission-v1'
+    );
+    raise exception 'legacy_material_release_reference_permission_was_accepted';
+  exception when raise_exception then
+    if sqlerrm='legacy_material_release_reference_permission_was_accepted' then raise; end if;
+    if sqlerrm<>'exact_job_reference_permission_invalid' then raise; end if;
+  end;
+  insert into public.ap_reference_permissions(
+    customer_id,reference_record_version_id,delivered_release_id,job_snapshot_id,job_snapshot_hash,
+    employer_snapshot,exact_position_snapshot,permission_text_version,attested_at
+  ) values(
+    '10000000-0000-4000-8000-000000000001',first_version_id,
+    '99000000-0000-4000-8000-000000000001','82000000-0000-4000-8000-000000000001',
+    repeat('b',64),'Example','Coordinator','permission-v1',now()
+  ) returning id into permission_id;
   insert into public.ap_generated_artifacts(id,customer_id,order_id,material_line_id,job_snapshot_id,artifact_type,source_snapshot_id,reference_permission_id,claim_provenance,generator_version,current_file_version)
   values ('98000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000001','90000000-0000-4000-8000-000000000001','94000000-0000-4000-8000-000000000001','82000000-0000-4000-8000-000000000001','REFERENCE_SHEET','50000000-0000-4000-8000-000000000004',permission_id,'{}','v1',1);
   insert into public.ap_generated_file_versions(artifact_id,version,storage_bucket,storage_path,checksum_sha256,mime_type,size_bytes,human_content_approved_by,human_content_approved_at,human_visual_approved_by,human_visual_approved_at)

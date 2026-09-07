@@ -10,7 +10,14 @@ export type Chunk4EmailKind =
   | "REFUND_PROBLEM"
   | "SEARCH_EXACT_TEN_DELIVERED"
   | "SECURE_ACCESS_RESEND"
-  | "PAYMENT_DISPUTE";
+  | "PAYMENT_DISPUTE"
+  | "MATERIALS_PAYMENT_VERIFIED"
+  | "MATERIAL_SUBSTITUTION_ACCEPTED"
+  | "MATERIAL_FACT_REVISION_ACCEPTED"
+  | "MATERIALS_DELIVERED"
+  | "REFERENCE_REGENERATION_STARTED"
+  | "REFERENCE_REGENERATION_DELIVERED"
+  | "REFERENCE_REGENERATION_FAILED";
 
 export type Chunk4EmailInput = {
   kind: Chunk4EmailKind;
@@ -21,6 +28,7 @@ export type Chunk4EmailInput = {
   criteriaDiff?: unknown;
   refundAmountCents?: number | null;
   disputeState?: string | null;
+  lineCount?: number | null;
 };
 
 const titles: Record<Chunk4EmailKind, string> = {
@@ -34,6 +42,13 @@ const titles: Record<Chunk4EmailKind, string> = {
   SEARCH_EXACT_TEN_DELIVERED: "Your 10 ApplyPack job matches are ready",
   SECURE_ACCESS_RESEND: "Your secure ApplyPack access link",
   PAYMENT_DISPUTE: "Your ApplyPack payment status changed",
+  MATERIALS_PAYMENT_VERIFIED: "Your application materials are underway",
+  MATERIAL_SUBSTITUTION_ACCEPTED: "Your substitute job was accepted",
+  MATERIAL_FACT_REVISION_ACCEPTED: "Your corrected material facts were accepted",
+  MATERIALS_DELIVERED: "Your application materials are ready",
+  REFERENCE_REGENERATION_STARTED: "Your updated reference sheet is underway",
+  REFERENCE_REGENERATION_DELIVERED: "Your updated reference sheet is ready",
+  REFERENCE_REGENERATION_FAILED: "Your reference-sheet update needs attention",
 };
 
 export function escapeEmailHtml(value: unknown) {
@@ -101,6 +116,31 @@ export function renderChunk4Email(input: Chunk4EmailInput) {
     case "SECURE_ACCESS_RESEND":
       actionLabel = "Access your order securely";
       lines = ["Use the secure link below to open your ApplyPack order.", "This link is single-use and expires in 15 minutes. If you did not request it, you may ignore this message."];
+      break;
+    case "MATERIALS_PAYMENT_VERIFIED":
+      lines = [
+        `Your card payment for ${input.lineCount ?? "the selected"} $8 material line${input.lineCount === 1 ? "" : "s"} was verified.`,
+        `The exact active deadline is ${deadline || "recorded in My ApplyPack"}.`,
+        "Each selected job receives one tailored resume and one tailored cover letter. ApplyPack does not submit applications.",
+      ];
+      break;
+    case "MATERIAL_SUBSTITUTION_ACCEPTED":
+      lines = ["Your explicit substitute-job choice was recorded.", `The replacement line deadline is ${deadline || "recorded in My ApplyPack"}.`, "No job is ever substituted silently."];
+      break;
+    case "MATERIAL_FACT_REVISION_ACCEPTED":
+      lines = ["Your exact fact correction was recorded.", `The revised line deadline is ${deadline || "recorded in My ApplyPack"}.`, "The prior generation cannot overwrite this accepted revision."];
+      break;
+    case "MATERIALS_DELIVERED":
+      lines = ["Your human-reviewed resume and cover letter are available in My ApplyPack.", "Files remain private and each new download requires current ownership authorization. Signed download access expires after 15 minutes."];
+      break;
+    case "REFERENCE_REGENERATION_STARTED":
+      lines = ["Your no-charge reference-sheet update has started.", `Its exact deadline is ${deadline || "recorded in My ApplyPack"}.`, "Only references with fresh permission for this exact job may be included."];
+      break;
+    case "REFERENCE_REGENERATION_DELIVERED":
+      lines = ["Your human-reviewed replacement reference sheet is available in My ApplyPack.", "The prior hosted sheet remains revoked; use the current file version."];
+      break;
+    case "REFERENCE_REGENERATION_FAILED":
+      lines = ["The reference-sheet update missed its active deadline and was stopped.", "The hosted draft remains unavailable. Staff have been alerted to resolve the protected follow-up."];
       break;
     default:
       lines = [`The payment dispute state is ${input.disputeState || "being reviewed"}.`, "Undelivered work does not resume automatically. Open My ApplyPack for the recorded order and refund state."];

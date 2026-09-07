@@ -3,6 +3,7 @@ import { after, NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { createCapabilitySecret, hashCapabilitySecret, immediateSearchPayment } from "@/lib/commerce/server";
 import { sendOrderReceipt } from "@/lib/email/send";
+import { immediateMaterialPayment } from "@/lib/materials/server";
 import { stripeEventMatchesConfiguredMode } from "@/lib/stripe/mode";
 import { assertConfiguredPrice, createStripeOperationalClient } from "@/lib/stripe/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -66,12 +67,17 @@ export async function POST(request: Request) {
         await completeCorrectedSearch(stripe, admin, event.data.object, {
           eventId: event.id, eventType: event.type, payloadSha256, signatureVerifiedAt,
         });
+      } else if (isCorrectedMaterialSession(event.data.object)) {
+        await completeCorrectedMaterials(stripe, admin, event.data.object, {
+          eventId: event.id, eventType: event.type, payloadSha256, signatureVerifiedAt,
+        });
       } else {
         const verified = await verifyCompletedCheckout(stripe, event.data.object);
         await completeCheckout(verified, new Date(event.created * 1000));
       }
     } else if (event.type === "checkout.session.expired") {
       if (isCorrectedSearchSession(event.data.object)) await expireCorrectedSearch(admin, event.data.object);
+      else if (isCorrectedMaterialSession(event.data.object)) await expireCorrectedMaterials(admin, event.data.object);
       else await expireCheckout(event.data.object);
     } else if (["refund.created", "refund.updated", "refund.failed"].includes(event.type)) {
       const refund = event.data.object as Stripe.Refund;
@@ -122,6 +128,80 @@ function isCorrectedSearchSession(session: Stripe.Checkout.Session) {
   return session.metadata?.contract_version === "chunk4-v1"
     && session.metadata?.product_kind === "job_search"
     && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(session.metadata?.checkout_attempt_id || "");
+}
+
+function isCorrectedMaterialSession(session: Stripe.Checkout.Session) {
+  return session.metadata?.contract_version === "chunk5-v1"
+    && session.metadata?.product_kind === "apply_pack"
+    && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(session.metadata?.checkout_intent_id || "");
+}
+
+async function completeCorrectedMaterials(
+  stripe: Stripe,
+  admin: AdminClient,
+  eventSession: Stripe.Checkout.Session,
+  evidence: { eventId: string; eventType: string; payloadSha256: string; signatureVerifiedAt: string },
+) {
+  const expectedPriceId = process.env.STRIPE_APPLY_PACK_PRICE_ID;
+  if (!expectedPriceId) throw new Error("Corrected materials price is not configured");
+  const session = await stripe.checkout.sessions.retrieve(eventSession.id, {
+    expand: ["line_items.data.price.product", "payment_intent.latest_charge"],
+  });
+  if (!isCorrectedMaterialSession(session)) throw new Error("Corrected materials metadata is incomplete");
+  const checkoutIntentId = session.metadata!.checkout_intent_id!;
+  const { data: checkout, error: checkoutError } = await admin.from("ap_material_checkout_intents")
+    .select("id,customer_id,line_count,provider_checkout_session_id")
+    .eq("id", checkoutIntentId).eq("provider_checkout_session_id", session.id).maybeSingle();
+  if (checkoutError || !checkout) throw checkoutError || new Error("Corrected materials checkout binding was not found");
+  const paymentIntent = typeof session.payment_intent === "string"
+    ? await stripe.paymentIntents.retrieve(session.payment_intent, { expand: ["latest_charge"] })
+    : session.payment_intent;
+  if (!paymentIntent) throw new Error("Corrected materials checkout has no PaymentIntent");
+  const charge = typeof paymentIntent.latest_charge === "string"
+    ? await stripe.charges.retrieve(paymentIntent.latest_charge)
+    : paymentIntent.latest_charge || null;
+  await assertConfiguredPrice(stripe, expectedPriceId, {
+    unitAmount: 800,
+    productName: "Tailored Resume + Cover Letter",
+  });
+  const payment = immediateMaterialPayment({
+    session,
+    paymentIntent,
+    charge,
+    expectedPriceId,
+    expectedLineCount: checkout.line_count,
+  });
+  if (!payment.valid || !payment.paymentVerifiedAt) {
+    throw new Error("Corrected materials payment was not an immediate successful card charge");
+  }
+  const payerEmail = session.customer_details?.email || charge?.billing_details.email || session.customer_email || null;
+  const { error } = await admin.rpc("ap_apply_verified_material_payment", {
+    p_provider_event_id: evidence.eventId,
+    p_event_type: evidence.eventType,
+    p_payload_sha256: evidence.payloadSha256,
+    p_signature_verified_at: evidence.signatureVerifiedAt,
+    p_checkout_intent_id: checkout.id,
+    p_checkout_session_id: session.id,
+    p_payment_intent_id: paymentIntent.id,
+    p_payment_status: "paid",
+    p_payment_method_type: payment.paymentMethodType,
+    p_amount_cents: paymentIntent.amount_received,
+    p_currency: paymentIntent.currency.toUpperCase(),
+    p_payer_receipt_email: payerEmail,
+    p_payment_succeeded_at: payment.paymentVerifiedAt,
+    p_outbox_id: randomUUID(),
+  });
+  if (error) throw error;
+}
+
+async function expireCorrectedMaterials(admin: AdminClient, session: Stripe.Checkout.Session) {
+  const checkoutIntentId = session.metadata?.checkout_intent_id;
+  if (!checkoutIntentId) throw new Error("Corrected materials expiration is missing its checkout intent");
+  const { error } = await admin.rpc("ap_expire_material_checkout", {
+    p_checkout_intent_id: checkoutIntentId,
+    p_reason: "PROVIDER_SESSION_EXPIRED",
+  });
+  if (error) throw error;
 }
 
 async function completeCorrectedSearch(

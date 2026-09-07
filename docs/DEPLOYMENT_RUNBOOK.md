@@ -602,3 +602,151 @@ On signature failures, ambiguous provider outcomes, capacity anomalies, worker l
 6. Repair forward with a new additive migration after database, payment, security/privacy, and release-owner review. Re-run the full validation, catch-up, and provider reconciliation procedure before any later activation.
 
 Exact-ten releases already committed within their active deadline and their earned revenue remain immutable. A post-delivery dispute is recorded by its scope and provider outcome; it never silently resumes work or creates a second refund.
+
+## Chunk 5 materials, document generation, references, and delivery deployment
+
+This is a future operator procedure, not authorization to deploy, configure production, activate providers, or enable materials Checkout. Apply 202609070031_chunk5_materials_delivery.sql only after the accepted Chunk 4 checkpoint. Migration 031 is expand-only and preserves existing paid, release, entitlement, reference, capacity, and audit history.
+
+### Expand and compatibility sequence
+
+1. Record the authorized code commit, production project identity, migration ledger, backup/PITR evidence, and non-sensitive counts for materials purchases/lines, entitlement claims/history, refunds, disputes, releases, reference records/permissions, generated artifacts/files, capacity, scheduled jobs, and outbox messages.
+2. Confirm APP_PAYMENT_MODE=disabled, APP_CHECKOUT_ENABLED=false, APP_LIVE_PAYMENTS_ENABLED=false, APP_FILE_PROCESSING_ENABLED=false, blank APP_CHUNK4_WORKER_ID, and disabled source automation.
+3. Confirm the current commerce row still has tax_treatment UNSET_BLOCKING, materials_generation_approved false, no generation approval reference, an empty output-format list, and null renderer/Arial/scanner identities.
+4. Apply migration 031 after migration 030. Do not edit, squash, or replay altered migration history.
+5. Regenerate src/lib/database.types.ts and verify exact equality with the migrated schema.
+6. Deploy schema-compatible code while all Checkout, generation, worker, and provider gates remain disabled. Verify health responses expose readiness booleans only.
+7. Run the read-only validation below and the complete legacy/backfill/rollback regression. Resolve every anomaly without rewriting immutable history.
+8. Complete every CFG-C5 row in docs/CONFIG_DECISIONS.md with owner, non-secret evidence, version, and test date. Configure secrets only through the approved secret/KMS process.
+9. Rehearse with synthetic data, Stripe test mode, allowlisted email recipients, private non-production storage, and approved local renderer/scanner binaries. Do not use real reference PII in fixtures, screenshots, logs, or provider exercises.
+10. Obtain separate activation authorization. Enable one bounded layer at a time: protected processing, materials capacity/staff, scheduler/monitoring, provider test path, then live materials Checkout. Live payments and worker activation are distinct decisions.
+
+Disposable local rehearsal:
+
+    npx.cmd supabase db reset --local
+    npm.cmd run test:database
+    npm.cmd run test:legacy-backfill
+    npm.cmd run test:rollback
+    npm.cmd run types:database:check
+    npm.cmd run lint
+    npm.cmd run typecheck
+    npm.cmd test -- --pool=threads --maxWorkers=1
+    npm.cmd run build
+    npm.cmd run test:e2e
+    npx.cmd playwright test tests/e2e/chunk5-evidence.spec.ts --reporter=list
+    git diff --check
+
+The real scanner and real renderer suites must report blocked or not-applicable when approved binaries are absent. Neither result authorizes production processing. Automated browser accessibility checks do not replace the required manual screen-reader and keyboard exercise.
+
+### Required configuration hold points
+
+- Payments/legal: approved tax-inclusive treatment; exact 800-cent Stripe price mapping and API version; immediate paid card only; webhook signature; duplicate payment and per-line refund/dispute reconciliation; all three live flags separately controlled.
+- Identity/storage: exact production origin and callback allowlist; recent-auth evidence; private delivery and preview buckets; 15-minute signer; no link/path logging; cross-customer denial.
+- Documents/security: approved generator version; DOCX/PDF set; pinned local renderer/tool hashes; licensed Arial hash; malware scanner identity; sandboxed parser/OCR; permitted-model list; local reference isolation and leak scans; KMS identities and rotation.
+- Operations: versioned materials/reference-regeneration capacity, protected staff assignments and training, durable scheduler owner, lease/catch-up proof, alert routing, incident ownership, and support response.
+- Privacy/legal: reference and artifact retention matrix, legal holds, deletion/revocation, downloaded-copy disclosure, post-delivery false-claim treatment, and immutable published legal versions.
+- Communications: verified sender/reply-to, SPF/DKIM/DMARC, disabled tracking, accepted-send idempotency/reconciliation, and synthetic delivery evidence for every Chunk 5 message kind.
+
+### Read-only production validation
+
+Run only after the database owner confirms the exact target. Exactly one checkpoint must exist:
+
+    select migration_id, checkpoint, count(*) as copies
+    from public.ap_migration_checkpoints
+    where migration_id='202609070031'
+      and checkpoint='CHUNK5_MATERIALS_DELIVERY_V1'
+    group by migration_id, checkpoint;
+
+Before activation, the fail-closed row must remain visibly unready:
+
+    select tax_treatment, materials_rule_ttl_seconds, download_ttl_seconds,
+           reauthentication_window_seconds, materials_generation_approved,
+           materials_generation_approval_reference, material_output_formats,
+           document_renderer_identity, arial_font_sha256, malware_scanner_identity
+    from public.ap_commerce_configuration;
+
+After separately approved configuration, tax treatment must be TAX_INCLUSIVE_NO_ADDED_AMOUNT; the rule TTL must be 3,600 seconds; both download and reauthentication windows must be 900 seconds; generation approval/reference, at least one output format, renderer identity, Arial hash, and scanner identity must all be present and match the deployed binaries.
+
+Every anomaly count below must be zero:
+
+    select count(*) as bad_material_price
+    from public.ap_material_lines
+    where allocated_amount_cents <> 800;
+
+    select count(*) as bad_purchase_total
+    from public.ap_material_purchases purchase
+    where purchase.amount_cents <> (
+      select count(*) * 800 from public.ap_material_lines line
+      where line.purchase_id=purchase.id
+    );
+
+    select delivered_order_id, delivered_match_id, count(*) as current_claims
+    from public.ap_material_entitlement_claims
+    group by delivered_order_id, delivered_match_id
+    having count(*) <> 1;
+
+    select count(*) as invalid_material_deadline
+    from public.ap_material_lines
+    where materials_started_at is not null
+      and materials_due_at <> materials_started_at + interval '24 hours';
+
+    select count(*) as invalid_revision_deadline
+    from public.ap_material_line_revisions
+    where started_at is not null
+      and due_at <> started_at + interval '24 hours';
+
+    select count(*) as invalid_regeneration_deadline
+    from public.ap_reference_regenerations
+    where started_at is not null
+      and due_at <> started_at + interval '24 hours';
+
+    select count(*) as released_without_complete_current_qa
+    from public.ap_release_members member
+    join public.ap_releases release on release.id=member.release_id
+    join public.ap_generated_artifacts artifact
+      on member.member_type='GENERATED_ARTIFACT' and artifact.id=member.member_id
+    join public.ap_generated_file_versions file
+      on file.artifact_id=artifact.id and file.version=artifact.current_file_version
+    left join public.ap_artifact_quality_reviews quality on quality.file_version_id=file.id
+    where release.release_kind in ('MATERIAL_PAIR','MATERIAL_TRIPLE','REFERENCE_REGENERATION')
+      and (
+        file.superseded_at is not null
+        or file.downloads_revoked_at is not null
+        or quality.automated_passed_at is null
+        or quality.content_approved_at is null
+        or quality.visual_approved_at is null
+        or quality.invalidated_at is not null
+      );
+
+    select release.id, release.release_kind, count(member.*) as artifact_count
+    from public.ap_releases release
+    left join public.ap_release_members member
+      on member.release_id=release.id and member.member_type='GENERATED_ARTIFACT'
+    where release.release_kind in ('MATERIAL_PAIR','MATERIAL_TRIPLE')
+    group by release.id, release.release_kind
+    having count(member.*) <> case when release.release_kind='MATERIAL_PAIR' then 2 else 3 end;
+
+    select count(*) as bad_download_ttl
+    from public.ap_material_download_audits
+    where expires_at <> issued_at + interval '15 minutes';
+
+    select count(*) as earned_without_material_release
+    from public.ap_material_lines line
+    where line.earned_revenue_at is not null
+      and not exists (
+        select 1 from public.ap_releases release
+        where release.material_line_id=line.id
+          and release.release_kind in ('MATERIAL_PAIR','MATERIAL_TRIPLE')
+      );
+
+Also inspect public.ap_material_purchase_status and public.ap_chunk5_monitor_snapshot(). Any open Checkout past expiry, past-due active line/regeneration, unhandled proposal, QA wait, revoked hosted file, false-claim case, failed refund/outbox, lease lag, or capacity exhaustion requires its named owner before activation.
+
+### Incident stop and data-preserving rollback
+
+On a price/tax mismatch, ambiguous payment, duplicate claim, partial artifact visibility, stale job/rule/fact binding, unsupported claim, reference leak, incorrect recipient, renderer/font/scanner mismatch, cross-customer access, deadline/refund race, worker lag, or repeated email:
+
+1. Disable new Checkout by restoring APP_PAYMENT_MODE=disabled, APP_CHECKOUT_ENABLED=false, and APP_LIVE_PAYMENTS_ENABLED=false. Disable file processing and unset the durable worker identity. Do not continue generation with an unknown scanner or renderer.
+2. Preserve payment/provider events, commands, Checkout intents/items, purchases/lines/revisions, entitlement history/claims, capacity, listing checks, proposals, facts, employer rules, reference records/versions/permissions, isolation reviews, artifacts/files/QA, releases, refunds/disputes, download audits, support cases, outbox, scheduled jobs, and audit events.
+3. Revoke only affected hosted file versions and short-lived capabilities. Explain that previously downloaded copies cannot be recalled. Do not rewrite a committed release, earned revenue, refund history, entitlement history, or SLA.
+4. Reconcile payments and accepted email/provider operations by immutable idempotency key. A paid line that cannot safely release follows only its scoped substitution/refund state machine. Never convert an ambiguous operation to success by hand.
+5. Return application traffic to the preceding schema-compatible code while leaving migration 031 in place. Do not down-migrate, drop evidence, reuse a released entitlement, or restore an older database over newer commerce/reference history.
+6. Repair forward with a new additive migration after database, payments, security/privacy, accessibility, document, and release-owner review. Re-run the full suite plus real renderer/scanner and manual assistive-technology exercises before any later activation.

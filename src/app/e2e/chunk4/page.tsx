@@ -26,7 +26,14 @@ export default async function Chunk4EvidencePage({ searchParams }: { searchParam
         <p>This isolated synthetic fixture renders the production components without customer data, credentials, or provider calls.</p>
       </section>
       <SearchOrderProgress searches={searches} />
-      {state === "delivered" ? <ApplyPackSelector matches={deliveredMatches()} evaluatedAt="2026-11-02T17:45:00.000Z" /> : null}
+      {state === "delivered" ? <ApplyPackSelector
+        matches={deliveredMatches()}
+        evaluatedAt="2026-11-02T17:45:00.000Z"
+        deliveredOrderId={orderId}
+        deliveredReleaseId="94000000-0000-4000-8000-000000000402"
+        sourceSnapshotId="94000000-0000-4000-8000-000000000403"
+        initialEmail="synthetic@example.invalid"
+      /> : null}
     </div>
   </main>;
 }
@@ -103,6 +110,10 @@ function deliveredMatches(): MatchForSelection[] {
     posted_on: index % 3 === 0 ? null : "2026-10-29",
     posted_date_unknown: index % 3 === 0,
     last_checked_at: "2026-11-02T17:45:00.000Z",
+    job_snapshot_id: `97000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    submission_rule_id: `98000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    reference_timing: "OPTIONAL_NOW",
+    reference_count: 3,
     job: {
       company: `Synthetic Employer ${index + 1}`,
       title,

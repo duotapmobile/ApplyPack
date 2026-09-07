@@ -3,8 +3,11 @@ import Link from "next/link";
 import { DeliveryActions } from "@/components/portal/delivery-actions";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { EmailCodeSignIn } from "@/components/auth/email-code-sign-in";
-import { ApplyPackSelector, type MatchForSelection } from "@/components/portal/apply-pack-selector-v2";
+import { ApplyPackSelector } from "@/components/portal/apply-pack-selector-v2";
+import { MaterialDeliveries } from "@/components/portal/material-deliveries";
+import { ReferenceManager } from "@/components/portal/reference-manager";
 import { SearchOrderProgress, type SearchOrderProgressView } from "@/components/portal/search-order-progress";
+import { loadDeliveredMatchGroups, loadMaterialDeliveries } from "@/lib/materials/portal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "My ApplyPack", robots: { index: false, follow: false } };
@@ -22,7 +25,7 @@ export default async function PortalPage() {
   const searchOrderIds = searchOrders.map((order) => order.id);
   const { data: services } = searchOrderIds.length
     ? await supabase.from("ap_search_services")
-      .select("id,legacy_order_id,winning_payment_attempt_id,fulfillment,adjustment,delivery_due_at,capacity_exception_at,refund_started_at,legacy_record")
+      .select("id,legacy_order_id,winning_payment_attempt_id,original_snapshot_id,fulfillment,adjustment,delivery_due_at,capacity_exception_at,refund_started_at,legacy_record")
       .in("legacy_order_id", searchOrderIds)
     : { data: [] };
   const serviceIds = (services || []).map((service) => service.id);
@@ -83,27 +86,16 @@ export default async function PortalPage() {
     };
   });
 
-  const legacyReleasedOrderIds = new Set((services || []).filter((service) => service.legacy_record && service.fulfillment === "DELIVERED").map((service) => service.legacy_order_id));
-  const matchOrderIds = searchOrders.filter((order) => releaseOrderIds.has(order.id) || legacyReleasedOrderIds.has(order.id)).map((order) => order.id);
-  let matches: MatchForSelection[] = [];
-  if (matchOrderIds.length) {
-    const { data } = await supabase.from("job_matches").select("id,position,fit_summary,matching_experience,primary_outcome,core_responsibilities,requirements,hidden_job_functions,concerns,ranking_reason_codes,release_explanation,allowed_unknown_warnings,source_provenance,compensation_status,posted_on,posted_date_unknown,last_checked_at,job:jobs(company,title,source_url,official_application_url,source_name,source_category,location_text,salary_text,checked_at,listing_status,employment_type,w2_or_contractor,work_mode,remote_scope,eligible_states,eligible_countries,timezone_requirement,schedule_type,pay_model,phone_intensity,sales_flag,commission_flag,marketing_flag,high_volume_contact_center_flag,equipment_requirement,equipment_cost_responsibility,applicant_cost,benefits_status,experience_level,is_active,review_status,rejection_reason)")
-      .in("search_order_id", matchOrderIds).order("position");
-    matches = (data || []).map((item) => ({
-      ...item,
-      concerns: stringArray(item.concerns),
-      matching_experience: stringArray(item.matching_experience),
-      core_responsibilities: stringArray(item.core_responsibilities),
-      requirements: stringArray(item.requirements),
-      hidden_job_functions: stringArray(item.hidden_job_functions),
-      allowed_unknown_warnings: stringArray(item.allowed_unknown_warnings),
-      release_explanation: jsonObject(item.release_explanation),
-      source_provenance: jsonObject(item.source_provenance),
-      job: Array.isArray(item.job) ? item.job[0] : item.job,
-    })).filter((item) => {
-      const job = Array.isArray(item.job) ? item.job[0] : item.job;
-      return job && job.review_status !== "rejected" && job.rejection_reason !== "hard_exclusion" && !/live\s*ops/i.test([job.company, job.source_name, job.source_url, job.official_application_url].filter(Boolean).join(" "));
-    }) as MatchForSelection[];
+  let releasePortal = { groups: [], jobs: [] } as Awaited<ReturnType<typeof loadDeliveredMatchGroups>>;
+  let materialDeliveries: Awaited<ReturnType<typeof loadMaterialDeliveries>> = [];
+  let portalDataUnavailable = false;
+  try {
+    [releasePortal, materialDeliveries] = await Promise.all([
+      loadDeliveredMatchGroups({ supabase, releases: releases || [], services: services || [] }),
+      loadMaterialDeliveries({ supabase, customerId: authData.user.id }),
+    ]);
+  } catch {
+    portalDataUnavailable = true;
   }
 
   const { data: deliveryItems } = await supabase.from("apply_pack_items")
@@ -127,7 +119,18 @@ export default async function PortalPage() {
           ) : <div className="empty-state"><h3>No orders yet.</h3><p>Complete the intake to start your first search.</p><Link href="/get-started">Get started</Link></div>}
         </section>
         <SearchOrderProgress searches={searchProgress} />
-        {matches.length ? <ApplyPackSelector matches={matches} evaluatedAt={new Date().toISOString()} /> : null}
+        {portalDataUnavailable ? <section className="portal-section"><div className="match-warning"><strong>Private materials data is temporarily unavailable.</strong> No purchase or download action is enabled until the exact release records can be verified.</div></section> : null}
+        {releasePortal.groups.map((group) => <ApplyPackSelector
+          key={group.deliveredReleaseId}
+          matches={group.matches}
+          evaluatedAt={group.evaluatedAt}
+          deliveredOrderId={group.deliveredOrderId}
+          deliveredReleaseId={group.deliveredReleaseId}
+          sourceSnapshotId={group.sourceSnapshotId}
+          initialEmail={authData.user.email || ""}
+        />)}
+        {releasePortal.groups.length ? <ReferenceManager deliveredJobs={releasePortal.jobs} /> : null}
+        <MaterialDeliveries lines={materialDeliveries} />
         {deliveryItems?.length ? (
           <section className="portal-section">
             <div className="portal-section__heading"><div><p className="eyebrow">DELIVERIES</p><h2>Your documents</h2></div><p>Download, review, and edit every document before submitting it to an employer.</p></div>
