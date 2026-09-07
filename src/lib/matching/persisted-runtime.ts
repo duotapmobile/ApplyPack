@@ -309,3 +309,34 @@ export function deliveryRow(row: PersistedMatchEvaluation, position: number) {
     ranking_reason_codes: { selectionRunId: row.selection.runId, baseRank: row.selection.baseRank, selectedRank: row.selection.selectedRank, rank: row.selection.rankExplanation, selector: row.selection.selectorExplanation, evaluationId: row.id },
   };
 }
+
+export function exactTenReleaseMember(row: PersistedMatchEvaluation, position: number) {
+  const delivery = deliveryRow(row, position);
+  const whatMayBeNew = delivery.hidden_job_functions.length
+    ? delivery.hidden_job_functions.join("; ")
+    : "No less-obvious function was confirmed beyond the responsibilities shown.";
+  const whatToKnow = delivery.concerns.length
+    ? delivery.concerns.join(" ")
+    : "No additional allowed-unknown warning was recorded; review the current employer listing before applying.";
+  return {
+    evaluationId: row.id,
+    jobId: delivery.job_id,
+    position,
+    fitSummary: delivery.fit_summary,
+    matchingExperience: delivery.matching_experience,
+    primaryOutcome: delivery.primary_outcome,
+    coreResponsibilities: delivery.core_responsibilities,
+    requirements: delivery.requirements,
+    hiddenJobFunctions: delivery.hidden_job_functions,
+    warnings: delivery.concerns,
+    criteriaChecks: delivery.criteria_checks,
+    rankingReasonCodes: delivery.ranking_reason_codes,
+    releaseExplanation: {
+      whatJobInvolves: delivery.core_responsibilities.join("; "),
+      whyMadeList: `${delivery.fit_summary} Evidence checked: ${delivery.requirements.join("; ")}`,
+      howExperienceConnects: delivery.matching_experience.join("; "),
+      whatMayBeNew,
+      whatToKnow,
+    },
+  };
+}

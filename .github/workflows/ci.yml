@@ -47,6 +47,8 @@ jobs:
           version: latest
       - run: supabase start
       - run: supabase db reset --local --no-seed
+      - name: Corrected-contract database fixtures
+        run: npm run test:database
       - name: Checkout concurrency
         run: cat tests/integration/checkout-concurrency.sql | docker exec -i supabase_db_applypack psql -U postgres -d postgres -v ON_ERROR_STOP=1
       - name: RLS and financial invariants

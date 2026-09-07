@@ -14,6 +14,13 @@ export type MatchForSelection = {
   hidden_job_functions: string[];
   concerns: string[];
   ranking_reason_codes?: Array<{ code: string; points: number; explanation: string }>;
+  release_explanation?: Record<string, unknown>;
+  allowed_unknown_warnings?: string[];
+  source_provenance?: Record<string, unknown>;
+  compensation_status?: string | null;
+  posted_on?: string | null;
+  posted_date_unknown?: boolean;
+  last_checked_at?: string | null;
   job: {
     company: string;
     title: string;
@@ -162,9 +169,14 @@ export function ApplyPackSelector({ matches, evaluatedAt }: { matches: MatchForS
       <div className="match-grid">
         {matches.map((match) => {
           const checked = selected.includes(match.id);
-          const fresh = new Date(evaluatedAt).getTime() - new Date(match.job.checked_at).getTime() <= 24 * 60 * 60 * 1000;
+          const lastCheckedAt = match.last_checked_at || match.job.checked_at;
+          const fresh = new Date(evaluatedAt).getTime() - new Date(lastCheckedAt).getTime() <= 24 * 60 * 60 * 1000;
           const available = match.job.listing_status === "open" && match.job.is_active !== false && match.job.review_status === "approved" && !match.job.rejection_reason && fresh;
-          const maxSelection = Math.min(10, availableUnits ?? 0);
+           const maxSelection = Math.min(10, availableUnits ?? 0);
+           const release = releaseNarrative(match);
+           const applicationUrl = match.job.official_application_url || match.job.source_url;
+           const applicationHost = hostLabel(applicationUrl);
+           const applicationHostType = stringValue(match.source_provenance?.applicationHostType) || "Reviewed application route";
           return (
             <article className={"match-card " + (checked ? "match-card--selected" : "")} key={match.id}>
               <div className="match-card__top"><span>#{match.position}</span><label><input aria-label={`${checked ? "Remove" : "Select"} Tailored Resume + Cover Letter for ${match.job.title} at ${match.job.company}`} type="checkbox" checked={checked} onChange={() => toggle(match.id)} disabled={!available || (!checked && selected.length >= maxSelection)} /><i><Check aria-hidden="true" /></i><b>{checked ? "Selected" : available ? "Select" : "Unavailable"}</b></label></div>
@@ -178,31 +190,29 @@ export function ApplyPackSelector({ matches, evaluatedAt }: { matches: MatchForS
                 {match.job.marketing_flag ? <strong>Marketing Duties</strong> : null}
                 {match.job.commission_flag ? <strong>Commission</strong> : null}
               </div>
-              <p>{match.fit_summary}</p>
-              <div className="match-evidence">
-                <p><strong>Why your experience connects</strong></p>
-                <ul>{match.matching_experience.map((experience) => <li key={experience}>{experience}</li>)}</ul>
-                <p><strong>Employer&apos;s primary outcome</strong> {match.primary_outcome}</p>
-                <p><strong>Core responsibilities</strong></p>
-                <ul>{match.core_responsibilities.map((responsibility) => <li key={responsibility}>{responsibility}</li>)}</ul>
-                <p><strong>Important requirements</strong></p>
-                <ul>{match.requirements.map((requirement) => <li key={requirement}>{requirement}</li>)}</ul>
-                {match.hidden_job_functions.length ? <p><strong>Less-obvious job functions</strong> {match.hidden_job_functions.join("; ")}</p> : null}
+              <div className="match-evidence release-explanation">
+                <section><h4>What the job involves</h4><p>{release.whatJobInvolves}</p></section>
+                <section><h4>Why it made your list</h4><p>{release.whyMadeList}</p></section>
+                <section><h4>How your experience connects</h4><p>{release.howExperienceConnects}</p></section>
+                <section><h4>What may be new</h4><p>{release.whatMayBeNew}</p></section>
+                <section><h4>What to know before applying</h4><p>{release.whatToKnow}</p></section>
               </div>
               <dl>
-                <div><dt>Location</dt><dd>{match.job.location_text || "See listing"}</dd></div>
-                <div><dt>Remote eligibility</dt><dd>{match.job.remote_scope || label(match.job.work_mode || "unknown")}{match.job.eligible_states?.length ? ` (states: ${match.job.eligible_states.join(", ")})` : ""}{match.job.timezone_requirement ? ` (${match.job.timezone_requirement})` : ""}</dd></div>
-                <div><dt>Salary</dt><dd>{match.job.salary_text || "Not listed"}{match.job.pay_model && match.job.pay_model !== "unknown" ? ` (${label(match.job.pay_model)})` : ""}</dd></div>
-                <div><dt>Employment</dt><dd>{label(match.job.employment_type || "unknown")} · Benefits {label(match.job.benefits_status || "unknown")}</dd></div>
+                <div><dt>Setting and location</dt><dd>{label(match.job.work_mode || "unknown")} · {match.job.location_text || "Location not stated"}{match.job.remote_scope ? ` · ${match.job.remote_scope}` : ""}{match.job.eligible_states?.length ? ` · Eligible states: ${match.job.eligible_states.join(", ")}` : ""}{match.job.timezone_requirement ? ` · ${match.job.timezone_requirement}` : ""}</dd></div>
+                <div><dt>Employment</dt><dd>{label(match.job.employment_type || "unknown")} · {label(match.job.w2_or_contractor || "unknown")} · Benefits {label(match.job.benefits_status || "unknown")}</dd></div>
+                <div><dt>Compensation</dt><dd>{match.job.salary_text || "Not published"}{match.job.pay_model && match.job.pay_model !== "unknown" ? ` · ${label(match.job.pay_model)}` : ""}{match.compensation_status ? ` · ${label(match.compensation_status)}` : ""}</dd></div>
+                <div><dt>Application route</dt><dd>{applicationHost} · {label(applicationHostType)} · {match.job.official_application_url ? "Direct application destination verified" : "Reviewed source destination"}</dd></div>
+                <div><dt>Posted</dt><dd>{match.posted_date_unknown || !match.posted_on ? "Employer did not publish a verified date" : new Date(`${match.posted_on}T00:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", dateStyle: "long" })}</dd></div>
                 {match.job.equipment_requirement ? <div><dt>Equipment</dt><dd>{match.job.equipment_requirement} Responsibility: {label(match.job.equipment_cost_responsibility || "unknown")}.</dd></div> : null}
                 <div><dt>Source</dt><dd>{match.job.source_name || "Reviewed source"} · {label(match.job.source_category || "unknown")}</dd></div>
               </dl>
+              {match.allowed_unknown_warnings?.length ? <div className="match-warning"><strong>Allowed unknowns to verify before applying</strong><ul>{match.allowed_unknown_warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div> : null}
               {match.job.applicant_cost !== null && match.job.applicant_cost !== undefined ? <p className="match-warning"><strong>Applicant-paid cost disclosed:</strong> {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(match.job.applicant_cost)}. Review the official posting before proceeding.</p> : null}
               {["contractor", "staffing"].includes(match.job.w2_or_contractor || "") ? <p className="match-warning"><strong>Flexible-work listing:</strong> This is {label(match.job.w2_or_contractor || "unknown")} work, not presented as a normal W-2 employee role. Benefits are {label(match.job.benefits_status || "unknown")}.</p> : null}
-              <p className="match-checked">Checked {new Date(match.job.checked_at).toLocaleString("en-US", { timeZone: "America/New_York" })} ET</p>
+              <p className="match-checked">Last checked {new Date(lastCheckedAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET</p>
               {!available ? <p className="match-warning"><strong>Historical delivery:</strong> This match remains in your record, but it is closed, stale, or awaiting a fresh review and cannot be purchased now.</p> : null}
               {match.concerns.length ? <p className="match-concern"><strong>Know before applying:</strong> {match.concerns.join(" ")}</p> : null}
-              <a href={match.job.official_application_url || match.job.source_url} target="_blank" rel="noreferrer">{match.job.official_application_url ? "View official application listing" : "View source listing"} <ArrowUpRight aria-hidden="true" /></a>
+              <a href={applicationUrl} target="_blank" rel="noreferrer">{match.job.official_application_url ? "View official application listing" : "View source listing"} on {applicationHost} <ArrowUpRight aria-hidden="true" /></a>
               {checked ? <div className="pack-notes">
                 <label>Anything to emphasize? <span>(optional, 500 characters)</span><textarea maxLength={500} value={notes[match.id]?.emphasisNotes || ""} onChange={(e) => updateNotes(match.id, "emphasisNotes", e.target.value)} /></label>
                 <label>Anything not to mention? <span>(optional, 500 characters)</span><textarea maxLength={500} value={notes[match.id]?.doNotMentionNotes || ""} onChange={(e) => updateNotes(match.id, "doNotMentionNotes", e.target.value)} /></label>
@@ -241,4 +251,36 @@ export function ApplyPackSelector({ matches, evaluatedAt }: { matches: MatchForS
 
 function label(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function hostLabel(value: string) {
+  try {
+    return new URL(value).hostname.replace(/^www\./i, "") || "reviewed application host";
+  } catch {
+    return "reviewed application host";
+  }
+}
+
+function releaseNarrative(match: MatchForSelection) {
+  const release = match.release_explanation || {};
+  return {
+    whatJobInvolves: stringValue(release.whatJobInvolves)
+      || match.core_responsibilities.join("; ")
+      || match.primary_outcome,
+    whyMadeList: stringValue(release.whyMadeList) || match.fit_summary,
+    howExperienceConnects: stringValue(release.howExperienceConnects)
+      || match.matching_experience.join("; ")
+      || "No unsupported experience claim was added.",
+    whatMayBeNew: stringValue(release.whatMayBeNew)
+      || match.hidden_job_functions.join("; ")
+      || "No less-obvious function was confirmed beyond the responsibilities shown.",
+    whatToKnow: stringValue(release.whatToKnow)
+      || match.allowed_unknown_warnings?.join(" ")
+      || match.concerns.join(" ")
+      || "No additional allowed-unknown warning was recorded; review the current employer listing before applying.",
+  };
 }

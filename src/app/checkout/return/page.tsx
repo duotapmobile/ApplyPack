@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { CheckoutStatus } from "@/components/commerce/checkout-status";
+import { checkoutCookieSettings, parseCheckoutCapability } from "@/lib/commerce/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -13,8 +16,19 @@ export default async function CheckoutReturnPage({
   searchParams: Promise<{ session_id?: string; cancelled?: string }>;
 }) {
   const parameters = await searchParams;
-  const supabase = await createSupabaseServerClient();
   const admin = createSupabaseAdminClient();
+  const settings = checkoutCookieSettings();
+  const store = await cookies();
+  const correctedCapability = parseCheckoutCapability(store.get(settings.name)?.value);
+
+  // Chunk 4 search checkout is anonymous-first and uses only the narrow,
+  // short-lived browser capability. Preserve the authenticated legacy return
+  // path below for Apply Pack document-set checkouts created before Chunk 4.
+  if (correctedCapability) {
+    return <CheckoutStatus cancelled={parameters.cancelled === "1"} />;
+  }
+
+  const supabase = await createSupabaseServerClient();
   if (!supabase || !admin) return <StatusCard title="Checkout status is unavailable" message="The private order service is not connected." />;
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) {

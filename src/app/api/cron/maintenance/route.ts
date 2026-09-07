@@ -6,6 +6,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { processWorkflowTasks } from "@/lib/workflow/process";
 import { processPendingFileScans } from "@/lib/files/process-scans";
 import { processPendingFeasibilityRequests } from "@/lib/matching/supabase-feasibility-store";
+import { processChunk4Workers } from "@/lib/commerce/workers";
 
 export const dynamic = "force-dynamic";
 
@@ -167,6 +168,11 @@ export async function POST(request: Request) {
   const feasibility = await processPendingFeasibilityRequests(admin, 5);
   const workflow = await processWorkflowTasks(admin, 2);
   const emailRetries = await retryFailedEmails(admin, 10);
+  const chunk4 = await processChunk4Workers(admin, 20).catch(() => ({
+    status: "error" as const,
+    reason: "CHUNK4_MAINTENANCE_FAILED",
+    processed: 0,
+  }));
   return NextResponse.json({
     ok: true,
     expiredReservations: reservationResult.data?.length || 0,
@@ -181,5 +187,6 @@ export async function POST(request: Request) {
     feasibility,
     fileScans,
     emailRetries,
+    chunk4,
   });
 }

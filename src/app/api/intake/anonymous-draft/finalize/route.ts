@@ -69,6 +69,32 @@ export async function POST(request: Request) {
     return NextResponse.json(mapped.body, { status: mapped.status });
   }
   const row = data[0] as Record<string, unknown>;
+  const { data: commerce } = await context.admin.from("ap_commerce_configuration")
+    .select("terms_version,privacy_version").eq("singleton", true).maybeSingle();
+  if (commerce?.terms_version && commerce.privacy_version) {
+    const acceptanceSha256 = canonicalSha256({
+      accepted: true,
+      draftId: context.capability.draftId,
+      snapshotId,
+      termsVersion: commerce.terms_version,
+      privacyVersion: commerce.privacy_version,
+    });
+    const legal = await context.admin.rpc("ap_record_snapshot_legal_acceptance", {
+      p_draft_id: context.capability.draftId,
+      p_secret_hash: context.secretHash,
+      p_snapshot_id: snapshotId,
+      p_terms_version: commerce.terms_version,
+      p_privacy_version: commerce.privacy_version,
+      p_acceptance_sha256: acceptanceSha256,
+    });
+    if (legal.error) {
+      return NextResponse.json({
+        error: "Your intake is saved, but the current Terms and Privacy acceptance could not be recorded. No payment was started.",
+        code: "LEGAL_ACCEPTANCE_NOT_RECORDED",
+        snapshotId,
+      }, { status: 503, headers: { "cache-control": "no-store" } });
+    }
+  }
   return NextResponse.json({ snapshotId: row.snapshot_id, feasibilityRequestId: row.feasibility_request_id,
     draftVersion: row.draft_version, feasibility: { state: "PENDING", message: "Your intake is saved. Feasibility review is pending." } },
     { status: 201, headers: { "cache-control": "no-store" } });

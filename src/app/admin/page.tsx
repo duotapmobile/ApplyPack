@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { AdminMfa } from "@/components/admin/admin-mfa";
 import { AdminOperations } from "@/components/admin/admin-operations";
 import { PendingIntakes } from "@/components/admin/pending-intakes";
+import { Chunk4StaffQueue, type StaffQueueRow, type StaffReviewCandidate } from "@/components/admin/chunk4-staff-queue";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { isAdminEmailAllowed } from "@/lib/auth/require-admin";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -37,6 +38,127 @@ export default async function AdminPage() {
   const { data: pendingSnapshots } = pendingSnapshotIds.length
     ? await admin.from("ap_intake_snapshots").select("id,access_email_normalized,desired_activities,avoided_activities,search_breadth,guidance_requested,work_modes,preferred_work_mode,us_state_or_dc,employment_types,preferred_employment_type,schedules,benefits,work_condition_preferences,dealbreakers,employer_unknown_policy,salary_hard_minimum_cents,salary_period,finalized_at").in("id", pendingSnapshotIds)
     : { data: [] };
+  const { data: staffQueueData } = await admin.from("ap_staff_queue")
+    .select("queue_kind,subject_id,order_id,due_at,state,non_sensitive_metadata")
+    .order("due_at", { ascending: true, nullsFirst: false });
+  const staffQueue: StaffQueueRow[] = (staffQueueData || []).map((row) => ({
+    queueKind: row.queue_kind || "UNKNOWN",
+    subjectId: row.subject_id || "unknown",
+    orderId: row.order_id,
+    dueAt: row.due_at,
+    state: row.state || "UNKNOWN",
+    metadata: row.non_sensitive_metadata && typeof row.non_sensitive_metadata === "object" && !Array.isArray(row.non_sensitive_metadata)
+      ? row.non_sensitive_metadata as Record<string, unknown> : {},
+  }));
+  const correctedServiceIds = staffQueue
+    .filter((row) => ["RESEARCHING", "JOB_REVIEW", "PACKAGE_REVIEW", "RELEASE", "ADJUSTMENT", "LATENESS", "REFUND"].includes(row.queueKind))
+    .map((row) => row.subjectId);
+  const { data: correctedServices } = correctedServiceIds.length
+    ? await admin.from("ap_search_services").select("id,active_snapshot_id").in("id", correctedServiceIds)
+    : { data: [] };
+  const snapshotToService = new Map((correctedServices || []).filter((service) => service.active_snapshot_id)
+    .map((service) => [service.active_snapshot_id!, service.id]));
+  const activeSnapshotIds = [...snapshotToService.keys()];
+  const { data: reviewEvaluationRows } = activeSnapshotIds.length
+    ? await admin.from("ap_match_evaluations")
+      .select("id,snapshot_id,job_snapshot_id,eligibility,root_result,root_results,leaf_results,resolution_issues,unknown_treatments,satisfaction_paths,categorical_evidence_sufficient,fit_score,fit_components,evidence_confidence,confidence_components,confidence_label,salary_status,salary_disposition,soft_preferences,application_readiness,presentation_risk,presentation_risk_reasons,warnings,candidate_fact_ids,job_evidence,explanation_evidence,version_bundle,active_root_keys,usefulness_result,calculation_input_sha256,calculation_version,job_snapshot:ap_job_snapshots!inner(id,discovery_source,source_authorization_id,source_url,canonical_employer_listing_url,canonical_application_url,application_host_type,company,exact_title,retrieved_at,live_verified_at,compensation_text,compensation_source,location_and_work_mode,parser_version,content_sha256,canonicalization_version,employer_identity_result,application_path_result,listing_activity_result,legitimacy_result,requirement_completeness,compensation_completeness,fraud_signals,material_restrictions)")
+      .in("snapshot_id", activeSnapshotIds).is("invalidated_at", null).order("fit_score", { ascending: false }).limit(100)
+    : { data: [] };
+  const reviewRows = reviewEvaluationRows || [];
+  const reviewFactIds = [...new Set(reviewRows.flatMap((evaluation) => evaluation.candidate_fact_ids || []))];
+  const reviewAuthorizationIds = [...new Set(reviewRows.flatMap((evaluation) => {
+    const job = Array.isArray(evaluation.job_snapshot) ? evaluation.job_snapshot[0] : evaluation.job_snapshot;
+    return job?.source_authorization_id ? [job.source_authorization_id] : [];
+  }))];
+  const [{ data: activeCriteriaRows }, { data: reviewFactRows }, { data: reviewAuthorizationRows }] = await Promise.all([
+    activeSnapshotIds.length ? admin.from("ap_intake_snapshots")
+      .select("id,version,snapshot_kind,desired_activities,avoided_activities,optional_titles,confirmed_title_restriction,optional_industries,blocked_industries,search_breadth,guidance_requested,work_modes,preferred_work_mode,us_state_or_dc,employment_types,preferred_employment_type,schedules,travel,benefits,work_condition_preferences,dealbreakers,salary_target_cents,salary_hard_minimum_cents,salary_minimum_flexible,salary_period,salary_basis,salary_overlap_policy,salary_unpublished_policy,salary_noncomparable_policy,salary_variable_pay_policy,employer_unknown_policy,canonicalization_version,schema_version,content_sha256,finalized_at")
+      .in("id", activeSnapshotIds) : Promise.resolve({ data: [] }),
+    reviewFactIds.length ? admin.from("ap_candidate_facts")
+      .select("id,semantic_key,value_kind,typed_value,source_kind,source_locator,verification,confirmed_or_corrected_at,catalog_version,schema_version,capability_status,extraction_confidence,superseded_at")
+      .in("id", reviewFactIds) : Promise.resolve({ data: [] }),
+    reviewAuthorizationIds.length ? admin.from("ap_source_authorizations")
+      .select("id,source_id,source_display_name,state,access_method,authorization_version,verified_at,content_sha256")
+      .in("id", reviewAuthorizationIds) : Promise.resolve({ data: [] }),
+  ]);
+  const criteriaById = new Map((activeCriteriaRows || []).map((row) => [row.id, row]));
+  const factsById = new Map((reviewFactRows || []).map((row) => [row.id, row]));
+  const authorizationById = new Map((reviewAuthorizationRows || []).map((row) => [row.id, row]));
+  const staffReviewCandidates: StaffReviewCandidate[] = reviewRows.flatMap((evaluation) => {
+    const job = Array.isArray(evaluation.job_snapshot) ? evaluation.job_snapshot[0] : evaluation.job_snapshot;
+    const serviceId = snapshotToService.get(evaluation.snapshot_id);
+    if (!job || !serviceId) return [];
+    const criteria = criteriaById.get(evaluation.snapshot_id);
+    const authorization = job.source_authorization_id ? authorizationById.get(job.source_authorization_id) : null;
+    return [{
+      serviceId,
+      evaluationId: evaluation.id,
+      snapshotId: evaluation.snapshot_id,
+      jobSnapshotId: evaluation.job_snapshot_id,
+      company: job.company,
+      title: job.exact_title,
+      eligibility: evaluation.eligibility,
+      rootResult: evaluation.root_result,
+      fitScore: evaluation.fit_score === null ? null : Number(evaluation.fit_score),
+      fitComponents: evaluation.fit_components,
+      evidenceConfidence: evaluation.evidence_confidence === null ? null : Number(evaluation.evidence_confidence),
+      confidenceLabel: evaluation.confidence_label,
+      confidenceComponents: evaluation.confidence_components,
+      salaryStatus: evaluation.salary_status,
+      salaryDisposition: evaluation.salary_disposition,
+      compensationText: job.compensation_text,
+      compensationSource: job.compensation_source,
+      applicationReadiness: evaluation.application_readiness,
+      presentationRisk: evaluation.presentation_risk,
+      presentationRiskReasons: evaluation.presentation_risk_reasons,
+      resolutionIssues: Array.isArray(evaluation.resolution_issues) ? evaluation.resolution_issues.map(String) : [],
+      warnings: Array.isArray(evaluation.warnings) ? evaluation.warnings.map((warning) => typeof warning === "string" ? warning : JSON.stringify(warning)) : [],
+      liveVerifiedAt: job.live_verified_at,
+      retrievedAt: job.retrieved_at,
+      applicationHostType: job.application_host_type,
+      applicationUrl: job.canonical_application_url,
+      employerListingUrl: job.canonical_employer_listing_url,
+      sourceUrl: job.source_url,
+      sourceName: authorization?.source_display_name || job.discovery_source,
+      sourceState: authorization?.state || "UNVERIFIED_DISABLED",
+      sourceAuthorizationVersion: authorization?.authorization_version || "missing",
+      gates: {
+        salaryDisposition: evaluation.salary_disposition,
+        categoricalEvidenceSufficient: evaluation.categorical_evidence_sufficient,
+        usefulnessResult: evaluation.usefulness_result,
+        activeRootKeys: evaluation.active_root_keys,
+        unknownTreatments: evaluation.unknown_treatments,
+        employerIdentity: job.employer_identity_result,
+        applicationPath: job.application_path_result,
+        listingActivity: job.listing_activity_result,
+        legitimacy: job.legitimacy_result,
+        requirementCompleteness: job.requirement_completeness,
+        compensationCompleteness: job.compensation_completeness,
+        fraudSignals: job.fraud_signals,
+        materialRestrictions: job.material_restrictions,
+      },
+      activeCriteria: criteria || {},
+      candidateFacts: (evaluation.candidate_fact_ids || []).flatMap((factId: string) => {
+        const fact = factsById.get(factId);
+        return fact ? [fact as Record<string, unknown>] : [{ id: factId, unavailable: true }];
+      }),
+      rootResults: evaluation.root_results,
+      leafResults: evaluation.leaf_results,
+      satisfactionPaths: evaluation.satisfaction_paths,
+      jobEvidence: evaluation.job_evidence,
+      explanationEvidence: evaluation.explanation_evidence,
+      versionBundle: {
+        evaluation: evaluation.version_bundle,
+        calculationInputSha256: evaluation.calculation_input_sha256,
+        calculationVersion: evaluation.calculation_version,
+        jobContentSha256: job.content_sha256,
+        jobParserVersion: job.parser_version,
+        jobCanonicalizationVersion: job.canonicalization_version,
+        sourceAuthorizationContentSha256: authorization?.content_sha256 || null,
+        sourceAuthorizationVerifiedAt: authorization?.verified_at || null,
+      },
+    }];
+  });
   const applyItems = (applyRows || []).map((item) => {
     const match = Array.isArray(item.job_match) ? item.job_match[0] : item.job_match;
     const job = Array.isArray(match?.job) ? match.job[0] : match?.job;
@@ -80,6 +202,7 @@ export default async function AdminPage() {
       <div className="page-frame">
         <div className="admin-heading"><div><p className="eyebrow eyebrow--light">APPLYPACK OPERATIONS</p><h1>Fulfillment queue</h1></div><div><p>Manual-first controls. Every delivery requires human review.</p><SignOutButton /></div></div>
         <div className="admin-metrics"><article><span>Open work</span><strong>{orders?.length || 0}</strong></article><article><span>Active capacity units</span><strong>{capacity?.reduce((sum, item) => sum + item.units, 0) || 0}</strong></article><article><span>Webhook failures</span><strong>{failures?.length || 0}</strong></article></div>
+        <Chunk4StaffQueue rows={staffQueue} candidates={staffReviewCandidates} />
         <AdminOperations searchOrders={searchOrders} applyItems={applyItems} conflicts={conflicts} corrections={corrections} capacityLimits={capacityLimits || []} />
         <PendingIntakes requests={pendingRequests || []} snapshots={pendingSnapshots || []} />
         <section className="admin-table-wrap">

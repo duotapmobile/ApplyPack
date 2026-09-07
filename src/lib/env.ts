@@ -26,7 +26,7 @@ const serverSchema = z.object({
   APP_CORRECTION_WINDOW_DAYS: z.coerce.number().int().positive().default(3),
   APP_JOB_FRESHNESS_HOURS: z.coerce.number().int().min(1).max(168).default(24),
   APP_JOB_STALE_AFTER_HOURS: z.coerce.number().int().min(24).max(720).default(72),
-  APP_CAPACITY_RESERVATION_MINUTES: z.coerce.number().int().min(150).max(150).default(150),
+  APP_CAPACITY_RESERVATION_MINUTES: z.coerce.number().int().min(30).max(30).default(30),
   APP_LEGAL_ENTITY_NAME: z.string().default("DuoTap LLC d/b/a ApplyPack"),
   APP_ADMIN_ALERT_EMAIL: z.string().email().optional().or(z.literal("")),
   APP_ADMIN_EMAILS: z.string().optional(),
@@ -57,6 +57,8 @@ const serverSchema = z.object({
   APP_JOB_SOURCE_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(30_000).default(10_000),
   APP_JOB_SOURCE_MIN_INTERVAL_MS: z.coerce.number().int().min(250).max(60_000).default(1_500),
   APP_JOB_SOURCE_MAX_POSTINGS: z.coerce.number().int().min(1).max(500).default(250),
+  APP_RELEASE_VERIFICATION_TTL_SECONDS: z.preprocess((value) => value === "" ? undefined : value, z.coerce.number().int().min(3_600).max(3_600).optional()),
+  APP_CHUNK4_WORKER_ID: z.string().trim().min(3).max(100).optional().or(z.literal("")),
   APP_JOB_SOURCE_USER_AGENT: z.string().min(10).max(300).default("ApplyPackSourceMonitor/1.0 (+https://applypack.work/contact)"),
 });
 

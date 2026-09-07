@@ -1,8 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
-import { notifyCustomer } from "@/lib/email/notify";
-import { deliveryRow, loadPersistedEvaluationsForOrder, selectAndPersistEvaluations } from "@/lib/matching/persisted-runtime";
+import { exactTenReleaseMember, loadPersistedEvaluationsForOrder, selectAndPersistEvaluations } from "@/lib/matching/persisted-runtime";
 import { releaseVerification } from "@/lib/matching/verification";
 import { isSameOriginRequest } from "@/lib/security/origin";
 
@@ -61,43 +61,39 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!verification.eligible) return NextResponse.json({ error: "Every persisted listing must pass the configured release-time verification.", reason: verification.reason }, { status: 409 });
   }
 
-  const { data: claimed, error: claimError } = await auth.admin.rpc("claim_order_delivery", { p_order_id: orderId, p_kind: "job_search" });
-  if (claimError || !claimed) return NextResponse.json({ error: "The order is already being delivered, refunded, or is no longer eligible." }, { status: 409 });
-  const releaseClaim = () => auth.admin.rpc("release_order_delivery", { p_order_id: orderId });
-  const { count, error: countError } = await auth.admin.from("job_matches").select("id", { count: "exact", head: true }).eq("search_order_id", orderId);
-  if (countError || count) {
-    await releaseClaim();
-    return NextResponse.json({ error: count ? "Matches already exist for this order." : "Existing delivery state could not be verified." }, { status: count ? 409 : 502 });
+  const { data: service, error: serviceError } = await auth.admin.from("ap_search_services")
+    .select("id,active_snapshot_id,fulfillment,refund_started_at,delivery_due_at")
+    .eq("legacy_order_id", orderId).eq("customer_id", order.customer_id).maybeSingle();
+  if (serviceError) return NextResponse.json({ error: "The active corrected search could not be loaded." }, { status: 502 });
+  if (!service || service.fulfillment === "DELIVERED" || service.refund_started_at) {
+    return NextResponse.json({ error: "The search is already delivered, refunding, or not a corrected active search." }, { status: 409 });
   }
-  let rows;
+  let members;
   try {
-    rows = evaluations.map((evaluation, index) => deliveryRow(evaluation, index + 1));
+    members = evaluations.map((evaluation, index) => exactTenReleaseMember(evaluation, index + 1));
   } catch {
-    await releaseClaim();
     return NextResponse.json({ error: "A persisted evaluation is incomplete or no longer deliverable." }, { status: 409 });
   }
-  if (new Set(rows.map((row) => row.job_id)).size !== 10) {
-    await releaseClaim();
+  if (new Set(members.map((row) => row.jobId)).size !== 10) {
     return NextResponse.json({ error: "Duplicate jobs cannot occupy more than one delivered position." }, { status: 409 });
   }
-  const deliveredAt = new Date();
-  const retentionDays = Number(process.env.APP_SOURCE_DOCUMENT_RETENTION_DAYS);
-  if (!Number.isInteger(retentionDays) || retentionDays <= 0) {
-    await releaseClaim();
-    return NextResponse.json({ error: "Approved source-document retention is not configured." }, { status: 503 });
+  const selectionRunId = evaluations[0]?.selection?.runId;
+  if (!selectionRunId || evaluations.some((evaluation) => evaluation.selection?.runId !== selectionRunId)) {
+    return NextResponse.json({ error: "All ten evaluations must belong to the current release selection." }, { status: 409 });
   }
-  const { data: completed, error: completeError } = await auth.admin.rpc("complete_search_delivery", {
-    p_order_id: orderId,
-    p_actor_id: auth.user.id,
-    p_matches: rows,
+  const releaseId = randomUUID();
+  const { data: completed, error: completeError } = await auth.admin.rpc("ap_commit_exact_ten_release", {
+    p_search_service_id: service.id,
+    p_reviewer_id: auth.user.id,
+    p_selection_run_id: selectionRunId,
+    p_members: members,
     p_review_checklist: parsed.data.reviewChecklist,
-    p_delivered_at: deliveredAt.toISOString(),
-    p_retention_due_at: new Date(deliveredAt.getTime() + retentionDays * 24 * 60 * 60 * 1000).toISOString(),
+    p_reviewer_rationale: parsed.data.reviewChecklist.reviewerNote,
+    p_release_id: releaseId,
+    p_outbox_id: randomUUID(),
   });
   if (completeError || !completed) {
-    await releaseClaim();
     return NextResponse.json({ error: "The reviewed matches could not be committed atomically." }, { status: 502 });
   }
-  await notifyCustomer({ customerId: order.customer_id, orderId, template: "search_delivery", subject: "Your 10 ApplyPack job matches are ready", lines: ["Your researched job matches are ready in My ApplyPack.", "Review each employer listing before deciding whether to apply."] });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, releaseId: completed });
 }

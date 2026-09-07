@@ -24,9 +24,11 @@ describe("guest intake ownership", () => {
   it("keeps private ownership and server controlled checkout intact", () => {
     expect(intake).toContain('identity: authData.user.id');
     expect(intake).toContain('admin.rpc("create_completed_intake"');
-    expect(checkout).toContain('.eq("customer_id", authData.user.id)');
-    expect(checkout).toContain('rpc("prepare_search_checkout"');
-    expect(checkout).toContain("customer_email: intake.email");
+    expect(checkout).toContain("anonymousDraftContext()");
+    expect(checkout).toContain('rpc("ap_read_current_feasibility"');
+    expect(checkout).toContain('rpc("ap_begin_search_checkout"');
+    expect(checkout).toContain("customer_email: String(checkout.access_email)");
+    expect(checkout).not.toContain("supabase.auth.getUser");
     expect(webhook).toContain('.from("intakes")');
     expect(webhook).toContain("recipient = paidIntake?.email || null");
   });

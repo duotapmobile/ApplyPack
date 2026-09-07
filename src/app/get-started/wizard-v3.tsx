@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, LockKeyhole, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { feasibilityPresentation, SEARCH_CHECKOUT_CTA, type FeasibilityView } from "@/lib/commerce/presentation";
 import {
   activityCatalog, breadthChoices, businessSystemTasks, capabilityChoices, dealbreakerCatalog,
   emptyFactCorrection, emptyFourStepDraft, employmentTypes, excelTasks, experienceKindLabels,
@@ -19,6 +21,7 @@ const labels = Object.fromEntries([...activityCatalog, ...industryCatalog.map(([
 const draftSignature = (value: FourStepDraft, currentStep: number) => JSON.stringify([currentStep, value]);
 
 export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean }) {
+  const router = useRouter();
   const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
   const [draft, setDraft] = useState<FourStepDraft>(emptyFourStepDraft);
   const [serverDraft, setServerDraft] = useState<ServerDraft | null>(null);
@@ -28,6 +31,8 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   const [busyDocument, setBusyDocument] = useState<"RESUME" | "PRIOR_COVER_LETTER" | null>(null);
   const [presented, setPresented] = useState<Set<string>>(new Set());
   const [finalized, setFinalized] = useState(false);
+  const [feasibility, setFeasibility] = useState<FeasibilityView | null>(null);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [returnToReview, setReturnToReview] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
@@ -42,6 +47,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     const nextStep = Math.max(0, Math.min(3, value.currentStep)) as 0 | 1 | 2 | 3;
     setServerDraft(value); setDraft(nextDraft); setStep(nextStep);
     setPresented(new Set(value.presentedFactIds || [])); setSaveState("READY");
+    setFinalized(["COMPLETE", "LOCKED_TO_CHECKOUT"].includes(value.state));
     lastPersisted.current = draftSignature(nextDraft, nextStep);
     if (restored) setNotice("Your saved intake was restored on this device session.");
     readyRef.current = true;
@@ -61,6 +67,38 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   }, [fixtureMode, hydrate]);
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
+  useEffect(() => {
+    if (!finalized) return;
+    if (fixtureMode) {
+      const requested = new URLSearchParams(window.location.search).get("feasibility") || "pending";
+      const fixture: Record<string, FeasibilityView> = {
+        pending: { state: "PENDING", outcome: null, checkoutEligible: false },
+        likely: { state: "COMPLETE", outcome: "LIKELY", checkoutEligible: true, capacityAvailable: true, snapshotId: "23000000-0000-4000-8000-000000000101", assessmentId: "23000000-0000-4000-8000-000000000102", preliminarilyDeliverableCount: 12 },
+        capacity: { state: "COMPLETE", outcome: "LIKELY", checkoutEligible: false, capacityAvailable: false, snapshotId: "23000000-0000-4000-8000-000000000101", assessmentId: "23000000-0000-4000-8000-000000000102" },
+        limited: { state: "COMPLETE", outcome: "LIMITED", checkoutEligible: false, capacityAvailable: true, primaryReason: "INVENTORY_SHORTAGE", preliminarilyDeliverableCount: 7 },
+        infeasible: { state: "COMPLETE", outcome: "INFEASIBLE", checkoutEligible: false, capacityAvailable: true, primaryReason: "CONSTRAINT_COLLISION" },
+        stale: { state: "STALE", outcome: null, checkoutEligible: false },
+        error: { state: "ERROR", outcome: null, checkoutEligible: false },
+      };
+      const fixtureTimer = window.setTimeout(() => setFeasibility(fixture[requested] || fixture.pending), 0);
+      return () => window.clearTimeout(fixtureTimer);
+    }
+    let active = true;
+    let timer: number | undefined;
+    async function read() {
+      const response = await fetch("/api/intake/anonymous-draft/feasibility", { cache: "no-store" });
+      const result = await response.json().catch(() => ({}));
+      if (!active) return;
+      if (!response.ok || !result.feasibility) {
+        setFeasibility({ state: "ERROR", outcome: null, checkoutEligible: false });
+        return;
+      }
+      setFeasibility(result.feasibility as FeasibilityView);
+      if (result.feasibility.state === "PENDING") timer = window.setTimeout(() => void read(), 2_000);
+    }
+    void read();
+    return () => { active = false; if (timer) window.clearTimeout(timer); };
+  }, [finalized, fixtureMode]);
   useEffect(() => {
     const controlId = pendingEditFocus.current;
     pendingEditFocus.current = null;
@@ -121,7 +159,21 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     const saved = await save(normalizedFourStepDraft(draft), destination);
     if (saved) { setStep(destination); setReturnToReview(false); setErrors([]); setNotice("Progress saved securely."); }
   }
-  function editSection(target: 0 | 1 | 2 | 3, controlId: string, editAll = false) {
+  async function editSection(target: 0 | 1 | 2 | 3, controlId: string, editAll = false) {
+    if (finalized && !fixtureMode) {
+      setSaveState("SAVING");
+      setNotice("Closing the prior feasibility and Checkout before editing.");
+      const response = await fetch("/api/checkout/search/edit", { method: "POST" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || typeof result.draftVersion !== "number") {
+        setSaveState("ERROR");
+        setNotice(result.error || "Editing could not begin safely. The prior Checkout remains unavailable for changes.");
+        return;
+      }
+      setServerDraft((current) => current && ({ ...current, version: result.draftVersion, state: "IN_PROGRESS" }));
+      setSaveState("READY");
+    }
+    if (finalized) { setFinalized(false); setFeasibility(null); }
     setReturnToReview(!editAll && target < 3); setErrors([]); setNotice(""); pendingEditFocus.current = controlId;
     if (target === step) requestAnimationFrame(() => { pendingEditFocus.current = null; document.getElementById(controlId)?.focus(); });
     else setStep(target);
@@ -200,7 +252,22 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
       body: JSON.stringify({ expectedVersion: saved.version, answers: draft }) });
     const result = await response.json();
     if (!response.ok) { setSaveState(response.status === 409 ? "CONFLICT" : "ERROR"); setNotice(result.error || "The intake could not be finalized."); return; }
+    setFeasibility({ state: "PENDING", outcome: null, checkoutEligible: false, snapshotId: result.snapshotId });
     setFinalized(true); setSaveState("SAVED"); setNotice(result.feasibility.message + " No payment was started.");
+  }
+
+  async function startCheckout() {
+    if (!feasibility?.snapshotId || !feasibility.assessmentId || !feasibility.checkoutEligible) return;
+    setCheckoutBusy(true); setNotice("Reserving current capacity and preparing secure checkout. No payment has started yet.");
+    if (fixtureMode) { router.push("/e2e/chunk4?state=confirming"); return; }
+    const response = await fetch("/api/checkout/search", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ snapshotId: feasibility.snapshotId, assessmentId: feasibility.assessmentId }) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || typeof result.url !== "string") {
+      setCheckoutBusy(false); setNotice(result.error || "Secure checkout could not be prepared. No payment was started.");
+      return;
+    }
+    window.location.assign(result.url);
   }
 
   if (saveState === "LOADING") return <main id="main-content" className="wizard-page"><section className="wizard-loading" aria-live="polite"><p className="eyebrow">SECURE INTAKE</p><h1>Loading your saved intake…</h1></section></main>;
@@ -256,14 +323,34 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
         {draft.dealbreakers.includes("SOMETHING_ELSE") && <><Field id="custom-dealbreaker" label="What else should we leave out?" required errors={errors}><textarea id="custom-dealbreaker" value={draft.customDealbreaker} onChange={(e) => update("customDealbreaker", e.target.value)} /></Field><ErrorFor errors={errors} fieldId="custom-dealbreaker" /></>}
         {unknownCriteria.map((criterion) => { const fieldId = unknownPolicyFieldId(criterion.key); return <fieldset key={criterion.key} id={fieldId} tabIndex={-1} aria-invalid={hasError(errors, fieldId) || undefined} aria-describedby={hasError(errors, fieldId) ? errorId(fieldId) : undefined}><legend>If an employer does not state {criterion.label.toLowerCase()}, what should we do?</legend><Radio name={`unknown-${criterion.key}`} value="EXCLUDE_IF_UNKNOWN" checked={draft.employerUnknownPolicies[criterion.key] || ""} onChange={(next) => update("employerUnknownPolicies", { ...draft.employerUnknownPolicies, [criterion.key]: next })} label="Exclude it if unknown" /><Radio name={`unknown-${criterion.key}`} value="ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING" checked={draft.employerUnknownPolicies[criterion.key] || ""} onChange={(next) => update("employerUnknownPolicies", { ...draft.employerUnknownPolicies, [criterion.key]: next })} label="Include it with an unknown warning" /><ErrorFor errors={errors} fieldId={fieldId} /></fieldset>; })}
         <Review draft={draft} resume={resume} cover={cover} onEdit={editSection} />
+        {finalized && feasibility && <FeasibilityResult value={feasibility} checkoutBusy={checkoutBusy}
+          onCheckout={() => void startCheckout()} onEdit={() => editSection(3, "work-modes", true)} />}
         <div className="deadline-note"><strong>Service boundary</strong><p>ApplyPack researches public listings and provides 10 matches after feasibility, capacity, and payment. We do not contact employers, submit applications, or guarantee interviews, offers, salary, employment, or continued listing availability.</p></div>
         <ErrorFor errors={errors} fieldId="terms-accepted" /><label className="confirm legal-agreement"><input id="terms-accepted" type="checkbox" aria-invalid={hasError(errors, "terms-accepted") || undefined} aria-describedby={hasError(errors, "terms-accepted") ? errorId("terms-accepted") : undefined} checked={draft.termsAccepted} onChange={(e) => update("termsAccepted", e.target.checked)} /><span>I agree to the <Link href="/terms" target="_blank">Terms</Link> and <Link href="/privacy" target="_blank">Privacy Policy</Link>.</span></label>
       </Step>}
 
       <div className="wizard-actions"><button className="wizard-back" type="button" disabled={step === 0 || saveState === "SAVING"} onClick={() => void move((step - 1) as 0 | 1 | 2)}><ArrowLeft aria-hidden="true" />Back</button>
         {step < 3 ? <button className="wizard-next" type="button" disabled={saveState === "SAVING"} onClick={() => void move((step + 1) as 1 | 2 | 3)}>{saveState === "SAVING" ? "Saving…" : returnToReview ? "Save and return to review" : "Save and continue"}<ArrowRight aria-hidden="true" /></button>
-          : <button className="wizard-next" type="button" disabled={saveState === "SAVING" || finalized} onClick={() => void finalize()}>{finalized ? "Feasibility pending" : saveState === "SAVING" ? "Saving…" : "Finish intake"}<ArrowRight aria-hidden="true" /></button>}</div>
+          : <button className="wizard-next" type="button" disabled={saveState === "SAVING" || finalized} onClick={() => void finalize()}>{finalized ? "Intake finalized" : saveState === "SAVING" ? "Saving…" : "Finish intake"}<ArrowRight aria-hidden="true" /></button>}</div>
     </section></div></main>;
+}
+
+function FeasibilityResult({ value, checkoutBusy, onCheckout, onEdit }: {
+  value: FeasibilityView; checkoutBusy: boolean; onCheckout: () => void; onEdit: () => void;
+}) {
+  const presentation = feasibilityPresentation(value);
+  return <section className={`feasibility-result feasibility-result--${value.state.toLowerCase()}`} aria-live="polite" aria-labelledby="feasibility-title">
+    <p className="eyebrow">FEASIBILITY RESULT</p>
+    <h3 id="feasibility-title">{presentation.title}</h3>
+    <p>{presentation.message}</p>
+    {typeof value.preliminarilyDeliverableCount === "number" && <p><strong>{value.preliminarilyDeliverableCount}</strong> current candidates passed the preliminary evidence gates. Human release review is still required.</p>}
+    <div className="admin-buttons">
+      {presentation.canCheckout && <button className="wizard-next" type="button" disabled={checkoutBusy} onClick={onCheckout}>{checkoutBusy ? "Preparing secure checkout…" : SEARCH_CHECKOUT_CTA}<ArrowRight aria-hidden="true" /></button>}
+      {presentation.showEdit && <button className="secondary-button" type="button" onClick={onEdit}>Edit my settings</button>}
+      {presentation.showHumanReview && <Link href="/help?topic=feasibility-review">Request human review</Link>}
+      {presentation.showLeave && <Link href="/">Leave without paying</Link>}
+    </div>
+  </section>;
 }
 
 function Step({ headingRef, title, help, children }: { headingRef: React.RefObject<HTMLHeadingElement | null>; title: string; help: string; children: React.ReactNode }) { return <div className="wizard-step"><h2 ref={headingRef} id="wizard-title" tabIndex={-1}>{title}</h2><p id="step-help">{help}</p><div className="wizard-fields">{children}</div></div>; }

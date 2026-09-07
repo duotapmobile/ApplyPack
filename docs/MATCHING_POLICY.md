@@ -1,6 +1,6 @@
 # ApplyPack matching policy
 
-Status: Chunk 3 repository implementation. This policy is subordinate to `APPLYPACK_PRODUCT_CONTRACT.md` and does not activate Checkout, source access, payment, or production release.
+Status: Chunk 4 repository implementation. This policy is subordinate to `APPLYPACK_PRODUCT_CONTRACT.md` and does not activate Checkout, source access, payment, providers, or production release.
 
 ## Version bundle
 
@@ -20,6 +20,8 @@ Status: Chunk 3 repository implementation. This policy is subordinate to `APPLYP
 
 These weights and mappings are versioned product hypotheses for ranking and calibration. They are not hiring probabilities, scientific measures of a person's worth, or interview/offer guarantees. Internal numerical fit and confidence are not customer-facing at launch.
 
+The Chunk 4 release path does not introduce a second matching formula. It consumes only persisted `matching-rules-v3`, `bounded-diversity-v2`, and current version-bound review evidence. A stale or superseded version bundle cannot be promoted by reviewer judgment or by payment state.
+
 ## Decision order
 
 1. Apply every universal, employer, and customer hard gate and validate exact active-root equality.
@@ -33,6 +35,16 @@ These weights and mappings are versioned product hypotheses for ranking and cali
 9. Require documented human review and a final pairwise duplicate check before an atomic exact-ten release.
 
 Search breadth, title similarity, industry familiarity, salary, source, career break, presentation risk, and soft preferences add no fit points. Preferences never rescue a hard failure.
+
+## Release-time policy
+
+Payment starts a search service; it does not create a deliverable, earn revenue, or freeze stale matching evidence. Release reselects from the active snapshot and validates the current criteria, candidate facts, job content, inventory, source authorization, parser, matching rules, selector, and human-review subjects. A newer fact, criteria snapshot, job successor, source authorization, parser/rules version, or listing-state change makes the older approval unusable.
+
+Atomic release requires exactly ten distinct evaluation IDs and ten pairwise-unique jobs under the null-safe duplicate OR predicate. Every job must remain eligible, categorically useful, evidence-sufficient, active, legitimate, actionable, salary-valid, non-Liveops, and free of unresolved candidate hard/core unknowns. Every allowed employer omission retains its exact criterion-specific warning. Job-level and package-level approvals must both be current. A reviewer may classify or add evidence and rerun evaluation; a reviewer cannot override a hard failure.
+
+The 60-minute release-verification window is an upper bound, not a freshness waiver. Every actionable path and material listing fact is rechecked immediately before the database release transaction. A listing that closes after evaluation, after job review, or just before release is replaced; it is never delivered from an old approval. The transaction publishes all ten immutable jobs or publishes none, sets `delivered_at` and `revenue_earned_at` once, completes the consumed capacity allocation as spent, and queues the delivery email. Email delivery is operationally separate and cannot roll back an already committed release.
+
+Before exact-ten release, a shortage remains work in progress. An adjustment creates a versioned proposed criteria diff and an estimate only. Authenticated acceptance creates a child snapshot, reserves revised capacity, and then persists the exact new 24-elapsed-hour deadline. Decline, expiry/no response by the active deadline, failed revised-capacity reservation, lost capacity after payment, invalid activation, duplicate payment, or a missed active deadline initiates the scoped idempotent full-refund workflow. Questions and pending proposals never pause or silently extend the clock.
 
 The evaluation API accepts only immutable snapshot, inventory-member, job-snapshot, and current human-review identifiers. It reloads every persisted customer criterion, the requirement tree, candidate fact versions, source authorization, compensation evidence, and reviewer evidence from protected storage. Gate results, salary-policy values, fit factors, confidence inputs, preferences, readiness, and scores are derived by the server and are not accepted from the caller. Only the current review for the exact review subject may participate; a newer review atomically supersedes the prior current record.
 

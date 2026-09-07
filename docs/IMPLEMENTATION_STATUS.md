@@ -462,3 +462,75 @@ Migration `202609060029_chunk3_final_acceptance_remediation.sql` is expand-only.
 Final acceptance was verified against implementation commit `8ce3a8ac1f1e6cf4cbdfcf998010a0934e7d4ba7` (tree `9b8324d5e6e0460f26d02b6c2c30f43bf2b3acac`) from remediation start HEAD `ab18f288cb906cf6c11f7d43c4945b7f08be8f38`. All 12 applicable Chunk 3 gates passed: all 29 migrations from zero; 3/3 transactional database fixtures; generated database-type equality; two-pass idempotent legacy backfill; rollback plus full 29-migration restore; lint; strict TypeScript; 279/279 unit and property tests in 43 files; production build with 49 routes/pages; 70/70 applicable Playwright cases with two intentional duplicate-platform skips among 72 scheduled; 243/243 Chunk 3 traceability rows implemented; and exact-commit plus staged whitespace checks. The real-provider suite reported 3/3 intentional skips because no approved scanner is configured and remains `NOT_APPLICABLE_LOCAL`; production processing remains fail closed.
 
 The remediation-round-4 `evidence/chunk-3/manifest.json` is 22,258 bytes with file SHA-256 `3112ce2d94f2ed72553b9e46b0f4ca89a0862b01f541b1323b3a89dcfc7460cf` and sorted canonical-content SHA-256 `26cf46af06c48c95fa271f316ae52f77a5b2c8265fb439cff56bfc4782e368b6`. All 42 artifact byte counts and hashes were independently recomputed from the tested implementation commit with zero mismatches. The evidence-only commit SHA and final clean-state attestation are reported in the mandatory handoff because a commit cannot contain its own SHA. No source was contacted, no production database changed, and no payment, Checkout, push, merge, deploy, public redesign, or Chunk 4 work occurred.
+
+## Chunk 4 implementation: commerce, fulfillment, and exact-ten release
+
+### Relationship summary
+
+```text
+current finalized snapshot + current LIKELY assessment + legal acceptance
+    -> immutable $20 USD quote -> atomic capacity reservation
+    -> provisional Checkout command -> provider Session -> promoted equal expiry
+
+raw signed provider event -> immediate paid verification
+    -> atomic winning activation + consumed capacity + persisted 24h deadline + outbox
+    -> immediate scoped browser access + 15-minute cross-device email access
+
+active search -> protected evidence/review queues
+    -> current exact-ten selection + final verification -> atomic release + earned revenue
+    -> shortage adjustment -> accepted child snapshot/revised capacity/deadline
+    -> decline/expiry/capacity loss/deadline miss -> idempotent full refund
+
+database clock -> leased scheduled work -> expiry/refund/reconciliation/outbox/catch-up
+               -> non-sensitive monitor snapshot + protected operational alerts
+```
+
+Migration `202609060030_chunk4_commerce_release.sql` is additive after the 29 accepted migrations. It extends the Chunk 1 commerce foundation rather than creating a parallel payment model. It adds current legal-acceptance and quote binding, durable Checkout commands and compensation, monotonic provider-event/payment/refund handling, narrow order-access capabilities, immutable deadline history, protected release reviews, exact-ten release guards, adjustment and dispute transitions, leased scheduled work, outbox recovery, monitoring, audit records, RLS, service-role-only functions, and checkpoint `202609060030 / CHUNK4_COMMERCE_RELEASE_V1`. Generated types cover all 30 migrations.
+
+### Ownership and invariants
+
+- The finalized current snapshot, a complete unexpired current `LIKELY` feasibility assessment, current immutable legal versions, an enabled matching capacity bucket, and an exact server-side quote are prerequisites for Checkout. Limited, infeasible, stale, pending, and error states remain editable and cannot open Checkout.
+- A pre-activation material edit uses `ap_begin_pre_activation_edit`: it creates/uses a new snapshot through the intake flow, invalidates old feasibility, quote, evaluation, selection, and review state, returns only never-consumed held capacity, queues provider expiry, and unlocks the draft. A stale session paid afterward is refunded and never activates work.
+- Search capacity is one unit from the search pool only. Allocation uses database locking, half-open buckets, earliest bucket then stable ID, and subtracts every held or spent unit. Completed and consumed-superseded work remains spent; only never-consumed held work returns. The Checkout provisional lease, provider Session, and promoted allocation are compensated or reconciled idempotently and the customer-facing expiries are equal before a URL is exposed.
+- The quote fixes one-time `USD 20.00`, quantity one, no added fee, immutable snapshot/assessment/allocation/legal/pricing/tax versions, and an idempotency key. The browser supplies none of those facts. Tax approval, price mapping, payment credentials, immediate method configuration, and all enablement flags remain external fail-closed gates.
+- Payment state belongs to each attempt. The signed raw-body webhook reloads Stripe Checkout Session, PaymentIntent, and charge evidence and accepts only an immediate paid card settlement. One transaction records the provider event, first valid winning activation, consumed capacity, exact persisted deadline, access capabilities, audit event, and outbox. Replay, delay, concurrency, duplicate payment, expired capacity, stale Checkout, invalid activation, and local/provider split-brain outcomes converge through unique keys and explicit reconciliation/refund states.
+- `service_started_at` is the maximum of intake completion, verified payment, and capacity confirmation; `delivery_due_at` is persisted once at exactly 24 elapsed hours in UTC and displayed in `America/New_York` with ET. Weekends, holidays, and DST do not change duration.
+- Anonymous access remains valid through Checkout. Verified activation rotates the draft capability and issues only one order-scoped immediate capability. The separately encrypted email capability is single-use and 15 minutes, aligns to its outbox claim, works cross-device through the canonical callback, removes token material, permits safe relative returns only, and never uses payer or document-contact email to grant ownership. Existing history requires proof sent to the immutable access email.
+- The authenticated minimum `My ApplyPack` route projects pending, research, review, adjustment, refund problem/processing/completed, error, and delivered states from real order records. A delivered release shows all ten immutable jobs, provenance-aware host labels, compensation/unknown status, dates, five evidence sections, and allowed-unknown warnings under server ownership checks.
+- Protected staff queues cover research, parser correction, evidence questions, job/package review, release, adjustment, lateness, refund, and email failure. Reviews bind the active snapshot, current fact IDs, job content, selection run, and full rules/version bundle. A reviewer may add evidence or request input and rerun; database guards prohibit approval of hard failure, unresolved candidate/core unknown, invalid salary, insufficient evidence/usefulness, or blocked readiness.
+- Exact-ten release reselects against current persisted evaluations, rechecks all ten paths/listing facts, rejects stale facts/criteria/job/source/parser/rules/selector/review evidence and any successor/closed/Liveops/duplicate/ineligible job, and publishes ten or zero under the search-service row lock. It sets delivery and revenue once, completes spent capacity, and queues delivery email without making email success part of delivery.
+- Adjustment proposals preserve the current valid count, neutral reasons, exact constraints, precise before/after diff, estimated duration, and expiry no later than the active deadline. Explicit authenticated acceptance atomically creates the child snapshot, transfers/supersedes prior allocation correctly, confirms revised capacity, and only then persists a new exact 24-hour deadline. Decline, no response, capacity failure, and the active-deadline miss start an idempotent full refund; questions never pause time.
+- Refund history is immutable except for the tightly constrained pending terminal transition and audited failed-to-pending retry. Full-service and material-line scopes cannot exceed their paid amounts. Release and deadline refund serialize on one service row. Dispute `OPEN`, `LOST`, and `WON` preserve per-scope delivery/revenue and capacity truth without double refund or work resumption.
+- Transactional email is committed through the outbox, uses accessible escaped HTML and plain text, absolute production URLs, immutable deduplication/provider keys, retry/backoff, reconciliation, and dead-letter visibility. Claims remain database-blocked until the provider's idempotent-submission and accepted-send reconciliation guarantee has an approved reference. Sender/DNS/tracking are not claimed configured.
+- Database-clock workers enqueue and lease Checkout/proposal expiry, invalidated Session expiry, deadline refund, refund submit/reconcile, and outbox work; expired leases are reclaimable, handlers are idempotent, and catch-up follows downtime. The monitor exposes only non-sensitive capacity, webhook, deadline, adjustment, refund, outbox, stale-review, and worker-lag counts.
+
+### Migration, compatibility, rollback, and activation boundary
+
+Existing paid, payment, refund, capacity, order, material-entitlement, and audit rows are retained. Legacy paths remain readable, but corrected Checkout and release use only the new guarded functions and current matching provenance. The legacy-backfill fixture remains two-pass idempotent. Rollback testing removes migration 030 only in an isolated disposable database and restores all 30 migrations; operational rollback leaves the additive schema and evidence intact, disables Checkout and workers, returns traffic to the preceding compatible build, reconciles ambiguous provider operations, and repairs forward.
+
+No Stripe Session, email, source, DNS, production database, or hosted setting was contacted or changed. `APP_PAYMENT_MODE=disabled`, `APP_CHECKOUT_ENABLED=false`, `APP_LIVE_PAYMENTS_ENABLED=false`, and a blank worker identity keep the feature unactivated.
+
+### Chunk 4 verification inventory
+
+| Check ID | Procedure | Intended result |
+| --- | --- | --- |
+| C4-MIGRATE | `npx supabase db reset --local` | All 30 migrations apply from zero and checkpoint 030 exists |
+| C4-DB | `npm run test:database` | All four transactional fixtures pass, including commerce concurrency, payment races, release/refund serialization, adjustments, disputes, outbox, and scheduler recovery |
+| C4-LEGACY | `npm run test:legacy-backfill` | Existing paid records remain intact and two-pass compatibility backfill is idempotent |
+| C4-ROLLBACK | `npm run test:rollback` | Guarded isolated rollback passes and self-restores all 30 migrations |
+| C4-TYPES | `npm run types:database:check` | Generated database types exactly match the 30-migration local schema |
+| C4-LINT | `npm run lint` | Static lint passes without warnings |
+| C4-TYPE | `npm run typecheck` | Strict TypeScript passes |
+| C4-UNIT | `npm test` | Commerce, access, email, clock/DST, release, security, and all prior unit/property tests pass |
+| C4-BUILD | `npm run build` | Production compilation and route generation pass with providers disabled |
+| C4-E2E | `npm run test:e2e` | Full desktop/mobile regression and Chunk 4 state/accessibility assertions pass |
+| C4-A11Y-VISUAL | `tests/e2e/chunk4-evidence.spec.ts` plus committed PNGs | Axe/layout assertions and deterministic desktop/mobile commerce-state captures pass |
+| C4-INTEGRATION-EXTERNAL | `npm run test:integration` | Approved real-scanner coverage remains local N/A; deterministic fail-closed coverage remains mandatory |
+| C4-TRACE | Chunk 4 ownership/status audit | All 115 Chunk 4 rows map to implementation, tests, evidence, and `IMPLEMENTED` status |
+| C4-FORMAT | `git diff --check` plus staged check | No whitespace errors |
+
+The 13 applicable checks exclude `C4-INTEGRATION-EXTERNAL` when the approved provider is absent. Exact final counts, the tested implementation commit/tree, screenshot inventory, manifest hashes, and evidence-only commit are recorded during closeout.
+
+### Remaining release blockers
+
+Repository completion does not make the product production-ready. Blocking external work includes approved tax-inclusive treatment; Stripe production credentials, exact price mapping/API version, webhook endpoint/signature, immediate-card methods, refunds/disputes, reconciliation and separate live enablement; production Supabase identity/callback allowlist; verified Resend sender, monitored reply-to, SPF/DKIM/DMARC, disabled open/click tracking, and accepted-send idempotency/reconciliation evidence; production capacity/staffing configuration; protected staff assignments/training; scheduler topology and monitored alerts; KMS, malware scanner, sandbox parser/OCR, permitted-model/leak boundary; approved retention/privacy/legal versions; approved source matrix/bounds and documentary source authorization; and manual assistive-technology/provider exercises. No Chunk 5 work is included.

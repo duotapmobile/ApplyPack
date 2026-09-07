@@ -1,5 +1,7 @@
+import { createHash, randomUUID } from "node:crypto";
 import { after, NextResponse } from "next/server";
 import type Stripe from "stripe";
+import { createCapabilitySecret, hashCapabilitySecret, immediateSearchPayment } from "@/lib/commerce/server";
 import { sendOrderReceipt } from "@/lib/email/send";
 import { stripeEventMatchesConfiguredMode } from "@/lib/stripe/mode";
 import { assertConfiguredPrice, createStripeOperationalClient } from "@/lib/stripe/server";
@@ -7,6 +9,8 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { processWorkflowTasks } from "@/lib/workflow/process";
 
 export const runtime = "nodejs";
+
+type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
 export async function POST(request: Request) {
   const stripe = createStripeOperationalClient();
@@ -18,14 +22,18 @@ export async function POST(request: Request) {
   }
 
   let event: Stripe.Event;
+  let rawBody: string;
+  const signatureVerifiedAt = new Date().toISOString();
   try {
-    event = stripe.webhooks.constructEvent(await request.text(), signature, secret);
+    rawBody = await request.text();
+    event = stripe.webhooks.constructEvent(rawBody, signature, secret);
   } catch {
     return NextResponse.json({ error: "Invalid signature." }, { status: 400 });
   }
   if (!stripeEventMatchesConfiguredMode(event.livemode)) {
     return NextResponse.json({ error: "Webhook payment mode does not match this environment." }, { status: 409 });
   }
+  const payloadSha256 = createHash("sha256").update(rawBody, "utf8").digest("hex");
 
   const { error: eventError } = await admin.from("webhook_events").insert({
     provider: "stripe",
@@ -54,21 +62,34 @@ export async function POST(request: Request) {
 
   try {
     if (event.type === "checkout.session.completed") {
-      const verified = await verifyCompletedCheckout(stripe, event.data.object);
-      await completeCheckout(verified, new Date(event.created * 1000));
+      if (isCorrectedSearchSession(event.data.object)) {
+        await completeCorrectedSearch(stripe, admin, event.data.object, {
+          eventId: event.id, eventType: event.type, payloadSha256, signatureVerifiedAt,
+        });
+      } else {
+        const verified = await verifyCompletedCheckout(stripe, event.data.object);
+        await completeCheckout(verified, new Date(event.created * 1000));
+      }
     } else if (event.type === "checkout.session.expired") {
-      await expireCheckout(event.data.object);
+      if (isCorrectedSearchSession(event.data.object)) await expireCorrectedSearch(admin, event.data.object);
+      else await expireCheckout(event.data.object);
     } else if (["refund.created", "refund.updated", "refund.failed"].includes(event.type)) {
-      await recordRefund(event.data.object as Stripe.Refund);
-    } else if (event.type === "charge.dispute.created") {
-      const dispute = event.data.object;
-      const { error } = await admin.from("audit_logs").insert({
-        action: "stripe_dispute_created",
-        entity_type: "stripe_dispute",
-        entity_id: dispute.id,
-        details: { amount: dispute.amount, reason: dispute.reason },
-      });
-      if (error) throw new Error("Could not record dispute alert");
+      const refund = event.data.object as Stripe.Refund;
+      if (refund.metadata?.refund_operation_id) {
+        await recordCorrectedRefund(admin, refund, event, payloadSha256, signatureVerifiedAt);
+      } else await recordRefund(refund);
+    } else if (["charge.dispute.created", "charge.dispute.updated", "charge.dispute.closed"].includes(event.type)) {
+      const handled = await recordCorrectedDispute(admin, stripe, event, payloadSha256, signatureVerifiedAt);
+      if (!handled && event.type === "charge.dispute.created") {
+        const dispute = event.data.object as Stripe.Dispute;
+        const { error } = await admin.from("audit_logs").insert({
+          action: "stripe_dispute_created",
+          entity_type: "stripe_dispute",
+          entity_id: dispute.id,
+          details: { amount: dispute.amount, reason: dispute.reason },
+        });
+        if (error) throw new Error("Could not record dispute alert");
+      }
     }
 
     const { data: processed, error: processedError } = await admin
@@ -95,6 +116,187 @@ export async function POST(request: Request) {
     }).eq("provider_event_id", event.id);
     return NextResponse.json({ error: "Webhook processing failed." }, { status: 500 });
   }
+}
+
+function isCorrectedSearchSession(session: Stripe.Checkout.Session) {
+  return session.metadata?.contract_version === "chunk4-v1"
+    && session.metadata?.product_kind === "job_search"
+    && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(session.metadata?.checkout_attempt_id || "");
+}
+
+async function completeCorrectedSearch(
+  stripe: Stripe,
+  admin: AdminClient,
+  eventSession: Stripe.Checkout.Session,
+  evidence: { eventId: string; eventType: string; payloadSha256: string; signatureVerifiedAt: string },
+) {
+  const expectedPriceId = process.env.STRIPE_JOB_SEARCH_PRICE_ID;
+  if (!expectedPriceId) throw new Error("Corrected search price is not configured");
+  const session = await stripe.checkout.sessions.retrieve(eventSession.id, {
+    expand: ["line_items.data.price.product", "payment_intent.latest_charge"],
+  });
+  if (!isCorrectedSearchSession(session)) throw new Error("Corrected checkout metadata is incomplete");
+  const paymentIntent = typeof session.payment_intent === "string"
+    ? await stripe.paymentIntents.retrieve(session.payment_intent, { expand: ["latest_charge"] })
+    : session.payment_intent;
+  if (!paymentIntent) throw new Error("Corrected checkout has no PaymentIntent");
+  const charge = typeof paymentIntent.latest_charge === "string"
+    ? await stripe.charges.retrieve(paymentIntent.latest_charge)
+    : paymentIntent.latest_charge || null;
+  await assertConfiguredPrice(stripe, expectedPriceId, { unitAmount: 2_000, productName: "Job Match Search" });
+  const payment = immediateSearchPayment({ session, paymentIntent, charge, expectedPriceId });
+
+  const checkoutAttemptId = session.metadata!.checkout_attempt_id!;
+  const { data: checkout, error: checkoutError } = await admin.from("ap_checkout_attempts")
+    .select("id,draft_id,quote_id,provider_checkout_session_id")
+    .eq("id", checkoutAttemptId).eq("provider_checkout_session_id", session.id).maybeSingle();
+  if (checkoutError || !checkout) throw checkoutError || new Error("Corrected checkout binding was not found");
+  const { data: quote, error: quoteError } = await admin.from("ap_quotes")
+    .select("snapshot_id").eq("id", checkout.quote_id).maybeSingle();
+  if (quoteError || !quote) throw quoteError || new Error("Corrected quote binding was not found");
+  const { data: snapshot, error: snapshotError } = await admin.from("ap_intake_snapshots")
+    .select("id,access_email_normalized").eq("id", quote.snapshot_id).eq("draft_id", checkout.draft_id).maybeSingle();
+  if (snapshotError || !snapshot?.access_email_normalized) throw snapshotError || new Error("Immutable access email was not found");
+
+  const paymentIntentId = paymentIntent.id;
+  const payerEmail = session.customer_details?.email || charge?.billing_details.email || session.customer_email || null;
+  if (!payment.valid || !payment.paymentVerifiedAt) {
+    const { error } = await admin.rpc("ap_apply_verified_search_payment", {
+      p_provider_event_id: evidence.eventId,
+      p_event_type: evidence.eventType,
+      p_payload_sha256: evidence.payloadSha256,
+      p_signature_verified_at: evidence.signatureVerifiedAt,
+      p_payment_succeeded_at: null,
+      p_checkout_session_id: session.id,
+      p_payment_intent_id: paymentIntentId,
+      p_payment_status: `unverified_${paymentIntent.status}`,
+      p_payment_method_type: payment.paymentMethodType || "unsupported",
+      p_amount_cents: paymentIntent.amount_received,
+      p_currency: paymentIntent.currency.toUpperCase(),
+      p_payer_receipt_email: payerEmail,
+      p_customer_id: randomUUID(),
+      p_intake_id: randomUUID(),
+      p_order_id: randomUUID(),
+      p_search_service_id: randomUUID(),
+      p_payment_command_id: randomUUID(),
+      p_rotated_draft_secret_hash: hashCapabilitySecret(createCapabilitySecret()),
+      p_immediate_access_capability_id: randomUUID(),
+      p_email_access_capability_id: randomUUID(),
+      p_started_outbox_id: randomUUID(),
+      p_exception_outbox_id: randomUUID(),
+    });
+    if (error) throw error;
+    return;
+  }
+
+  const customerId = await findOrCreatePaidCustomer(admin, snapshot.access_email_normalized);
+  const { error } = await admin.rpc("ap_apply_verified_search_payment", {
+    p_provider_event_id: evidence.eventId,
+    p_event_type: evidence.eventType,
+    p_payload_sha256: evidence.payloadSha256,
+    p_signature_verified_at: evidence.signatureVerifiedAt,
+    p_payment_succeeded_at: payment.paymentVerifiedAt,
+    p_checkout_session_id: session.id,
+    p_payment_intent_id: paymentIntentId,
+    p_payment_status: paymentIntent.status,
+    p_payment_method_type: payment.paymentMethodType,
+    p_amount_cents: paymentIntent.amount_received,
+    p_currency: paymentIntent.currency.toUpperCase(),
+    p_payer_receipt_email: payerEmail,
+    p_customer_id: customerId,
+    p_intake_id: randomUUID(),
+    p_order_id: randomUUID(),
+    p_search_service_id: randomUUID(),
+    p_payment_command_id: randomUUID(),
+    p_rotated_draft_secret_hash: hashCapabilitySecret(createCapabilitySecret()),
+    p_immediate_access_capability_id: randomUUID(),
+    p_email_access_capability_id: randomUUID(),
+    p_started_outbox_id: randomUUID(),
+    p_exception_outbox_id: randomUUID(),
+  });
+  if (error) throw error;
+}
+
+async function findOrCreatePaidCustomer(admin: AdminClient, accessEmail: string) {
+  async function find() {
+    const { data, error } = await admin.rpc("ap_find_customer_by_access_email", { p_email: accessEmail });
+    if (error) throw error;
+    return typeof data === "string" ? data : null;
+  }
+  const existing = await find();
+  if (existing) return existing;
+  const created = await admin.auth.admin.createUser({
+    email: accessEmail,
+    email_confirm: true,
+    user_metadata: { account_origin: "verified_search_payment" },
+  });
+  if (created.data.user?.id) return created.data.user.id;
+  const raced = await find();
+  if (raced) return raced;
+  throw new Error("Paid customer identity could not be created");
+}
+
+async function expireCorrectedSearch(admin: AdminClient, session: Stripe.Checkout.Session) {
+  const checkoutAttemptId = session.metadata?.checkout_attempt_id;
+  if (!checkoutAttemptId) throw new Error("Corrected checkout expiration is missing its attempt");
+  const { error } = await admin.rpc("ap_expire_search_checkout", {
+    p_checkout_attempt_id: checkoutAttemptId,
+    p_reason: "PROVIDER_SESSION_EXPIRED",
+  });
+  if (error) throw error;
+}
+
+async function recordCorrectedRefund(
+  admin: AdminClient,
+  refund: Stripe.Refund,
+  event: Stripe.Event,
+  payloadSha256: string,
+  signatureVerifiedAt: string,
+) {
+  const refundId = refund.metadata?.refund_operation_id;
+  if (!refundId || !/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(refundId)) throw new Error("Corrected refund binding is invalid");
+  const { error } = await admin.rpc("ap_record_search_refund_result", {
+    p_refund_id: refundId,
+    p_provider_refund_id: refund.id,
+    p_provider_status: refund.status || "pending",
+    p_provider_event_id: event.id,
+    p_error_code: refund.failure_reason || null,
+    p_payload_sha256: payloadSha256,
+    p_signature_verified_at: signatureVerifiedAt,
+    p_event_type: event.type,
+  });
+  if (error) throw error;
+}
+
+async function recordCorrectedDispute(
+  admin: AdminClient,
+  stripe: Stripe,
+  event: Stripe.Event,
+  payloadSha256: string,
+  signatureVerifiedAt: string,
+) {
+  const dispute = event.data.object as Stripe.Dispute;
+  const charge = typeof dispute.charge === "string" ? await stripe.charges.retrieve(dispute.charge) : dispute.charge;
+  const paymentIntent = charge?.payment_intent;
+  const paymentIntentId = typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;
+  if (!paymentIntentId) return false;
+  const { data: payment, error: paymentError } = await admin.from("ap_payment_attempts")
+    .select("id").eq("provider_payment_id", paymentIntentId).eq("settlement", "PAID").maybeSingle();
+  if (paymentError) throw paymentError;
+  if (!payment) return false;
+  const state = event.type === "charge.dispute.created" ? "OPEN"
+    : dispute.status === "won" ? "WON" : dispute.status === "lost" ? "LOST" : null;
+  if (!state) return true;
+  const { error } = await admin.rpc("ap_apply_search_dispute", {
+    p_provider_event_id: event.id,
+    p_payload_sha256: payloadSha256,
+    p_signature_verified_at: signatureVerifiedAt,
+    p_payment_intent_id: paymentIntentId,
+    p_dispute_state: state,
+    p_outbox_id: randomUUID(),
+  });
+  if (error) throw error;
+  return true;
 }
 
 async function verifyCompletedCheckout(stripe: Stripe, eventSession: Stripe.Checkout.Session) {

@@ -729,45 +729,82 @@ export type Database = {
       }
       ap_checkout_attempts: {
         Row: {
+          access_payload_id: string | null
+          browser_capability_secret_hash: string | null
           capacity_allocation_id: string | null
+          capacity_exception_at: string | null
+          capacity_exception_reason: string | null
           command_id: string
           created_at: string
           customer_id: string | null
           draft_id: string | null
+          email_capability_secret_hash: string | null
           expires_at: string | null
           id: string
+          invalidated_at: string | null
+          promoted_at: string | null
           provider_checkout_session_id: string | null
           quote_id: string | null
+          reacquired_capacity_allocation_id: string | null
+          reacquisition_attempted_at: string | null
+          stale_reason: string | null
           state: Database["public"]["Enums"]["ap_checkout_state"]
           updated_at: string
         }
         Insert: {
+          access_payload_id?: string | null
+          browser_capability_secret_hash?: string | null
           capacity_allocation_id?: string | null
+          capacity_exception_at?: string | null
+          capacity_exception_reason?: string | null
           command_id: string
           created_at?: string
           customer_id?: string | null
           draft_id?: string | null
+          email_capability_secret_hash?: string | null
           expires_at?: string | null
           id?: string
+          invalidated_at?: string | null
+          promoted_at?: string | null
           provider_checkout_session_id?: string | null
           quote_id?: string | null
+          reacquired_capacity_allocation_id?: string | null
+          reacquisition_attempted_at?: string | null
+          stale_reason?: string | null
           state?: Database["public"]["Enums"]["ap_checkout_state"]
           updated_at?: string
         }
         Update: {
+          access_payload_id?: string | null
+          browser_capability_secret_hash?: string | null
           capacity_allocation_id?: string | null
+          capacity_exception_at?: string | null
+          capacity_exception_reason?: string | null
           command_id?: string
           created_at?: string
           customer_id?: string | null
           draft_id?: string | null
+          email_capability_secret_hash?: string | null
           expires_at?: string | null
           id?: string
+          invalidated_at?: string | null
+          promoted_at?: string | null
           provider_checkout_session_id?: string | null
           quote_id?: string | null
+          reacquired_capacity_allocation_id?: string | null
+          reacquisition_attempted_at?: string | null
+          stale_reason?: string | null
           state?: Database["public"]["Enums"]["ap_checkout_state"]
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "ap_checkout_attempts_access_payload_id_fkey"
+            columns: ["access_payload_id"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ap_checkout_attempts_capacity_allocation_id_fkey"
             columns: ["capacity_allocation_id"]
@@ -803,54 +840,108 @@ export type Database = {
             referencedRelation: "ap_quotes"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "ap_checkout_attempts_reacquired_capacity_allocation_id_fkey"
+            columns: ["reacquired_capacity_allocation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_capacity_allocations"
+            referencedColumns: ["id"]
+          },
         ]
       }
       ap_commerce_configuration: {
         Row: {
+          access_callback_url: string | null
+          canonical_site_url: string | null
           checkout_enabled: boolean | null
           currency: string
+          immediate_payment_methods: string[]
           material_line_price_cents: number
+          payment_api_version: string | null
+          payment_provider: string | null
+          pricing_version: string | null
+          privacy_version: string | null
+          provider_email_approval_reference: string | null
+          provider_idempotent_email_approved: boolean
+          release_verification_ttl_seconds: number | null
           search_price_cents: number
           singleton: boolean
           tax_approval_reference: string | null
           tax_configuration_approved: boolean
           tax_inclusive: boolean
+          tax_version: string | null
+          terms_version: string | null
           updated_at: string
         }
         Insert: {
+          access_callback_url?: string | null
+          canonical_site_url?: string | null
           checkout_enabled?: boolean | null
           currency?: string
+          immediate_payment_methods?: string[]
           material_line_price_cents?: number
+          payment_api_version?: string | null
+          payment_provider?: string | null
+          pricing_version?: string | null
+          privacy_version?: string | null
+          provider_email_approval_reference?: string | null
+          provider_idempotent_email_approved?: boolean
+          release_verification_ttl_seconds?: number | null
           search_price_cents?: number
           singleton?: boolean
           tax_approval_reference?: string | null
           tax_configuration_approved?: boolean
           tax_inclusive?: boolean
+          tax_version?: string | null
+          terms_version?: string | null
           updated_at?: string
         }
         Update: {
+          access_callback_url?: string | null
+          canonical_site_url?: string | null
           checkout_enabled?: boolean | null
           currency?: string
+          immediate_payment_methods?: string[]
           material_line_price_cents?: number
+          payment_api_version?: string | null
+          payment_provider?: string | null
+          pricing_version?: string | null
+          privacy_version?: string | null
+          provider_email_approval_reference?: string | null
+          provider_idempotent_email_approved?: boolean
+          release_verification_ttl_seconds?: number | null
           search_price_cents?: number
           singleton?: boolean
           tax_approval_reference?: string | null
           tax_configuration_approved?: boolean
           tax_inclusive?: boolean
+          tax_version?: string | null
+          terms_version?: string | null
           updated_at?: string
         }
         Relationships: []
       }
       ap_criteria_amendments: {
         Row: {
+          acceptance_idempotency_key: string | null
           accepted_at: string | null
+          accepted_by: string | null
+          accepted_snapshot_content_sha256: string | null
+          blocking_constraints: Json
           child_snapshot_id: string | null
           created_at: string
           criteria_diff: Json
+          current_valid_count: number | null
+          decline_idempotency_key: string | null
+          decline_reason: string | null
+          declined_at: string | null
+          estimated_revision_seconds: number | null
           id: string
           idempotency_key: string
           parent_snapshot_id: string
           proposal_expires_at: string
+          proposed_snapshot_patch: Json
+          reason_codes: string[]
           revised_capacity_allocation_id: string | null
           revision_due_at: string | null
           revision_started_at: string | null
@@ -858,14 +949,25 @@ export type Database = {
           state: Database["public"]["Enums"]["ap_adjustment_state"]
         }
         Insert: {
+          acceptance_idempotency_key?: string | null
           accepted_at?: string | null
+          accepted_by?: string | null
+          accepted_snapshot_content_sha256?: string | null
+          blocking_constraints?: Json
           child_snapshot_id?: string | null
           created_at?: string
           criteria_diff: Json
+          current_valid_count?: number | null
+          decline_idempotency_key?: string | null
+          decline_reason?: string | null
+          declined_at?: string | null
+          estimated_revision_seconds?: number | null
           id?: string
           idempotency_key: string
           parent_snapshot_id: string
           proposal_expires_at: string
+          proposed_snapshot_patch?: Json
+          reason_codes?: string[]
           revised_capacity_allocation_id?: string | null
           revision_due_at?: string | null
           revision_started_at?: string | null
@@ -873,14 +975,25 @@ export type Database = {
           state?: Database["public"]["Enums"]["ap_adjustment_state"]
         }
         Update: {
+          acceptance_idempotency_key?: string | null
           accepted_at?: string | null
+          accepted_by?: string | null
+          accepted_snapshot_content_sha256?: string | null
+          blocking_constraints?: Json
           child_snapshot_id?: string | null
           created_at?: string
           criteria_diff?: Json
+          current_valid_count?: number | null
+          decline_idempotency_key?: string | null
+          decline_reason?: string | null
+          declined_at?: string | null
+          estimated_revision_seconds?: number | null
           id?: string
           idempotency_key?: string
           parent_snapshot_id?: string
           proposal_expires_at?: string
+          proposed_snapshot_patch?: Json
+          reason_codes?: string[]
           revised_capacity_allocation_id?: string | null
           revision_due_at?: string | null
           revision_started_at?: string | null
@@ -888,6 +1001,13 @@ export type Database = {
           state?: Database["public"]["Enums"]["ap_adjustment_state"]
         }
         Relationships: [
+          {
+            foreignKeyName: "ap_criteria_amendments_accepted_by_fkey"
+            columns: ["accepted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ap_criteria_amendments_child_snapshot_id_fkey"
             columns: ["child_snapshot_id"]
@@ -1177,47 +1297,59 @@ export type Database = {
       }
       ap_external_commands: {
         Row: {
+          applied_at: string | null
           command_kind: string
+          compensated_at: string | null
           created_at: string
           customer_id: string | null
           draft_id: string | null
           failure_code: string | null
           id: string
           immutable_input_sha256: string
+          lease_expires_at: string | null
           provider: string
           provider_idempotency_key: string
           provider_object_id: string | null
           reconciliation_state: string
+          result_metadata: Json
           state: Database["public"]["Enums"]["ap_command_state"]
           updated_at: string
         }
         Insert: {
+          applied_at?: string | null
           command_kind: string
+          compensated_at?: string | null
           created_at?: string
           customer_id?: string | null
           draft_id?: string | null
           failure_code?: string | null
           id?: string
           immutable_input_sha256: string
+          lease_expires_at?: string | null
           provider: string
           provider_idempotency_key: string
           provider_object_id?: string | null
           reconciliation_state?: string
+          result_metadata?: Json
           state?: Database["public"]["Enums"]["ap_command_state"]
           updated_at?: string
         }
         Update: {
+          applied_at?: string | null
           command_kind?: string
+          compensated_at?: string | null
           created_at?: string
           customer_id?: string | null
           draft_id?: string | null
           failure_code?: string | null
           id?: string
           immutable_input_sha256?: string
+          lease_expires_at?: string | null
           provider?: string
           provider_idempotency_key?: string
           provider_object_id?: string | null
           reconciliation_state?: string
+          result_metadata?: Json
           state?: Database["public"]["Enums"]["ap_command_state"]
           updated_at?: string
         }
@@ -2360,6 +2492,104 @@ export type Database = {
         }
         Relationships: []
       }
+      ap_job_release_reviews: {
+        Row: {
+          bound_fact_ids: string[]
+          bound_job_snapshot_id: string
+          bound_snapshot_id: string
+          bound_version_bundle: Json
+          customer_id: string
+          decision: Database["public"]["Enums"]["ap_staff_review_decision"]
+          evaluation_id: string
+          id: string
+          invalidated_at: string | null
+          rationale: string
+          reviewed_at: string
+          reviewer_id: string
+          search_service_id: string
+        }
+        Insert: {
+          bound_fact_ids: string[]
+          bound_job_snapshot_id: string
+          bound_snapshot_id: string
+          bound_version_bundle: Json
+          customer_id: string
+          decision: Database["public"]["Enums"]["ap_staff_review_decision"]
+          evaluation_id: string
+          id?: string
+          invalidated_at?: string | null
+          rationale: string
+          reviewed_at?: string
+          reviewer_id: string
+          search_service_id: string
+        }
+        Update: {
+          bound_fact_ids?: string[]
+          bound_job_snapshot_id?: string
+          bound_snapshot_id?: string
+          bound_version_bundle?: Json
+          customer_id?: string
+          decision?: Database["public"]["Enums"]["ap_staff_review_decision"]
+          evaluation_id?: string
+          id?: string
+          invalidated_at?: string | null
+          rationale?: string
+          reviewed_at?: string
+          reviewer_id?: string
+          search_service_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_job_release_reviews_bound_job_snapshot_id_fkey"
+            columns: ["bound_job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_job_release_reviews_bound_snapshot_id_fkey"
+            columns: ["bound_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_job_release_reviews_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_job_release_reviews_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_match_evaluations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_job_release_reviews_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_job_release_reviews_search_service_id_fkey"
+            columns: ["search_service_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["corrected_search_service_id"]
+          },
+          {
+            foreignKeyName: "ap_job_release_reviews_search_service_id_fkey"
+            columns: ["search_service_id"]
+            isOneToOne: false
+            referencedRelation: "ap_search_services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_job_snapshots: {
         Row: {
           application_host_type: string
@@ -3197,18 +3427,133 @@ export type Database = {
         }
         Relationships: []
       }
+      ap_operational_alerts: {
+        Row: {
+          alert_key: string
+          category: string
+          id: string
+          non_sensitive_details: Json
+          opened_at: string
+          reference_id: string | null
+          resolved_at: string | null
+          severity: string
+          state: string
+        }
+        Insert: {
+          alert_key: string
+          category: string
+          id?: string
+          non_sensitive_details?: Json
+          opened_at?: string
+          reference_id?: string | null
+          resolved_at?: string | null
+          severity: string
+          state?: string
+        }
+        Update: {
+          alert_key?: string
+          category?: string
+          id?: string
+          non_sensitive_details?: Json
+          opened_at?: string
+          reference_id?: string | null
+          resolved_at?: string | null
+          severity?: string
+          state?: string
+        }
+        Relationships: []
+      }
+      ap_order_access_capabilities: {
+        Row: {
+          checkout_attempt_id: string
+          consumed_at: string | null
+          created_at: string
+          customer_id: string
+          expires_at: string
+          id: string
+          issued_at: string
+          kind: Database["public"]["Enums"]["ap_access_capability_kind"]
+          order_id: string
+          revoked_at: string | null
+          secret_hash: string
+          state: Database["public"]["Enums"]["ap_access_capability_state"]
+        }
+        Insert: {
+          checkout_attempt_id: string
+          consumed_at?: string | null
+          created_at?: string
+          customer_id: string
+          expires_at: string
+          id?: string
+          issued_at?: string
+          kind: Database["public"]["Enums"]["ap_access_capability_kind"]
+          order_id: string
+          revoked_at?: string | null
+          secret_hash: string
+          state?: Database["public"]["Enums"]["ap_access_capability_state"]
+        }
+        Update: {
+          checkout_attempt_id?: string
+          consumed_at?: string | null
+          created_at?: string
+          customer_id?: string
+          expires_at?: string
+          id?: string
+          issued_at?: string
+          kind?: Database["public"]["Enums"]["ap_access_capability_kind"]
+          order_id?: string
+          revoked_at?: string | null
+          secret_hash?: string
+          state?: Database["public"]["Enums"]["ap_access_capability_state"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_order_access_capabilities_checkout_attempt_id_fkey"
+            columns: ["checkout_attempt_id"]
+            isOneToOne: false
+            referencedRelation: "ap_checkout_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_order_access_capabilities_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_order_access_capabilities_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_order_access_capabilities_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_outbox_messages: {
         Row: {
           attempts: number
           created_at: string
           customer_id: string | null
+          dead_lettered_at: string | null
           deduplication_key: string
+          first_submitted_at: string | null
           id: string
           last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
           message_kind: string
           next_attempt_at: string | null
           order_id: string | null
           payload_ref: string | null
+          provider_idempotency_expires_at: string | null
           provider_idempotency_key: string
           provider_message_id: string | null
           recipient_ref: string
@@ -3220,13 +3565,18 @@ export type Database = {
           attempts?: number
           created_at?: string
           customer_id?: string | null
+          dead_lettered_at?: string | null
           deduplication_key: string
+          first_submitted_at?: string | null
           id?: string
           last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
           message_kind: string
           next_attempt_at?: string | null
           order_id?: string | null
           payload_ref?: string | null
+          provider_idempotency_expires_at?: string | null
           provider_idempotency_key: string
           provider_message_id?: string | null
           recipient_ref: string
@@ -3238,13 +3588,18 @@ export type Database = {
           attempts?: number
           created_at?: string
           customer_id?: string | null
+          dead_lettered_at?: string | null
           deduplication_key?: string
+          first_submitted_at?: string | null
           id?: string
           last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
           message_kind?: string
           next_attempt_at?: string | null
           order_id?: string | null
           payload_ref?: string | null
+          provider_idempotency_expires_at?: string | null
           provider_idempotency_key?: string
           provider_message_id?: string | null
           recipient_ref?: string
@@ -3297,10 +3652,17 @@ export type Database = {
           funds_reversed_at: string | null
           funds_secured_at: string | null
           id: string
+          immediate_charge_verified: boolean
           legacy_payment_id: string | null
+          payer_receipt_email: string | null
+          payment_command_id: string | null
+          payment_method_type: string | null
           payment_verified_at: string | null
           provider: string
+          provider_checkout_session_id: string | null
+          provider_event_id: string | null
           provider_payment_id: string | null
+          provider_payment_status: string | null
           settlement: Database["public"]["Enums"]["ap_payment_settlement"]
           updated_at: string
         }
@@ -3317,10 +3679,17 @@ export type Database = {
           funds_reversed_at?: string | null
           funds_secured_at?: string | null
           id?: string
+          immediate_charge_verified?: boolean
           legacy_payment_id?: string | null
+          payer_receipt_email?: string | null
+          payment_command_id?: string | null
+          payment_method_type?: string | null
           payment_verified_at?: string | null
           provider: string
+          provider_checkout_session_id?: string | null
+          provider_event_id?: string | null
           provider_payment_id?: string | null
+          provider_payment_status?: string | null
           settlement?: Database["public"]["Enums"]["ap_payment_settlement"]
           updated_at?: string
         }
@@ -3337,10 +3706,17 @@ export type Database = {
           funds_reversed_at?: string | null
           funds_secured_at?: string | null
           id?: string
+          immediate_charge_verified?: boolean
           legacy_payment_id?: string | null
+          payer_receipt_email?: string | null
+          payment_command_id?: string | null
+          payment_method_type?: string | null
           payment_verified_at?: string | null
           provider?: string
+          provider_checkout_session_id?: string | null
+          provider_event_id?: string | null
           provider_payment_id?: string | null
+          provider_payment_status?: string | null
           settlement?: Database["public"]["Enums"]["ap_payment_settlement"]
           updated_at?: string
         }
@@ -3373,6 +3749,13 @@ export type Database = {
             referencedRelation: "payments"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "ap_payment_attempts_payment_command_id_fkey"
+            columns: ["payment_command_id"]
+            isOneToOne: true
+            referencedRelation: "ap_external_commands"
+            referencedColumns: ["id"]
+          },
         ]
       }
       ap_provider_events: {
@@ -3385,6 +3768,7 @@ export type Database = {
           provider: string
           provider_event_id: string
           received_at: string
+          result: Json
           signature_verified_at: string
         }
         Insert: {
@@ -3396,6 +3780,7 @@ export type Database = {
           provider: string
           provider_event_id: string
           received_at?: string
+          result?: Json
           signature_verified_at: string
         }
         Update: {
@@ -3407,12 +3792,14 @@ export type Database = {
           provider?: string
           provider_event_id?: string
           received_at?: string
+          result?: Json
           signature_verified_at?: string
         }
         Relationships: []
       }
       ap_quotes: {
         Row: {
+          capacity_allocation_id: string | null
           content_sha256: string
           created_at: string
           currency: string
@@ -3421,12 +3808,18 @@ export type Database = {
           expires_at: string
           feasibility_assessment_id: string
           id: string
+          idempotency_key: string | null
           invalidated_at: string | null
           price_cents: number
+          pricing_version: string | null
+          privacy_version: string | null
           snapshot_id: string
           tax_inclusive: boolean
+          tax_version: string | null
+          terms_version: string | null
         }
         Insert: {
+          capacity_allocation_id?: string | null
           content_sha256: string
           created_at?: string
           currency: string
@@ -3435,12 +3828,18 @@ export type Database = {
           expires_at: string
           feasibility_assessment_id: string
           id?: string
+          idempotency_key?: string | null
           invalidated_at?: string | null
           price_cents: number
+          pricing_version?: string | null
+          privacy_version?: string | null
           snapshot_id: string
           tax_inclusive: boolean
+          tax_version?: string | null
+          terms_version?: string | null
         }
         Update: {
+          capacity_allocation_id?: string | null
           content_sha256?: string
           created_at?: string
           currency?: string
@@ -3449,12 +3848,24 @@ export type Database = {
           expires_at?: string
           feasibility_assessment_id?: string
           id?: string
+          idempotency_key?: string | null
           invalidated_at?: string | null
           price_cents?: number
+          pricing_version?: string | null
+          privacy_version?: string | null
           snapshot_id?: string
           tax_inclusive?: boolean
+          tax_version?: string | null
+          terms_version?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "ap_quotes_capacity_allocation_id_fkey"
+            columns: ["capacity_allocation_id"]
+            isOneToOne: true
+            referencedRelation: "ap_capacity_allocations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ap_quotes_customer_id_fkey"
             columns: ["customer_id"]
@@ -3703,13 +4114,19 @@ export type Database = {
           created_at: string
           currency: string
           customer_id: string
+          failed_at: string | null
           id: string
           idempotency_key: string
+          last_error_code: string | null
           material_line_id: string | null
           payment_attempt_id: string
           provider_command_id: string | null
+          provider_event_id: string | null
           provider_refund_id: string | null
+          reason_code: string | null
+          requested_at: string
           required: boolean
+          retry_count: number
           scope: Database["public"]["Enums"]["ap_refund_scope"]
           state: Database["public"]["Enums"]["ap_refund_state"]
           superseded_at: string | null
@@ -3720,13 +4137,19 @@ export type Database = {
           created_at?: string
           currency: string
           customer_id: string
+          failed_at?: string | null
           id?: string
           idempotency_key: string
+          last_error_code?: string | null
           material_line_id?: string | null
           payment_attempt_id: string
           provider_command_id?: string | null
+          provider_event_id?: string | null
           provider_refund_id?: string | null
+          reason_code?: string | null
+          requested_at?: string
           required?: boolean
+          retry_count?: number
           scope: Database["public"]["Enums"]["ap_refund_scope"]
           state?: Database["public"]["Enums"]["ap_refund_state"]
           superseded_at?: string | null
@@ -3737,13 +4160,19 @@ export type Database = {
           created_at?: string
           currency?: string
           customer_id?: string
+          failed_at?: string | null
           id?: string
           idempotency_key?: string
+          last_error_code?: string | null
           material_line_id?: string | null
           payment_attempt_id?: string
           provider_command_id?: string | null
+          provider_event_id?: string | null
           provider_refund_id?: string | null
+          reason_code?: string | null
+          requested_at?: string
           required?: boolean
+          retry_count?: number
           scope?: Database["public"]["Enums"]["ap_refund_scope"]
           state?: Database["public"]["Enums"]["ap_refund_state"]
           superseded_at?: string | null
@@ -4075,12 +4504,162 @@ export type Database = {
         }
         Relationships: []
       }
+      ap_search_deadline_history: {
+        Row: {
+          capacity_allocation_id: string
+          created_at: string
+          criteria_snapshot_id: string
+          due_at: string
+          id: string
+          reason: string
+          revision: number
+          search_service_id: string
+          started_at: string
+        }
+        Insert: {
+          capacity_allocation_id: string
+          created_at?: string
+          criteria_snapshot_id: string
+          due_at: string
+          id?: string
+          reason: string
+          revision: number
+          search_service_id: string
+          started_at: string
+        }
+        Update: {
+          capacity_allocation_id?: string
+          created_at?: string
+          criteria_snapshot_id?: string
+          due_at?: string
+          id?: string
+          reason?: string
+          revision?: number
+          search_service_id?: string
+          started_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_search_deadline_history_capacity_allocation_id_fkey"
+            columns: ["capacity_allocation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_capacity_allocations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_deadline_history_criteria_snapshot_id_fkey"
+            columns: ["criteria_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_deadline_history_search_service_id_fkey"
+            columns: ["search_service_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["corrected_search_service_id"]
+          },
+          {
+            foreignKeyName: "ap_search_deadline_history_search_service_id_fkey"
+            columns: ["search_service_id"]
+            isOneToOne: false
+            referencedRelation: "ap_search_services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_search_package_reviews: {
+        Row: {
+          checklist: Json
+          customer_id: string
+          decision: Database["public"]["Enums"]["ap_staff_review_decision"]
+          evaluation_ids: string[]
+          id: string
+          invalidated_at: string | null
+          rationale: string
+          reviewed_at: string
+          reviewer_id: string
+          search_service_id: string
+          selection_run_id: string
+          version_bundle: Json
+        }
+        Insert: {
+          checklist: Json
+          customer_id: string
+          decision: Database["public"]["Enums"]["ap_staff_review_decision"]
+          evaluation_ids: string[]
+          id?: string
+          invalidated_at?: string | null
+          rationale: string
+          reviewed_at?: string
+          reviewer_id: string
+          search_service_id: string
+          selection_run_id: string
+          version_bundle: Json
+        }
+        Update: {
+          checklist?: Json
+          customer_id?: string
+          decision?: Database["public"]["Enums"]["ap_staff_review_decision"]
+          evaluation_ids?: string[]
+          id?: string
+          invalidated_at?: string | null
+          rationale?: string
+          reviewed_at?: string
+          reviewer_id?: string
+          search_service_id?: string
+          selection_run_id?: string
+          version_bundle?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_search_package_reviews_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_package_reviews_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_package_reviews_search_service_id_fkey"
+            columns: ["search_service_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["corrected_search_service_id"]
+          },
+          {
+            foreignKeyName: "ap_search_package_reviews_search_service_id_fkey"
+            columns: ["search_service_id"]
+            isOneToOne: false
+            referencedRelation: "ap_search_services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_package_reviews_selection_run_id_fkey"
+            columns: ["selection_run_id"]
+            isOneToOne: false
+            referencedRelation: "ap_match_selection_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_search_services: {
         Row: {
+          active_deadline_revision: number
           active_snapshot_id: string | null
           adjustment: Database["public"]["Enums"]["ap_adjustment_state"]
+          canceled_at: string | null
           capacity_allocation_id: string | null
           capacity_confirmed_at: string | null
+          capacity_exception_at: string | null
+          capacity_exception_reason: string | null
           created_at: string
           customer_id: string
           delivery_due_at: string | null
@@ -4091,6 +4670,8 @@ export type Database = {
           legacy_record: boolean
           original_snapshot_id: string | null
           quote_id: string | null
+          refund_started_at: string | null
+          revenue_earned_at: string | null
           search_activated_at: string | null
           service_started_at: string | null
           updated_at: string
@@ -4098,10 +4679,14 @@ export type Database = {
           winning_payment_attempt_id: string | null
         }
         Insert: {
+          active_deadline_revision?: number
           active_snapshot_id?: string | null
           adjustment?: Database["public"]["Enums"]["ap_adjustment_state"]
+          canceled_at?: string | null
           capacity_allocation_id?: string | null
           capacity_confirmed_at?: string | null
+          capacity_exception_at?: string | null
+          capacity_exception_reason?: string | null
           created_at?: string
           customer_id: string
           delivery_due_at?: string | null
@@ -4112,6 +4697,8 @@ export type Database = {
           legacy_record?: boolean
           original_snapshot_id?: string | null
           quote_id?: string | null
+          refund_started_at?: string | null
+          revenue_earned_at?: string | null
           search_activated_at?: string | null
           service_started_at?: string | null
           updated_at?: string
@@ -4119,10 +4706,14 @@ export type Database = {
           winning_payment_attempt_id?: string | null
         }
         Update: {
+          active_deadline_revision?: number
           active_snapshot_id?: string | null
           adjustment?: Database["public"]["Enums"]["ap_adjustment_state"]
+          canceled_at?: string | null
           capacity_allocation_id?: string | null
           capacity_confirmed_at?: string | null
+          capacity_exception_at?: string | null
+          capacity_exception_reason?: string | null
           created_at?: string
           customer_id?: string
           delivery_due_at?: string | null
@@ -4133,6 +4724,8 @@ export type Database = {
           legacy_record?: boolean
           original_snapshot_id?: string | null
           quote_id?: string | null
+          refund_started_at?: string | null
+          revenue_earned_at?: string | null
           search_activated_at?: string | null
           service_started_at?: string | null
           updated_at?: string
@@ -4277,6 +4870,51 @@ export type Database = {
             columns: ["draft_id"]
             isOneToOne: false
             referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_snapshot_legal_acceptances: {
+        Row: {
+          acceptance_sha256: string
+          accepted_at: string
+          draft_id: string
+          id: string
+          privacy_version: string
+          snapshot_id: string
+          terms_version: string
+        }
+        Insert: {
+          acceptance_sha256: string
+          accepted_at?: string
+          draft_id: string
+          id?: string
+          privacy_version: string
+          snapshot_id: string
+          terms_version: string
+        }
+        Update: {
+          acceptance_sha256?: string
+          accepted_at?: string
+          draft_id?: string
+          id?: string
+          privacy_version?: string
+          snapshot_id?: string
+          terms_version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_snapshot_legal_acceptances_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_snapshot_legal_acceptances_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: true
+            referencedRelation: "ap_intake_snapshots"
             referencedColumns: ["id"]
           },
         ]
@@ -5308,8 +5946,10 @@ export type Database = {
       }
       job_matches: {
         Row: {
+          allowed_unknown_warnings: Json
           apply_pack_cart_id: string | null
           apply_pack_claim_expires_at: string | null
+          compensation_status: string | null
           concerns: Json
           core_responsibilities: Json
           created_at: string
@@ -5320,19 +5960,27 @@ export type Database = {
           hidden_job_functions: Json
           id: string
           job_id: string
+          last_checked_at: string | null
           matching_experience: Json
           position: number
+          posted_date_unknown: boolean
+          posted_on: string | null
           primary_outcome: string | null
           ranking_reason_codes: Json
           ranking_score: number | null
+          release_evaluation_id: string | null
+          release_explanation: Json
           requirements: Json
           reviewed_at: string | null
           reviewed_by: string | null
           search_order_id: string
+          source_provenance: Json
         }
         Insert: {
+          allowed_unknown_warnings?: Json
           apply_pack_cart_id?: string | null
           apply_pack_claim_expires_at?: string | null
+          compensation_status?: string | null
           concerns?: Json
           core_responsibilities?: Json
           created_at?: string
@@ -5343,19 +5991,27 @@ export type Database = {
           hidden_job_functions?: Json
           id?: string
           job_id: string
+          last_checked_at?: string | null
           matching_experience?: Json
           position: number
+          posted_date_unknown?: boolean
+          posted_on?: string | null
           primary_outcome?: string | null
           ranking_reason_codes?: Json
           ranking_score?: number | null
+          release_evaluation_id?: string | null
+          release_explanation?: Json
           requirements?: Json
           reviewed_at?: string | null
           reviewed_by?: string | null
           search_order_id: string
+          source_provenance?: Json
         }
         Update: {
+          allowed_unknown_warnings?: Json
           apply_pack_cart_id?: string | null
           apply_pack_claim_expires_at?: string | null
+          compensation_status?: string | null
           concerns?: Json
           core_responsibilities?: Json
           created_at?: string
@@ -5366,15 +6022,21 @@ export type Database = {
           hidden_job_functions?: Json
           id?: string
           job_id?: string
+          last_checked_at?: string | null
           matching_experience?: Json
           position?: number
+          posted_date_unknown?: boolean
+          posted_on?: string | null
           primary_outcome?: string | null
           ranking_reason_codes?: Json
           ranking_score?: number | null
+          release_evaluation_id?: string | null
+          release_explanation?: Json
           requirements?: Json
           reviewed_at?: string | null
           reviewed_by?: string | null
           search_order_id?: string
+          source_provenance?: Json
         }
         Relationships: [
           {
@@ -5389,6 +6051,13 @@ export type Database = {
             columns: ["job_id"]
             isOneToOne: false
             referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_matches_release_evaluation_id_fkey"
+            columns: ["release_evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_match_evaluations"
             referencedColumns: ["id"]
           },
           {
@@ -6545,15 +7214,47 @@ export type Database = {
         }
         Relationships: []
       }
+      ap_staff_queue: {
+        Row: {
+          customer_id: string | null
+          due_at: string | null
+          non_sensitive_metadata: Json | null
+          order_id: string | null
+          queue_kind: string | null
+          state: string | null
+          subject_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       ap_accept_criteria_amendment: {
         Args: { p_amendment_id: string; p_child_snapshot_id: string }
         Returns: boolean
       }
+      ap_accept_search_adjustment: {
+        Args: {
+          p_acceptance_idempotency_key: string
+          p_amendment_id: string
+          p_capacity_request_key: string
+          p_child_content_sha256: string
+          p_child_snapshot_id: string
+          p_customer_id: string
+          p_outbox_id: string
+        }
+        Returns: Json
+      }
       ap_activate_material_line_revision: {
         Args: { p_line_id: string; p_new_revision_id: string }
         Returns: boolean
+      }
+      ap_align_access_capability_to_outbox: {
+        Args: { p_message_id: string; p_owner: string; p_secret_hash: string }
+        Returns: string
+      }
+      ap_append_material_entitlement_state: {
+        Args: { p_line_id: string; p_state: string }
+        Returns: string
       }
       ap_apply_document_pipeline_result: {
         Args: {
@@ -6571,8 +7272,87 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_apply_local_scheduled_job: {
+        Args: { p_job_id: string; p_owner: string }
+        Returns: string
+      }
+      ap_apply_search_dispute: {
+        Args: {
+          p_dispute_state: string
+          p_outbox_id: string
+          p_payload_sha256: string
+          p_payment_intent_id: string
+          p_provider_event_id: string
+          p_signature_verified_at: string
+        }
+        Returns: Json
+      }
+      ap_apply_verified_search_payment: {
+        Args: {
+          p_amount_cents: number
+          p_checkout_session_id: string
+          p_currency: string
+          p_customer_id: string
+          p_email_access_capability_id: string
+          p_event_type: string
+          p_exception_outbox_id: string
+          p_immediate_access_capability_id: string
+          p_intake_id: string
+          p_order_id: string
+          p_payer_receipt_email: string
+          p_payload_sha256: string
+          p_payment_command_id: string
+          p_payment_intent_id: string
+          p_payment_method_type: string
+          p_payment_status: string
+          p_payment_succeeded_at: string
+          p_provider_event_id: string
+          p_rotated_draft_secret_hash: string
+          p_search_service_id: string
+          p_signature_verified_at: string
+          p_started_outbox_id: string
+        }
+        Returns: Json
+      }
+      ap_begin_pre_activation_edit: {
+        Args: { p_draft_id: string; p_secret_hash: string }
+        Returns: number
+      }
+      ap_begin_search_checkout: {
+        Args: {
+          p_access_payload_id?: string
+          p_assessment_id: string
+          p_browser_secret_hash: string
+          p_checkout_attempt_id: string
+          p_command_id: string
+          p_draft_id: string
+          p_email_secret_hash: string
+          p_payment_attempt_id: string
+          p_provider_idempotency_key: string
+          p_quote_id: string
+          p_quote_sha256: string
+          p_request_key: string
+          p_secret_hash: string
+          p_snapshot_id: string
+        }
+        Returns: {
+          access_email: string
+          allocation_id: string
+          checkout_attempt_id: string
+          command_id: string
+          lease_expires_at: string
+          payment_attempt_id: string
+          provider_idempotency_key: string
+          quote_id: string
+          reservation_expires_at: string
+        }[]
+      }
       ap_can_access_customer: {
         Args: { p_customer_id: string }
+        Returns: boolean
+      }
+      ap_cancel_search_checkout: {
+        Args: { p_browser_secret_hash: string; p_checkout_attempt_id: string }
         Returns: boolean
       }
       ap_capacity_available: { Args: { p_bucket_id: string }; Returns: number }
@@ -6580,6 +7360,7 @@ export type Database = {
         Args: { p_key: string; p_type: string; p_value: Json }
         Returns: boolean
       }
+      ap_chunk4_monitor_snapshot: { Args: never; Returns: Json }
       ap_claim_feasibility_request: {
         Args: { p_request_id: string; p_worker_id: string }
         Returns: {
@@ -6591,6 +7372,38 @@ export type Database = {
       ap_claim_material_entitlement: {
         Args: { p_entitlement_history_id: string }
         Returns: boolean
+      }
+      ap_claim_outbox_messages: {
+        Args: { p_limit?: number; p_owner: string }
+        Returns: {
+          attempts: number
+          created_at: string
+          customer_id: string | null
+          dead_lettered_at: string | null
+          deduplication_key: string
+          first_submitted_at: string | null
+          id: string
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          message_kind: string
+          next_attempt_at: string | null
+          order_id: string | null
+          payload_ref: string | null
+          provider_idempotency_expires_at: string | null
+          provider_idempotency_key: string
+          provider_message_id: string | null
+          recipient_ref: string
+          reconciliation_state: string
+          state: Database["public"]["Enums"]["ap_outbox_state"]
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "ap_outbox_messages"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       ap_claim_retention_cleanup: {
         Args: { p_limit?: number; p_owner: string }
@@ -6638,6 +7451,19 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      ap_commit_exact_ten_release: {
+        Args: {
+          p_members: Json
+          p_outbox_id: string
+          p_release_id: string
+          p_review_checklist: Json
+          p_reviewer_id: string
+          p_reviewer_rationale: string
+          p_search_service_id: string
+          p_selection_run_id: string
+        }
+        Returns: string
+      }
       ap_commit_release: {
         Args: {
           p_active_due_at: string
@@ -6653,6 +7479,18 @@ export type Database = {
         }
         Returns: string
       }
+      ap_compensate_search_checkout: {
+        Args: {
+          p_checkout_attempt_id: string
+          p_failure_code: string
+          p_provider_session_id?: string
+        }
+        Returns: boolean
+      }
+      ap_complete_external_scheduled_job: {
+        Args: { p_job_id: string; p_owner: string }
+        Returns: boolean
+      }
       ap_complete_feasibility_request: {
         Args: {
           p_assessment_id: string
@@ -6661,9 +7499,25 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_complete_outbox_message: {
+        Args: {
+          p_message_id: string
+          p_owner: string
+          p_provider_message_id: string
+        }
+        Returns: boolean
+      }
       ap_confirm_reference_version: {
         Args: { p_customer_id: string; p_reference_version_id: string }
         Returns: boolean
+      }
+      ap_consume_order_access: {
+        Args: { p_capability_id: string; p_secret_hash: string }
+        Returns: {
+          access_email: string
+          customer_id: string
+          order_id: string
+        }[]
       }
       ap_create_anonymous_draft: {
         Args: {
@@ -6687,8 +7541,22 @@ export type Database = {
         }
         Returns: string
       }
+      ap_decline_search_adjustment: {
+        Args: {
+          p_amendment_id: string
+          p_customer_id: string
+          p_idempotency_key: string
+          p_reason: string
+        }
+        Returns: Json
+      }
       ap_defer_feasibility_request: {
         Args: { p_reason: string; p_request_id: string; p_worker_id: string }
+        Returns: boolean
+      }
+      ap_enqueue_chunk4_due_jobs: { Args: never; Returns: Json }
+      ap_expire_search_checkout: {
+        Args: { p_checkout_attempt_id: string; p_reason: string }
         Returns: boolean
       }
       ap_fail_feasibility_request: {
@@ -6696,6 +7564,16 @@ export type Database = {
           p_error_code: string
           p_request_id: string
           p_worker_id: string
+        }
+        Returns: boolean
+      }
+      ap_fail_outbox_message: {
+        Args: {
+          p_dead_letter: boolean
+          p_error_code: string
+          p_message_id: string
+          p_owner: string
+          p_retry_at: string
         }
         Returns: boolean
       }
@@ -6715,6 +7593,14 @@ export type Database = {
           feasibility_request_id: string
           snapshot_id: string
         }[]
+      }
+      ap_find_customer_by_access_email: {
+        Args: { p_email: string }
+        Returns: string
+      }
+      ap_find_latest_access_order: {
+        Args: { p_email: string }
+        Returns: string
       }
       ap_grant_reference_permission: {
         Args: {
@@ -6741,6 +7627,16 @@ export type Database = {
           p_reason: string
         }
         Returns: boolean
+      }
+      ap_issue_order_access_capability: {
+        Args: {
+          p_capability_id: string
+          p_order_id: string
+          p_outbox_id: string
+          p_payload_id: string
+          p_secret_hash: string
+        }
+        Returns: string
       }
       ap_lock_anonymous_draft_to_checkout: {
         Args: {
@@ -6781,6 +7677,48 @@ export type Database = {
         }
         Returns: string
       }
+      ap_promote_search_checkout: {
+        Args: {
+          p_checkout_attempt_id: string
+          p_provider_session_expires_at: string
+          p_provider_session_id: string
+        }
+        Returns: boolean
+      }
+      ap_propose_search_adjustment: {
+        Args: {
+          p_blocking_constraints: Json
+          p_criteria_diff: Json
+          p_current_valid_count: number
+          p_estimated_revision_seconds: number
+          p_idempotency_key: string
+          p_outbox_id: string
+          p_proposal_expires_at: string
+          p_reason_codes: string[]
+          p_reviewer_id: string
+          p_search_service_id: string
+          p_snapshot_patch: Json
+        }
+        Returns: string
+      }
+      ap_queue_material_line_refund: {
+        Args: {
+          p_customer_id: string
+          p_material_line_id: string
+          p_payment_attempt_id: string
+          p_reason_code: string
+        }
+        Returns: string
+      }
+      ap_queue_search_refund: {
+        Args: {
+          p_customer_id: string
+          p_payment_attempt_id: string
+          p_reason_code: string
+          p_scope: Database["public"]["Enums"]["ap_refund_scope"]
+        }
+        Returns: string
+      }
       ap_read_anonymous_draft: {
         Args: { p_draft_id: string; p_secret_hash: string }
         Returns: {
@@ -6791,6 +7729,14 @@ export type Database = {
           state: Database["public"]["Enums"]["ap_draft_state"]
           version: number
         }[]
+      }
+      ap_read_checkout_status: {
+        Args: { p_browser_secret_hash: string; p_checkout_attempt_id: string }
+        Returns: Json
+      }
+      ap_read_current_feasibility: {
+        Args: { p_draft_id: string; p_secret_hash: string }
+        Returns: Json
       }
       ap_read_four_step_draft: {
         Args: { p_draft_id: string; p_secret_hash: string }
@@ -6814,6 +7760,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_record_job_release_review: {
+        Args: {
+          p_decision: Database["public"]["Enums"]["ap_staff_review_decision"]
+          p_evaluation_id: string
+          p_rationale: string
+          p_reviewer_id: string
+          p_search_service_id: string
+        }
+        Returns: string
+      }
       ap_record_matching_review: {
         Args: { p_correction?: Json; p_review: Json }
         Returns: Json
@@ -6825,6 +7781,30 @@ export type Database = {
           p_staff_id: string
         }
         Returns: number
+      }
+      ap_record_search_refund_result: {
+        Args: {
+          p_error_code?: string
+          p_event_type?: string
+          p_payload_sha256?: string
+          p_provider_event_id?: string
+          p_provider_refund_id: string
+          p_provider_status: string
+          p_refund_id: string
+          p_signature_verified_at?: string
+        }
+        Returns: Json
+      }
+      ap_record_snapshot_legal_acceptance: {
+        Args: {
+          p_acceptance_sha256: string
+          p_draft_id: string
+          p_privacy_version: string
+          p_secret_hash: string
+          p_snapshot_id: string
+          p_terms_version: string
+        }
+        Returns: string
       }
       ap_register_anonymous_document: {
         Args: {
@@ -6876,6 +7856,18 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_renew_outbox_lease: {
+        Args: { p_message_id: string; p_owner: string }
+        Returns: string
+      }
+      ap_renew_scheduled_job_lease: {
+        Args: { p_job_id: string; p_owner: string }
+        Returns: string
+      }
+      ap_reopen_provisional_search_checkout: {
+        Args: { p_checkout_attempt_id: string }
+        Returns: boolean
+      }
       ap_replace_reference: {
         Args: {
           p_customer_id: string
@@ -6909,6 +7901,20 @@ export type Database = {
           document_id: string
           draft_version: number
         }[]
+      }
+      ap_retry_scheduled_job: {
+        Args: {
+          p_dead_letter: boolean
+          p_error_code: string
+          p_job_id: string
+          p_owner: string
+          p_retry_at: string
+        }
+        Returns: boolean
+      }
+      ap_retry_search_refund: {
+        Args: { p_refund_id: string; p_requested_by: string }
+        Returns: Json
       }
       ap_return_anonymous_draft_after_checkout: {
         Args: { p_draft_id: string; p_secret_hash: string }
@@ -6970,6 +7976,14 @@ export type Database = {
       ap_stale_feasibility_request: {
         Args: { p_reason: string; p_request_id: string; p_worker_id: string }
         Returns: boolean
+      }
+      ap_start_search_service_refund: {
+        Args: {
+          p_reason_code: string
+          p_require_overdue?: boolean
+          p_search_service_id: string
+        }
+        Returns: string
       }
       available_capacity: {
         Args: { p_kind: Database["public"]["Enums"]["product_kind"] }
@@ -7222,6 +8236,8 @@ export type Database = {
       }
     }
     Enums: {
+      ap_access_capability_kind: "IMMEDIATE_ORDER" | "EMAIL_ACCESS"
+      ap_access_capability_state: "ISSUED" | "CONSUMED" | "EXPIRED" | "REVOKED"
       ap_adjustment_state:
         | "NONE"
         | "PROPOSED"
@@ -7421,6 +8437,11 @@ export type Database = {
         | "AUTHORIZED_MANUAL_ONLY"
         | "UNVERIFIED_DISABLED"
         | "BLOCKED"
+      ap_staff_review_decision:
+        | "APPROVED"
+        | "REJECTED"
+        | "EVIDENCE_REQUIRED"
+        | "CUSTOMER_INPUT_REQUIRED"
       ap_unknown_treatment:
         | "BLOCK"
         | "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING"
@@ -7576,6 +8597,8 @@ export const Constants = {
   },
   public: {
     Enums: {
+      ap_access_capability_kind: ["IMMEDIATE_ORDER", "EMAIL_ACCESS"],
+      ap_access_capability_state: ["ISSUED", "CONSUMED", "EXPIRED", "REVOKED"],
       ap_adjustment_state: [
         "NONE",
         "PROPOSED",
@@ -7800,6 +8823,12 @@ export const Constants = {
         "AUTHORIZED_MANUAL_ONLY",
         "UNVERIFIED_DISABLED",
         "BLOCKED",
+      ],
+      ap_staff_review_decision: [
+        "APPROVED",
+        "REJECTED",
+        "EVIDENCE_REQUIRED",
+        "CUSTOMER_INPUT_REQUIRED",
       ],
       ap_unknown_treatment: [
         "BLOCK",

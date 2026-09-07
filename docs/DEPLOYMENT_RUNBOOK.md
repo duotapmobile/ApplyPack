@@ -1,13 +1,13 @@
 # ApplyPack deployment runbook
 
-Status: Chunk 2 repository implementation is complete locally. No production migration, deployment, provider call, source activation, Checkout, or feature enablement is authorized. Production remains blocked on the approvals and configuration listed below.
+Status: Chunk 4 repository implementation is complete locally. No production migration, deployment, provider call, source activation, Checkout, worker, or feature enablement is authorized. Production remains blocked on the approvals and configuration listed below.
 
 ## Owners and stop conditions
 
 | Owner | Responsibility |
 | --- | --- |
 | Release owner | Exact commit, change window, go/no-go, traffic rollback |
-| Database owner | Backup, migrations `202609040022`, `202609040023`, and `202609040024`, backfill checkpoints, validation, database recovery |
+| Database owner | Backup, additive migrations through `202609060030`, backfill checkpoints, validation, database recovery |
 | Application owner | Compatibility deploy, server feature flags, cutover |
 | Payments owner | Stripe tax/price/webhook/refund/dispute reconciliation |
 | Security/privacy owner | KMS, private storage, malware scanner, sandbox parser, reference isolation, retention/privacy approval |
@@ -486,3 +486,119 @@ npm.cmd run test:e2e
 Production validation must show exactly one `202609060029 / CHUNK3_FINAL_ACCEPTANCE_EXPAND` checkpoint and zero newly accepted customer-criterion reviews whose cited node type does not match the gate family. Review a sample of new manual-source job snapshots: discovery quality must include `0.80`; `application_host_type='EMPLOYER_HOSTED'` is permitted only when normalization resolved a registry-verified employer application URL. Confirm remote-only jobs have no commute root and schedule preferences occur only in `soft_preferences` unless a separate hard work-condition criterion exists.
 
 Failure recovery leaves all five Chunk 3 migrations in place, stops new matching evaluation traffic and the feasibility worker, and rolls code/traffic back to the preceding compatible build. Do not delete review, job, fact, selection, feasibility, or audit history. Repair forward with a new additive migration after database-owner review.
+
+## Chunk 4 commerce, fulfillment, and release deployment
+
+This section is a future operator procedure, not authorization to deploy or activate a provider. Apply `202609060030_chunk4_commerce_release.sql` only after checkpoint `202609060029 / CHUNK3_FINAL_ACCEPTANCE_EXPAND`. Migration 030 is expand-only: it adds version-bound commerce, access, review, deadline, refund, outbox, scheduler, monitor, and exact-ten release controls while preserving legacy paid and audit records.
+
+### Expand and compatibility sequence
+
+1. Record the exact authorized code commit, production project identity, current migration ledger, backup/PITR evidence, and non-sensitive counts for payment attempts, refunds, orders, search services, capacity allocations, outbox messages, releases, and scheduled jobs.
+2. Confirm `APP_PAYMENT_MODE=disabled`, `APP_CHECKOUT_ENABLED=false`, `APP_LIVE_PAYMENTS_ENABLED=false`, blank `APP_CHUNK4_WORKER_ID`, and disabled source automation before the schema change.
+3. Apply migration 030 after all 29 accepted migrations. Do not edit, squash, or replay an altered migration.
+4. Regenerate and verify `src/lib/database.types.ts`.
+5. Deploy the compatible code with Checkout and the Chunk 4 worker still disabled. Verify the health route exposes readiness booleans only, never secrets.
+6. Validate the checkpoint, privileges, configuration, invariants, legacy compatibility, and overdue catch-up behavior below.
+7. Complete every external row in `docs/CONFIG_DECISIONS.md`: canonical site and callback/allowlist; Stripe immediate-card price, tax, webhook, refund/dispute, and reconciliation settings; Resend sender/domain/DNS/reply-to/tracking and idempotency-reconciliation approval; capacity/staffing; protected staff roles; scheduler topology; monitoring; KMS; scanner/parser; retention/privacy; and source authorization.
+8. Use test mode and allowlisted synthetic recipients for provider rehearsals. Keep production/live payment disabled.
+9. A separate release authorization may enable one bounded component at a time. Verify signed webhook persistence and the full paid/search/refund path before considering live Checkout. Worker activation and live payments are distinct decisions.
+
+Disposable local rehearsal:
+
+```powershell
+npx.cmd supabase db reset --local
+npm.cmd run test:database
+npm.cmd run test:legacy-backfill
+npm.cmd run test:rollback
+npm.cmd run types:database:check
+npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run build
+npm.cmd run test:e2e
+git diff --check
+```
+
+The integration scanner suite is expected to report `NOT_APPLICABLE_LOCAL` when no approved scanner is configured. That result does not authorize production processing and must not be converted into a pass claim for the missing provider.
+
+### Read-only production validation
+
+Run only after the database owner confirms the target. Every anomaly count below must be zero unless the query is explicitly an inventory view.
+
+```sql
+select migration_id, checkpoint, count(*) as copies
+from public.ap_migration_checkpoints
+where migration_id='202609060030'
+  and checkpoint='CHUNK4_COMMERCE_RELEASE_V1'
+group by migration_id, checkpoint;
+
+select canonical_site_url, access_callback_url, payment_provider,
+       immediate_payment_methods, release_verification_ttl_seconds,
+       provider_idempotent_email_approved, provider_email_approval_reference
+from public.ap_commerce_configuration;
+
+select count(*) as invalid_initial_deadline
+from public.ap_search_deadline_history
+where due_at <> started_at + interval '24 hours';
+
+select count(*) as activated_search_without_exact_initial_history
+from public.ap_search_services service
+where service.search_activated_at is not null
+  and (
+    service.delivery_due_at <> service.service_started_at + interval '24 hours'
+    or (
+      select count(*) from public.ap_search_deadline_history history
+      where history.search_service_id=service.id and history.revision=1
+    ) <> 1
+  );
+
+select count(*) as invalid_exact_ten_release
+from public.ap_releases release
+where release.release_kind='SEARCH_EXACT_TEN'
+  and (
+    select count(*) from public.ap_release_members member
+    where member.release_id=release.id and member.member_type='JOB_MATCH'
+  ) <> 10;
+
+select count(*) as earned_before_exact_ten
+from public.ap_search_services service
+where service.revenue_earned_at is not null
+  and not exists (
+    select 1 from public.ap_releases release
+    where release.order_id=service.legacy_order_id
+      and release.release_kind='SEARCH_EXACT_TEN'
+  );
+
+select count(*) as capacity_overdrawn
+from public.ap_capacity_buckets bucket
+where (
+  select coalesce(sum(allocation.units),0)
+  from public.ap_capacity_allocations allocation
+  where allocation.bucket_id=bucket.id
+    and allocation.debit_disposition in ('HELD','SPENT')
+) > bucket.total_units;
+
+select count(*) as active_refund_exceeds_payment
+from public.ap_payment_refund_aggregates aggregate
+join public.ap_payment_attempts payment on payment.id=aggregate.payment_attempt_id
+where aggregate.refunded_amount_cents > payment.amount_cents;
+
+select state, count(*) from public.ap_outbox_messages group by state order by state;
+select state, count(*) from public.ap_scheduled_jobs group by state order by state;
+select public.ap_chunk4_monitor_snapshot();
+```
+
+Required results: exactly one checkpoint row with `copies=1`; the canonical URL is `https://applypack.work`; callback is `https://applypack.work/auth/callback`; payment provider/method/version fields match the separately approved production record; release TTL is exactly 3,600 seconds; the email approval Boolean is false until evidence exists and true only with its approval reference; all anomaly counts are zero. Any `FAILED` refund, outbox `DEAD_LETTER`, overdue lease, webhook lag/failure, past-due unrefunded service, exhausted capacity, or stale review must be reconciled by its owner before activation.
+
+### Incident stop and data-preserving rollback
+
+On signature failures, ambiguous provider outcomes, capacity anomalies, worker lag, stale review, partial-release symptoms, deadline/refund conflicts, cross-customer access, or unexpected email duplication:
+
+1. Stop new Checkout by restoring all three payment/Checkout flags to their disabled values. Stop the scheduler by unsetting `APP_CHUNK4_WORKER_ID` and revoke/rotate the scheduler credential through the approved secret process.
+2. Preserve provider events, payment attempts, commands, quotes, allocations, orders, deadline history, reviews, releases, refunds, disputes, outbox rows, access audit, scheduled jobs, and operational alerts. Do not delete, rewrite, or mark an ambiguous operation successful.
+3. Reconcile provider state by the immutable command/idempotency keys. Resume only the scoped idempotent handler after the owner has classified each ambiguous Checkout, refund, and accepted email send.
+4. Route paid but unactivated, duplicate-paid, stale-paid, and lost-capacity attempts through the implemented full-refund state machine. A failed refund remains `FAILED` with staff alerting; it is never presented as completed.
+5. Revert application traffic to the preceding schema-compatible code commit while leaving migration 030 in place. Do not issue a destructive down migration or restore an old database over newer commerce evidence.
+6. Repair forward with a new additive migration after database, payment, security/privacy, and release-owner review. Re-run the full validation, catch-up, and provider reconciliation procedure before any later activation.
+
+Exact-ten releases already committed within their active deadline and their earned revenue remain immutable. A post-delivery dispute is recorded by its scope and provider outcome; it never silently resumes work or creates a second refund.
