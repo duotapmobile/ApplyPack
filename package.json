@@ -16,6 +16,7 @@
     "test:database": "node scripts/run-supabase-db-tests-v2.mjs",
     "test:legacy-backfill": "node scripts/run-supabase-legacy-backfill-test.mjs",
     "test:rollback": "node scripts/run-supabase-rollback-test.mjs",
+    "test:document-render": "vitest run --config vitest.render.config.mts",
     "types:database:check": "node scripts/check-database-types.mjs",
     "stripe:configure:test": "node scripts/configure-stripe-test-prices.mjs"
   },

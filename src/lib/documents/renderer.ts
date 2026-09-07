@@ -6,6 +6,10 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
+import { pathToFileURL } from "node:url";
+
+import { pdfFontTableUsesArial } from "@/lib/documents/font-validation";
+import { normalizeRenderedDocumentText } from "@/lib/documents/text-validation";
 
 const runFile = promisify(execFile);
 const SHA256 = /^[0-9a-f]{64}$/i;
@@ -66,17 +70,18 @@ export async function renderDocumentLocallyForQa(input: {
   const pdfPath = join(work, `${stem}.pdf`);
   const textPath = join(work, `${stem}.txt`);
   const imageStem = join(work, `${stem}-page`);
+  const officeProfile = pathToFileURL(join(work, "libreoffice-profile")).href;
   try {
     await writeFile(inputPath, input.docx, { flag: "wx" });
-    await execute(configuration.tools.office.path, ["--headless", "--nologo", "--nodefault", "--nolockcheck", "--norestore", "--convert-to", "pdf", "--outdir", work, inputPath], 45_000);
+    await execute(configuration.tools.office.path, [`-env:UserInstallation=${officeProfile}`, "--headless", "--nologo", "--nodefault", "--nolockcheck", "--norestore", "--convert-to", "pdf", "--outdir", work, inputPath], 45_000);
     const pdfInfo = await execute(configuration.tools.pdfInfo.path, [pdfPath], 10_000);
     const pageMatch = pdfInfo.match(/^Pages:\s+(\d+)\s*$/im);
     const pageCount = Number(pageMatch?.[1]);
     if (pageCount !== input.expectedPages || ![1, 2].includes(pageCount)) throw new Error("rendered_page_count_invalid");
     const fontInfo = await execute(configuration.tools.pdfFonts.path, [pdfPath], 10_000);
-    if (!/(?:^|\s)Arial(?:MT|[-, ]|\s)/im.test(fontInfo)) throw new Error("arial_font_not_resolved");
+    if (!pdfFontTableUsesArial(fontInfo)) throw new Error("arial_font_not_resolved");
     await execute(configuration.tools.pdfText.path, ["-layout", "-nopgbrk", pdfPath, textPath], 10_000);
-    const extractedText = normalizeExtractedText((await readFile(textPath)).toString("utf8"));
+    const extractedText = normalizeRenderedDocumentText((await readFile(textPath)).toString("utf8"));
     const extractedTextSha256 = hash(Buffer.from(extractedText, "utf8"));
     if (!extractedText || extractedTextSha256 !== input.expectedExtractedTextSha256) {
       throw new Error("rendered_text_not_equivalent");
@@ -113,10 +118,6 @@ async function verifyTool(tool: LocalTool) {
 async function execute(file: string, args: string[], timeout: number) {
   const result = await runFile(file, args, { timeout, windowsHide: true, maxBuffer: 2 * 1024 * 1024 });
   return `${result.stdout || ""}\n${result.stderr || ""}`;
-}
-
-function normalizeExtractedText(value: string) {
-  return value.normalize("NFC").replace(/\s+/gu, " ").trim();
 }
 
 function hash(value: Buffer) {
