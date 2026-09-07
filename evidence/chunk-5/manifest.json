@@ -1,0 +1,674 @@
+{
+  "schema_version": 2,
+  "chunk": 5,
+  "chunk_status": "PARTIAL",
+  "closeout_round": "initial",
+  "created_at": "2026-09-07T05:16:18.7878132-04:00",
+  "worktree": "C:\\Users\\mskir\\Desktop\\Apply_Pack\\applypack-phase0-e9c3aea0d45447bfaa6517e488356e0d",
+  "branch": "codex/applypack-corrected-build-2026-09-04",
+  "base_commit": "aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8",
+  "required_phase_0_commit": "0595ae7cec5c2f36d06b11b691fd319742cb692c",
+  "accepted_chunk_1_commit": "e8c77426b892a54b802dde516552449825754df8",
+  "accepted_chunk_2_final_evidence_commit": "93644d52c53340cef187fa08e3d574a75d42a97a",
+  "accepted_chunk_3_final_evidence_commit": "dba720ac2f396b28fd88c757ab3a9498b43091ff",
+  "accepted_chunk_4_implementation_commit": "9751222fb51953e3e49ce7a50795a44bf699e0fa",
+  "accepted_chunk_4_final_evidence_commit": "08d2933e00756d9ab003faddc3017589cf47ef3d",
+  "chunk_start_head": "08d2933e00756d9ab003faddc3017589cf47ef3d",
+  "tested_code_commit": "cb66c0a005b64e78f0838978ee2afd83d7455efc",
+  "tested_tree": "0f54c4814160703d0ea4a9db7e452d0c031dbc07",
+  "artifact_hash_scope": "tested_code_commit",
+  "evidence_artifact_hash_scope": "evidence_attestation_content",
+  "contract_sha256": "df4e32e2ea0c37abd3f39904c36576c0af3935f9754bb1b81979782dc002d69f",
+  "corrected_packet_sha256": "96720cbfa395c07292cf631174bf31944f3c485c02448eddb71cd011ddc3e691",
+  "supplemental_addendum_sha256": "c60e1ad79aa63a3c8beaa575b443045fef22fc2da6275c56d5ded7f7b11b0610",
+  "environment": {
+    "git": "2.50.0.windows.2",
+    "node": "22.22.0",
+    "npm": "10.9.4",
+    "os": "Microsoft Windows NT 10.0.26200.0",
+    "supabase_cli": "2.116.0",
+    "timezone": "America/New_York"
+  },
+  "checks": [
+    {
+      "id": "C5-MIGRATE",
+      "command": "npx.cmd supabase db reset --local",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 31,
+      "evidence": "The disposable local database applied all 31 migrations from zero through 202609070031_chunk5_materials_delivery.sql and recorded the Chunk 5 checkpoint."
+    },
+    {
+      "id": "C5-DB",
+      "command": "npm.cmd run test:database",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 5,
+      "evidence": "All five transactional fixture families passed, including material entitlement claims, exact pricing, readiness, substitution, fact-correction, line-refund/dispute, release, reference, download, authorization, and scheduler guards."
+    },
+    {
+      "id": "C5-LEGACY",
+      "command": "npm.cmd run test:legacy-backfill",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 2,
+      "evidence": "Legacy paid-order validation passed before and after the idempotent migration replay, then restored the complete 31-migration schema."
+    },
+    {
+      "id": "C5-ROLLBACK",
+      "command": "npm.cmd run test:rollback",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 2,
+      "evidence": "The isolated guarded rollback reported ROLLBACK_OK and self-restored all 31 migrations before RESTORE_OK."
+    },
+    {
+      "id": "C5-TYPES",
+      "command": "npm.cmd run types:database:check",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 1,
+      "evidence": "Checked-in TypeScript database types exactly matched the fully migrated local schema."
+    },
+    {
+      "id": "C5-LINT",
+      "command": "npm.cmd run lint",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": null,
+      "evidence": "ESLint completed without findings or warnings."
+    },
+    {
+      "id": "C5-TYPE",
+      "command": "npm.cmd run typecheck",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": null,
+      "evidence": "TypeScript no-emit validation completed without errors."
+    },
+    {
+      "id": "C5-UNIT",
+      "command": "npm.cmd test -- --pool=threads --maxWorkers=1 --reporter=dot",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 302,
+      "evidence": "All 302 tests in 45 files passed, including all prior regressions and Chunk 5 materials, document, provenance, reference-isolation, checkout, delivery, and file-safety coverage."
+    },
+    {
+      "id": "C5-BUILD",
+      "command": "npm.cmd run build",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 53,
+      "evidence": "Next.js production compilation, TypeScript, page-data collection, and all 53 generated routes/pages completed successfully with providers disabled."
+    },
+    {
+      "id": "C5-E2E",
+      "command": "npm.cmd run test:e2e -- --reporter=list",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 75,
+      "evidence": "All 75 applicable desktop/mobile Playwright cases passed; five duplicate/project-specific cases were intentionally skipped among 80 scheduled cases. Earlier Chunk 2 and Chunk 4 screenshot side effects were restored byte-for-byte and excluded.",
+      "development_attempt": "A precommit full regression found two obsolete Chunk 4 heading assertions after the binding portal headings changed; product behavior passed, the assertions were corrected, and the focused Chunk 4 rerun passed.",
+      "retest": "The definitive full suite was rerun at the exact implementation commit and passed 75 applicable cases with zero failures."
+    },
+    {
+      "id": "C5-A11Y-VISUAL",
+      "command": "Chunk 5 Playwright evidence cases within the full exact-commit run",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 31,
+      "evidence": "Automated keyboard, focus, layout, axe, six-width, 200 percent zoom, forced-colors, reduced-motion, and deterministic screenshot checks passed with 31 new PNGs and zero serious or critical axe findings. This is not manual assistive-technology or human document visual approval."
+    },
+    {
+      "id": "C5-DOCX",
+      "command": "npm.cmd test -- tests/unit/chunk5-materials.test.ts tests/unit/portal-selection.test.tsx tests/unit/file-scanner.test.ts --pool=threads --maxWorkers=1 --reporter=dot",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 15,
+      "evidence": "All 15 focused tests in three files passed for deterministic DOCX package structure/text/provenance, injection and nonfabrication rules, career-break/reference behavior, portal selection, and scanner fail-closed behavior. Actual page rendering is a separate blocked check."
+    },
+    {
+      "id": "C5-RENDER-VISUAL",
+      "command": "Approved local DOCX-to-PDF/page renderer, Arial-resolution verification, and per-page human visual inspection",
+      "status": "BLOCKED",
+      "exit_code": null,
+      "assertion_count": 0,
+      "evidence": "Arial is installed locally (1,045,720 bytes; SHA-256 b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a), but the approved renderer identity, LibreOffice and PDF tool paths/hashes, and configured Arial path/hash are unset. No Word, LibreOffice/soffice, ONLYOFFICE, WPS, or WordPad executable was available. The adapter fails closed; no real render or visual approval is claimed."
+    },
+    {
+      "id": "C5-MANUAL-AT",
+      "command": "Manual screen-reader and assistive-technology exercise",
+      "status": "BLOCKED",
+      "exit_code": null,
+      "assertion_count": 0,
+      "evidence": "No manual assistive-technology/provider exercise was performed. Automated axe, keyboard, focus, zoom, forced-color, and reduced-motion checks do not substitute for it."
+    },
+    {
+      "id": "C5-TRACE",
+      "command": "Chunk 5 stable-row ownership/status audit",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 103,
+      "evidence": "All 103 primary Chunk 5 stable rows map to implementation, tests, evidence, and IMPLEMENTED status; pending and unimplemented Chunk 5 rows are zero."
+    },
+    {
+      "id": "C5-FORMAT",
+      "command": "git diff --check and git diff --cached --check",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 2,
+      "evidence": "Working-tree and staged whitespace checks completed without errors; line-ending notices were advisory only."
+    },
+    {
+      "id": "C5-INTEGRATION-EXTERNAL",
+      "command": "npm.cmd run test:integration",
+      "status": "NOT_APPLICABLE_LOCAL",
+      "exit_code": 0,
+      "assertion_count": 3,
+      "evidence": "Both real-scanner files and all three tests were explicitly skipped because no approved production scanner is configured. Deterministic fail-closed coverage passed and production processing remains disabled."
+    }
+  ],
+  "required_tests": {
+    "numerator": 14,
+    "denominator": 16,
+    "failed": [],
+    "blocked": [
+      "C5-RENDER-VISUAL",
+      "C5-MANUAL-AT"
+    ],
+    "not_applicable_local": [
+      "C5-INTEGRATION-EXTERNAL"
+    ]
+  },
+  "cumulative_required_tests": {
+    "numerator": 71,
+    "denominator": 73,
+    "phase_0": "9/9",
+    "chunk_1": "11/11",
+    "chunk_2": "12/12",
+    "chunk_3": "12/12",
+    "chunk_4": "13/13",
+    "chunk_5": "14/16"
+  },
+  "traceability": {
+    "chunk_5_owning_rows": 103,
+    "implemented_rows": 103,
+    "unmapped_rows": 0,
+    "multiply_owned_rows": 0,
+    "pending_rows": 0,
+    "cumulative_rows_through_chunk_5": 461
+  },
+  "screenshot_inventory": {
+    "width_360": 1,
+    "width_390": 14,
+    "width_430": 1,
+    "width_768": 1,
+    "width_1024": 1,
+    "width_1440": 13,
+    "total": 31,
+    "serious_or_critical_axe_findings": 0,
+    "manual_visual_inspection": false,
+    "manual_assistive_technology_exercise": false
+  },
+  "renderer_probe": {
+    "arial_path": "C:\\Windows\\Fonts\\arial.ttf",
+    "arial_bytes": 1045720,
+    "arial_sha256": "b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a",
+    "approved_renderer_configured": false,
+    "available_office_renderers": [],
+    "real_render_performed": false,
+    "human_page_visual_approval": false
+  },
+  "artifacts": [
+    {
+      "path": ".env.example",
+      "bytes": 3222,
+      "sha256": "4aa177d40254115d32db855cafaa1c2fe725e94ac1cc589a6d9d2ba109203e4f"
+    },
+    {
+      "path": "docs/CONFIG_DECISIONS.md",
+      "bytes": 24278,
+      "sha256": "f1fac84450477c66afad2a728434beac9f25915cc4e90d63132716da1d930190"
+    },
+    {
+      "path": "docs/COPY_REVIEW_INVENTORY.md",
+      "bytes": 7920,
+      "sha256": "f019b82dd68a621fa3a2b153c69963ec2c3dc178cb1a81772fd7a1db34f23087"
+    },
+    {
+      "path": "docs/DEPLOYMENT_RUNBOOK.md",
+      "bytes": 49857,
+      "sha256": "831d5694fb9c883582984e06ab24589a0b325bb95ae0efd96606ca8a1964aabb"
+    },
+    {
+      "path": "docs/DOCUMENT_GENERATION_POLICY.md",
+      "bytes": 14546,
+      "sha256": "9feffa187d3bdc8f1c218fd7fce1ceb8aa74795c4495243f76fbd99563c1231f"
+    },
+    {
+      "path": "docs/REQUIREMENT_TRACEABILITY.md",
+      "bytes": 654208,
+      "sha256": "2be76af4dd6286dcde26d133f469b98309d60cbaef661b3c3335ab46cd239270"
+    },
+    {
+      "path": "package-lock.json",
+      "bytes": 318828,
+      "sha256": "7fb6da39818780c4ed6affccb8994aa54a4514bfe2f3bbb11e22c551ad137ec1"
+    },
+    {
+      "path": "package.json",
+      "bytes": 1755,
+      "sha256": "eae5731df2779889f76922ff0b4c88dd0acffb3534c4344012738c918438d966"
+    },
+    {
+      "path": "scripts/run-supabase-db-tests-v2.mjs",
+      "bytes": 1051,
+      "sha256": "d57315f10e049a886a9b99c38ff114e30c270bb43fe920a3ddcc42a47fe66bcf"
+    },
+    {
+      "path": "src/app/admin/page.tsx",
+      "bytes": 19314,
+      "sha256": "6d81d276749fb2334f3ab75c5003441c296d0629a2cf49a1f1883e40a33807da"
+    },
+    {
+      "path": "src/app/api/admin/job-snapshots/[id]/submission-rules/route.ts",
+      "bytes": 3897,
+      "sha256": "3558abfd8270f18c0134ca8f38ff4ecea8287f612f5ea85b95dff1dc4a212b65"
+    },
+    {
+      "path": "src/app/api/admin/material-files/[id]/render-preview/route.ts",
+      "bytes": 1506,
+      "sha256": "b8b0463dde757ae8c20acc54ff862870efd55435999a36c84682cbb7ba7d06ac"
+    },
+    {
+      "path": "src/app/api/admin/material-lines/[id]/generate/route.ts",
+      "bytes": 29676,
+      "sha256": "872af180df0d402d651221dee913d18e22dd4a260ae674b30fea1766fb95b9ee"
+    },
+    {
+      "path": "src/app/api/admin/material-lines/[id]/route.ts",
+      "bytes": 8862,
+      "sha256": "cdd7ef276f79b7e6f518c2cb9a59ae02e75d08cef5c841cd6e857d4f9a07fd39"
+    },
+    {
+      "path": "src/app/api/checkout/apply-packs/route.ts",
+      "bytes": 15187,
+      "sha256": "7562798360f06e210edeed9fa5fa5eda308ecd148a0399c40d3a6a3423a650e3"
+    },
+    {
+      "path": "src/app/api/customer/artifacts/[id]/download/route.ts",
+      "bytes": 2805,
+      "sha256": "b08d10b2f74cfdad98e6d22941add5492e83ed4d4258f6a3581e46af5fe54d4c"
+    },
+    {
+      "path": "src/app/api/customer/material-lines/[id]/reference-regeneration/route.ts",
+      "bytes": 3264,
+      "sha256": "fbe09cba0861eba752ec872f9cf41147381dd6d2d2c19e02974017f90fa54793"
+    },
+    {
+      "path": "src/app/api/customer/material-lines/[id]/support/route.ts",
+      "bytes": 5255,
+      "sha256": "58020c3bde0485bc415dbd414be93952f36694650013317b92537f35e7fce936"
+    },
+    {
+      "path": "src/app/api/customer/material-proposals/[id]/route.ts",
+      "bytes": 5354,
+      "sha256": "031a69309c9d782b4ffe146caa3fe44ab337ba3426437988c11709dc20b59aec"
+    },
+    {
+      "path": "src/app/api/customer/references/[opaqueId]/permissions/route.ts",
+      "bytes": 5485,
+      "sha256": "00118ccbec4431f95407cb21411e41198db943bbed4afa55698b0aef8ead5264"
+    },
+    {
+      "path": "src/app/api/customer/references/[opaqueId]/route.ts",
+      "bytes": 4477,
+      "sha256": "a7e94cc6a550a7b1623a67b96cf1a5b2138b16176b3a576a198d95ef04c0b82a"
+    },
+    {
+      "path": "src/app/api/customer/references/route.ts",
+      "bytes": 7302,
+      "sha256": "50d5adedcb32c39e892bf11a3fdb7a259d6be8f4c9eebc41b4a31f1a6d2f7491"
+    },
+    {
+      "path": "src/app/api/stripe/webhook/route.ts",
+      "bytes": 25412,
+      "sha256": "fa28bd0fae20c9209f1d8fb7e2694d2cf4d7d2639bbe0a602e0d6b4c9577950b"
+    },
+    {
+      "path": "src/app/e2e/chunk4/page.tsx",
+      "bytes": 7414,
+      "sha256": "e3e702fbc975d945cc7e0c8b5dd6b329f7ea79722a2380a9ad1163d9740ff0e5"
+    },
+    {
+      "path": "src/app/e2e/chunk5/page.tsx",
+      "bytes": 11757,
+      "sha256": "c0918f0c942dbaa1bdf85dbc54db03e0f0de037d58fae9c9afda39264d7368fb"
+    },
+    {
+      "path": "src/app/globals.css",
+      "bytes": 87630,
+      "sha256": "47a7b690d401a99405c4673c7ee2bf10552e6f8d2f8c1d4e24f38c59c9084acc"
+    },
+    {
+      "path": "src/app/my-applypack/page.tsx",
+      "bytes": 12444,
+      "sha256": "a965ec6896654379e425cb7d3cca2352156322f4b4754f41be9d16da40549075"
+    },
+    {
+      "path": "src/components/admin/chunk5-material-staff-queue.tsx",
+      "bytes": 11364,
+      "sha256": "16ff9f1fdc394b7e15d79a81d5180005729a461b926ca1c6033fe8e1bb392bb0"
+    },
+    {
+      "path": "src/components/portal/apply-pack-selector-v2.tsx",
+      "bytes": 29242,
+      "sha256": "a0914ee1cbfd370f9253ab4704d1016855863d5cfc06b28bc012f61a48161c89"
+    },
+    {
+      "path": "src/components/portal/material-deliveries.tsx",
+      "bytes": 14411,
+      "sha256": "096028e2347671ff3682977a27d3f0556017f1380d456698d73e79d9bd32cbb5"
+    },
+    {
+      "path": "src/components/portal/reference-manager.tsx",
+      "bytes": 15946,
+      "sha256": "3358d218a07f36cc8dc27a51e1bb1aa6deaef36e079df8d04ef29b238696482c"
+    },
+    {
+      "path": "src/lib/commerce/email.ts",
+      "bytes": 9710,
+      "sha256": "5e6dfc763f3b89414fb24a7e0313e85db63db4e553c377b2f169bceccdd3abf5"
+    },
+    {
+      "path": "src/lib/commerce/outbox.ts",
+      "bytes": 12838,
+      "sha256": "0ddbadf7528b4a8151865e2c1af3bdf53bd8747d93e139cbb9282a2359308338"
+    },
+    {
+      "path": "src/lib/commerce/workers.ts",
+      "bytes": 12806,
+      "sha256": "c1cdab8159f2f849106bfa2e428b2c3d9264d1117de09d81794a5df3423e9b48"
+    },
+    {
+      "path": "src/lib/database.types.ts",
+      "bytes": 346834,
+      "sha256": "36d69f8be2e0229022811e66087ccc5211437592943e8bf11e077bf6de9d3d63"
+    },
+    {
+      "path": "src/lib/documents/generate.ts",
+      "bytes": 35278,
+      "sha256": "4b613b55a7c48d282d66014fee976d975b7c9e744c210c65d0b29ac085b2063f"
+    },
+    {
+      "path": "src/lib/documents/renderer.ts",
+      "bytes": 5731,
+      "sha256": "6f65835b62c06f1c073376d8ab19e51e5cb3893639625a18bf728728b26dcbbc"
+    },
+    {
+      "path": "src/lib/env.ts",
+      "bytes": 5611,
+      "sha256": "97517dea884b024f027c1951c68941ee0e9c4b0ff0ad2446b98e74f76cba1444"
+    },
+    {
+      "path": "src/lib/files/scanner.ts",
+      "bytes": 5535,
+      "sha256": "7ef5e22aa330c44fc578a67b868aad2e38045b5ec67d8370a63515fa7ce0d446"
+    },
+    {
+      "path": "src/lib/materials/admin.ts",
+      "bytes": 7015,
+      "sha256": "6e034c075ada2067ee0b4aa57c2d87255e501192dca63a462414d1af77b555d0"
+    },
+    {
+      "path": "src/lib/materials/contract.ts",
+      "bytes": 8754,
+      "sha256": "fa7173a20ce2008366b64670c002760ab66fc4948ee77cd7bdb194deff31a120"
+    },
+    {
+      "path": "src/lib/materials/portal.ts",
+      "bytes": 13693,
+      "sha256": "9711009f1edf3079c5ff64a4e06ef2bce46c622552afd33be3d0d2ab50bf076e"
+    },
+    {
+      "path": "src/lib/materials/references.ts",
+      "bytes": 4478,
+      "sha256": "63f2eb0ee9b0c1eabbc6fbc73844c017afba3115ff3ff1a6beb01151c5d25f15"
+    },
+    {
+      "path": "src/lib/materials/server.ts",
+      "bytes": 5832,
+      "sha256": "1fd43377fbb2565cb5b414f2ef83753ab1236f9ce06d3dfbad28786bf05d1c1c"
+    },
+    {
+      "path": "src/lib/stripe/server.ts",
+      "bytes": 1668,
+      "sha256": "42dc846ffcc29a482d77db1fa74230c47bc9951181b6026c6c97823df2bf1d1a"
+    },
+    {
+      "path": "supabase/migrations/202609070031_chunk5_materials_delivery.sql",
+      "bytes": 177799,
+      "sha256": "f8e3d9017dc682593424b2de4d65df415ae86b476c37fdb9495e1b3296b96440"
+    },
+    {
+      "path": "tests/e2e/chunk4-evidence.spec.ts",
+      "bytes": 5210,
+      "sha256": "0a9e2ddaa4cd0d7fddc9b9d6a1951d743420bc6d820de14e741ffa12978bf8f3"
+    },
+    {
+      "path": "tests/e2e/chunk5-evidence.spec.ts",
+      "bytes": 7256,
+      "sha256": "64fe3660909cc6b8af4a02fadff24c05043c54bff5ef3ae091cf46764faf9651"
+    },
+    {
+      "path": "tests/integration/chunk1-foundation.sql",
+      "bytes": 47130,
+      "sha256": "aaff6e64ec36ed29045e2bb1d862f8c34f6e5523d1ff13b9e904350db0065427"
+    },
+    {
+      "path": "tests/integration/chunk5-materials-delivery.sql",
+      "bytes": 21871,
+      "sha256": "fae62896baa1435f84f80e04ca34cefe20bf9bd0094561a92a9e5c3bbf070ee8"
+    },
+    {
+      "path": "tests/unit/checkout-drafts-safety.test.ts",
+      "bytes": 2187,
+      "sha256": "60429418df8138784573da22f85a0914130d2ac66ab99e37df3787ec4f272f3a"
+    },
+    {
+      "path": "tests/unit/chunk5-materials.test.ts",
+      "bytes": 11732,
+      "sha256": "068bc5d54b6326b6243782a051e077883b92c01dea3fc570a0bb249b1d11e9da"
+    },
+    {
+      "path": "tests/unit/file-scanner.test.ts",
+      "bytes": 2187,
+      "sha256": "9127d70bfad515aa3d672be6f9063db055a46193345074bbc15e3215d25ec165"
+    },
+    {
+      "path": "tests/unit/portal-selection.test.tsx",
+      "bytes": 6378,
+      "sha256": "d1836f44c793dfdc86c448b62ea501574d81fcdfcdbd7d7f30c7d0ce501bb9aa"
+    }
+  ],
+  "evidence_artifacts": [
+    {
+      "path": "evidence/chunk-5/screenshots/1024-exact-ten-selection.png",
+      "bytes": 1003602,
+      "sha256": "e477d1e0a4ae2990d890ecd2ea90d607745d6d84f46babe9fc1ec83f0cf4ae78"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/1440-exact-ten-selection.png",
+      "bytes": 1024230,
+      "sha256": "f00f9bfbdf97cfe55b73974d5ca3314962be1a070e700ac07a3970ced3f0117e"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/1440-materials-correction.png",
+      "bytes": 212814,
+      "sha256": "0161cbb1573fca9e3b4667354cb4b88a4713e5165e07197b70ccfeba2beee3bb"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/1440-materials-delivered.png",
+      "bytes": 219398,
+      "sha256": "ed75664830c1761435ade8709d9f55945b6c20976f4f4409c790785df2f501d7"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/1440-materials-expired-download.png",
+      "bytes": 222860,
+      "sha256": "1b4148a098538f6a5c9690e9c42ac9363993f9658db9cc60621c724804f81c41"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/1440-materials-generating.png",
+      "bytes": 186966,
+      "sha256": "f3721313af605158f85794ba2c9ea32780c76703bbbd68fe953d0f92df407ff1"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/1440-materials-refund.png",
+      "bytes": 173156,
+      "sha256": "79abd1600cbd84574ae10717f2fedade4d446969b1a4fb8bf4a893f9dba6c467"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/1440-materials-substitution.png",
+      "bytes": 207599,
+      "sha256": "ec9a9ea429c250b048421537d697cb7c2d18f339ddd34052afee964d07af1b81"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/1440-payment-confirmation.png",
+      "bytes": 132625,
+      "sha256": "75b4ce363cd3f6d33ae1a3617204582cfdde6ebaaba04c7eb5087b334446f35e"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/1440-pending-search.png",
+      "bytes": 162966,
+      "sha256": "e7a9dad4a3f7e82b421d36560b0add0fa79dfa53f4403f689ae29ce6af457f75"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/1440-postdelivery-private-support.png",
+      "bytes": 240194,
+      "sha256": "014128a35a4fc79293397794dfb276eda8a0b851c563c5e13dd0106a110f4b39"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/1440-reference-permission.png",
+      "bytes": 255045,
+      "sha256": "44ac87a008d3bc7551ea2027660290c025b25964cc281293b4c2789eccf42778"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/1440-selection-review.png",
+      "bytes": 1138845,
+      "sha256": "e82c760748f2c4ff9cabafb6f27d129daa705e2c6681075b76c47f2a42d34353"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/1440-staff-review-queue.png",
+      "bytes": 245609,
+      "sha256": "293e7e1f30b1c5aadd07724475e3b9a35a70ace356302322696edba0fee35f3c"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/360-exact-ten-selection.png",
+      "bytes": 961908,
+      "sha256": "90bf23bf3548690d45d129fc04fc553d37182e7e77f84de36265b134d314d307"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/390-exact-ten-selection.png",
+      "bytes": 966446,
+      "sha256": "99bb13ef1cb0a623ed8755d4ee60588e2937a3f91f6fb100e3cac729a7a86757"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/390-forced-colors-reduced-motion-200-percent.png",
+      "bytes": 2050734,
+      "sha256": "2c1afde557ff3c81e9888bb4cf8dd97147709fe108758979da3d34928e5febc1"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/390-materials-correction.png",
+      "bytes": 162805,
+      "sha256": "002f73fee5eed3b870cdade3d58b56e388a905f2b6cd2cc0efd284403d02e5c8"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/390-materials-delivered.png",
+      "bytes": 169580,
+      "sha256": "5b64141f96d271b323d9d65fee90912e8750769bce5f071c6aa8cbbcfa8ed0e3"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/390-materials-expired-download.png",
+      "bytes": 171100,
+      "sha256": "8c161fd6fdf2369a4cee3130d38fc1df1a54bd49fd075d405bb036cbbe6bab03"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/390-materials-generating.png",
+      "bytes": 135404,
+      "sha256": "801ed7acfb48b704baa7f7d8857f037e3eeb89b661b0968f8328f31318c43a33"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/390-materials-refund.png",
+      "bytes": 129323,
+      "sha256": "128e73b397bf10c6f9e24b238f472dd3b15809ed698fbaacc5acf0b51f145694"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/390-materials-substitution.png",
+      "bytes": 162864,
+      "sha256": "3e216327f369d403ef3dd0d301d36624d2f6c41baeee14501c59b9bfc6dfaf0c"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/390-payment-confirmation.png",
+      "bytes": 98359,
+      "sha256": "a977b48e66e8066dfcfe61a456a4f240417dab3a3d9d5b8b8b1fafdc1d5fef1c"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/390-pending-search.png",
+      "bytes": 119224,
+      "sha256": "1962a1ef9eb2869abc63039b4b8d6174f2c68985eb5d21f8a23abc608e5d7377"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/390-postdelivery-private-support.png",
+      "bytes": 188822,
+      "sha256": "91a911706f98c2d53a253003885f7e56245ba22046cbea3d401618a16c9ffd96"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/390-reference-permission.png",
+      "bytes": 197580,
+      "sha256": "a1d5d42dfd9876dfb80e658b426a2a073db7d713a20fb270dabf2503cc4cfa0b"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/390-selection-review.png",
+      "bytes": 1066143,
+      "sha256": "f064f2e96df42fa475c71cbec4b6d066266df5b049d464d4a556d0b04372a56e"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/390-staff-review-queue.png",
+      "bytes": 193575,
+      "sha256": "b62968cfe2862959cadcd9e2fd4220afd2e15a2842c01d961c538bd1df308665"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/430-exact-ten-selection.png",
+      "bytes": 949642,
+      "sha256": "485ec0881c3fe320672dd28b4620566318045c350ffd448aa1d4aada8ac55506"
+    },
+    {
+      "path": "evidence/chunk-5/screenshots/768-exact-ten-selection.png",
+      "bytes": 940769,
+      "sha256": "946a10f73c771b3425ea0a3be7bf4cb58a00d94d8128dee291fbd4d10054d5ef"
+    }
+  ],
+  "unimplemented_chunk_requirements": [],
+  "unresolved_release_blockers": [
+    "Approved tax-inclusive treatment and exact live price configuration for search and material lines",
+    "Stripe production credentials, API version, webhook/signature, immediate-card allowlist, refunds, disputes, reconciliation, and separate live enablement",
+    "Production Supabase identity, callback/link allowlist, authentication-link, and ownership settings",
+    "Verified Resend sender, monitored reply-to, SPF/DKIM/DMARC, disabled tracking, and accepted-send idempotency/reconciliation guarantee",
+    "Production search/material/reference capacity, staffing schedule, protected staff assignments, and staff training",
+    "Scheduler/queue/worker topology, database-clock health, monitored thresholds, and incident response",
+    "Production KMS identity/key rotation/access policy, malware scanner, sandbox parser/OCR, permitted-model boundary, and leak controls",
+    "Approved entity retention/deletion/backup periods plus matching Privacy Policy, Terms, accessibility, and legal publication",
+    "Documentary job-source authorization and approved bounded source/query matrix",
+    "Licensed and configured DOCX/PDF renderer chain with verified Arial resolution and real per-page visual inspection",
+    "Manual screen-reader/assistive-technology and live-provider exercises"
+  ],
+  "next_chunk_started": false,
+  "next_chunk_authorized": false,
+  "provider_contacted": false,
+  "production_database_changed": false,
+  "payment_or_checkout_activated": false,
+  "pushed_or_deployed": false,
+  "protected_checkouts_modified": false,
+  "raw_source_bundle_committed": false
+}

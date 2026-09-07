@@ -546,3 +546,69 @@ Chunk 4 is complete, but Chunk 5 was not started and is not authorized by this c
 ### Remaining release blockers
 
 Repository completion does not make the product production-ready. Blocking external work includes approved tax-inclusive treatment; Stripe production credentials, exact price mapping/API version, webhook endpoint/signature, immediate-card methods, refunds/disputes, reconciliation and separate live enablement; production Supabase identity/callback allowlist; verified Resend sender, monitored reply-to, SPF/DKIM/DMARC, disabled open/click tracking, and accepted-send idempotency/reconciliation evidence; production capacity/staffing configuration; protected staff assignments/training; scheduler topology and monitored alerts; KMS, malware scanner, sandbox parser/OCR, permitted-model/leak boundary; approved retention/privacy/legal versions; approved source matrix/bounds and documentary source authorization; and manual assistive-technology/provider exercises. No Chunk 5 work is included.
+
+## Chunk 5 implementation: materials purchase, generation, references, and secure delivery
+
+### Relationship summary
+
+An immutable delivered exact-ten search release supplies the only eligible jobs. A readiness pass binds the current job, candidate facts, employer instructions, document decisions, and optional exact-job reference permissions before a server-priced materials Checkout can begin. Verified payment creates immutable line/revision/deadline state. Listing changes or accepted fact corrections produce an explicit substitution or line-scoped full refund under the same row lock. Generation binds both files to one current version bundle, and release requires structural approval plus separate human content and visual approvals. Private artifacts are exposed only through server ownership checks and 15-minute download capabilities.
+
+Migration 202609070031_chunk5_materials_delivery.sql is additive after the 30 accepted migrations. It adds employer submission rules, immutable checkout/item/line/revision and entitlement-claim history, material listing checks, substitution and fact-correction proposals, line-scoped refunds and disputes, generation attempts, artifact/file revisions and quality reviews, exact-job reference permissions and isolation reviews, reference regenerations, download audits, private support cases, scheduled work, monitor projections, RLS, service-role functions, and checkpoint 202609070031 / CHUNK5_MATERIALS_DELIVERY_V1. Generated TypeScript types cover the 31-migration schema.
+
+### Ownership and invariants
+
+- Materials are available only for a customer-owned job in that customer's immutable paid exact-ten release. Zero, one, several, or all eligible lines may be selected. A job outside the release, an already purchased job, a duplicate selection, a closed listing, unresolved readiness, an unsupported employer instruction, missing capacity, or unapproved tax treatment blocks Checkout.
+- The server fixes a tax-inclusive USD 8.00 total for each selected line, quantity one, no added fee, and a durable checkout/idempotency record. Materials, payment, Stripe, email, renderer, capacity, and worker activation remain independently fail closed.
+- Entitlement claims are immutable and unique across original and substitution targets. Delivered, pending-refund, disputed, and partially refunded lines retain the claim. Only a successful terminal full line refund releases it.
+- Each original, substitution, correction, and reference-regeneration request owns immutable start/deadline history derived from its latest prerequisite plus 24 elapsed hours. No accepted substitution or fact correction silently resets a paid clock outside those rules.
+- Listing and employer instructions are rechecked before Checkout, generation, and release. A changed or closed listing creates a precise customer choice between a valid owned unclaimed replacement and a line-scoped full refund. No silent substitution is possible.
+- Document generation uses locked resume, cover-letter, provenance, filename, relationship, and injection rules. Historical titles remain truthful; career-break choices are exact; references never appear on the resume; factual claims require current bound provenance; narrative connective text cannot introduce a factual claim.
+- DOCX artifacts are deterministic structured packages with native paragraphs and bullets, linear extraction, sanitized metadata and relationship inspection, and one-page default or recorded two-page exception. Optional PDF output is derived from the DOCX only through the configured local no-network renderer chain.
+- The renderer adapter verifies the SHA-256 identity of LibreOffice, PDF inspection/extraction/raster tools, and Arial before use. It checks page count, actual Arial resolution, normalized extracted-text equality, page-image count, and searchable PDF signature. Missing or mismatched configuration blocks generation/release.
+- References are unavailable before paid exact-ten delivery and never form a standalone product. One optional exact-job sheet can accompany a paid line for no added charge only after permission is complete and frozen. Contact fields remain isolated from candidate facts, prompts, analytics, URLs, logs, snapshots, fixtures, errors, metadata, and other customers.
+- Resume, cover letter, and any selected reference sheet publish atomically or remain unavailable. Current files stay private; ownership is checked server-side; expired links require fresh authorization and issue a new 15-minute capability.
+- A postdelivery false-claim correction revokes future hosted downloads and opens protected support. It does not rewrite release, earned revenue, payment, refund, reference-regeneration, entitlement, or SLA history, and does not silently create a refund, free regeneration, or new clock.
+
+### Migration, compatibility, rollback, and activation boundary
+
+Existing search, order, payment, refund, release, capacity, matching, upload, and legal records remain intact. The corrected path extends the prior commerce model with line-scoped material state and preserves legacy reads. The legacy fixture passes before and after an idempotent migration replay. The guarded rollback test removes migration 031 only in a disposable local database and then restores all 31 migrations. Operational rollback is forward-safe: keep the additive schema/evidence, disable materials checkout and workers, stop download issuance, reconcile ambiguous provider operations, and deploy the preceding compatible code until a reviewed forward repair is ready.
+
+No production provider, source, DNS, database, identity setting, payment object, email, or customer file was contacted or changed. Materials checkout, live payment, scanner/model processing, renderer execution, and workers remain disabled until separately approved production configuration is present.
+
+### Chunk 5 verification inventory
+
+| Check ID | Procedure | Result |
+| --- | --- | --- |
+| C5-MIGRATE | Local database reset | PASS: all 31 migrations applied from zero |
+| C5-DB | Database contract fixtures | PASS: all five transactional fixture families |
+| C5-LEGACY | Legacy backfill rehearsal | PASS: pre/post assertions and idempotent second pass |
+| C5-ROLLBACK | Guarded rollback rehearsal | PASS: ROLLBACK_OK, full restore, RESTORE_OK |
+| C5-TYPES | Generated database-type equality | PASS |
+| C5-LINT | ESLint | PASS |
+| C5-TYPE | Strict TypeScript no-emit | PASS |
+| C5-UNIT | Full constrained unit/property suite | PASS: 302/302 tests in 45/45 files |
+| C5-BUILD | Production build with providers disabled | PASS: 53/53 routes/pages generated |
+| C5-E2E | Full desktop/mobile Playwright regression | PASS: 75 applicable tests; five intentional project-matrix skips |
+| C5-A11Y-VISUAL | Chunk 5 width/state screenshots, axe, layout, keyboard, zoom, forced colors, reduced motion | PASS: 31 deterministic PNGs; no serious/critical automated findings |
+| C5-DOCX | Focused document structure/provenance, portal, and scanner bundle | PASS: 15/15 tests in 3/3 files |
+| C5-RENDER-VISUAL | Real DOCX-to-page renderer, resolved Arial, and per-page human visual inspection | BLOCKED: no approved/configured renderer chain is available |
+| C5-MANUAL-AT | Manual screen-reader and assistive-technology exercise | BLOCKED: no manual provider/device exercise was performed |
+| C5-TRACE | Stable-row ownership/status audit | PASS: 103/103 Chunk 5 rows implemented; zero pending |
+| C5-FORMAT | Working-tree and staged whitespace checks | PASS |
+| C5-INTEGRATION-EXTERNAL | Real external scanner integration | NOT_APPLICABLE_LOCAL: three tests in two files intentionally skipped without an approved scanner |
+
+### Chunk 5 verified result and limitations
+
+Tested implementation commit cb66c0a005b64e78f0838978ee2afd83d7455efc (tree 0f54c4814160703d0ea4a9db7e452d0c031dbc07) passed 14 of 16 applicable Chunk 5 checks. No applicable check failed. C5-RENDER-VISUAL and C5-MANUAL-AT are blocked, so the binding status is PARTIAL and Chunk 6 is not authorized.
+
+The fixed commit passed a clean 31-migration reset; all five database fixture families; two-pass legacy preservation; guarded rollback and full restore; exact database types; lint; strict TypeScript; 302 unit/property tests; a 53-page/route production build; and 75 applicable Playwright cases with five intentional project-matrix skips. The 31 new captures cover six required widths and pending search, exact-ten selection, selection review, payment, generation, substitution, line refund, correction, delivery, private postdelivery support, exact-job references, expired download, protected staff review, forced colors, reduced motion, and 200 percent zoom. Automated screenshots and axe/layout assertions are not a manual assistive-technology or document visual certification.
+
+Arial exists locally at C:\Windows\Fonts\arial.ttf with SHA-256 b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a, but the required renderer identity, LibreOffice path/hash, PDF inspection/extraction/raster paths/hashes, and configured Arial path/hash are unset. No Word, LibreOffice/soffice, ONLYOFFICE, WPS, or WordPad executable was available. The adapter therefore fails closed and no real DOCX render, Arial-resolution proof, PDF equivalence proof, or per-page human visual approval is claimed.
+
+The real-scanner integration harness reported three intentional skips in two files. It remains NOT_APPLICABLE_LOCAL, is excluded from the applicable denominator, and leaves production processing disabled. Cumulative applicable checks are 71/73 through Chunk 5: 9/9 Phase 0, 11/11 Chunk 1, 12/12 Chunk 2, 12/12 Chunk 3, 13/13 Chunk 4, and 14/16 Chunk 5. The cumulative requirement ledger is 461 stable rows through Chunk 5; all 103 Chunk 5 owning rows are IMPLEMENTED.
+
+Production release remains blocked on approved tax treatment; Stripe live credentials, price/API/webhook/card/refund/dispute/reconciliation configuration; production Supabase identity and callbacks; verified Resend sender/reply-to/DNS/tracking/delivery guarantees; materials/search/reference capacity and staffing; protected staff assignments and training; scheduler deployment and monitoring; KMS, malware scanning, sandbox parser/OCR, permitted-model and leak controls; retention/privacy/legal publication; documentary source authorization and bounded source matrix; licensed/configured renderer and real Arial/render inspection; and manual assistive-technology/live-provider exercises.
+
+The evidence-only closeout commit contains the manifest, screenshots, and this status attestation. No push, merge, deployment, production migration, provider activation, protected-checkout change, or Chunk 6 work occurred.
+
+The committed Chunk 5 manifest is 26,851 bytes with raw SHA-256 49c356e38822f73fe5c88d97f56b71e418ea6a42391164262b79fa26c6053235 and recursively key-sorted canonical-content SHA-256 6b5a3005c5ebd6103368e8296992f02c5da13e51f2873c6b9c93f160cb2d3dc4. Independent recalculation verified all 54 implementation artifact hashes, all 31 evidence hashes and PNG dimensions, the tested tree, the 14/16 applicable-test denominator, and both blocked-check IDs with zero mismatches.
