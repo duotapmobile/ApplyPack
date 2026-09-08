@@ -16,6 +16,7 @@ const requiredPages = {
 describe("controlling public copy and navigation", () => {
   it("keeps the corrected desktop navigation in order", () => {
     expect(siteConfig.navigation).toEqual([
+      { href: "/job-board", label: "Job Board" },
       { href: "/why-apply-pack", label: "Why Apply Pack?" },
       { href: "/how-it-works", label: "How It Works" },
       { href: "/experience-connections", label: "How Matching Works" },

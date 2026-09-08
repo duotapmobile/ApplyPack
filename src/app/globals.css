@@ -3657,3 +3657,16 @@ a {
 .founder-story .button-link {
   font-family: var(--font-body);
 }
+
+.board-page { padding: 3rem 0 5rem; }
+.board-hero { background: var(--navy, #17324d); color: #fff; border-radius: 1.25rem; padding: clamp(2rem, 5vw, 4rem); margin-bottom: 3rem; }
+.board-hero h1 { font-family: var(--font-heading); font-size: clamp(2.25rem, 5vw, 4rem); line-height: 1.02; max-width: 18ch; margin: .75rem 0 1rem; }
+.board-hero p { font-size: clamp(1rem, 2vw, 1.2rem); line-height: 1.6; max-width: 65ch; }
+.board-plan-grid, .board-job-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin: 1.5rem 0 3rem; }
+.board-card { border: 1px solid rgba(23, 50, 77, .18); border-radius: 1rem; padding: 1.5rem; background: #fff; box-shadow: 0 12px 30px rgba(23, 50, 77, .08); }
+.board-price { font-family: var(--font-heading); font-size: clamp(2rem, 4vw, 3.25rem); margin: .5rem 0; }
+.board-explainer, .board-account { max-width: 70rem; padding: 1.5rem 0; }
+.board-account { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid rgba(23, 50, 77, .18); margin-bottom: 2rem; }
+.board-sort, .board-pagination { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin: 1rem 0 1.5rem; }
+.board-sort a[aria-current="page"] { font-weight: 700; text-decoration-thickness: .18em; }
+@media (max-width: 780px) { .board-plan-grid, .board-job-list { grid-template-columns: 1fr; } .board-account { align-items: flex-start; flex-direction: column; } }
