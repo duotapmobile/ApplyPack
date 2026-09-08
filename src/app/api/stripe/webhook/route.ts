@@ -4,6 +4,7 @@ import type Stripe from "stripe";
 import { createCapabilitySecret, hashCapabilitySecret, immediateSearchPayment } from "@/lib/commerce/server";
 import { sendOrderReceipt } from "@/lib/email/send";
 import { immediateMaterialPayment } from "@/lib/materials/server";
+import { processBoardStripeEvent } from "@/lib/job-board/stripe-events";
 import { stripeEventMatchesConfiguredMode } from "@/lib/stripe/mode";
 import { assertConfiguredPrice, createStripeOperationalClient } from "@/lib/stripe/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -62,7 +63,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    if (event.type === "checkout.session.completed") {
+    const boardEventHandled = await processBoardStripeEvent(stripe, admin, event);
+    if (boardEventHandled) {
+      // Subscription entitlements are derived only from validated recurring objects and paid invoices.
+    } else if (event.type === "checkout.session.completed") {
       if (isCorrectedSearchSession(event.data.object)) {
         await completeCorrectedSearch(stripe, admin, event.data.object, {
           eventId: event.id, eventType: event.type, payloadSha256, signatureVerifiedAt,

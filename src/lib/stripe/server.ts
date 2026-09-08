@@ -51,3 +51,19 @@ export async function assertConfiguredPrice(
   }
   return price;
 }
+
+export async function assertConfiguredRecurringPrice(
+  stripe: Stripe,
+  priceId: string,
+  expected: { unitAmount: number; interval: "week" | "month"; intervalCount: number },
+) {
+  const price = await stripe.prices.retrieve(priceId, { expand: ["product"] });
+  const product = typeof price.product === "string" ? null : price.product;
+  if (!price.active || price.type !== "recurring" || price.currency.toLowerCase() !== "usd"
+    || price.unit_amount !== expected.unitAmount || price.recurring?.interval !== expected.interval
+    || price.recurring.interval_count !== expected.intervalCount || price.recurring.usage_type !== "licensed"
+    || !product || product.deleted || !product.active) {
+    throw new Error("Configured Stripe recurring price does not match the approved plan.");
+  }
+  return price;
+}
