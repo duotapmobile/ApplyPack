@@ -21,6 +21,7 @@ Status: **implemented locally, not ready for paid production use**
 ## Not completed or not live-verified
 
 - No automated source is authorized/enabled; therefore no real board inventory, count, freshness metric, or authorized live-source test exists.
+- Concurrent uncommitted Greenhouse/Ashby source work in the canonical checkout was deliberately not merged; it requires its own review and authorization evidence.
 - Admission persistence/background recomputation from full candidate facts is not wired. The pure rule and current-profile invalidation boundary are implemented; a worker must materialize admissions after authorized ingestion and every profile version.
 - Lever pagination/checkpoint/resume/retry remains incomplete. Workable, SmartRecruiters, and Remote OK adapters are not implemented or enabled.
 - Full/partial subscription refund and dispute-to-subscription correlation is not wired in the new Stripe event handler. Those events remain a production blocker even though the domain state machine is fail-closed.

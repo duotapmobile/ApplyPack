@@ -4,6 +4,8 @@
 
 No automated source is authorized and enabled in the repository today. There is no historical evidence of a successful authorized production ingestion run, no verified live inventory count, and no basis for a public freshness or volume claim. `manual-reviewed` is the only authorized source record, and it is manual-only. Indeed and HiringCafe remain human-assisted inputs and their content must not enter the paid board without rights.
 
+Late in this audit, the separate canonical checkout acquired concurrent uncommitted source WIP that was not present in the verified integration baseline: Greenhouse and Ashby adapter files, registry/type/workflow edits, an authorization-config directory, a proposed migration, and audit/export scripts. Those files are user-owned, uncommitted, unmerged, and unverified here. They were not copied into this branch and do not change the status above. Their adapters are implementation candidates only; neither public API availability nor an uncommitted registry entry establishes paid-board permission.
+
 The paid board remains fail-closed until an owner records source-specific permission evidence, scope, retention/display rights, rate limits, and an expiry/review date in `ap_source_authorizations`, then explicitly enables that source. Public reachability is not authorization.
 
 ## Implemented pipeline
@@ -29,6 +31,8 @@ The paid board remains fail-closed until an owner records source-specific permis
 | Lever | Documented postings JSON, employer site key, `limit`/`skip` | Employer-by-employer authorization required; API availability alone does not grant cross-employer paid redistribution | Adapter implemented, disabled | Evidence ID, allowed hosts/site key, scope, review/expiry, bound; pagination/retry still incomplete |
 | Workable | Documented XML job feed; full feed updated by provider | Candidate only where a partner/employer arrangement permits paid display, storage, refresh, and links | Planned, no adapter | Written rights record and feed identity |
 | SmartRecruiters | Public Posting API; company identifier, `limit`/`offset` | Employer-by-employer authorization required for this use | Planned, no adapter | Written rights record, company ID, bounds/rate policy |
+| Greenhouse | Published job-board endpoint | Employer-by-employer authorization required | Concurrent uncommitted adapter candidate outside this branch; not verified or merged | Evidence record, exact board identity, bounds, full-sync semantics |
+| Ashby | Published job-posting endpoint | Employer-by-employer authorization required | Concurrent uncommitted adapter candidate outside this branch; not verified or merged | Evidence record, exact board identity, bounds, full-sync semantics |
 | Remote OK | Documented JSON/RSS with required credit and original-post link | Conditional; do not enable until the exact commercial usage/attribution record is approved | Planned, no adapter | Approved rights record and required attribution/link behavior |
 | We Work Remotely | Published API/RSS | **Blocked for the paid board** by published API terms barring use to build a job-advertising/job-search service, absent a separate written agreement | No adapter | Written permission would require fresh review |
 | Himalayas | Public API documentation | **Permission required**: API attribution guidance conflicts with general terms restricting commercial/public display and automated extraction | No adapter | Written commercial permission and conflict resolution |
