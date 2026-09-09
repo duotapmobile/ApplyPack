@@ -514,17 +514,21 @@ function candidateHeader(
 ) {
   const name = assertDeliverableText(input.contact.displayName).toUpperCase();
   const target = assertDeliverableText(input.job.exactTitle).toUpperCase();
-  const contact = [input.contact.phone, input.contact.email, input.contact.cityState, input.contact.linkedInOrPortfolio]
+  const primaryContact = [input.contact.phone, input.contact.email, input.contact.cityState]
     .filter((value): value is string => Boolean(value))
     .map(assertDeliverableText)
     .join(" | ");
+  const portfolio = input.contact.linkedInOrPortfolio
+    ? assertDeliverableText(input.contact.linkedInOrPortfolio) : null;
+  const contact = [primaryContact, portfolio].filter(Boolean).join("\n");
   recordFixedBinding(claims, `${prefix}.header.name`, name, input.contact.candidateFactIds, []);
   recordFixedBinding(claims, `${prefix}.header.target`, target, [], input.job.jobEvidenceIds);
   recordFixedBinding(claims, `${prefix}.header.contact`, contact, input.contact.candidateFactIds, []);
   return [
     paragraph(name, { alignment: AlignmentType.CENTER, size: 36, bold: true, after: 180 }),
     paragraph(target, { alignment: AlignmentType.CENTER, size: 23, bold: true, after: 60 }),
-    paragraph(contact, { alignment: AlignmentType.CENTER, size: 19, after: 360 }),
+    paragraph(primaryContact, { alignment: AlignmentType.CENTER, size: 19, after: portfolio ? 35 : 360 }),
+    ...(portfolio ? [paragraph(portfolio, { alignment: AlignmentType.CENTER, size: 18, after: 360 })] : []),
   ];
 }
 

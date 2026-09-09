@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { canonicalApplicationOrigin } from "@/lib/commerce/server";
+import { anonymousDraftContext } from "@/lib/drafts/anonymous-server";
 import { boardPlanPriceId, boardPlans, isBoardPlanId } from "@/lib/job-board/plans";
-import { assertConfiguredRecurringPrice, createStripeOperationalClient } from "@/lib/stripe/server";
+import { currentBoardProfile } from "@/lib/job-board/access";
+import { assertConfiguredRecurringPrice, createStripeBoardClient } from "@/lib/stripe/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -10,12 +12,24 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient();
   const admin = createSupabaseAdminClient();
-  const stripe = createStripeOperationalClient();
+  const stripe = createStripeBoardClient();
   if (!supabase || !admin || !stripe || process.env.APP_JOB_BOARD_CHECKOUT_ENABLED !== "true") {
     return NextResponse.json({ error: "Subscription checkout is not configured." }, { status: 503 });
   }
   const { data } = await supabase.auth.getUser();
   if (!data.user?.email) return NextResponse.json({ error: "Sign in before choosing a plan." }, { status: 401 });
+  const draft = await anonymousDraftContext().catch(() => null);
+  if (draft) {
+    const claimed = await admin.rpc("ap_claim_board_profile", {
+      p_draft_id: draft.capability.draftId, p_secret_hash: draft.secretHash,
+      p_customer_id: data.user.id, p_verified_email: data.user.email,
+    });
+    if (claimed.error) return NextResponse.json({ error: "The saved profile could not be securely linked to this account." }, { status: 409 });
+  }
+  let profile: Awaited<ReturnType<typeof currentBoardProfile>>;
+  try { profile = await currentBoardProfile(admin, data.user.id); }
+  catch { return NextResponse.json({ error: "Profile status is unavailable." }, { status: 503 }); }
+  if (!profile) return NextResponse.json({ error: "Complete the shared four-step profile before choosing a plan." }, { status: 409 });
   let body: unknown;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request." }, { status: 400 }); }
   const planId = typeof body === "object" && body !== null && "planId" in body ? (body as { planId?: unknown }).planId : null;

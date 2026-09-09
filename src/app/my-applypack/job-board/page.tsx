@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ApplyLinkButton, BillingPortalButton } from "@/components/job-board/checkout-button";
 import { hasBoardAccess, type BoardSubscriptionState } from "@/lib/job-board/entitlements";
+import { BOARD_ADMISSION_VERSION } from "@/lib/job-board/recompute";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -25,15 +26,19 @@ export default async function MyJobBoardPage({ searchParams }: { searchParams: P
   const admin = createSupabaseAdminClient();
   const { data: profile } = admin ? await admin.from("ap_intake_snapshots").select("id,version").eq("customer_id", data.user.id).order("version", { ascending: false }).limit(1).maybeSingle() : { data: null };
   let query = admin && profile ? admin.from("ap_board_admissions")
-    .select("id,warning_codes,job:jobs(id,company,title,location_text,salary_text,last_verified_at,source_name)")
-    .eq("customer_id", data.user.id).eq("profile_snapshot_id", profile.id).eq("decision", "ADMITTED")
+    .select("id,warning_codes,job:jobs(id,company,title,location_text,salary_text,last_verified_at,source_name)", { count: "exact" })
+    .eq("customer_id", data.user.id).eq("profile_snapshot_id", profile.id)
+    .eq("admission_version", BOARD_ADMISSION_VERSION).is("superseded_at", null).eq("decision", "ADMITTED")
     : null;
   if (query) query = sort === "salary_high"
     ? query.order("salary_min", { referencedTable: "jobs", ascending: false, nullsFirst: false }).order("id").range((page - 1) * 25, page * 25 - 1)
     : query.order("posted_at", { referencedTable: "jobs", ascending: false, nullsFirst: false }).order("id").range((page - 1) * 25, page * 25 - 1);
   const result = query ? await query : { data: [], error: null };
   const rows = result.data || [];
+  const total = "count" in result ? result.count || 0 : 0;
+  const pageCount = Math.ceil(total / 25);
   return <main id="main-content" className="board-page"><div className="page-frame"><section className="board-hero"><p className="eyebrow eyebrow--light">MY JOB BOARD</p><h1>Filtered around your confirmed profile.</h1><p>Newest first. Admission is an inclusion check, not comparative ranking.</p></section>
+    {process.env.APP_STAGING_SYNTHETIC_JOBS === "true" && process.env.APP_PAYMENT_MODE !== "live" ? <section className="form-message" role="status"><strong>Synthetic staging inventory:</strong> These fictional jobs test the interface and do not satisfy the real-source launch gate.</section> : null}
     <section className="board-account"><div><h2>Access active</h2><p>{subscription.cancel_at_period_end ? "Access ends" : "Next charge or access-end date"}: {new Date(subscription.access_ends_at).toLocaleDateString("en-US", { timeZone: "America/New_York" })}.</p></div><BillingPortalButton /></section>
     <section><div className="portal-section__heading"><div><p className="eyebrow">CURRENT LISTINGS</p><h2>Available jobs</h2></div><Link href="/get-started">Edit profile</Link></div>
       <nav aria-label="Sort jobs" className="board-sort"><span>Sort by factual field:</span> <Link aria-current={sort === "newest" ? "page" : undefined} href="?sort=newest">Newest first</Link> <Link aria-current={sort === "salary_high" ? "page" : undefined} href="?sort=salary_high">Highest disclosed minimum salary</Link></nav>
@@ -41,8 +46,8 @@ export default async function MyJobBoardPage({ searchParams }: { searchParams: P
         const job = Array.isArray(row.job) ? row.job[0] : row.job;
         if (!job) return null;
         const warnings = Array.isArray(row.warning_codes) ? row.warning_codes.map(String) : [];
-        return <article className="board-card" key={row.id}><p className="eyebrow">{job.source_name || "Attributed source"}</p><h3>{job.title}</h3><p>{job.company}{job.location_text ? ` · ${job.location_text}` : ""}</p><p>{job.salary_text || "Salary not disclosed"}</p>{warnings.length ? <p className="match-warning">Unknown listing information: {warnings.join(", ")}.</p> : null}<p>Freshness checked {job.last_verified_at ? new Date(job.last_verified_at).toLocaleDateString("en-US", { timeZone: "UTC" }) : "date unavailable"}.</p><ApplyLinkButton jobId={job.id} /><p>$8 human-reviewed résumé and cover-letter ordering will open here after fulfillment integration passes its release gate.</p></article>;
-      })}</div>}{rows.length === 25 ? <nav aria-label="Job pages" className="board-pagination">{page > 1 ? <Link href={`?sort=${sort}&page=${page - 1}`}>Previous</Link> : null}<Link href={`?sort=${sort}&page=${page + 1}`}>Next</Link></nav> : page > 1 ? <nav aria-label="Job pages" className="board-pagination"><Link href={`?sort=${sort}&page=${page - 1}`}>Previous</Link></nav> : null}
+        return <article className="board-card" key={row.id}><p className="eyebrow">{job.source_name || "Attributed source"}</p><h3>{job.title}</h3><p>{job.company}{job.location_text ? ` · ${job.location_text}` : ""}</p><p>{job.salary_text || "Salary not disclosed"}</p>{warnings.length ? <p className="match-warning">Unknown listing information: {warnings.join(", ")}.</p> : null}<p>Freshness checked {job.last_verified_at ? new Date(job.last_verified_at).toLocaleDateString("en-US", { timeZone: "UTC" }) : "date unavailable"}.</p><p><Link className="button-link" href={`/my-applypack/job-board/${job.id}`}>View details and $8 document option</Link></p><ApplyLinkButton jobId={job.id} /></article>;
+      })}</div>}{pageCount > 1 ? <nav aria-label="Job pages" className="board-pagination">{page > 1 ? <Link href={`?sort=${sort}&page=${page - 1}`}>Previous</Link> : null}<span>Page {page} of {pageCount}</span>{page < pageCount ? <Link href={`?sort=${sort}&page=${page + 1}`}>Next</Link> : null}</nav> : null}
     </section></div></main>;
 }
 

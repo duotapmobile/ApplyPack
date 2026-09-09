@@ -1,5 +1,7 @@
 # ApplyPack Consolidated Preflight Questions and Credentials
 
+Last updated: September 9, 2026. The user supplied the repository, branch, staging, provider, and product authority in the final integration instruction. Unanswered legal, source-permission, staffing, and production-security approvals remain fail-closed gates under `11_SEPTEMBER_9_FINAL_PRODUCT_AMENDMENT.md`; they must not be invented.
+
 The executing agent must ask this information in one organized message before implementation. It must not ask for passwords, secret keys, API keys, recovery codes, or payment information in ordinary chat.
 
 The user should authenticate directly in provider dashboards, use approved connector or CLI login flows, or place secrets in local and hosting-provider secret stores when instructed.

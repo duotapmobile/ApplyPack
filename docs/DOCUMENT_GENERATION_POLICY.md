@@ -1,10 +1,10 @@
 # ApplyPack document generation policy
 
-Version 2026-09-07. This policy implements corrected-contract Chunk 5. It governs tailored resumes, cover letters, and application-specific reference sheets. It does not authorize production generation, a document renderer, a font license, a malware scanner, a model, or a provider.
+Version 2026-09-09. This policy implements corrected-contract Chunk 5 plus the September 9 product amendment. It governs tailored resumes, cover letters, and application-specific reference sheets. It does not authorize production generation, a document renderer, a font license, a malware scanner, a model, or a provider.
 
 ## Product boundary
 
-- A materials line is the fixed pair "Tailored Resume + Cover Letter" for one member of an immutable delivered ten. Its tax-inclusive price is exactly USD 8.00. ApplyPack does not contact or apply to the employer.
+- A materials line is the fixed pair "Tailored Resume + Cover Letter" for either one member of an immutable delivered Top 10 or one current eligible job on the customer's active subscription board. Its tax-inclusive price is exactly USD 8.00. Board-origin lineage is explicitly unranked. ApplyPack does not contact or apply to the employer.
 - A reference sheet is optional, job-specific, deterministic, and available only as part of an eligible materials line at no added price. There is no standalone or general reference-sheet product and no reference SKU.
 - Resume and cover-letter generation may begin only from a verified paid line, its active immutable line revision, the selected immutable job snapshot, current employer submission rules, and the current customer-confirmed or human-verified fact snapshot.
 - Production generation remains disabled until the configuration record names an approved generator decision, output formats, pinned local renderer, pinned Arial file, and approved malware scanner. Missing or mismatched configuration fails closed.

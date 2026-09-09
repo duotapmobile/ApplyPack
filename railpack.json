@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "node",
+  "deploy": {
+    "aptPackages": [
+      "...",
+      "fontconfig",
+      "fonts-liberation",
+      "libreoffice-writer",
+      "poppler-utils"
+    ],
+    "variables": {
+      "LANG": "en_US.UTF-8",
+      "LC_ALL": "en_US.UTF-8"
+    }
+  }
+}

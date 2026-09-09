@@ -1,9 +1,9 @@
 # ApplyPack Codex Handoff File Manifest
 
-This package is designed to be extracted directly into:
+The current governed copy of this package lives in the canonical repository:
 
 ```text
-C:\Users\mskir\Desktop\Apply_Pack\Chat docs
+C:\Users\mskir\Desktop\Apply_Pack\applypack-production-v2\docs\applypack
 ```
 
 ## Core authority documents
@@ -11,6 +11,7 @@ C:\Users\mskir\Desktop\Apply_Pack\Chat docs
 | File | Purpose |
 |---|---|
 | `00_START_HERE.md` | Reading order, authority order, local paths, execution rules, and definition of complete. |
+| `11_SEPTEMBER_9_FINAL_PRODUCT_AMENDMENT.md` | Current shared-profile, paid-board, standalone Top 10, board-or-Top-10 materials, staging, and launch-gate authority. |
 | `01_PRODUCT_SOURCE_OF_TRUTH.md` | Locked product, pricing, turnaround, matching, corrections, refund, truth, and no-guarantee rules. |
 | `02_SITE_COPY_AND_PAGE_MAP.md` | Approved public copy, page routes, metadata, calls to action, and visual requirements. |
 | `03_CUSTOMER_AND_ADMIN_WORKFLOWS.md` | Complete customer journey, intake, private workspace, job selection, delivery, corrections, and admin operations. |
@@ -41,14 +42,17 @@ C:\Users\mskir\Desktop\Apply_Pack\Chat docs
 ## Important local paths
 
 ```text
-Handoff folder:
-C:\Users\mskir\Desktop\Apply_Pack\Chat docs
+Canonical repository:
+C:\Users\mskir\Desktop\Apply_Pack\applypack-production-v2
+
+Canonical remote:
+https://github.com/duotapmobile/ApplyPack.git
 
 Reusable repository and skill library:
 C:\Users\mskir\Desktop\Repos
 
 User-created visual authority:
-C:\Users\mskir\Desktop\Apply_Pack\Chat docs\DESIGN.md
+C:\Users\mskir\Desktop\Apply_Pack\applypack-production-v2\DESIGN.md
 ```
 
-The exact ApplyPack website repository and GitHub remote are intentionally not guessed. Codex must inspect read-only first, then ask for those paths and all remaining provider access in one consolidated preflight.
+The canonical path and remote above are fixed by repository governance. Agents must still reverify them before writing and must never use the protected secondary `site` checkout.

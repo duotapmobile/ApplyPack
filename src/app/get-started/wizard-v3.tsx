@@ -274,7 +274,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
 
   return <main id="main-content" className="wizard-page"><div className="page-frame wizard-layout">
     <aside className="wizard-aside"><p className="eyebrow eyebrow--light">YOUR JOB SEARCH</p><h1>Find work that fits.</h1>
-      <p>Complete four short steps. You will review everything before feasibility.</p><div className="wizard-price"><strong>$20</strong><span>once<br />no subscription</span></div>
+      <p>Complete four short steps. You will review everything before feasibility.</p><div className="wizard-price"><strong>$20</strong><span>once<br />no subscription required</span></div>
       <p className="wizard-security"><LockKeyhole aria-hidden="true" /> Private documents. 10 researched matches. No account or payment before review.</p></aside>
     <section className="wizard-panel" aria-labelledby="wizard-title">
       <div className="wizard-progress" role="progressbar" aria-label="Intake progress" aria-valuemin={1} aria-valuemax={4} aria-valuenow={step + 1} aria-valuetext={`Step ${step + 1} of 4`}><span>STEP {step + 1} OF 4</span><div><i style={{ width: `${(step + 1) * 25}%` }} /></div></div>
@@ -282,7 +282,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
       {errors.length > 0 && <div className="intake-errors" ref={errorRef} tabIndex={-1} role="alert" aria-labelledby="error-title"><strong id="error-title">Please fix {errors.length === 1 ? "this item" : "these items"}:</strong><ul>{errors.map((error) => <li key={error.fieldId}><a href={`#${error.fieldId}`} onClick={(event) => { event.preventDefault(); document.getElementById(error.fieldId)?.focus(); }}>{error.message}</a></li>)}</ul></div>}
 
       {step === 0 && <Step headingRef={headingRef} title="Start with your documents" help="See the offer and privacy boundary before sharing anything.">
-        <div className="intake-offer"><strong>$20 once for 10 researched job matches.</strong><span>No subscription. No account or payment in this intake.</span></div>
+        <div className="intake-offer"><strong>$20 once for 10 researched job matches.</strong><span>No subscription is required for Top 10. No account or payment in this intake.</span></div>
         <p className="privacy-note"><LockKeyhole aria-hidden="true" /> Your files use private storage and a separate secure browser session. Document bytes never go into browser local storage. Remove unnecessary sensitive information before upload.</p>
         <div className="field-grid"><Field id="full-name" label="Full name" required errors={errors}><input id="full-name" autoComplete="name" value={draft.fullName} onChange={(e) => update("fullName", e.target.value)} /></Field>
         <Field id="email" label="Email address" required help="Used to resume and, after payment, access your order." errors={errors}><input id="email" type="email" autoComplete="email" value={draft.email} aria-describedby="email-help" onChange={(e) => update("email", e.target.value)} /></Field></div><ErrorFor errors={errors} fieldId="full-name" /><ErrorFor errors={errors} fieldId="email" />

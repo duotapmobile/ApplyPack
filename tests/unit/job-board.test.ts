@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { evaluateBoardAdmission, neutralSort } from "@/lib/job-board/admission";
 import { boardPlanDisclosure, boardPlans, isBoardPlanId } from "@/lib/job-board/plans";
-import { hasBoardAccess, transitionBoardEntitlement } from "@/lib/job-board/entitlements";
+import { boardSubscriptionStateFromProvider, hasBoardAccess, transitionBoardEntitlement } from "@/lib/job-board/entitlements";
 import { readFileSync } from "node:fs";
 
 describe("paid filtered job board", () => {
@@ -46,6 +46,16 @@ describe("paid filtered job board", () => {
     expect(hasBoardAccess(transitionBoardEntitlement(paid, { kind: "PAYMENT_FAILED", providerCreated: 21 }))).toBe(false);
     const disputed = transitionBoardEntitlement(paid, { kind: "DISPUTED", providerCreated: 22 });
     expect(transitionBoardEntitlement(disputed, { kind: "INVOICE_PAID", providerCreated: 22 })).toEqual(disputed);
+    expect(hasBoardAccess(disputed)).toBe(false);
+    expect(hasBoardAccess(transitionBoardEntitlement(paid, { kind: "REFUNDED", providerCreated: 23 }))).toBe(false);
+  });
+
+  it("derives pending, cancellation, recovery, failed-payment, and ended subscription states", () => {
+    expect(boardSubscriptionStateFromProvider({ eventType: "customer.subscription.created", subscriptionStatus: "incomplete", cancelAtPeriodEnd: false, latestInvoicePaid: false })).toBe("PENDING");
+    expect(boardSubscriptionStateFromProvider({ eventType: "customer.subscription.updated", subscriptionStatus: "active", cancelAtPeriodEnd: true, latestInvoicePaid: true })).toBe("CANCEL_AT_PERIOD_END");
+    expect(boardSubscriptionStateFromProvider({ eventType: "customer.subscription.updated", subscriptionStatus: "active", cancelAtPeriodEnd: false, latestInvoicePaid: true })).toBe("ACTIVE");
+    expect(boardSubscriptionStateFromProvider({ eventType: "customer.subscription.updated", subscriptionStatus: "past_due", cancelAtPeriodEnd: false, latestInvoicePaid: false })).toBe("PAST_DUE");
+    expect(boardSubscriptionStateFromProvider({ eventType: "customer.subscription.deleted", subscriptionStatus: "canceled", cancelAtPeriodEnd: false, latestInvoicePaid: true })).toBe("CANCELED");
   });
 
   it("enforces listing, detail, and apply-link access on the server without shared caching", () => {
@@ -61,10 +71,29 @@ describe("paid filtered job board", () => {
     }
   });
 
+  it("requires full checkout readiness for board checkout and handles the provider lifecycle", () => {
+    const checkout = readFileSync("src/app/api/checkout/job-board/route.ts", "utf8");
+    const events = readFileSync("src/lib/job-board/stripe-events.ts", "utf8");
+    expect(checkout).toContain("createStripeBoardClient");
+    expect(events).toContain('event.type === "customer.subscription.created"');
+    expect(events).toContain('expand: ["latest_invoice"]');
+    expect(events).toContain('requestedState === "PENDING"');
+  });
+
   it("keeps subscription access separate from purchased material orders in the migration", () => {
     const migration = readFileSync("supabase/migrations/202609080032_paid_filtered_job_board.sql", "utf8");
     expect(migration).toContain("ap_board_one_live_subscription_per_customer");
     expect(migration).toContain("ap_board_material_orders");
     expect(migration).toContain("One-time orders deliberately survive subscription expiry");
+  });
+
+  it("adds immutable profile claims, durable recomputation, and an explicitly unranked board materials lineage", () => {
+    const migration = readFileSync("supabase/migrations/202609090033_final_integration_board_runtime.sql", "utf8");
+    expect(migration).toContain("create table public.ap_board_profile_claims");
+    expect(migration).toContain("create table public.ap_board_recompute_jobs");
+    expect(migration).toContain("create or replace function public.ap_claim_board_profile");
+    expect(migration).toContain("create or replace function public.ap_begin_board_material_checkout");
+    expect(migration).toContain("match_kind='BOARD_MATERIAL_SOURCE' and position is null and ranking_score is null");
+    expect(migration).toContain("source_kind='BOARD' and delivered_release_id is null");
   });
 });

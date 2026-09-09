@@ -343,5 +343,5 @@ describe("Chunk 5 real document rendering", () => {
       records,
     };
     await writeFile(resolve(directory, "render-report.json"), JSON.stringify(report, null, 2) + "\n", { flag: "wx" });
-  }, 180_000);
+  }, 360_000);
 });

@@ -116,8 +116,8 @@ $20 for exactly 10 job matches
 24-hour search turnaround
 $8 for each selected resume and cover-letter set
 24-hour Apply Pack turnaround
-Customer chooses jobs after seeing all 10
-No subscription
+Customer chooses jobs from an active filtered board or delivered Top 10
+Optional board subscription at the three approved intervals; no subscription required for Top 10
 No auto-apply
 No outcome guarantee
 Private customer portal

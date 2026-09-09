@@ -8,6 +8,7 @@ const fixtures = [
   "../tests/integration/chunk3-matching-engine.sql",
   "../tests/integration/chunk4-commerce-release.sql",
   "../tests/integration/chunk5-materials-delivery.sql",
+  "../tests/integration/chunk6-final-integration.sql",
 ];
 for (const fixture of fixtures) {
   const sqlPath = fileURLToPath(new URL(fixture, import.meta.url));

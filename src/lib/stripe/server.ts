@@ -30,6 +30,11 @@ export function createStripeMaterialsClient() {
   return createStripeOperationalClient();
 }
 
+export function createStripeBoardClient() {
+  if (!checkoutConfiguration().boardReady) return null;
+  return createStripeOperationalClient();
+}
+
 export async function assertConfiguredPrice(
   stripe: Stripe,
   priceId: string,

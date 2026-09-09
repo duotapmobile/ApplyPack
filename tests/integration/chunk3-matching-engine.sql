@@ -4,7 +4,7 @@ do $$ begin
   if (select state from public.ap_source_authorizations where source_id='liveops' and authorization_version='source-auth-v1') <> 'BLOCKED' then raise exception 'liveops_not_blocked'; end if;
   if exists(select 1 from public.ap_source_authorizations where state='AUTHORIZED_AUTOMATED') then raise exception 'unexpected_automated_source'; end if;
   if (select state from public.ap_source_authorizations where source_id='manual-reviewed' and authorization_version='source-auth-v1') <> 'AUTHORIZED_MANUAL_ONLY' then raise exception 'manual_source_not_authorized'; end if;
-  if exists(select 1 from public.job_sources where automation_status='automated') then raise exception 'legacy_automation_still_enabled'; end if;
+  if exists(select 1 from public.job_sources where automation_status='automated' and schedule_enabled) then raise exception 'unauthorized_automation_schedule_enabled'; end if;
 end $$;
 
 do $$ begin

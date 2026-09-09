@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { assertConfiguredPrice, createStripeClient } from "@/lib/stripe/server";
+import { assertConfiguredPrice, assertConfiguredRecurringPrice, createStripeOperationalClient } from "@/lib/stripe/server";
+import { boardPlans, boardPlanPriceId } from "@/lib/job-board/plans";
 import { checkFileScannerHealth, fileScanConfiguration } from "@/lib/files/scanner";
 
 export const dynamic = "force-dynamic";
@@ -9,15 +10,21 @@ let stripeCache: { checkedAt: number; healthy: boolean } | null = null;
 
 async function stripeReady() {
   if (stripeCache && Date.now() - stripeCache.checkedAt < 5 * 60 * 1000) return stripeCache.healthy;
-  const stripe = createStripeClient();
+  const stripe = createStripeOperationalClient();
   const searchPrice = process.env.STRIPE_JOB_SEARCH_PRICE_ID;
   const packPrice = process.env.STRIPE_APPLY_PACK_PRICE_ID;
   let healthy = false;
-  if (stripe && searchPrice && packPrice) {
+  const weeklyPrice = boardPlanPriceId("weekly");
+  const monthlyPrice = boardPlanPriceId("monthly");
+  const threeMonthPrice = boardPlanPriceId("three_months");
+  if (stripe && searchPrice && packPrice && weeklyPrice && monthlyPrice && threeMonthPrice) {
     try {
       await Promise.all([
         assertConfiguredPrice(stripe, searchPrice, { unitAmount: 2000, productName: "Job Match Search" }),
-        assertConfiguredPrice(stripe, packPrice, { unitAmount: 800, productName: "Apply Pack" }),
+        assertConfiguredPrice(stripe, packPrice, { unitAmount: 800, productName: "Tailored Resume + Cover Letter" }),
+        assertConfiguredRecurringPrice(stripe, weeklyPrice, { unitAmount: boardPlans.weekly.amountCents, interval: boardPlans.weekly.interval, intervalCount: boardPlans.weekly.intervalCount }),
+        assertConfiguredRecurringPrice(stripe, monthlyPrice, { unitAmount: boardPlans.monthly.amountCents, interval: boardPlans.monthly.interval, intervalCount: boardPlans.monthly.intervalCount }),
+        assertConfiguredRecurringPrice(stripe, threeMonthPrice, { unitAmount: boardPlans.three_months.amountCents, interval: boardPlans.three_months.interval, intervalCount: boardPlans.three_months.intervalCount }),
       ]);
       healthy = true;
     } catch {

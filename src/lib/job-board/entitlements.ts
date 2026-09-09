@@ -1,6 +1,19 @@
 export const boardSubscriptionStates = ["PENDING", "ACTIVE", "CANCEL_AT_PERIOD_END", "PAST_DUE", "EXPIRED", "CANCELED", "REFUNDED", "DISPUTED"] as const;
 export type BoardSubscriptionState = (typeof boardSubscriptionStates)[number];
 
+export function boardSubscriptionStateFromProvider(input: {
+  eventType: "customer.subscription.created" | "customer.subscription.updated" | "customer.subscription.deleted";
+  subscriptionStatus: string;
+  cancelAtPeriodEnd: boolean;
+  latestInvoicePaid: boolean;
+}): "PENDING" | "ACTIVE" | "CANCEL_AT_PERIOD_END" | "PAST_DUE" | "CANCELED" {
+  if (input.eventType === "customer.subscription.deleted") return "CANCELED";
+  if (input.eventType === "customer.subscription.created" && !input.latestInvoicePaid) return "PENDING";
+  if (input.cancelAtPeriodEnd && input.latestInvoicePaid) return "CANCEL_AT_PERIOD_END";
+  if (input.subscriptionStatus === "active" && input.latestInvoicePaid) return "ACTIVE";
+  return "PAST_DUE";
+}
+
 export type BoardEntitlement = {
   state: BoardSubscriptionState;
   accessEndsAt: string | null;

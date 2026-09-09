@@ -4,7 +4,7 @@
 
 Build and maintain ApplyPack as a production-ready job-search and application-preparation service.
 
-The service must let a customer securely submit her background and preferences, pay $20, receive 10 job matches within 24 hours, select one or more jobs, pay $8 per selected job, and receive a tailored resume and cover letter for each selected job within 24 hours.
+The service uses one shared four-step profile for three connected products: an optional paid filtered job board, a standalone $20 human-reviewed ranked Top 10 delivered within 24 hours, and an $8 tailored resume-and-cover-letter package for an eligible board job or delivered Top 10 job.
 
 ## Read first
 
@@ -65,7 +65,11 @@ Job Match Search turnaround: 24 hours
 Apply Pack: $8 per selected job
 Apply Pack deliverable: one tailored resume and one tailored cover letter
 Apply Pack turnaround: 24 hours
-No subscription
+Filtered job board: $6.99 weekly, $19.99 monthly, or $44.99 every three calendar months
+Filtered job board: no free trial; renews until canceled
+Filtered job board: neutral factual sorting only; never ranked or scored
+Top 10: no subscription prerequisite
+Apply Pack eligibility: active board job or delivered Top 10 job
 No auto-apply
 No interview, offer, compensation, or employment guarantee
 Customer selects which jobs receive Apply Packs
@@ -97,17 +101,13 @@ Do not promise to beat or bypass an applicant tracking system.
 
 Do not describe illustrative examples as real customers.
 
-## Manual-first launch
+## Human review and source automation
 
-Unless the user expressly approves automation:
-
-- Admin performs job research manually.
-- Admin enters and quality-checks 10 matches.
-- Admin prepares resumes and cover letters.
-- Admin uploads completed DOCX files.
-- Backend controls identity, intake, payment, deadlines, selection, private delivery, replacement review, corrections, and records.
-
-Do not add automated scraping or automatic customer-facing AI generation merely because it is technically possible.
+- Human review is mandatory for ranked Top 10 delivery, generated documents, and policy-routed exceptions.
+- Subscription-board listings are filtered by confirmed rules and are not represented as individually human-reviewed.
+- Automated source collection is allowed only for a specifically documented, approved source and environment. Public reachability alone is not permission.
+- Source revocation, stale data, parser uncertainty, and missing permission fail closed.
+- Generated materials stay unavailable until content and rendered pages receive the required human approvals.
 
 ## Privacy and security
 

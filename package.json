@@ -20,7 +20,9 @@
     "types:database:check": "node scripts/check-database-types.mjs",
     "jobs:sources:validate": "node scripts/validate-job-source-batch.mjs",
     "jobs:sources:export": "node --experimental-strip-types scripts/export-job-source-inventory.mjs",
-    "stripe:configure:test": "node scripts/configure-stripe-test-prices.mjs"
+    "stripe:configure:test": "node scripts/configure-stripe-test-prices.mjs",
+    "jobs:seed:synthetic-staging": "node scripts/seed-synthetic-board-staging.mjs --confirm-staging-synthetic",
+    "staging:readiness": "node scripts/report-staging-readiness.mjs"
   },
   "dependencies": {
     "@fontsource/lato": "5.3.0",

@@ -9,7 +9,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const { id } = await context.params;
   const { data } = await access.admin.from("ap_board_admissions")
     .select("job:jobs(official_application_url,source_job_url,is_active,listing_status,last_verified_at)")
-    .eq("customer_id", access.customerId).eq("profile_snapshot_id", access.profileId).eq("job_id", id).eq("decision", "ADMITTED").maybeSingle();
+    .eq("customer_id", access.customerId).eq("profile_snapshot_id", access.profileId).eq("job_id", id)
+    .eq("admission_version", access.admissionVersion).is("superseded_at", null).eq("decision", "ADMITTED").maybeSingle();
   const job = Array.isArray(data?.job) ? data.job[0] : data?.job;
   const link = job?.official_application_url || job?.source_job_url;
   if (!job || !job.is_active || job.listing_status !== "open" || !link || !isSafeExternalLink(link)) return NextResponse.json({ error: "The application link is expired or unavailable." }, { status: 410, headers });

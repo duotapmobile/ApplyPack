@@ -1,6 +1,6 @@
 # ApplyPack copy review inventory
 
-Schema is controlled by Part I. Customer copy may not use an em dash. `APPROVED_EXACT` means the corrected contract supplies exact text. `SOURCE_REVIEW_REQUIRED` means a private source exists but later implementation must reconcile it to Part I before publication.
+Schema is controlled by Part I as amended September 9, 2026 by `applypack/11_SEPTEMBER_9_FINAL_PRODUCT_AMENDMENT.md`. Customer copy may not use an em dash. `APPROVED_EXACT` means the current contract supplies exact text. `SOURCE_REVIEW_REQUIRED` means a private source exists but later implementation must reconcile it before publication.
 
 | Stable ID | Exact text or normalized hash | Route/state/trigger | Controlling source | Approval status | Version |
 | --- | --- | --- | --- | --- | --- |
@@ -8,8 +8,10 @@ Schema is controlled by Part I. Customer copy may not use an em dash. `APPROVED_
 | COPY-002 | `Resume + Cover Letter Pack` | Materials product labels | Part I locked facts | APPROVED_EXACT | 2026-09-04 |
 | COPY-003 | `$20 once` | Search offer/checkout | Part I locked facts | APPROVED_EXACT | 2026-09-04 |
 | COPY-004 | `10 researched job matches` | Search offer | Part I locked facts | APPROVED_EXACT | 2026-09-04 |
-| COPY-005 | `No subscription` | Search offer | Part I locked facts | APPROVED_EXACT | 2026-09-04 |
-| COPY-006 | `$8 per job` | Materials offer | Part I locked facts | APPROVED_EXACT | 2026-09-04 |
+| COPY-005 | `No subscription required for the Top 10` | Search offer | September 9 amendment | APPROVED_EXACT | 2026-09-09 |
+| COPY-005A | `$6.99 weekly; $19.99 monthly; $44.99 every three calendar months` | Board pricing | September 9 amendment | APPROVED_EXACT | 2026-09-09 |
+| COPY-005B | `No free trial. Renews until canceled.` | Board pricing | September 9 amendment | APPROVED_EXACT | 2026-09-09 |
+| COPY-006 | `$8 per eligible board or delivered Top 10 job` | Materials offer | September 9 amendment | APPROVED_EXACT | 2026-09-09 |
 | COPY-007 | `Start your search` | Primary CTA/Step 1 | Part I | APPROVED_EXACT | 2026-09-04 |
 | COPY-008 | `What work would you like to do?` | Step 2 | Part I | APPROVED_EXACT | 2026-09-04 |
 | COPY-009 | `Confirm your experience and skills` | Step 3 | Part I | APPROVED_EXACT | 2026-09-04 |

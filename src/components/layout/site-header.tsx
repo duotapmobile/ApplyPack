@@ -35,7 +35,7 @@ export function SiteHeader() {
     return () => { document.body.style.overflow = previousOverflow; window.removeEventListener("keydown", handleKey); trigger?.focus(); };
   }, [open]);
 
-  const logo = <Image alt="" className="brand-logo brand-logo--header" height={1024} preload sizes="(max-width: 780px) 108px, 132px" src="/applypack-logo-high-res-source.png" width={1536} />;
+  const logo = <Image alt="" className="brand-logo brand-logo--header" height={1024} loading="eager" sizes="(max-width: 780px) 108px, 132px" src="/applypack-logo-high-res-source.png" width={1536} />;
   if (focused) return <header className="site-header site-header--focused"><div className="page-frame header-inner"><Link className="brand" href="/" aria-label="ApplyPack home">{logo}</Link><nav className="focused-nav" aria-label="Intake help"><Link href="/faq">Help</Link><Link href="/my-applypack">My ApplyPack</Link></nav></div></header>;
 
   return (

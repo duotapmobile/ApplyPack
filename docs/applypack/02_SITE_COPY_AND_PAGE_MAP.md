@@ -1,6 +1,8 @@
 # ApplyPack Site Copy and Page Map
 
-Last updated: September 1, 2026
+Last updated: September 9, 2026
+
+Use the product model in `11_SEPTEMBER_9_FINAL_PRODUCT_AMENDMENT.md`. References below to no subscription mean the standalone Top 10 requires no subscription; they do not describe the optional filtered board.
 
 ## Copy authority
 
@@ -166,7 +168,7 @@ Tailored resume + cover letter: $8 per selected job
 [Get My 10 Jobs in 24 Hours]
 [See How It Works]
 
-No subscription. No mass applying. No fake experience.
+No subscription required for the Top 10. No mass applying. No fake experience.
 ```
 
 ### Visual requirement
@@ -608,7 +610,7 @@ Your search in 24 hours.
 
 Your application in the next 24.
 
-No subscription.
+No subscription required for the Top 10.
 
 No obligation to purchase an Apply Pack for every job.
 ```
@@ -1763,9 +1765,9 @@ Choose where you want to spend more.
 ```
 
 ```text
-No subscription
+No subscription required for the Top 10
 
-No recurring charge
+The optional filtered board renews until canceled
 
 No auto-apply service
 

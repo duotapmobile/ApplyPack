@@ -8,6 +8,7 @@ import { processPendingFileScans } from "@/lib/files/process-scans";
 import { processPendingFeasibilityRequests } from "@/lib/matching/supabase-feasibility-store";
 import { processChunk4Workers } from "@/lib/commerce/workers";
 import { reconcileBoardSubscriptions } from "@/lib/job-board/stripe-events";
+import { processBoardRecomputeJobs } from "@/lib/job-board/recompute";
 import { createStripeOperationalClient } from "@/lib/stripe/server";
 
 export const dynamic = "force-dynamic";
@@ -179,6 +180,9 @@ export async function POST(request: Request) {
   const boardSubscriptionsReconciled = stripe
     ? await reconcileBoardSubscriptions(stripe, admin).catch(() => -1)
     : 0;
+  const boardAdmissions = await processBoardRecomputeJobs(admin, 10).catch(() => ({
+    status: "error" as const, reason: "BOARD_RECOMPUTE_FAILED", processed: 0, decisions: 0,
+  }));
   return NextResponse.json({
     ok: true,
     expiredReservations: reservationResult.data?.length || 0,
@@ -195,5 +199,6 @@ export async function POST(request: Request) {
     emailRetries,
     chunk4,
     boardSubscriptionsReconciled,
+    boardAdmissions,
   });
 }

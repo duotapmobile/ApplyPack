@@ -340,6 +340,375 @@ export type Database = {
           },
         ]
       }
+      ap_board_admissions: {
+        Row: {
+          admission_version: string
+          capability_connection_codes: Json
+          customer_id: string
+          decision: string
+          evaluated_at: string
+          exclusion_codes: Json
+          id: string
+          input_sha256: string | null
+          job_id: string
+          profile_snapshot_id: string
+          superseded_at: string | null
+          warning_codes: Json
+        }
+        Insert: {
+          admission_version?: string
+          capability_connection_codes?: Json
+          customer_id: string
+          decision: string
+          evaluated_at?: string
+          exclusion_codes?: Json
+          id?: string
+          input_sha256?: string | null
+          job_id: string
+          profile_snapshot_id: string
+          superseded_at?: string | null
+          warning_codes?: Json
+        }
+        Update: {
+          admission_version?: string
+          capability_connection_codes?: Json
+          customer_id?: string
+          decision?: string
+          evaluated_at?: string
+          exclusion_codes?: Json
+          id?: string
+          input_sha256?: string | null
+          job_id?: string
+          profile_snapshot_id?: string
+          superseded_at?: string | null
+          warning_codes?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_board_admissions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_board_admissions_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_board_admissions_profile_snapshot_id_fkey"
+            columns: ["profile_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_board_material_orders: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          currency: string
+          customer_id: string
+          delivery_due_at: string | null
+          id: string
+          job_id: string
+          profile_snapshot_id: string
+          provider_checkout_session_id: string | null
+          provider_payment_intent_id: string | null
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          amount_cents?: number
+          created_at?: string
+          currency?: string
+          customer_id: string
+          delivery_due_at?: string | null
+          id?: string
+          job_id: string
+          profile_snapshot_id: string
+          provider_checkout_session_id?: string | null
+          provider_payment_intent_id?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          currency?: string
+          customer_id?: string
+          delivery_due_at?: string | null
+          id?: string
+          job_id?: string
+          profile_snapshot_id?: string
+          provider_checkout_session_id?: string | null
+          provider_payment_intent_id?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_board_material_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_board_material_orders_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_board_material_orders_profile_snapshot_id_fkey"
+            columns: ["profile_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_board_profile_claims: {
+        Row: {
+          access_email_normalized: string
+          claimed_at: string
+          customer_id: string
+          draft_id: string
+          profile_snapshot_id: string
+          profile_version: number
+        }
+        Insert: {
+          access_email_normalized: string
+          claimed_at?: string
+          customer_id: string
+          draft_id: string
+          profile_snapshot_id: string
+          profile_version: number
+        }
+        Update: {
+          access_email_normalized?: string
+          claimed_at?: string
+          customer_id?: string
+          draft_id?: string
+          profile_snapshot_id?: string
+          profile_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_board_profile_claims_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_board_profile_claims_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_board_profile_claims_profile_snapshot_id_fkey"
+            columns: ["profile_snapshot_id"]
+            isOneToOne: true
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_board_provider_events: {
+        Row: {
+          amount_cents: number | null
+          created_at: string
+          event_type: string
+          full_amount_cents: number | null
+          id: string
+          provider_created: number
+          provider_dispute_id: string | null
+          provider_event_id: string
+          provider_refund_id: string | null
+          provider_subscription_id: string
+          resulting_state: string
+        }
+        Insert: {
+          amount_cents?: number | null
+          created_at?: string
+          event_type: string
+          full_amount_cents?: number | null
+          id?: string
+          provider_created: number
+          provider_dispute_id?: string | null
+          provider_event_id: string
+          provider_refund_id?: string | null
+          provider_subscription_id: string
+          resulting_state: string
+        }
+        Update: {
+          amount_cents?: number | null
+          created_at?: string
+          event_type?: string
+          full_amount_cents?: number | null
+          id?: string
+          provider_created?: number
+          provider_dispute_id?: string | null
+          provider_event_id?: string
+          provider_refund_id?: string | null
+          provider_subscription_id?: string
+          resulting_state?: string
+        }
+        Relationships: []
+      }
+      ap_board_recompute_jobs: {
+        Row: {
+          attempts: number
+          available_at: string
+          completed_at: string | null
+          created_at: string
+          customer_id: string | null
+          id: string
+          idempotency_key: string
+          job_id: string | null
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          profile_snapshot_id: string | null
+          reason_code: string
+          scope: string
+          state: string
+        }
+        Insert: {
+          attempts?: number
+          available_at?: string
+          completed_at?: string | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          idempotency_key: string
+          job_id?: string | null
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          profile_snapshot_id?: string | null
+          reason_code: string
+          scope: string
+          state?: string
+        }
+        Update: {
+          attempts?: number
+          available_at?: string
+          completed_at?: string | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          idempotency_key?: string
+          job_id?: string | null
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          profile_snapshot_id?: string | null
+          reason_code?: string
+          scope?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_board_recompute_jobs_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_board_recompute_jobs_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_board_recompute_jobs_profile_snapshot_id_fkey"
+            columns: ["profile_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_board_subscriptions: {
+        Row: {
+          access_ends_at: string | null
+          cancel_at_period_end: boolean
+          created_at: string
+          current_period_starts_at: string | null
+          customer_id: string
+          id: string
+          last_provider_event_created: number
+          last_provider_event_id: string | null
+          plan_id: string
+          provider_checkout_session_id: string | null
+          provider_customer_id: string
+          provider_dispute_id: string | null
+          provider_refund_id: string | null
+          provider_subscription_id: string
+          refund_state: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          access_ends_at?: string | null
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_starts_at?: string | null
+          customer_id: string
+          id?: string
+          last_provider_event_created?: number
+          last_provider_event_id?: string | null
+          plan_id: string
+          provider_checkout_session_id?: string | null
+          provider_customer_id: string
+          provider_dispute_id?: string | null
+          provider_refund_id?: string | null
+          provider_subscription_id: string
+          refund_state?: string
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          access_ends_at?: string | null
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_starts_at?: string | null
+          customer_id?: string
+          id?: string
+          last_provider_event_created?: number
+          last_provider_event_id?: string | null
+          plan_id?: string
+          provider_checkout_session_id?: string | null
+          provider_customer_id?: string
+          provider_dispute_id?: string | null
+          provider_refund_id?: string | null
+          provider_subscription_id?: string
+          refund_state?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_board_subscriptions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_candidate_fact_conflicts: {
         Row: {
           conflicting_fact_id: string
@@ -3452,6 +3821,7 @@ export type Database = {
       ap_material_checkout_intents: {
         Row: {
           amount_cents: number
+          board_admission_id: string | null
           capacity_allocation_id: string | null
           career_break_choice: string
           career_break_custom_label: string | null
@@ -3463,7 +3833,7 @@ export type Database = {
           currency: string
           customer_id: string
           delivered_order_id: string
-          delivered_release_id: string
+          delivered_release_id: string | null
           document_contact_confirmed: boolean
           document_facts_confirmed: boolean
           expires_at: string | null
@@ -3477,6 +3847,7 @@ export type Database = {
           purchase_id: string
           request_key: string
           selection_sha256: string
+          source_kind: string
           source_snapshot_id: string
           state: Database["public"]["Enums"]["ap_material_checkout_state"]
           tax_inclusive: boolean
@@ -3485,6 +3856,7 @@ export type Database = {
         }
         Insert: {
           amount_cents: number
+          board_admission_id?: string | null
           capacity_allocation_id?: string | null
           career_break_choice: string
           career_break_custom_label?: string | null
@@ -3496,7 +3868,7 @@ export type Database = {
           currency: string
           customer_id: string
           delivered_order_id: string
-          delivered_release_id: string
+          delivered_release_id?: string | null
           document_contact_confirmed: boolean
           document_facts_confirmed: boolean
           expires_at?: string | null
@@ -3510,6 +3882,7 @@ export type Database = {
           purchase_id: string
           request_key: string
           selection_sha256: string
+          source_kind?: string
           source_snapshot_id: string
           state?: Database["public"]["Enums"]["ap_material_checkout_state"]
           tax_inclusive: boolean
@@ -3518,6 +3891,7 @@ export type Database = {
         }
         Update: {
           amount_cents?: number
+          board_admission_id?: string | null
           capacity_allocation_id?: string | null
           career_break_choice?: string
           career_break_custom_label?: string | null
@@ -3529,7 +3903,7 @@ export type Database = {
           currency?: string
           customer_id?: string
           delivered_order_id?: string
-          delivered_release_id?: string
+          delivered_release_id?: string | null
           document_contact_confirmed?: boolean
           document_facts_confirmed?: boolean
           expires_at?: string | null
@@ -3543,6 +3917,7 @@ export type Database = {
           purchase_id?: string
           request_key?: string
           selection_sha256?: string
+          source_kind?: string
           source_snapshot_id?: string
           state?: Database["public"]["Enums"]["ap_material_checkout_state"]
           tax_inclusive?: boolean
@@ -3550,6 +3925,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "ap_material_checkout_intents_board_admission_id_fkey"
+            columns: ["board_admission_id"]
+            isOneToOne: false
+            referencedRelation: "ap_board_admissions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ap_material_checkout_intents_capacity_allocation_id_fkey"
             columns: ["capacity_allocation_id"]
@@ -6760,6 +7142,96 @@ export type Database = {
           },
         ]
       }
+      customer_job_delivery_history: {
+        Row: {
+          canonical_employer_id: string | null
+          customer_id: string
+          deduplication_key: string | null
+          delivered_at: string
+          delivery_kind: string
+          external_job_id: string | null
+          id: string
+          job_id: string
+          job_match_id: string
+          normalized_source_url: string | null
+          official_application_url: string | null
+          recorded_at: string
+          search_order_id: string
+          source_job_url: string | null
+          source_url: string
+        }
+        Insert: {
+          canonical_employer_id?: string | null
+          customer_id: string
+          deduplication_key?: string | null
+          delivered_at: string
+          delivery_kind: string
+          external_job_id?: string | null
+          id?: string
+          job_id: string
+          job_match_id: string
+          normalized_source_url?: string | null
+          official_application_url?: string | null
+          recorded_at?: string
+          search_order_id: string
+          source_job_url?: string | null
+          source_url: string
+        }
+        Update: {
+          canonical_employer_id?: string | null
+          customer_id?: string
+          deduplication_key?: string | null
+          delivered_at?: string
+          delivery_kind?: string
+          external_job_id?: string | null
+          id?: string
+          job_id?: string
+          job_match_id?: string
+          normalized_source_url?: string | null
+          official_application_url?: string | null
+          recorded_at?: string
+          search_order_id?: string
+          source_job_url?: string | null
+          source_url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_job_delivery_history_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_job_delivery_history_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_job_delivery_history_job_match_id_fkey"
+            columns: ["job_match_id"]
+            isOneToOne: false
+            referencedRelation: "job_matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_job_delivery_history_search_order_id_fkey"
+            columns: ["search_order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_job_delivery_history_search_order_id_fkey"
+            columns: ["search_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_events: {
         Row: {
           apply_pack_cart_id: string | null
@@ -7129,8 +7601,9 @@ export type Database = {
           id: string
           job_id: string
           last_checked_at: string | null
+          match_kind: string
           matching_experience: Json
-          position: number
+          position: number | null
           posted_date_unknown: boolean
           posted_on: string | null
           primary_outcome: string | null
@@ -7160,8 +7633,9 @@ export type Database = {
           id?: string
           job_id: string
           last_checked_at?: string | null
+          match_kind?: string
           matching_experience?: Json
-          position: number
+          position?: number | null
           posted_date_unknown?: boolean
           posted_on?: string | null
           primary_outcome?: string | null
@@ -7191,8 +7665,9 @@ export type Database = {
           id?: string
           job_id?: string
           last_checked_at?: string | null
+          match_kind?: string
           matching_experience?: Json
-          position?: number
+          position?: number | null
           posted_date_unknown?: boolean
           posted_on?: string | null
           primary_outcome?: string | null
@@ -7384,9 +7859,12 @@ export type Database = {
       }
       job_sources: {
         Row: {
+          access_method: string | null
           adapter_key: string | null
           adapter_kind: string
           alternate_official_urls: string[]
+          ats_platform: string | null
+          ats_tenant_identifier: string | null
           automation_status: string
           canonical_employer_id: string | null
           created_at: string
@@ -7395,6 +7873,7 @@ export type Database = {
           default_w2_or_contractor: string | null
           health_status: string
           id: string
+          ingestion_permission_status: string
           is_active: boolean
           is_direct_employer: boolean
           is_official: boolean
@@ -7402,15 +7881,22 @@ export type Database = {
           last_successful_sync_at: string | null
           notes: string | null
           official_url: string | null
+          paid_display_permission_status: string
+          permission_evidence_url: string | null
           priority: number
+          refresh_schedule: string | null
+          schedule_enabled: boolean
           source_category: string
           source_name: string
           updated_at: string
         }
         Insert: {
+          access_method?: string | null
           adapter_key?: string | null
           adapter_kind: string
           alternate_official_urls?: string[]
+          ats_platform?: string | null
+          ats_tenant_identifier?: string | null
           automation_status: string
           canonical_employer_id?: string | null
           created_at?: string
@@ -7419,6 +7905,7 @@ export type Database = {
           default_w2_or_contractor?: string | null
           health_status?: string
           id: string
+          ingestion_permission_status?: string
           is_active?: boolean
           is_direct_employer: boolean
           is_official: boolean
@@ -7426,15 +7913,22 @@ export type Database = {
           last_successful_sync_at?: string | null
           notes?: string | null
           official_url?: string | null
+          paid_display_permission_status?: string
+          permission_evidence_url?: string | null
           priority?: number
+          refresh_schedule?: string | null
+          schedule_enabled?: boolean
           source_category: string
           source_name: string
           updated_at?: string
         }
         Update: {
+          access_method?: string | null
           adapter_key?: string | null
           adapter_kind?: string
           alternate_official_urls?: string[]
+          ats_platform?: string | null
+          ats_tenant_identifier?: string | null
           automation_status?: string
           canonical_employer_id?: string | null
           created_at?: string
@@ -7443,6 +7937,7 @@ export type Database = {
           default_w2_or_contractor?: string | null
           health_status?: string
           id?: string
+          ingestion_permission_status?: string
           is_active?: boolean
           is_direct_employer?: boolean
           is_official?: boolean
@@ -7450,7 +7945,11 @@ export type Database = {
           last_successful_sync_at?: string | null
           notes?: string | null
           official_url?: string | null
+          paid_display_permission_status?: string
+          permission_evidence_url?: string | null
           priority?: number
+          refresh_schedule?: string | null
+          schedule_enabled?: boolean
           source_category?: string
           source_name?: string
           updated_at?: string
@@ -7678,6 +8177,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      operational_heartbeats: {
+        Row: {
+          last_succeeded_at: string
+          summary: Json
+          task_name: string
+          updated_at: string
+        }
+        Insert: {
+          last_succeeded_at: string
+          summary?: Json
+          task_name: string
+          updated_at?: string
+        }
+        Update: {
+          last_succeeded_at?: string
+          summary?: Json
+          task_name?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       orders: {
         Row: {
@@ -8577,6 +9097,25 @@ export type Database = {
         }
         Returns: Json
       }
+      ap_begin_board_material_checkout: {
+        Args: {
+          p_board_admission_id: string
+          p_career_break_choice: string
+          p_career_break_custom_label: string
+          p_contact_payload_id: string
+          p_cover_letter_break_consent: boolean
+          p_customer_id: string
+          p_do_not_mention_note: string
+          p_document_contact_confirmed: boolean
+          p_document_facts_confirmed: boolean
+          p_emphasis_note: string
+          p_request_key: string
+          p_selection_sha256: string
+          p_source_snapshot_id: string
+          p_submission_rule_id: string
+        }
+        Returns: Json
+      }
       ap_begin_material_checkout: {
         Args: {
           p_career_break_choice: string
@@ -8628,6 +9167,10 @@ export type Database = {
           reservation_expires_at: string
         }[]
       }
+      ap_board_has_access: {
+        Args: { p_customer_id: string; p_now?: string }
+        Returns: boolean
+      }
       ap_can_access_customer: {
         Args: { p_customer_id: string }
         Returns: boolean
@@ -8643,6 +9186,41 @@ export type Database = {
       }
       ap_chunk4_monitor_snapshot: { Args: never; Returns: Json }
       ap_chunk5_monitor_snapshot: { Args: never; Returns: Json }
+      ap_claim_board_profile: {
+        Args: {
+          p_customer_id: string
+          p_draft_id: string
+          p_secret_hash: string
+          p_verified_email: string
+        }
+        Returns: string
+      }
+      ap_claim_board_recompute_jobs: {
+        Args: { p_limit?: number; p_owner: string }
+        Returns: {
+          attempts: number
+          available_at: string
+          completed_at: string | null
+          created_at: string
+          customer_id: string | null
+          id: string
+          idempotency_key: string
+          job_id: string | null
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          profile_snapshot_id: string | null
+          reason_code: string
+          scope: string
+          state: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "ap_board_recompute_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       ap_claim_feasibility_request: {
         Args: { p_request_id: string; p_worker_id: string }
         Returns: {
@@ -8873,6 +9451,18 @@ export type Database = {
         Args: { p_reason: string; p_request_id: string; p_worker_id: string }
         Returns: boolean
       }
+      ap_enqueue_board_job_recompute: {
+        Args: { p_change_key: string; p_job_id: string; p_reason_code: string }
+        Returns: string
+      }
+      ap_enqueue_board_profile_recompute: {
+        Args: {
+          p_customer_id: string
+          p_profile_snapshot_id: string
+          p_reason_code: string
+        }
+        Returns: string
+      }
       ap_enqueue_chunk4_due_jobs: { Args: never; Returns: Json }
       ap_enqueue_chunk5_due_jobs: { Args: never; Returns: Json }
       ap_expire_material_change: {
@@ -8937,6 +9527,15 @@ export type Database = {
       ap_find_latest_access_order: {
         Args: { p_email: string }
         Returns: string
+      }
+      ap_finish_board_recompute_job: {
+        Args: {
+          p_error_code?: string
+          p_job_id: string
+          p_owner: string
+          p_success: boolean
+        }
+        Returns: boolean
       }
       ap_grant_reference_permission: {
         Args: {
@@ -9658,6 +10257,18 @@ export type Database = {
         }
         Returns: string
       }
+      customer_can_view_delivered_job: {
+        Args: { p_job_id: string }
+        Returns: boolean
+      }
+      customer_has_previously_received_job: {
+        Args: { p_customer_id: string; p_job_id: string }
+        Returns: boolean
+      }
+      expire_abandoned_checkout_state: {
+        Args: { p_now: string }
+        Returns: Json
+      }
       finalize_intake_source_retention: {
         Args: {
           p_deleted_at: string
@@ -9683,11 +10294,18 @@ export type Database = {
         }
         Returns: string
       }
+      find_previously_delivered_jobs: {
+        Args: { p_customer_id: string; p_job_ids: string[] }
+        Returns: {
+          job_id: string
+        }[]
+      }
       is_admin: { Args: never; Returns: boolean }
       mark_stale_jobs_inactive: {
         Args: { p_stale_hours?: number }
         Returns: number
       }
+      normalize_job_delivery_url: { Args: { p_url: string }; Returns: string }
       prepare_apply_pack_checkout: {
         Args: {
           p_customer_id: string

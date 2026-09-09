@@ -140,7 +140,7 @@ Delivered within 24 hours
 Paid after the customer sees and selects jobs
 ```
 
-There is no subscription.
+The filtered job board is an optional subscription at $6.99 weekly, $19.99 monthly, or $44.99 every three calendar months with no free trial. The $20 Top 10 requires no subscription.
 
 The customer may select one, several, all 10, or none of the jobs for Apply Packs.
 
@@ -663,7 +663,7 @@ Server must validate:
 - Available capacity.
 - Exact $20 price.
 
-Create a Stripe product and one-time price in test mode first, then live mode when authorized.
+Create a Stripe product and one-time price in test mode. Live mode remains separately authorized.
 
 Use internal order ID only in metadata.
 
@@ -833,7 +833,7 @@ At 320 CSS pixels, the cart must not hide content or keyboard focus.
 
 ## 20. Implement the dynamic $8-per-job Stripe payment
 
-Create a one-time $8 Stripe price.
+Create a one-time $8 Stripe price. Accept eligible jobs from either the customer's current subscription board or delivered Top 10.
 
 The server calculates quantity from eligible unique selected job records.
 
@@ -842,7 +842,7 @@ Never trust browser quantity or total.
 Before checkout:
 
 - Confirm customer ownership.
-- Confirm search delivery.
+- Confirm either a current owned board admission or an owned delivered Top 10 match.
 - Confirm each selected job is eligible and not already purchased.
 - Confirm job availability or approved freshness state.
 - Confirm capacity for the full quantity.

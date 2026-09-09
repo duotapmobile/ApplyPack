@@ -1,6 +1,8 @@
 # ApplyPack Security, Privacy, Accessibility, and SEO Requirements
 
-Last updated: September 1, 2026
+Last updated: September 9, 2026
+
+Apply the product surfaces and release boundary in `11_SEPTEMBER_9_FINAL_PRODUCT_AMENDMENT.md`. Board list, count, detail, and application-link access are private entitlement checks; purchased documents survive board expiration.
 
 ## Non-negotiable principle
 

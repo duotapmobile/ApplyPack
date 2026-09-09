@@ -1,6 +1,6 @@
 # ApplyPack requirement traceability
 
-Generated from the checksum-verified corrected packet, version 2026-09-04. Each non-heading normative paragraph, list item, table row, and code contract is retained as a distinct stable row. Repeated rules retain distinct IDs and hashes when they impose proof in more than one location. `ACTIVE_CONTRACT` means binding but not yet implemented; it is not a pass claim.
+Generated from the checksum-verified corrected packet, version 2026-09-04. The September 9 product amendment in `applypack/11_SEPTEMBER_9_FINAL_PRODUCT_AMENDMENT.md` supersedes rows that say there is no subscription or that materials require a delivered Top 10; those rows are retained as historical traceability, not active authority. Each non-heading normative paragraph, list item, table row, and code contract is retained as a distinct stable row. Repeated rules retain distinct IDs and hashes when they impose proof in more than one location. `ACTIVE_CONTRACT` means binding only where not superseded; it is not a pass claim.
 
 | Stable ID | Source locator | Normalized SHA-256 | Rule summary | Owning/due chunk | Implementation | Tests | Evidence | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

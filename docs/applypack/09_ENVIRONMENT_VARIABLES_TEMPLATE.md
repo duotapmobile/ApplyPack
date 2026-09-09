@@ -1,5 +1,7 @@
 # ApplyPack Environment Variables Template
 
+Last updated: September 9, 2026. Configure the three Stripe test subscription prices and final-integration worker flags described by `11_SEPTEMBER_9_FINAL_PRODUCT_AMENDMENT.md`; never substitute live credentials in staging.
+
 Last updated: September 1, 2026
 
 ## Rule
@@ -243,6 +245,12 @@ APP_JOB_SOURCE_TIMEOUT_MS=10000
 APP_JOB_SOURCE_MIN_INTERVAL_MS=1500
 APP_JOB_SOURCE_MAX_POSTINGS=250
 APP_JOB_SOURCE_USER_AGENT=ApplyPackSourceMonitor/1.0 (+https://applypack.work/contact)
+APP_BOARD_WORKER_ID=
+
+# Staging-only fictional board inventory. Both flags must remain false outside
+# the protected staging service; this dataset never satisfies source approval.
+APP_STAGING_SYNTHETIC_JOBS=false
+APP_ALLOW_SYNTHETIC_SEED=false
 ```
 
 Keep synchronization disabled until the job-source migration is deployed and the operator explicitly enables source runs. Public Lever adapters do not require source credentials.

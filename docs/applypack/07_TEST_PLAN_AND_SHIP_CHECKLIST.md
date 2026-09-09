@@ -1,6 +1,8 @@
 # ApplyPack Test Plan and Ship Checklist
 
-Last updated: September 1, 2026
+Last updated: September 9, 2026
+
+Acceptance also includes every subscription-board, recomputation, real-source, board-origin materials, provider-backed staging, and cross-tenant journey in `11_SEPTEMBER_9_FINAL_PRODUCT_AMENDMENT.md`.
 
 ## Completion standard
 
@@ -275,7 +277,7 @@ Use Stripe test mode first.
 
 ## Apply Pack purchase
 
-- Only delivered owned matches can be selected.
+- Only an owned delivered Top 10 match or a current owned admitted board job can be selected for materials.
 - One selected job charges $8.
 - Multiple selected jobs charge exact quantity times $8.
 - Already purchased job cannot be charged twice accidentally.

@@ -1,6 +1,8 @@
 # ApplyPack Customer and Admin Workflows
 
-Last updated: September 1, 2026
+Last updated: September 9, 2026
+
+The current shared-profile, subscription-board, standalone Top 10, and board-or-Top-10 materials flows are defined in `11_SEPTEMBER_9_FINAL_PRODUCT_AMENDMENT.md` and supersede narrower historical paths below.
 
 ## End-to-end customer flow
 

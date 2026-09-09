@@ -420,7 +420,7 @@ async function verifyCompletedCheckout(stripe: Stripe, eventSession: Stripe.Chec
     if (!priceId || line.price?.id !== priceId || quantity < 1 || quantity > 10 || session.amount_total !== quantity * 800) {
       throw new Error("Apply Pack price mismatch");
     }
-    await assertConfiguredPrice(stripe, priceId, { unitAmount: 800, productName: "Apply Pack" });
+    await assertConfiguredPrice(stripe, priceId, { unitAmount: 800, productName: "Tailored Resume + Cover Letter" });
   } else {
     throw new Error("Checkout product mismatch");
   }

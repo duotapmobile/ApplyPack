@@ -9,6 +9,8 @@ Part I body normalized LF/UTF-8 SHA-256: 95887f7c6afb312f5f3699f0851fdfc3746f7df
 This header is identification metadata only. The Part I body below is normative.
 -->
 
+> September 9, 2026 amendment: `docs/applypack/11_SEPTEMBER_9_FINAL_PRODUCT_AMENDMENT.md` is the latest product authority. It supersedes the September 4 no-subscription rule and Top-10-only materials restriction while preserving the remaining truth, safety, human-review, capacity, and evidence rules in this contract.
+
 # Part I: Controlling Product and Engineering Contract
 
 This entire Part I is binding on every chunk.
@@ -110,7 +112,7 @@ Pre-existing unrelated failures must be recorded with exact baseline and after-c
 - Primary product label: `10 Researched Job Matches`.
 - Primary public action: `Find My 10 Jobs`.
 - Price: `$20 once` for exactly 10 researched job matches.
-- There is no subscription.
+- The standalone Top 10 requires no subscription. The separate filtered board uses the three approved subscriptions with no free trial.
 - There is no auto-apply.
 - ApplyPack does not contact employers or submit applications for customers.
 - Customers choose which jobs to pursue.
@@ -126,7 +128,7 @@ Pre-existing unrelated failures must be recorded with exact baseline and after-c
 - ApplyPack never invents experience, employers, titles, dates, credentials, education, tools, duties, achievements, metrics, scope, seniority, or qualifications.
 - Launch geography is the 50 United States and District of Columbia only. Launch currency is USD only. Say this plainly before intake completion. Collect state or District of Columbia in Step 4. Do not invent international search, currency conversion, territories, or relocation behavior.
 
-No interface, email, metadata, structured data, receipt, or help text may change `$20`, `10`, `$8 per selected job`, `24 clock hours`, or `no subscription` into a different offer.
+No interface, email, metadata, structured data, receipt, or help text may change `$20`, exact `10`, `$8 per selected eligible job`, `24 clock hours`, or the three approved board intervals into a different offer.
 
 ## 4. Mission and decision hierarchy
 
@@ -426,7 +428,7 @@ Show before the first field:
 
 - `$20 once`.
 - `10 researched job matches`.
-- `No subscription`.
+- `No subscription required for the standalone Top 10`.
 - No account is required before payment.
 - Uploaded files stay private, using only technically verified security language.
 
@@ -1086,7 +1088,7 @@ Create `docs/CONFIG_DECISIONS.md`. Each setting records stable ID, environment, 
 
 Locked launch values:
 
-- Search price 2,000 cents USD once; materials price 800 cents USD per selected delivered job; no subscription.
+- Search price 2,000 cents USD once; materials price 800 cents USD per eligible board or delivered Top 10 job; the board alone has the three approved recurring prices.
 - Those prices are tax-inclusive exact customer totals and no tax or fee is added; unapproved tax treatment is `UNSET_BLOCKING` and disables Checkout.
 - Exactly 10 search matches; exactly one resume and one cover letter per paid materials line; 24 elapsed hours under the formulas above.
 - Geography `US` limited to 50 states plus District of Columbia; currency `USD`; display zone `America/New_York` with `ET`.
