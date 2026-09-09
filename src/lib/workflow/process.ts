@@ -53,19 +53,44 @@ async function processSearchDiscovery(admin: AdminClient, task: WorkflowTask) {
 
   let fetched = 0;
   if (process.env.APP_JOB_SOURCE_SYNC_ENABLED === "true") {
-    for (const source of jobSources.filter(sourceMayBeAccessedAutomatically)) {
+    for (const source of jobSources.filter((item) => sourceMayBeAccessedAutomatically(item) && item.automationStatus === "automated" && item.scheduleEnabled === true)) {
+      const { data: run, error: runError } = await admin.from("job_source_runs")
+        .insert({ source_id: source.id, status: "started" }).select("id").single();
+      if (runError || !run) throw runError || new Error(`Could not record source run for ${source.id}.`);
       try {
         const raw = await createSourceAdapter(source.id).fetchJobs();
         fetched += raw.length;
         const normalized = raw.map((job) => normalizeJob(job)).filter((job) => !job.rejectionReason && job.isActive);
-        for (const candidate of deduplicateJobs(normalized)) await persistNormalizedJob(admin, candidate.job);
-      } catch {
-        await admin.from("job_source_runs").insert({
-          source_id: source.id,
-          status: "failed",
-          completed_at: new Date().toISOString(),
+        const accepted = deduplicateJobs(normalized);
+        for (const candidate of accepted) await persistNormalizedJob(admin, candidate.job);
+        const completedAt = new Date().toISOString();
+        await admin.from("job_source_runs").update({
+          status: "succeeded",
+          completed_at: completedAt,
+          fetched_count: raw.length,
+          accepted_count: accepted.length,
+          rejected_count: raw.length - accepted.length,
+        }).eq("id", run.id);
+        await admin.from("job_sources").update({
+          health_status: "healthy",
+          last_health_checked_at: completedAt,
+          last_successful_sync_at: completedAt,
+          updated_at: completedAt,
+        }).eq("id", source.id);
+      } catch (error) {
+        const completedAt = new Date().toISOString();
+        const message = error instanceof Error ? error.message.slice(0, 1000) : "Source synchronization failed.";
+        await admin.from("job_source_runs").update({
+          status: message.toLowerCase().includes("rate limit") ? "rate_limited" : "failed",
+          completed_at: completedAt,
           error_code: "workflow_source_sync_failed",
-        });
+          error_message: message,
+        }).eq("id", run.id);
+        await admin.from("job_sources").update({
+          health_status: "failing",
+          last_health_checked_at: completedAt,
+          updated_at: completedAt,
+        }).eq("id", source.id);
       }
     }
   }

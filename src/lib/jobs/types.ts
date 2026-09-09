@@ -51,7 +51,7 @@ export type PhoneIntensity = (typeof phoneIntensities)[number];
 export const experienceLevels = ["entry_level", "early_career", "mid_level", "senior", "unknown"] as const;
 export type ExperienceLevel = (typeof experienceLevels)[number];
 
-export type SourceAdapterKind = "lever" | "official_link_only" | "existing_import";
+export type SourceAdapterKind = "lever" | "greenhouse" | "ashby" | "official_link_only" | "existing_import";
 export const sourceAuthorizationStates = [
   "AUTHORIZED_AUTOMATED",
   "AUTHORIZED_MANUAL_ONLY",
@@ -61,6 +61,9 @@ export const sourceAuthorizationStates = [
 export type SourceAuthorizationState = (typeof sourceAuthorizationStates)[number];
 /** @deprecated Historical database/UI compatibility only. Never authorizes access. */
 export type SourceAutomationStatus = "automated" | "official_link_only" | "existing_import" | "pending_verification";
+export type AtsPlatform = "lever" | "greenhouse" | "ashby" | "workday" | "custom" | "unknown" | "none";
+export type SourceAccessMethod = "public_structured_endpoint" | "manual_official_career_page" | "manual_import" | "blocked";
+export type PermissionStatus = "approved_public_endpoint" | "manual_research_only" | "direct_link_only" | "unverified" | "requires_license_or_written_permission";
 
 export type SourceDefinition = {
   id: string;
@@ -75,6 +78,14 @@ export type SourceDefinition = {
   authorizationStatus: SourceAuthorizationState;
   authorizationEvidenceId: string | null;
   authorizationVersion: string;
+  atsPlatform?: AtsPlatform;
+  atsTenantIdentifier?: string;
+  accessMethod?: SourceAccessMethod;
+  refreshSchedule?: string | null;
+  scheduleEnabled?: boolean;
+  ingestionPermissionStatus?: PermissionStatus;
+  paidDisplayPermissionStatus?: PermissionStatus;
+  permissionEvidenceUrl?: string | null;
   automationStatus: SourceAutomationStatus;
   isOfficial: boolean;
   isDirectEmployer: boolean;

@@ -18,6 +18,8 @@
     "test:rollback": "node scripts/run-supabase-rollback-test.mjs",
     "test:document-render": "vitest run --config vitest.render.config.mts",
     "types:database:check": "node scripts/check-database-types.mjs",
+    "jobs:sources:validate": "node scripts/validate-job-source-batch.mjs",
+    "jobs:sources:export": "node --experimental-strip-types scripts/export-job-source-inventory.mjs",
     "stripe:configure:test": "node scripts/configure-stripe-test-prices.mjs"
   },
   "dependencies": {
