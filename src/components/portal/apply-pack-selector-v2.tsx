@@ -82,6 +82,7 @@ export function ApplyPackSelector({
   deliveredReleaseId,
   sourceSnapshotId,
   initialEmail,
+  fixtureAvailableUnits,
 }: {
   matches: MatchForSelection[];
   evaluatedAt: string;
@@ -89,7 +90,11 @@ export function ApplyPackSelector({
   deliveredReleaseId: string;
   sourceSnapshotId: string;
   initialEmail: string;
+  fixtureAvailableUnits?: number;
 }) {
+  const safeFixtureAvailableUnits = process.env.NODE_ENV === "production"
+    ? undefined
+    : fixtureAvailableUnits;
   const [selected, setSelected] = useState<string[]>([]);
   const [notes, setNotes] = useState<Notes>({});
   const [contact, setContact] = useState({
@@ -113,9 +118,14 @@ export function ApplyPackSelector({
   const [busy, setBusy] = useState(false);
   const [conflictFor, setConflictFor] = useState("");
   const [explanation, setExplanation] = useState("");
-  const [availableUnits, setAvailableUnits] = useState<number | null>(null);
+  const [availableUnits, setAvailableUnits] = useState<number | null>(
+    safeFixtureAvailableUnits === undefined
+      ? null
+      : Math.max(0, Math.min(10, safeFixtureAvailableUnits)),
+  );
 
   useEffect(() => {
+    if (safeFixtureAvailableUnits !== undefined) return;
     const controller = new AbortController();
     const load = () => Promise.all([
       fetch("/api/capacity/apply_pack", { signal: controller.signal }).then(async (response) => response.ok ? response.json() : null),
@@ -135,7 +145,7 @@ export function ApplyPackSelector({
       controller.abort();
       window.removeEventListener("applypack:references-updated", refreshReferences);
     };
-  }, []);
+  }, [safeFixtureAvailableUnits]);
 
   function toggle(id: string) {
     setMessage("");
@@ -286,11 +296,13 @@ export function ApplyPackSelector({
                .map((permission) => ({ ...permission, opaqueId: reference.opaqueId, name: reference.reference.name })));
            const referenceMaximum = Math.min(3, match.reference_count || 3);
            const includesReferenceSheet = referenceSheetJobs.includes(match.id);
+           const headingId = `match-${match.id}-heading`;
+           const companyId = `match-${match.id}-company`;
           return (
-            <article className={"match-card " + (checked ? "match-card--selected" : "")} key={match.id}>
+            <article className={"match-card " + (checked ? "match-card--selected" : "")} key={match.id} aria-labelledby={`${headingId} ${companyId}`}>
               <div className="match-card__top"><span>#{match.position}</span><label><input aria-label={`${checked ? "Remove" : "Select"} Tailored Resume + Cover Letter for ${match.job.title} at ${match.job.company}`} type="checkbox" checked={checked} onChange={() => toggle(match.id)} disabled={!available || (!checked && selected.length >= maxSelection)} /><i><Check aria-hidden="true" /></i><b>{checked ? "Selected" : available ? "Select" : "Unavailable"}</b></label></div>
-              <h3>{match.job.title}</h3>
-              <p className="match-company">{match.job.company}</p>
+              <h3 id={headingId}>{match.job.title}</h3>
+              <p id={companyId} className="match-company">{match.job.company}</p>
               <div className="job-labels" aria-label="Job classification">
                 <span>{label(match.job.w2_or_contractor || "unknown")}</span>
                 <span>{label(match.job.work_mode || "unknown")}</span>

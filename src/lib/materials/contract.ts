@@ -2,7 +2,7 @@ export const MATERIAL_LINE_PRICE_CENTS = 800;
 export const MATERIAL_MAX_LINES = 10;
 export const MATERIAL_CURRENCY = "USD";
 export const MATERIAL_DOWNLOAD_SECONDS = 15 * 60;
-export const MATERIAL_GENERATOR_VERSION = "applypack-evidence-bound-v1";
+export const MATERIAL_GENERATOR_VERSION = "applypack-evidence-bound-v2";
 
 export const careerBreakOptions = [
   { value: "KEEP_EXISTING_TIMELINE", label: "Keep my existing timeline" },

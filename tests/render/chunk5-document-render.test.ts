@@ -20,6 +20,7 @@ const FACT_ONE = "10000000-0000-4000-8000-000000000002";
 const FACT_TWO = "10000000-0000-4000-8000-000000000003";
 const FACT_HEADER = "10000000-0000-4000-8000-000000000004";
 const FACT_BREAK = "10000000-0000-4000-8000-000000000005";
+const FACT_EDUCATION = "10000000-0000-4000-8000-000000000006";
 const JOB_EVIDENCE = "20000000-0000-4000-8000-000000000001";
 const REFERENCE_PERMISSION = "30000000-0000-4000-8000-000000000001";
 
@@ -38,29 +39,58 @@ type RenderRecord = {
   arialResolved: true;
 };
 
+type PackageRecord = {
+  scenario: string;
+  artifact: "RESUME" | "COVER_LETTER" | "REFERENCE_SHEET";
+  expectedPages: 1 | 2;
+  filename: string;
+  docxSha256: string;
+  packageQaSha256: string;
+  extractedTextSha256: string;
+};
+
 function hash(value: Buffer) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function coverParagraph(opening: string, factId: string) {
-  const words = "coordinated accurate customer records across changing priorities while communicating clearly with colleagues and resolving practical workflow problems through careful follow through".split(" ");
-  const text = [opening, ...Array.from({ length: 52 }, (_, index) => words[index % words.length])].join(" ") + ".";
-  return { text, candidateFactIds: [factId], jobEvidenceIds: [JOB_EVIDENCE] };
+function realisticCoverLetter(jobTitle: string, employer: string) {
+  return [
+    {
+      text: `The ${jobTitle} role at ${employer} calls for careful records, responsive communication, and dependable follow-through. In my administrative work, I coordinated customer files, reviewed documents for accuracy, and kept colleagues informed when priorities changed. That combination of practical organization and clear service is the verified experience I would bring to this opportunity. I am especially prepared for work where details must remain understandable as an item moves between customers and coworkers.`,
+      candidateFactIds: [FACT_ONE],
+      jobEvidenceIds: [JOB_EVIDENCE],
+    },
+    {
+      text: "One recurring responsibility involved checking incoming information before it moved to the next person. I compared details, corrected routine discrepancies, and documented the current status so others could act with confidence. When a question required additional review, I explained what was known, identified what was still needed, and followed the item through resolution. This approach reduced ambiguity at handoff points and gave the next person a practical record of the action already completed.",
+      candidateFactIds: [FACT_TWO],
+      jobEvidenceIds: [JOB_EVIDENCE],
+    },
+    {
+      text: "I also supported customers and coworkers during schedule changes and competing requests. I organized the work by urgency, maintained accurate notes, and provided concise updates rather than allowing requests to disappear between handoffs. Those habits helped me contribute steady support while respecting established procedures and the limits of my role. I learned to ask focused questions, confirm the requested outcome, and close the loop when the work was finished.",
+      candidateFactIds: [FACT_ONE, FACT_TWO],
+      jobEvidenceIds: [JOB_EVIDENCE],
+    },
+    {
+      text: `I would welcome the opportunity to discuss how this documented background could support the ${jobTitle} team at ${employer}. I value work that depends on accuracy, respectful communication, and consistent completion. Thank you for considering the experience described here and for the opportunity to explain how I approach service and coordination.`,
+      candidateFactIds: [FACT_TWO],
+      jobEvidenceIds: [JOB_EVIDENCE],
+    },
+  ];
 }
 
 function baseFixture(): EvidenceBoundMaterialInput {
-  return {
+  const input: EvidenceBoundMaterialInput = {
     contact: {
-      displayName: "Synthetic Candidate",
-      email: "candidate@example.invalid",
+      displayName: "Jordan Bennett",
+      email: "jordan.bennett@example.invalid",
       phone: "555-010-2026",
       cityState: "Richmond, VA",
-      linkedInOrPortfolio: "https://example.invalid/candidate",
+      linkedInOrPortfolio: "https://jordan-bennett.example.invalid",
       candidateFactIds: [FACT_CONTACT],
     },
     job: {
       exactTitle: "Operations Coordinator",
-      employer: "Example Services",
+      employer: "Lakeview Service Partners",
       location: "Richmond, VA",
       jobEvidenceIds: [JOB_EVIDENCE],
     },
@@ -75,8 +105,8 @@ function baseFixture(): EvidenceBoundMaterialInput {
     ],
     experiences: [{
       historicalTitle: "Administrative Specialist",
-      employer: "Community Example",
-      dates: "2021 to 2026",
+      employer: "Riverton Member Services",
+      dates: "March 2021 to August 2026",
       location: "Richmond, VA",
       headerCandidateFactIds: [FACT_HEADER],
       bullets: [
@@ -84,33 +114,32 @@ function baseFixture(): EvidenceBoundMaterialInput {
         { text: "Communicated status updates and resolved routine workflow questions.", candidateFactIds: [FACT_TWO], priority: 2 },
       ],
     }],
-    coverLetterParagraphs: [
-      coverParagraph("The Operations Coordinator role calls for dependable records and practical customer support", FACT_ONE),
-      coverParagraph("My recent work required careful coordination when priorities shifted", FACT_TWO),
-      coverParagraph("Colleagues relied on my clear updates and consistent review habits", FACT_ONE),
-      coverParagraph("I would welcome the opportunity to bring that verified approach to this work", FACT_TWO),
-    ],
+    coverLetterParagraphs: [],
     verifiedHiringManager: null,
     finalVersionAt: "2026-09-07T14:00:00.000Z",
     careerBreak: { choice: "KEEP_EXISTING_TIMELINE", mentionInCoverLetter: false, candidateFactIds: [] },
     rules: { outputFormat: "DOCX", resumePageLimit: 1 },
     references: [{
       permissionId: REFERENCE_PERMISSION,
-      name: "Synthetic Reference",
-      titleAndOrganization: "Program Lead, Example Organization",
+      name: "Taylor Brooks",
+      titleAndOrganization: "Program Director, Riverton Member Services",
       relationship: "Former project lead",
-      email: "reference@example.invalid",
+      email: "taylor.brooks@example.invalid",
       phone: "555-010-3030",
       approvedContext: "Observed document coordination and customer communication.",
     }],
   };
+  input.coverLetterParagraphs = realisticCoverLetter(input.job.exactTitle, input.job.employer);
+  return input;
 }
 
 function careerChangeFixture() {
   const input = baseFixture();
-  input.contact.displayName = "Synthetic Career Changer";
+  input.contact.displayName = "María Alvarez";
+  input.contact.email = "maria.alvarez@example.invalid";
+  input.contact.linkedInOrPortfolio = "https://maria-alvarez.example.invalid";
   input.job.exactTitle = "Customer Support Coordinator";
-  input.job.employer = "Example Health Services";
+  input.job.employer = "Harborstone Health Services";
   input.professionalSummary.text = "Customer support professional who transfers verified coordination and communication experience into service operations.";
   input.careerBreak = {
     choice: "CAREER_BREAK",
@@ -120,30 +149,72 @@ function careerChangeFixture() {
     candidateFactIds: [FACT_BREAK],
   };
   input.references = undefined;
+  input.coverLetterParagraphs = realisticCoverLetter(input.job.exactTitle, input.job.employer);
   return input;
 }
 
 function seniorTwoPageFixture() {
   const input = baseFixture();
-  input.contact.displayName = "Synthetic Senior Candidate";
+  input.contact.displayName = "Darius Morgan";
+  input.contact.email = "darius.morgan@example.invalid";
+  input.contact.linkedInOrPortfolio = "https://darius-morgan.example.invalid";
   input.job.exactTitle = "Senior Program Coordinator";
-  input.job.employer = "Example Civic Programs";
+  input.job.employer = "Fairmont Civic Programs";
   input.rules.resumePageLimit = 2;
   input.humanApprovedTwoPageException = true;
   input.references = undefined;
-  input.experiences = Array.from({ length: 7 }, (_, experienceIndex) => ({
-    historicalTitle: `Verified Role ${experienceIndex + 1}`,
-    employer: `Verified Employer ${experienceIndex + 1}`,
-    dates: `${2012 + experienceIndex} to ${2013 + experienceIndex}`,
+  const roles = [
+    ["Program Assistant", "Marlowe Community Center", "January 2012 to December 2013", "registration", "community workshops", "participants", "attendance", "event"],
+    ["Service Coordinator", "Alder Grove Support Network", "February 2014 to August 2015", "referral", "service appointments", "clients", "referral", "intake"],
+    ["Operations Specialist", "Cedar Lane Family Services", "September 2015 to June 2017", "vendor", "office operations", "vendors", "purchasing", "vendor"],
+    ["Project Coordinator", "Blue Willow Learning Collaborative", "July 2017 to November 2019", "project", "training sessions", "facilitators", "milestone", "project"],
+    ["Program Operations Manager", "Summit Bridge Resource Center", "December 2019 to May 2022", "grant", "funded programs", "partners", "grant", "reporting"],
+    ["Portfolio Coordinator", "Riverbend Civic Alliance", "June 2022 to January 2024", "portfolio", "cross-team initiatives", "stakeholders", "portfolio", "handoff"],
+    ["Senior Program Coordinator", "Northstar Civic Initiatives", "February 2024 to Present", "program", "regional initiatives", "community partners", "performance", "review"],
+  ] as const;
+  input.experiences = roles.map(([historicalTitle, employer, dates, focus, programArea, audience, reportType, process]) => ({
+    historicalTitle,
+    employer,
+    dates,
     headerCandidateFactIds: [FACT_HEADER],
-    bullets: Array.from({ length: experienceIndex === 6 ? 3 : 7 }, (_, bulletIndex) => ({
-      text: `Coordinated verified program responsibility ${experienceIndex + 1}.${bulletIndex + 1} with accurate records and clear updates.`,
+    bullets: [
+      `Reviewed ${focus} records for completeness and corrected routine inconsistencies before reporting.`,
+      `Coordinated schedules and materials for ${programArea}, documenting each change for the responsible colleague.`,
+      `Answered questions from ${audience}, confirmed next steps, and followed unresolved requests through closure.`,
+      `Prepared ${reportType} summaries that helped supervisors compare open items with completed work.`,
+      `Improved ${process} transitions by organizing shared files and using consistent status notes.`,
+    ].map((text, bulletIndex) => ({
+      text,
       candidateFactIds: [bulletIndex % 2 ? FACT_ONE : FACT_TWO],
       essential: true,
       priority: 1,
     })),
   }));
+  input.educationAndCertifications = [{
+    degree: "Bachelor of Arts in Public Administration",
+    detail: "Commonwealth College, 2011",
+    candidateFactIds: [FACT_EDUCATION],
+  }];
+  input.coverLetterParagraphs = realisticCoverLetter(input.job.exactTitle, input.job.employer);
   return input;
+}
+
+function evidenceScenarios() {
+  return [
+    { id: "returning-operations", input: baseFixture() },
+    { id: "career-change-support", input: careerChangeFixture() },
+    { id: "senior-program", input: seniorTwoPageFixture() },
+  ];
+}
+
+function packageOutputDirectory() {
+  const configured = process.env.APPLYPACK_PACKAGE_EVIDENCE_DIR?.trim() || "";
+  if (!configured || !isAbsolute(configured)) throw new Error("package_evidence_absolute_directory_required");
+  const resolved = resolve(configured);
+  if (!basename(resolved).startsWith("applypack-chunk5-package-")) {
+    throw new Error("package_evidence_directory_name_invalid");
+  }
+  return resolved;
 }
 
 function outputDirectory() {
@@ -196,16 +267,52 @@ async function renderArtifact(
 }
 
 describe("Chunk 5 real document rendering", () => {
+  const packageEvidence = process.env.APPLYPACK_PACKAGE_EVIDENCE_DIR ? it : it.skip;
+
+  packageEvidence("writes structurally verified DOCX review artifacts without claiming rendered proof", async () => {
+    const directory = packageOutputDirectory();
+    await mkdir(directory, { recursive: false });
+    const records: PackageRecord[] = [];
+    for (const scenario of evidenceScenarios()) {
+      const generated = await generateEvidenceBoundMaterials(scenario.input);
+      const artifacts = [
+        { type: "RESUME" as const, artifact: generated.resume },
+        { type: "COVER_LETTER" as const, artifact: generated.coverLetter },
+        ...(generated.referenceSheet ? [{ type: "REFERENCE_SHEET" as const, artifact: generated.referenceSheet }] : []),
+      ];
+      for (const { type, artifact } of artifacts) {
+        const inspection = await inspectDocxPackage(artifact.buffer, type);
+        expect(inspection.passed).toBe(true);
+        const stem = `${scenario.id}-${type.toLowerCase().replace("_", "-")}`;
+        await Promise.all([
+          writeFile(resolve(directory, `${stem}.docx`), artifact.buffer, { flag: "wx" }),
+          writeFile(resolve(directory, `${stem}-expected.txt`), inspection.extractedText + "\n", { flag: "wx" }),
+        ]);
+        records.push({
+          scenario: scenario.id,
+          artifact: type,
+          expectedPages: artifact.expectedPageCount,
+          filename: artifact.filename,
+          docxSha256: hash(artifact.buffer),
+          packageQaSha256: inspection.packageQaSha256,
+          extractedTextSha256: inspection.extractedTextSha256,
+        });
+      }
+    }
+    await writeFile(resolve(directory, "package-report.json"), JSON.stringify({
+      schemaVersion: "applypack-chunk5-package-evidence-v2",
+      createdAt: new Date().toISOString(),
+      records,
+    }, null, 2) + "\n", { flag: "wx" });
+    expect(records).toHaveLength(7);
+  });
+
   it("renders representative one- and two-page DOCX artifacts with exact text and Arial", async () => {
     const configuration = documentRendererConfiguration();
     expect(configuration.ready).toBe(true);
     const directory = outputDirectory();
     await mkdir(directory, { recursive: false });
-    const scenarios = [
-      { id: "returning-operations", input: baseFixture() },
-      { id: "career-change-support", input: careerChangeFixture() },
-      { id: "senior-program", input: seniorTwoPageFixture() },
-    ];
+    const scenarios = evidenceScenarios();
     const records: RenderRecord[] = [];
     for (const scenario of scenarios) {
       const generated = await generateEvidenceBoundMaterials(scenario.input);

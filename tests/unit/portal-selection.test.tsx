@@ -55,6 +55,28 @@ describe("Tailored Resume + Cover Letter customer selection", () => {
     expect(screen.getByRole("heading", { name: /1 document set.*\$8 total/ })).toBeInTheDocument();
   });
 
+  it("keeps the development-only manual fixture self-contained and gives every job card a meaningful name", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ApplyPackSelector
+      matches={[match]}
+      evaluatedAt={new Date().toISOString()}
+      deliveredOrderId="44444444-4444-4444-8444-444444444444"
+      deliveredReleaseId="55555555-5555-4555-8555-555555555555"
+      sourceSnapshotId="66666666-6666-4666-8666-666666666666"
+      initialEmail="synthetic@example.invalid"
+      fixtureAvailableUnits={10}
+    />);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("article", { name: "Operations Assistant Synthetic Employer" })).toBeInTheDocument();
+    const checkbox = screen.getByRole("checkbox", { name: /Select Tailored Resume \+ Cover Letter for Operations Assistant/ });
+    expect(checkbox).toBeEnabled();
+    await userEvent.click(checkbox);
+    expect(checkbox).toBeChecked();
+    expect(screen.getByRole("heading", { name: /1 document set.*\$8 total/ })).toBeInTheDocument();
+  });
+
   it("renders the immutable exact-ten release with all five explanations and plain-language warnings", async () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => ({ availableUnits: 10 }) })

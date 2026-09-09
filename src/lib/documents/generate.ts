@@ -3,6 +3,7 @@ import {
   AlignmentType,
   BorderStyle,
   Document,
+  HeadingLevel,
   LevelFormat,
   Packer,
   Paragraph,
@@ -28,6 +29,8 @@ const PAGE_HEIGHT = 15_840;
 const MARGIN_TOP_BOTTOM = convertInchesToTwip(0.55);
 const MARGIN_LEFT_RIGHT = convertInchesToTwip(0.7);
 const HEADING_BORDER = { style: BorderStyle.SINGLE, size: 12, color: "4A4A4A", space: 2 };
+const ONE_PAGE_FIT_UNITS = 65;
+const TWO_PAGE_FIT_UNITS = 150;
 
 export type EvidenceSentence = {
   text: string;
@@ -91,6 +94,7 @@ export type EvidenceBoundMaterialInput = {
   professionalSummary: EvidenceSentence;
   coreSkills: EvidenceSentence[];
   experiences: VerifiedExperience[];
+  experienceOrder?: "REVERSE_CHRONOLOGICAL" | "PRESERVE_APPROVED_HYBRID";
   educationAndCertifications?: VerifiedEducation[];
   coverLetterParagraphs: EvidenceSentence[];
   verifiedHiringManager?: string | null;
@@ -353,19 +357,34 @@ function buildResume(
   }
   children.push(majorHeading("WORK EXPERIENCE", 280));
   fitted.experiences.forEach((experience, experienceIndex) => {
-    const headerText = [experience.historicalTitle, experience.employer].map(assertDeliverableText).join(" | ");
+    const title = assertDeliverableText(experience.historicalTitle);
+    const employer = assertDeliverableText(experience.employer);
+    const dates = assertDeliverableText(experience.dates);
+    const location = experience.location ? assertDeliverableText(experience.location) : "";
+    const headerText = [title, employer, dates, location].filter(Boolean).join("\n");
     recordFixedBinding(claims, `resume.experience.${experienceIndex + 1}.header`, headerText,
       experience.headerCandidateFactIds, []);
-    children.push(new Paragraph({
-      spacing: { before: experienceIndex ? 160 : 60, after: experienceIndex ? 60 : 40 },
-      children: [
-        new TextRun({ text: assertDeliverableText(experience.historicalTitle) + " | " + assertDeliverableText(experience.employer), bold: true, font: "Arial", size: 21 }),
-        new TextRun({ text: `  ${assertDeliverableText(experience.dates)}${experience.location ? " | " + assertDeliverableText(experience.location) : ""}`, font: "Arial", size: 21 }),
-      ],
-    }));
+    children.push(
+      paragraph(title, {
+        before: experienceIndex ? 160 : 60,
+        after: 20,
+        size: 21,
+        bold: true,
+        keepNext: true,
+        keepLines: true,
+      }),
+      paragraph(employer, { after: 20, size: 20, keepNext: true, keepLines: true }),
+      paragraph([dates, location].filter(Boolean).join(" | "), {
+        after: 40,
+        size: 19,
+        italics: true,
+        keepNext: true,
+        keepLines: true,
+      }),
+    );
     if (experience.descriptor) {
       children.push(paragraph(recordClaim(claims, `resume.experience.${experienceIndex + 1}.descriptor`,
-        experience.descriptor), { after: 100, size: 19, italics: true }));
+        experience.descriptor), { after: 100, size: 19, italics: true, keepNext: true, keepLines: true }));
     }
     experience.bullets.forEach((bullet, bulletIndex) => {
       children.push(new Paragraph({
@@ -381,8 +400,8 @@ function buildResume(
   });
   const breakEntry = careerBreakPresentation(input.careerBreak);
   if (breakEntry) {
-    const text = [breakEntry.label, breakEntry.dates].filter(Boolean).join(" | ");
-    children.push(majorHeading("ADDITIONAL EXPERIENCE", 200));
+    const text = [`${breakEntry.label} (non-employment timeline note)`, breakEntry.dates].filter(Boolean).join(" | ");
+    children.push(majorHeading("CAREER TIMELINE NOTE", 200));
     children.push(paragraph(recordClaim(claims, "resume.careerBreak", {
       text,
       candidateFactIds: input.careerBreak.candidateFactIds,
@@ -420,6 +439,8 @@ function buildCoverLetter(
   if (/^(?:I am writing to express my interest|I am excited to apply|I am thrilled to apply|With my extensive background|I believe I would be an excellent fit)/i.test(paragraphs[0])) {
     throw new Error("generic_cover_letter_opening");
   }
+  assertCoverLetterTargetConsistency(paragraphs, input.job.exactTitle, input.job.employer);
+  assertNoExcessiveRepetition(paragraphs);
   const evidencePoints = unique(input.coverLetterParagraphs.flatMap((item) => item.candidateFactIds || []));
   if (evidencePoints.length < 2 || evidencePoints.length > 4) throw new Error("cover_letter_evidence_point_count_invalid");
   if (paragraphs.some((text) => resumeBullets.some((bullet) => normalizeForComparison(text) === normalizeForComparison(bullet)))) {
@@ -595,6 +616,9 @@ async function packCleanDocument(document: Document) {
 
 function majorHeading(text: string, before: number) {
   return new Paragraph({
+    heading: HeadingLevel.HEADING_2,
+    keepNext: true,
+    keepLines: true,
     spacing: { before, after: 120 },
     border: { bottom: HEADING_BORDER },
     children: [new TextRun({ text, bold: true, font: "Arial", size: 21 })],
@@ -609,9 +633,13 @@ function paragraph(text: string, options: {
   size?: number;
   bold?: boolean;
   italics?: boolean;
+  keepNext?: boolean;
+  keepLines?: boolean;
 }) {
   return new Paragraph({
     alignment: options.alignment || AlignmentType.LEFT,
+    keepNext: options.keepNext,
+    keepLines: options.keepLines,
     spacing: { before: options.before || 0, after: options.after || 0, line: options.line || 240 },
     children: [new TextRun({
       text: assertDeliverableText(text),
@@ -625,20 +653,28 @@ function paragraph(text: string, options: {
 }
 
 function fitResume(input: EvidenceBoundMaterialInput) {
-  const experiences = input.experiences.map((experience) => ({
+  const experiences = input.experiences.map((experience, originalIndex) => ({
     ...experience,
     bullets: [...experience.bullets],
+    originalIndex,
   }));
+  if (input.experienceOrder !== "PRESERVE_APPROVED_HYBRID") {
+    experiences.sort((left, right) => experienceEndSortKey(right.dates) - experienceEndSortKey(left.dates)
+      || left.originalIndex - right.originalIndex);
+  }
   const skills = [...input.coreSkills];
   const summary = { ...input.professionalSummary };
   const actions: string[] = [];
+  if (experiences.some((experience, index) => experience.originalIndex !== index)) {
+    actions.push("ordered_experience_reverse_chronological");
+  }
   const units = () => 14
     + Math.ceil(summary.text.length / 85)
     + skills.length
-    + experiences.reduce((total, experience) => total + 3
+    + experiences.reduce((total, experience) => total + 5
       + experience.bullets.reduce((sum, bullet) => sum + Math.max(1, Math.ceil(bullet.text.length / 90)), 0), 0)
     + (input.educationAndCertifications?.length || 0) * 2;
-  if (units() > 82) {
+  if (units() > ONE_PAGE_FIT_UNITS) {
     const leastRelevant = experiences.flatMap((experience, experienceIndex) =>
       experience.bullets.map((bullet, bulletIndex) => ({ experience, experienceIndex, bullet, bulletIndex })))
       .filter((entry) => !entry.bullet.essential && entry.experience.bullets.length > 1)
@@ -649,7 +685,7 @@ function fitResume(input: EvidenceBoundMaterialInput) {
       actions.push("removed_least_relevant_bullet");
     }
   }
-  if (units() > 82) {
+  if (units() > ONE_PAGE_FIT_UNITS) {
     const seenBullets = new Set<string>();
     let redundant = false;
     experiences.forEach((experience) => {
@@ -676,7 +712,7 @@ function fitResume(input: EvidenceBoundMaterialInput) {
     skills.splice(0, skills.length, ...deduplicatedSkills);
     if (redundant) actions.push("shortened_redundancy");
   }
-  while (units() > 82) {
+  while (units() > ONE_PAGE_FIT_UNITS) {
     const removableSkill = skills.map((skill, index) => ({ skill, index }))
       .filter(({ skill }) => !skill.essential)
       .sort((left, right) => (right.skill.priority || 3) - (left.skill.priority || 3))[0];
@@ -684,14 +720,14 @@ function fitResume(input: EvidenceBoundMaterialInput) {
     skills.splice(removableSkill.index, 1);
     if (!actions.includes("removed_low_priority_skill")) actions.push("removed_low_priority_skill");
   }
-  if (units() > 82 && summary.text.length > 240) {
+  if (units() > ONE_PAGE_FIT_UNITS && summary.text.length > 240) {
     const sentences = summary.text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map((value) => value.trim()).filter(Boolean) || [];
     if (sentences.length >= 3) {
       summary.text = sentences.slice(0, 2).join(" ");
       actions.push("tightened_summary");
     }
   }
-  while (units() > 82) {
+  while (units() > ONE_PAGE_FIT_UNITS) {
     const olderDetail = experiences.flatMap((experience, experienceIndex) =>
       experienceIndex === 0 ? [] : experience.bullets.map((bullet, bulletIndex) => ({ experience, experienceIndex, bullet, bulletIndex })))
       .filter((entry) => !entry.bullet.essential && entry.experience.bullets.length > 1)
@@ -701,8 +737,8 @@ function fitResume(input: EvidenceBoundMaterialInput) {
     olderDetail.experience.bullets.splice(olderDetail.bulletIndex, 1);
     if (!actions.includes("reduced_older_role_detail")) actions.push("reduced_older_role_detail");
   }
-  if (units() > 150) throw new Error("resume_content_exceeds_two_page_limit");
-  const expectedPages = units() <= 82 ? 1 : 2;
+  if (units() > TWO_PAGE_FIT_UNITS) throw new Error("resume_content_exceeds_two_page_limit");
+  const expectedPages = units() <= ONE_PAGE_FIT_UNITS ? 1 : 2;
   if (expectedPages === 2 && (!input.humanApprovedTwoPageException || input.rules.resumePageLimit !== 2)) {
     throw new Error("resume_content_requires_human_approved_two_page_exception");
   }
@@ -730,6 +766,52 @@ function easternDate(value: string) {
 
 function normalizeForComparison(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function experienceEndSortKey(value: string) {
+  const normalized = assertDeliverableText(value);
+  if (/\b(?:present|current|now)\b/i.test(normalized)) return Number.MAX_SAFE_INTEGER;
+  const years = [...normalized.matchAll(/\b(?:19|20)\d{2}\b/g)].map((match) => Number(match[0]));
+  return years.length ? Math.max(...years) : Number.NEGATIVE_INFINITY;
+}
+
+function assertCoverLetterTargetConsistency(paragraphs: string[], jobTitleValue: string, employerValue: string) {
+  const jobTitle = normalizeForComparison(assertDeliverableText(jobTitleValue));
+  const employer = normalizeForComparison(assertDeliverableText(employerValue));
+  const opening = normalizeForComparison(paragraphs[0]);
+  if (!opening.includes(jobTitle) && !opening.includes(employer)) {
+    throw new Error("cover_letter_target_not_specific");
+  }
+  for (const paragraphText of paragraphs) {
+    const normalized = normalizeForComparison(paragraphText);
+    const patterns = [
+      new RegExp(`\\bthe (.+?) role at ${escapeRegExp(employer)} calls for\\b`, "g"),
+      /\bthe (.{1,80}?) (?:role|position) calls for\b/g,
+    ];
+    for (const pattern of patterns) {
+      for (const match of normalized.matchAll(pattern)) {
+        if (match[1] !== jobTitle) {
+          throw new Error("cover_letter_target_role_mismatch");
+        }
+      }
+    }
+  }
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function assertNoExcessiveRepetition(paragraphs: string[]) {
+  const words = normalizeForComparison(paragraphs.join(" ")).split(" ").filter(Boolean);
+  const seen = new Map<string, number>();
+  const windowSize = 8;
+  for (let index = 0; index <= words.length - windowSize; index += 1) {
+    const phrase = words.slice(index, index + windowSize).join(" ");
+    const count = (seen.get(phrase) || 0) + 1;
+    if (count >= 3) throw new Error("cover_letter_excessive_repetition");
+    seen.set(phrase, count);
+  }
 }
 
 function unique(values: string[]) {
@@ -789,6 +871,8 @@ export async function inspectDocxPackage(
     exactMargins: /<w:pgMar\b[^>]*\bw:top="792"[^>]*\bw:right="1008"[^>]*\bw:bottom="792"[^>]*\bw:left="1008"/i.test(documentXml),
     arial: /w:(?:ascii|hAnsi|cs)="Arial"/i.test(stylesXml + documentXml),
     nativeBullets: artifact !== "RESUME" || (Boolean(numberingXml) && /<w:numPr>/i.test(documentXml)),
+    semanticSectionHeadings: artifact === "COVER_LETTER" || /<w:pStyle\b[^>]*\bw:val="Heading2"/i.test(documentXml),
+    keepHeadingsWithContent: artifact === "COVER_LETTER" || /<w:keepNext\b/i.test(documentXml),
     noPlaceholdersOrPromptArtifacts: Boolean(extractedText)
       && !/\[[^\]]+\]|\b(?:TBD|TODO|PLACEHOLDER|INSERT (?:NAME|DATE|COMPANY|TITLE)|YOUR NAME)\b/i.test(extractedText)
       && !containsPromptInjection(extractedText),

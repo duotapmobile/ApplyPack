@@ -67,6 +67,8 @@ test("Chunk 5 exact-ten selection remains usable at every required width", async
     await page.goto("/e2e/chunk5?state=selection");
     await expect(page.locator(".match-card")).toHaveCount(10);
     await expect(page.getByRole("heading", { name: "10 Researched Job Matches" })).toBeVisible();
+    await expect(page.getByRole("article", { name: "Operations Coordinator Synthetic Employer 1" })).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: /Select Tailored Resume \+ Cover Letter for Operations Coordinator/ })).toBeEnabled();
     await expect(page.getByText(/Compensation was not published\. Verify pay/)).toBeVisible();
     await capture(page, `${width}-exact-ten-selection.png`);
   }

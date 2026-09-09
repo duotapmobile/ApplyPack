@@ -23,14 +23,33 @@ const FACT_HEADER = "10000000-0000-4000-8000-000000000004";
 const JOB_EVIDENCE = "20000000-0000-4000-8000-000000000001";
 const REFERENCE_PERMISSION = "30000000-0000-4000-8000-000000000001";
 
-function coverParagraph(opening: string, factId: string) {
-  const words = "coordinated accurate customer records across changing priorities while communicating clearly with colleagues and resolving practical workflow problems through careful follow through".split(" ");
-  const text = [opening, ...Array.from({ length: 52 }, (_, index) => words[index % words.length])].join(" ") + ".";
-  return { text, candidateFactIds: [factId], jobEvidenceIds: [JOB_EVIDENCE] };
+function realisticCoverLetter(jobTitle: string, employer: string) {
+  return [
+    {
+      text: `The ${jobTitle} role at ${employer} calls for careful records, responsive communication, and dependable follow-through. In my administrative work, I coordinated customer files, reviewed documents for accuracy, and kept colleagues informed when priorities changed. That combination of practical organization and clear service is the verified experience I would bring to this opportunity. I am especially prepared for work where details must remain understandable as an item moves between customers and coworkers.`,
+      candidateFactIds: [FACT_ONE],
+      jobEvidenceIds: [JOB_EVIDENCE],
+    },
+    {
+      text: "One recurring responsibility involved checking incoming information before it moved to the next person. I compared details, corrected routine discrepancies, and documented the current status so others could act with confidence. When a question required additional review, I explained what was known, identified what was still needed, and followed the item through resolution. This approach reduced ambiguity at handoff points and gave the next person a practical record of the action already completed.",
+      candidateFactIds: [FACT_TWO],
+      jobEvidenceIds: [JOB_EVIDENCE],
+    },
+    {
+      text: "I also supported customers and coworkers during schedule changes and competing requests. I organized the work by urgency, maintained accurate notes, and provided concise updates rather than allowing requests to disappear between handoffs. Those habits helped me contribute steady support while respecting established procedures and the limits of my role. I learned to ask focused questions, confirm the requested outcome, and close the loop when the work was finished.",
+      candidateFactIds: [FACT_ONE, FACT_TWO],
+      jobEvidenceIds: [JOB_EVIDENCE],
+    },
+    {
+      text: `I would welcome the opportunity to discuss how this documented background could support the ${jobTitle} team at ${employer}. I value work that depends on accuracy, respectful communication, and consistent completion. Thank you for considering the experience described here and for the opportunity to explain how I approach service and coordination.`,
+      candidateFactIds: [FACT_TWO],
+      jobEvidenceIds: [JOB_EVIDENCE],
+    },
+  ];
 }
 
 function fixture(): EvidenceBoundMaterialInput {
-  return {
+  const input: EvidenceBoundMaterialInput = {
     contact: {
       displayName: "Jamie Rivera",
       email: "jamie@example.invalid",
@@ -65,12 +84,7 @@ function fixture(): EvidenceBoundMaterialInput {
         { text: "Communicated status updates and resolved routine workflow questions.", candidateFactIds: [FACT_TWO], priority: 2 },
       ],
     }],
-    coverLetterParagraphs: [
-      coverParagraph("The Operations Coordinator role calls for dependable records and practical customer support", FACT_ONE),
-      coverParagraph("My recent work required careful coordination when priorities shifted", FACT_TWO),
-      coverParagraph("Colleagues relied on my clear updates and consistent review habits", FACT_ONE),
-      coverParagraph("I would welcome the opportunity to bring that verified approach to this work", FACT_TWO),
-    ],
+    coverLetterParagraphs: [],
     verifiedHiringManager: null,
     finalVersionAt: "2026-09-07T14:00:00.000Z",
     careerBreak: { choice: "KEEP_EXISTING_TIMELINE", mentionInCoverLetter: false, candidateFactIds: [] },
@@ -85,6 +99,8 @@ function fixture(): EvidenceBoundMaterialInput {
       approvedContext: "Observed document coordination and customer communication.",
     }],
   };
+  input.coverLetterParagraphs = realisticCoverLetter(input.job.exactTitle, input.job.employer);
+  return input;
 }
 
 describe("Chunk 5 materials contract", () => {
@@ -157,6 +173,7 @@ describe("Chunk 5 evidence-bound DOCX generation", () => {
     expect(generated.resume.filename).toBe("Jamie_Rivera_Resume_Example_Services_Operations_Coordinator_Richmond_VA.docx");
     expect(generated.coverLetter.filename).toContain("Jamie_Rivera_Cover_Letter_Example_Services_Operations_Coordinator");
     expect(resume.extractedText).toContain("Administrative Specialist");
+    expect(resume.extractedText).toContain("Community Example 2021 to 2026 | Richmond, VA");
     expect(resume.extractedText).not.toContain("Synthetic Reference");
     expect(resume.extractedText).not.toContain("References available upon request");
     expect(cover.extractedText).toContain("Example Services Hiring Team");
@@ -177,6 +194,31 @@ describe("Chunk 5 evidence-bound DOCX generation", () => {
     const unauthorized = fixture();
     unauthorized.coverLetterParagraphs[0].text += " This career break is now complete.";
     await expect(generateEvidenceBoundMaterials(unauthorized)).rejects.toThrow("unauthorized_career_break_mention");
+  });
+
+  it("rejects a mismatched target role and repeated padded prose", async () => {
+    const mismatched = fixture();
+    mismatched.coverLetterParagraphs[0].text = mismatched.coverLetterParagraphs[0].text
+      .replace("Operations Coordinator role", "Office Manager role");
+    await expect(generateEvidenceBoundMaterials(mismatched)).rejects.toThrow("cover_letter_target_role_mismatch");
+
+    const repeated = fixture();
+    const phrase = "careful records and responsive communication support reliable daily service";
+    repeated.coverLetterParagraphs[1].text += ` ${phrase}. ${phrase}. ${phrase}.`;
+    await expect(generateEvidenceBoundMaterials(repeated)).rejects.toThrow("cover_letter_excessive_repetition");
+  });
+
+  it("uses semantic headings, keeps job headings with content, and orders jobs newest first", async () => {
+    const input = fixture();
+    input.experiences = [
+      { ...input.experiences[0], historicalTitle: "Earlier Coordinator", employer: "Earlier Services", dates: "2018 to 2020" },
+      { ...input.experiences[0], historicalTitle: "Current Coordinator", employer: "Current Services", dates: "March 2023 to Present" },
+    ];
+    const generated = await generateEvidenceBoundMaterials(input);
+    const resume = await inspectDocxPackage(generated.resume.buffer, "RESUME");
+    expect(resume.checks).toMatchObject({ semanticSectionHeadings: true, keepHeadingsWithContent: true });
+    expect(resume.extractedText.indexOf("Current Coordinator")).toBeLessThan(resume.extractedText.indexOf("Earlier Coordinator"));
+    expect(generated.resume.provenance.fitActions).toContain("ordered_experience_reverse_chronological");
   });
 
   it("allows an employer two-page limit without forcing a second page, and gates an actual second page", async () => {

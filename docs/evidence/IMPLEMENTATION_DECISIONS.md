@@ -163,3 +163,16 @@ This decision activates no source, Checkout, payment, production migration, push
 - Every new structured source is unscheduled. Recurring source work requires both the environment gate and per-source schedule activation. Workflow attempts now record success and failure evidence.
 - EdTech.com's fully remote page remains inactive and blocked because the audit client received HTTP 403 and no ingestion or paid-display permission was established.
 - A reusable CSV intake and validator detects duplicate source IDs, URLs, and ATS tenants, requires permission evidence, and rejects scheduled activation for a new batch.
+
+## September 7, 2026 Chunk 5 parser-audit remediation
+
+The owner authorized correction of the Chunk 5 document templates after a supplied local and Affinda audit. The audit is diagnostic evidence, not product authority, and its embedded recommendations do not override the evidence-bound generation, privacy, provenance, or human-review rules.
+
+- Generator version `applypack-evidence-bound-v2` uses real Word Heading 2 section semantics while preserving the approved visible Arial treatment.
+- Resume job blocks use separate ordinary title, employer, and date/location paragraphs. Keep-with-next and keep-lines properties bind the block to its first content paragraph, and the page-fit estimate accounts for the additional lines.
+- Experience defaults to stable reverse-chronological ordering based only on supplied date precision. A separately approved chronological-hybrid presentation may opt out; no month or date is invented.
+- Career-break output remains separately authorized and is labeled as a non-employment timeline note in its own section so it is not presented as paid work or assigned an employer.
+- Cover-letter generation fails closed when the opening is not specific to the verified target, a different title is described as the target role, or an eight-word sequence is repeated three times.
+- Parser-review fixtures use realistic fictional names, organizations, month/year ranges, a non-ASCII name, varied substantive bullets, education, and target-correct letter content. The prior deliberately repetitive material remains historical stress evidence, not a writing-quality example.
+
+The corrected seven DOCX/PDF pairs passed local XML, Mammoth, and pdfplumber checks: normalized DOCX/PDF text matched, every PDF page contained text, no page was image-only, resume headings converted to HTML headings, native Word lists remained intact, and the two-page resume kept every job heading with its first bullet. The PDFs resolved only Arial-family font names in the local inspection. This does not establish Affinda, Greenhouse, Workday, Lever, or universal ATS compatibility. A fresh external parser comparison remains required before structured-parser sign-off. The prior pinned renderer suite was not rerun because its `pdffonts` and `pdftotext` executables are no longer present locally; the corrected PDFs were rendered with installed LibreOffice and independently checked without relabeling that result as the missing pinned-renderer proof.

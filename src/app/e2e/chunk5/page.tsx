@@ -31,6 +31,7 @@ export default async function Chunk5EvidencePage({ searchParams }: { searchParam
         deliveredReleaseId={releaseId}
         sourceSnapshotId={snapshotId}
         initialEmail="synthetic@example.invalid"
+        fixtureAvailableUnits={10}
       /> : null}
       {state === "pending" ? <SearchOrderProgress searches={[{
         orderId,
