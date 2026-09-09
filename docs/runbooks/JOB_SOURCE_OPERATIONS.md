@@ -4,7 +4,13 @@
 
 There are currently no authorized automated sources. Do not start a source run.
 
-Before a future run can be considered, confirm migration `202609040025_chunk3_matching_engine.sql`; an immutable `AUTHORIZED_AUTOMATED` record with documentary evidence; an approved positive-bound `ap_feasibility_source_configurations` row; a configured release-verification TTL; the exact allowed hosts/actions; and the server feature flag. The flag alone is never authorization. Never bypass authentication, robots/access controls, CAPTCHAs, redirects, paywalls, or rate limits.
+Before a future run can be considered:
+
+1. Confirm migrations `202609020003_job_source_expansion.sql`, `202609040025_chunk3_matching_engine.sql`, and `202609080022_job_source_audit_and_requested_batch.sql` are deployed in the intended environment.
+2. Confirm an immutable `AUTHORIZED_AUTOMATED` record with documentary evidence, an approved positive-bound `ap_feasibility_source_configurations` row, a configured release-verification TTL, and the exact allowed hosts/actions.
+3. Confirm the selected source is active and configured as automated. Recurring workflow sync additionally requires `schedule_enabled=true` in reviewed code/configuration.
+4. Confirm `APP_JOB_SOURCE_SYNC_ENABLED=true` only in the intended environment and that no rate-limit or availability incident is open. The feature flag alone is never authorization.
+5. Never add credentials for public adapters or bypass authentication, robots/access controls, CAPTCHAs, redirects, paywalls, or rate limits.
 
 ## Health and sync endpoints
 
@@ -27,7 +33,15 @@ Sync request:
 { "sourceId": "vipdesk-connect", "action": "sync" }
 ```
 
-No source ID is presently valid for automated access. VIPdesk Connect and Five Star Call Centers are `UNVERIFIED_DISABLED`; their retained adapter code is inert. Unauthorized health checks report disabled without a network request, and sync returns a conflict. A 429 or other ambiguous result is recorded and never blindly retried.
+No source ID is presently valid for automated access. Configured connector IDs are `vipdesk-connect`, `five-star-call-centers`, `duolingo`, `ultimate-medical-academy`, `brightwheel`, `outschool`, `stripe`, `block`, and `coinbase`; all are `UNVERIFIED_DISABLED` and unscheduled. Configuration does not establish authorization or a successful run. Unauthorized health checks report disabled without a network request, and sync returns a conflict. Official-link-only sources intentionally return zero fetched jobs. A 429 or other ambiguous result is recorded and never blindly retried.
+
+## Adding a batch
+
+1. Fill `config/job-source-batches/next-batch.csv`; keep `schedule_enabled=false`.
+2. Run `npm run jobs:sources:export` and `npm run jobs:sources:validate -- config/job-source-batches/next-batch.csv`.
+3. Resolve every validation error and manually verify the official page, exact ATS tenant, permission evidence, and paid-display status.
+4. Existing Lever, Greenhouse, and Ashby tenants require registry configuration only. Unsupported ATS platforms, licensed feeds, and blocked pages require a separate adapter/access/approval review.
+5. Add a forward migration, deploy to nonproduction, perform one bounded sync, inspect `job_source_runs` plus accepted/rejected and duplicate results, and only then request scheduled activation.
 
 ## Review after a run
 

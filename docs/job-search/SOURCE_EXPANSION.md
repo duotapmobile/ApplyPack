@@ -1,6 +1,6 @@
 # ApplyPack job-source expansion
 
-Last updated: September 5, 2026
+Last updated: September 8, 2026
 
 ## Decision and operating boundary
 
@@ -10,7 +10,7 @@ An employer's presence in the registry is not a claim that it currently has remo
 
 ## Registered sources
 
-The registry contains 66 named employer sources in four separate categories, plus three compatibility/import sources. `official_link_only` means the official page is recorded for human research but is not scraped. `pending_verification` means there is no verified current careers endpoint and no job is fetched.
+The reviewed code registry contains 75 named employer sources in four separate categories, three compatibility/import sources, and one disabled aggregator evaluation. `official_link_only` means the official page is recorded for human research but is not scraped. `pending_verification` means the endpoint or its permission is unresolved and no job is fetched. The September 8 operational audit found zero source runs and zero jobs in both staging and production, so a registry entry must not be described as successful coverage.
 
 ### Core direct employers (30)
 
@@ -22,23 +22,24 @@ All are `official_link_only`. Their official URLs are in `src/lib/jobs/source-re
 
 GitLab, Zapier, and Automattic are `official_link_only`, lower-priority than core sources, and labeled as potentially specialized and competitive. The category does not cause any posting to be classified globally remote.
 
-### Selective broad employers (26)
+### Selective broad employers (35)
 
-Amazon, Apple, Dell Technologies, HP, Salesforce, HubSpot, Wells Fargo, U.S. Bank, PNC Bank, Xerox, Wayfair, Nordstrom, Williams-Sonoma, Intuit, IQVIA, Wipro, VF Corporation, Whirlpool, CBRE, Driven Brands, Agero, U-Haul, Momentus Technologies, Encoura, notifyMD, and Amerit Fleet Solutions.
+Duolingo, Ultimate Medical Academy, Brightwheel, ClassDojo, Capella University, Outschool, Stripe, Block, Coinbase, Amazon, Apple, Dell Technologies, HP, Salesforce, HubSpot, Wells Fargo, U.S. Bank, PNC Bank, Xerox, Wayfair, Nordstrom, Williams-Sonoma, Intuit, IQVIA, Wipro, VF Corporation, Whirlpool, CBRE, Driven Brands, Agero, U-Haul, Momentus Technologies, Encoura, notifyMD, and Amerit Fleet Solutions.
 
-Twenty-five are `official_link_only`. notifyMD is `pending_verification`: the employer is identifiable, but no current official careers page or supported ATS endpoint was verified.
+Duolingo, Ultimate Medical Academy, Outschool, Stripe, Block, and Coinbase have configured Greenhouse tenants. Brightwheel has a configured Ashby tenant. All remain unscheduled. ClassDojo and Capella are official-link-only; Capella's Workday tenant is identified but unsupported. The earlier broad employers remain official-link-only, except notifyMD, which is pending because no current official careers page or supported ATS endpoint was verified.
 
 ### Contractor, staffing, freelance, or flexible work (7)
 
 NexRep, ModSquad, Working Solutions, VIPdesk Connect, Kelly Services, TEKsystems, and Five Star Call Centers are always stored in `contractor_staffing_flexible`. NexRep, ModSquad, and Working Solutions default to contractor metadata; Kelly Services and TEKsystems default to staffing metadata. Unknown fields remain unknown.
 
-VIPdesk Connect and Five Star Call Centers retain legacy Lever adapter metadata, but their authorization state is `UNVERIFIED_DISABLED`. The adapter rechecks documentary authorization and configured bounds and therefore cannot run. Any later authorization is a separate business/legal decision and must be recorded before the feature flag can have effect.
+VIPdesk Connect and Five Star Call Centers have explicitly configured Lever tenants, and the reusable adapter set supports explicitly configured Greenhouse and Ashby tenants. Every connector remains `UNVERIFIED_DISABLED` until documentary authorization and bounded configuration are recorded. The adapters are designed for bounded unauthenticated GETs to allowlisted API hosts, do not apply, do not follow redirects, stop on rate limits, limit response size, and do not invent missing fields. Adapter support never means every employer on that ATS is searched, and the feature flag alone cannot authorize a request.
 
 ### Compatibility/import sources
 
 - `manual-reviewed` retains the existing admin delivery workflow.
 - `indeed` and `hiringcafe` retain explicit third-party import identities and old payload compatibility. No unsupported scraper was introduced.
 - A direct-employer posting is preferred over an Indeed or HiringCafe duplicate, while every source reference remains auditable.
+- EdTech.com's fully remote page is registered inactive and permission-blocked. HTTP 403 prevented a bounded audit fetch and no ingestion or paid-display license was established.
 
 ### Affiliate directories
 
@@ -114,11 +115,15 @@ New evaluations use the evidence-backed `matching-rules-v2` engine: the server r
 
 `POST /api/admin/search-orders/[id]/deliver` keeps the existing required fields and `{ "ok": true }` response. The extended posting fields are optional, so current admin clients continue to work. The route still requires exactly 10 reviewed matches and a current `checkedAt`; it now rejects hard-excluded jobs and exact duplicates before delivery.
 
-`GET /api/admin/jobs` is the historical protected compatibility view. `GET|POST /api/admin/job-sources` lists authorization state and performs no network request for an unauthorized source. `APP_JOB_SOURCE_SYNC_ENABLED=true` alone authorizes nothing.
+`GET /api/admin/jobs` is the historical protected compatibility view. `GET|POST /api/admin/job-sources` lists source and authorization state, reports health, and performs no network request for an unauthorized source. A manual run additionally requires the global feature flag; workflow-triggered recurring sync also requires `scheduleEnabled=true` for the exact source. Successful and failed authorized workflow attempts are recorded in `job_source_runs`. `APP_JOB_SOURCE_SYNC_ENABLED=true` alone authorizes nothing.
 
 ## Migration policy
 
-`202609020003_job_source_expansion.sql` is an additive, forward-only migration following the repository policy. It was applied after the first two migrations to an isolated local Supabase/Postgres instance and passed `supabase db lint`. Production rollback should restore a provider backup or deploy a reviewed forward migration; dropping the added columns and audit tables would destroy source history and is not an acceptable automatic rollback.
+`202609020003_job_source_expansion.sql` is the original additive source migration. `202609080022_job_source_audit_and_requested_batch.sql` adds source audit/permission fields and the requested employer batch with every schedule disabled. Production rollback should restore a provider backup or deploy a reviewed forward migration; dropping audit data is not an acceptable automatic rollback.
+
+## Reusable source batches
+
+The canonical runtime registry remains `src/lib/jobs/source-registry.ts`, distinct from the read-only master software-reference inventory. Put prospective sources in `config/job-source-batches/next-batch.csv`, refresh the comparison export with `npm run jobs:sources:export`, and validate with `npm run jobs:sources:validate -- config/job-source-batches/next-batch.csv`. Validation rejects duplicate IDs, URLs, and ATS tenants and refuses scheduled activation. Existing Lever, Greenhouse, and Ashby employers need configuration, not a custom adapter. See `docs/audits/JOB_SOURCE_AUDIT_2026-09-08.md` for the activation process and evidence boundary.
 
 ## Environment
 

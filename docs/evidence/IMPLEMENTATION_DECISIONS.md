@@ -154,3 +154,12 @@ Chunk 3 replaces the corrected-contract path's implicit/title-led and caller-sco
 - Migration `202609040025_chunk3_matching_engine.sql` is additive and legacy-compatible. Normal rollback reverts code/traffic and stops workers while leaving immutable expanded data in place.
 
 This decision activates no source, Checkout, payment, production migration, push, merge, deployment, or Chunk 4 work. Production authorization, bounds, TTL, staff/monitoring, provider, retention/privacy, KMS/file-processing, and capacity dependencies remain explicit blockers.
+## September 8, 2026 source inventory and guarded expansion
+
+- The source audit found 69 database registry rows but zero source runs, jobs, or source references in both staging and production. No source is represented as successfully searched.
+- The canonical job-source registry is distinct from the read-only master software-reference inventory and from supporting board-recommendation research.
+- Duolingo, Ultimate Medical Academy, Brightwheel, ClassDojo, Capella University, Outschool, Stripe, Block, and Coinbase were reconciled. Stride's existing row was corrected and its exact Workday tenant recorded.
+- Reusable Greenhouse and Ashby adapters were added alongside Lever. ATS support applies only to explicitly configured tenants.
+- Every new structured source is unscheduled. Recurring source work requires both the environment gate and per-source schedule activation. Workflow attempts now record success and failure evidence.
+- EdTech.com's fully remote page remains inactive and blocked because the audit client received HTTP 403 and no ingestion or paid-display permission was established.
+- A reusable CSV intake and validator detects duplicate source IDs, URLs, and ATS tenants, requires permission evidence, and rejects scheduled activation for a new batch.
