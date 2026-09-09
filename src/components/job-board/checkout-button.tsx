@@ -1,15 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { BoardPlanId } from "@/lib/job-board/plans";
 
 export function BoardCheckoutButton({ planId }: { planId: BoardPlanId }) {
+  const router = useRouter();
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   async function begin() {
     setState("loading");
     try {
       const response = await fetch("/api/checkout/job-board", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ planId }) });
-      const result = await response.json() as { url?: string };
+      const result = await response.json() as { url?: string; error?: string };
+      if (response.status === 401) {
+        router.push(`/sign-in?next=${encodeURIComponent("/job-board")}`);
+        return;
+      }
+      if (response.status === 409 && result.error?.toLowerCase().includes("profile")) {
+        router.push("/get-started");
+        return;
+      }
       if (!response.ok || !result.url) throw new Error("checkout_failed");
       window.location.assign(result.url);
     } catch { setState("error"); }

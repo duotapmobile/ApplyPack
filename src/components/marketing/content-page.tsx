@@ -64,9 +64,9 @@ export function ContentPage({ page }: { page: PublicPage }) {
               <article>
                 <p className="brief-demo-kicker">ONLY FOR JOBS YOU CHOOSE</p>
                 <h3>Application materials are optional</h3>
-                <p>After reviewing all 10 jobs, you decide whether any are worth pursuing.</p>
+                <p>Choose an eligible job from your active filtered board or from a delivered Top 10.</p>
                 <ul>
-                  <li>Choose one job, several jobs, all 10, or none</li>
+                  <li>Choose an eligible board job or one, several, all 10, or none from a delivered Top 10</li>
                   <li>Pay $8 per selected job</li>
                   <li>Receive one tailored resume and cover letter per selected job</li>
                   <li>Review and submit every application yourself</li>

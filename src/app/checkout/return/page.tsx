@@ -72,7 +72,7 @@ function StatusCard({ title, message }: { title: string; message: string }) {
         <p>{message}</p>
         <div className="admin-buttons">
           <Link className="button-link button-link--primary" href="/my-applypack"><span>Open My ApplyPack</span></Link>
-          <Link href="/help">Get help</Link>
+          <Link href="/contact">Get help</Link>
         </div>
       </section>
     </main>

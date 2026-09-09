@@ -13,7 +13,7 @@ export const siteConfig = {
     { href: "/pricing", label: "Pricing" },
     { href: "/faq", label: "FAQ" },
   ],
-  publicRoutes: ["/", "/job-board", "/why-apply-pack", "/how-it-works", "/job-search-help", "/experience-connections", "/before-and-after", "/resume-screening", "/not-just-ai", "/pricing", "/faq", "/about", "/get-started", "/contact", "/accessibility", "/privacy", "/terms"],
+  publicRoutes: ["/", "/job-board", "/why-apply-pack", "/how-it-works", "/job-search-help", "/experience-connections", "/before-and-after", "/resume-screening", "/not-just-ai", "/pricing", "/faq", "/about", "/contact", "/accessibility", "/privacy", "/terms"],
 } as const;
 
 export type NavigationItem = (typeof siteConfig.navigation)[number];

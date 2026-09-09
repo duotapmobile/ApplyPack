@@ -73,11 +73,11 @@ export async function scanBuffer(bytes: Buffer, options: { structureValidated?: 
   if (configuration.mode === "document_validation") {
     return options.structureValidated
       ? {
-          status: "clean",
+          status: "pending",
           sha256,
           provider: "document_validation",
           providerReference: "document_validation:strict_container_checks",
-          errorCode: null,
+          errorCode: "malware_scan_required",
           scannedAt: new Date().toISOString(),
         }
       : {

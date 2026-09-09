@@ -103,19 +103,22 @@ async function processBoardRefund(stripe: Stripe, admin: AdminClient, event: Str
   const binding = await boardSubscriptionForRefund(stripe, refund);
   if (!binding) return false;
   const { data: current, error } = await admin.from("ap_board_subscriptions")
-    .select("id,state,last_provider_event_created").eq("provider_subscription_id", binding.subscription.id).maybeSingle();
+    .select("id,state,refund_state,last_provider_event_created").eq("provider_subscription_id", binding.subscription.id).maybeSingle();
   if (error || !current) throw error || new Error("board_refund_subscription_missing");
   if (Number(current.last_provider_event_created) > event.created) {
     await recordBoardProviderEvent(admin, { event, subscriptionId: binding.subscription.id, refundId: refund.id,
       amountCents: refund.amount, fullAmountCents: binding.invoice.amount_paid, resultingState: current.state });
     return true;
   }
+  const latestInvoiceId = typeof binding.subscription.latest_invoice === "string"
+    ? binding.subscription.latest_invoice : binding.subscription.latest_invoice?.id;
+  const affectsCurrentPeriod = !latestInvoiceId || latestInvoiceId === binding.invoice.id;
   const failed = event.type === "refund.failed" || refund.status === "failed" || refund.status === "canceled";
-  const full = !failed && refund.amount >= binding.invoice.amount_paid;
+  const full = affectsCurrentPeriod && !failed && refund.amount >= binding.invoice.amount_paid;
   const nextState = full ? "REFUNDED" : current.state;
   const update = await admin.from("ap_board_subscriptions").update({
     state: nextState, access_ends_at: full ? null : undefined,
-    refund_state: failed ? "FAILED" : full ? "FULL" : "PARTIAL", provider_refund_id: refund.id,
+    refund_state: affectsCurrentPeriod ? (failed ? "FAILED" : full ? "FULL" : "PARTIAL") : current.refund_state, provider_refund_id: refund.id,
     last_provider_event_created: event.created, last_provider_event_id: event.id, updated_at: new Date().toISOString(),
   }).eq("id", current.id).lte("last_provider_event_created", event.created);
   if (update.error) throw update.error;

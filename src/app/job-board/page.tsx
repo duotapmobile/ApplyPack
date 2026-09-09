@@ -3,7 +3,11 @@ import Link from "next/link";
 import { BoardCheckoutButton } from "@/components/job-board/checkout-button";
 import { boardPlanDisclosure, boardPlans, type BoardPlanId } from "@/lib/job-board/plans";
 
-export const metadata: Metadata = { title: "Filtered Job Board" };
+export const metadata: Metadata = {
+  title: "Filtered Job Board",
+  description: "Subscription access to current jobs filtered by your confirmed ApplyPack profile and sorted by factual fields, never personalized rank.",
+  alternates: { canonical: "/job-board" },
+};
 
 export default function JobBoardPricingPage() {
   return <main id="main-content" className="board-page"><div className="page-frame">

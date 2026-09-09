@@ -44,7 +44,7 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
   if (!artifact) return response({ error: "Artifact not found." }, 404);
   const payloadId = randomUUID();
   const plaintext = Buffer.from(JSON.stringify({
-    schemaVersion: "chunk5-material-false-claim-v1",
+    schemaVersion: "included-factual-correction-v1",
     field: input.data.field,
     documentText: input.data.documentText,
     correctFact: input.data.correctFact,
@@ -54,7 +54,7 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
     if (!sensitivePayloadEncryptionReady(configuration)) return response({ error: "Protected support intake is unavailable." }, 503);
     const envelope = await encryptSensitivePayload({
       plaintext,
-      context: { customerId: authData.user.id, payloadId, purpose: "MATERIAL_FALSE_CLAIM_SUPPORT" },
+      context: { customerId: authData.user.id, payloadId, purpose: "INCLUDED_MATERIAL_FACTUAL_CORRECTION" },
       configuration,
       kms: remoteKmsAdapter(),
     });
@@ -86,9 +86,12 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
     });
     if (opened.error || typeof opened.data !== "string") throw opened.error || new Error("support_case_insert_failed");
     return response({ supportCaseId: opened.data, downloadsRevoked: true }, 201);
-  } catch {
+  } catch (error) {
     await admin.from("ap_sensitive_payloads").delete().eq("id", payloadId).eq("customer_id", authData.user.id);
-    return response({ error: "The protected support case could not be opened." }, 503);
+    const code = error && typeof error === "object" && "message" in error ? String(error.message) : "";
+    if (code.includes("included_correction_window_closed")) return response({ error: "The included correction window ended three calendar days after delivery." }, 409);
+    if (code.includes("included_correction_round_already_used")) return response({ error: "The included factual-correction round was already used for this document set." }, 409);
+    return response({ error: "The protected correction request could not be opened." }, 503);
   } finally {
     plaintext.fill(0);
   }

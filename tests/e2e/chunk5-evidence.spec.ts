@@ -106,7 +106,7 @@ test("Chunk 5 selection checkout, delivery, proposals, references, support, and 
     }
 
     await page.goto("/e2e/chunk5?state=delivered");
-    await page.getByRole("button", { name: "Report a factual problem in a delivered document" }).click();
+    await page.getByRole("button", { name: "Request the included factual correction" }).click();
     await expect(page.getByLabel("What the document says")).toBeVisible();
     await capture(page, `${width}-postdelivery-private-support.png`);
 

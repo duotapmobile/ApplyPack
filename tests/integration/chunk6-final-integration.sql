@@ -92,4 +92,17 @@ select pg_temp.assert_true(
   'internal board ownership, queue, or provider evidence leaked to customers'
 );
 
+insert into public.ap_audit_events(action,entity_type,entity_id,non_sensitive_details,audit_version)
+values('MATERIAL_FACT_CORRECTION_PROPOSED','MATERIAL_PROPOSAL',gen_random_uuid(),
+  jsonb_build_object('factDiff',jsonb_build_object('employment_dates','private correction text'),'safeCode','FACTUAL_CORRECTION'),
+  'chunk6-fixture');
+select pg_temp.assert_true(
+  (select not (non_sensitive_details ? 'factDiff')
+    and non_sensitive_details->>'factDiffFieldCount'='1'
+    and non_sensitive_details->>'safeCode'='FACTUAL_CORRECTION'
+    and non_sensitive_details::text not like '%private correction text%'
+    from public.ap_audit_events where audit_version='chunk6-fixture'),
+  'customer correction content entered the immutable audit stream'
+);
+
 rollback;

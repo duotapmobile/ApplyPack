@@ -63,7 +63,7 @@ export type SourceAuthorizationState = (typeof sourceAuthorizationStates)[number
 export type SourceAutomationStatus = "automated" | "official_link_only" | "existing_import" | "pending_verification";
 export type AtsPlatform = "lever" | "greenhouse" | "ashby" | "workday" | "custom" | "unknown" | "none";
 export type SourceAccessMethod = "public_structured_endpoint" | "manual_official_career_page" | "manual_import" | "blocked";
-export type PermissionStatus = "approved_public_endpoint" | "manual_research_only" | "direct_link_only" | "unverified" | "requires_license_or_written_permission";
+export type PermissionStatus = "approved_public_endpoint" | "documented_paid_display_authorized" | "manual_research_only" | "direct_link_only" | "unverified" | "requires_license_or_written_permission";
 
 export type SourceDefinition = {
   id: string;

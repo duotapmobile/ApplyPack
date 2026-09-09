@@ -7988,6 +7988,8 @@ export type Database = {
           equipment_requirement: string | null
           experience_level: string
           external_job_id: string | null
+          first_seen_at: string
+          freshness_sort_at: string | null
           high_volume_contact_center_flag: boolean
           id: string
           is_active: boolean
@@ -8051,6 +8053,8 @@ export type Database = {
           equipment_requirement?: string | null
           experience_level?: string
           external_job_id?: string | null
+          first_seen_at?: string
+          freshness_sort_at?: string | null
           high_volume_contact_center_flag?: boolean
           id?: string
           is_active?: boolean
@@ -8114,6 +8118,8 @@ export type Database = {
           equipment_requirement?: string | null
           experience_level?: string
           external_job_id?: string | null
+          first_seen_at?: string
+          freshness_sort_at?: string | null
           high_volume_contact_center_flag?: boolean
           id?: string
           is_active?: boolean

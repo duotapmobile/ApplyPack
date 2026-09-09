@@ -78,6 +78,12 @@ describe("paid filtered job board", () => {
     expect(events).toContain('event.type === "customer.subscription.created"');
     expect(events).toContain('expand: ["latest_invoice"]');
     expect(events).toContain('requestedState === "PENDING"');
+    expect(events).toContain('latestInvoiceId === binding.invoice.id');
+    const health = readFileSync("src/app/api/health/route.ts", "utf8");
+    expect(health).toContain('.eq("schedule_enabled", true)');
+    expect(health).toContain('.eq("automation_status", "automated")');
+    expect(health).toContain('.eq("ingestion_permission_status", "approved_public_endpoint")');
+    expect(health).toContain('.eq("paid_display_permission_status", "documented_paid_display_authorized")');
   });
 
   it("keeps subscription access separate from purchased material orders in the migration", () => {

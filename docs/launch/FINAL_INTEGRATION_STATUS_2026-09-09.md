@@ -35,7 +35,8 @@ The staging URL is an integration target, not a launch-ready claim. `/api/live` 
 4. Corrected document-generation work was selectively ported as `1074e29`; the original corrected-build worktree at `fb5703a` was not modified and untracked archives were not imported.
 5. The five exact historical migrations already recorded in staging were restored byte-for-byte from Git history before new migrations were applied. Their verified Git blob IDs are recorded in the migration section below.
 6. Final integration adds durable board recomputation, immutable profile claims, board-origin material lineage, refund/dispute correlation, all five Stripe test-price definitions, customer board/detail/application flows, synthetic staging support, provider readiness reporting, deployment runtime packages, and current product documentation.
-7. The protected `site` checkout was not edited, reset, cleaned, merged, or used as a source.
+7. Final hardening adds documentary paid-display authority, automated/scheduled source readiness, neutral first-seen freshness, one included correction round, audit-content redaction, historical-invoice refund protection, and the eight required named operational runbooks.
+8. The protected `site` checkout was not edited, reset, cleaned, merged, or used as a source.
 
 ## Route map
 
@@ -57,33 +58,33 @@ Protected service surfaces:
 
 ## Migration and rollback evidence
 
-- Local clean reset: passed all 39 migrations in filename order.
+- Local clean reset: passed all 42 migrations in filename order.
 - SQL contract suite: 6 fixtures passed, including final integration.
 - Legacy backfill: `LEGACY_BACKFILL_OK`, replayed twice.
 - Rollback rehearsal: `ROLLBACK_OK`; full forward restore: `RESTORE_OK`.
 - Type drift: generated database types match the fully migrated local schema.
 - Hosted preflight: schema-only snapshot SHA-256 `0d85eb82abc4ac3397fc9df79cc9090391a8df1407961cc1db18988af1337184`; two profile rows and zero intakes, documents, orders, payments, jobs, matches, or source runs before migration.
 - Restored historical blobs: `8f24829d...`, `113e3b0b...`, `e38747e7...`, `be4483e6...`, and `77222b6b...`; every restored file matched its original full Git blob ID during verification.
-- Hosted forward migration: 14 migrations applied without a reset, ending at `202609090033_final_integration_board_runtime.sql`.
-- Hosted postcondition: all 39 local and remote versions match; dry run reports `Remote database is up to date`; the two prior profile rows remain.
+- Hosted forward migration: the governed upgrade chain was applied without a reset, now ending at `202609090036_audit_fact_diff_redaction.sql`.
+- Hosted postcondition: all 42 local and remote versions match; dry run reports `Remote database is up to date`; the two prior profile rows remain.
 
 ## Test matrix
 
 | Layer | Result | Evidence classification |
 |---|---|---|
-| Clean install | `npm ci --offline` passed; 499 packages audited, 0 vulnerabilities | Local locked dependency evidence |
-| Complete code gate | lint, typecheck, 49 test files / 330 tests, and production build of 57 pages/routes passed | Local unit/property/build evidence |
+| Clean install | `npm ci` passed; 499 packages audited, 0 vulnerabilities | Local locked dependency evidence |
+| Complete code gate | lint, typecheck, 51 test files / 336 tests, and production build of 57 pages/routes passed | Local unit/property/build evidence |
 | Database | clean reset and 6 SQL fixtures passed | Local real Postgres/Supabase evidence |
 | Upgrade/backfill/rollback | `LEGACY_BACKFILL_OK`, `ROLLBACK_OK`, `RESTORE_OK` | Local migration compatibility evidence |
 | Database types | exact drift check passed | Local generated-schema evidence |
-| Browser journeys | 75 passed, 5 project/platform skips, 0 failed across desktop and mobile | Local browser fixture evidence, not provider evidence |
+| Browser journeys | Full run: 74 passed, 5 intentional project/platform skips, 1 stale-locator timeout; the corrected locator then passed its focused desktop journey, yielding 75 current passing cases | Local browser fixture evidence, not provider evidence |
 | Responsive/accessibility | 320, 360, 390, 430, 768, 1024, 1440 px; keyboard; visible errors/focus; 200% reflow; reduced motion; forced colors; axe checks passed where automated | Local browser evidence, not accessibility certification |
 | Document rendering | 3 synthetic scenarios, 7 DOCX/PDF artifacts, 8 pages; searchable text, structure, font checks, and page images passed | Local Windows LibreOffice 26.8.0.3 / Poppler 25.07.0 evidence |
 | Source batch validation | empty next-batch template passed structural validation | Local mock/config evidence only |
 | Ingestion | two idempotent synthetic staging runs; no real run | Provider staging synthetic evidence only |
 | Integration scanners | 3 tests skipped because no approved live scanner is configured | Honest blocked provider/security evidence |
-| Stripe | code/unit coverage only; no test credentials, prices, webhook, checkout, or lifecycle exercise | Not run / blocker |
-| Email/access | Resend and cron secrets exist; no allowlisted end-to-end receipt/OTP/delivery exercise | Configuration presence only / blocker |
+| Stripe | five exact sandbox prices and the governed test webhook are configured; no deployable restricted test secret, checkout, portal, or lifecycle exercise | Partial provider-test configuration / blocker |
+| Email/access | allowlisted Resend delivery to the monitored ApplyPack mailbox succeeded; OTP, receipt, and document-delivery journeys remain unexercised | Partial provider-test evidence / blocker |
 | Manual assistive technology | not performed | Not run / blocker |
 
 ## Job-source evidence
@@ -117,7 +118,7 @@ No public ATS endpoint, registry entry, configuration count, or fixture is repre
 
 ## Document evidence
 
-`evidence/final-integration/document-render/` contains the generated DOCX, PDF, expected text, render report, and every page PNG for three synthetic scenarios. The renderer test verified searchable text and structure; all eight page images were manually inspected during integration. This is development evidence using synthetic content, not customer-document approval and not proof that the Railway runtime has a licensed Arial installation.
+`evidence/final-integration/document-render/` contains the generated DOCX, PDF, expected text, render report, and every page PNG for three synthetic scenarios. The renderer test verified searchable text, structure, Arial resolution, and eight page-image outputs. The current-turn Codex image viewer could not independently reopen those local PNGs because its Windows ACL helper failed, so current visual inspection remains a separate open gate. This is development evidence using synthetic content, not customer-document approval and not proof that the Railway runtime has a licensed Arial installation.
 
 ## Founder staging test script after provider gates are configured
 
@@ -137,10 +138,10 @@ No public ATS endpoint, registry entry, configuration count, or fixture is repre
 | Blocker | Customer impact | Current evidence | Accountable owner | Exact next action |
 |---|---|---|---|---|
 | Documentary source permission and fresh inventory | Board and Top 10 cannot be fulfilled from proven permitted real listings | 0 approved automated paid-display sources, 0 real runs, 0 real jobs | DuoTap product/legal/source owner | Obtain and archive source-specific ingestion and paid-display authorization; approve exact bounded source configs; run them; record run IDs, counts, provenance, expiry, and errors |
-| Stripe test configuration | No subscription, $20, or $8 purchase can complete on staging | All Stripe variables absent; payment mode and both checkout switches disabled | DuoTap Stripe administrator | Supply a restricted test key; run the five-price setup; create the exact webhook event set; store five price IDs and signing secret; enable only test checkout; execute lifecycle matrix |
+| Stripe test configuration | No subscription, $20, or $8 purchase can complete on staging | Five exact sandbox prices and webhook `we_1UDgxNHIQhVBusrZjS6Y4jRp` exist, but no deployable `sk_test`/`rk_test` secret is configured; payment mode and checkout switches remain disabled | DuoTap Stripe administrator | Supply a restricted test secret, enable only test checkout, deploy, and execute the complete purchase/portal/lifecycle matrix |
 | Legal, tax, and policy versions | Renewal/cancellation/payment promises cannot be approved for launch | No recorded counsel/tax approval or final version IDs | Founder plus qualified counsel/tax adviser | Approve tax treatment, subscription/automatic-renewal and cancellation disclosures, Terms/Privacy/retention versions, and customer jurisdictions |
 | Renderer/font and secure document pipeline | Staff cannot safely create and release promised files in staging | Local renderer passes; Railway lacks pinned executable hashes and a licensed Arial file; scanner/parser/KMS/model gates absent | DuoTap security/operations owner | Deploy runtime packages; install licensed Arial with approval; pin hashes/identities; configure scanner, sandboxed parser, KMS, leak controls, and permitted-model policy; rerun hostile-file and rendered-page exercises |
-| Email and access delivery | Customers may not receive OTPs, receipts, status, or delivery notices | Resend key present, but no allowlisted recipient exercise or final mailbox/DNS proof | DuoTap email administrator | Confirm allowlisted test recipient and monitored inbox; verify Supabase SMTP and Resend sender; run OTP/receipt/delivery/support tests and record SPF/DKIM/DMARC results |
+| Email and access delivery | Customers may not receive OTPs, receipts, status, or document-delivery notices | One allowlisted Resend message succeeded (`848790cd-2883-4455-90d8-ff7c4f3960be`); OTP, receipt, delivery, bounce, and final DNS/mailbox proof remain open | DuoTap email administrator | Verify Supabase SMTP and sender authentication, then run OTP/receipt/delivery/support/bounce tests and record SPF/DKIM/DMARC results |
 | Human staffing and capacity | Top 10 and document deadlines cannot be promised safely | No approved staffing roster/capacity evidence | Founder/operations | Name trained reviewers, approve rolling capacities, rehearse queue ownership/deadlines/refunds, and sign the operational capacity gate |
 | Manual accessibility and provider-backed isolation | Automated checks alone cannot establish usable staging journeys | Local automated browser tests pass; provider/manual exercises absent | Founder plus qualified accessibility tester | Complete screen-reader/manual AT checks and the two-customer provider-backed isolation/file tests; record expected-versus-actual evidence |
 

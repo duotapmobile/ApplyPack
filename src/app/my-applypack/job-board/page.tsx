@@ -32,7 +32,7 @@ export default async function MyJobBoardPage({ searchParams }: { searchParams: P
     : null;
   if (query) query = sort === "salary_high"
     ? query.order("salary_min", { referencedTable: "jobs", ascending: false, nullsFirst: false }).order("id").range((page - 1) * 25, page * 25 - 1)
-    : query.order("posted_at", { referencedTable: "jobs", ascending: false, nullsFirst: false }).order("id").range((page - 1) * 25, page * 25 - 1);
+    : query.order("freshness_sort_at", { referencedTable: "jobs", ascending: false, nullsFirst: false }).order("id").range((page - 1) * 25, page * 25 - 1);
   const result = query ? await query : { data: [], error: null };
   const rows = result.data || [];
   const total = "count" in result ? result.count || 0 : 0;

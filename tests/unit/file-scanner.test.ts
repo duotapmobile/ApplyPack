@@ -26,9 +26,9 @@ describe("private file scanner", () => {
     expect(fileScanConfiguration()).toMatchObject({ mode: "document_validation", ready: true, liveReady: false });
     await expect(checkFileScannerHealth()).resolves.toBe(true);
     await expect(scanBuffer(Buffer.from("passive"), { structureValidated: true })).resolves.toMatchObject({
-      status: "clean",
+      status: "pending",
       provider: "document_validation",
-      errorCode: null,
+      errorCode: "malware_scan_required",
     });
     await expect(scanBuffer(Buffer.from("not-validated"))).resolves.toMatchObject({
       status: "pending",

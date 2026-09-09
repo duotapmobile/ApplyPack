@@ -45,7 +45,7 @@ export function CheckoutStatus({ cancelled = false, fixtureStatus }: { cancelled
       <div className="admin-buttons">
         {status.orderId && <Link className="button-link button-link--primary" href={`/my-applypack?order=${encodeURIComponent(status.orderId)}`}><span>Open My ApplyPack</span></Link>}
         {!status.orderId && cancelled && <Link className="button-link button-link--primary" href="/get-started"><span>Return to intake</span></Link>}
-        <Link href="/help">Get help</Link>
+        <Link href="/contact">Get help</Link>
       </div>
     </section>
   </main>;

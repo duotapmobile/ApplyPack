@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteConfig.url),
   title: { default: "24-Hour Job Search Help + Tailored Resumes | ApplyPack", template: "%s | ApplyPack" },
   description: "Get 10 researched job matches within 24 hours for $20. Choose the jobs you want, then add a tailored resume and cover letter for $8 per selected job.",
-  keywords: ["job search help", "job matching service", "tailored resume", "cover letter service", "career change support", "ApplyPack"],
+
   openGraph: { type: "website", siteName: "ApplyPack", title: "We find the jobs. We get you ready to apply.", description: "10 researched job matches for $20, delivered within 24 hours after intake and payment are complete.", url: "/", images: [{ url: "/opengraph-image.png", width: 1200, height: 630, alt: "ApplyPack job search and application help" }], locale: "en_US" },
   robots: isProductionDeployment ? { index: true, follow: true } : { index: false, follow: false }, applicationName: "ApplyPack", manifest: "/manifest.webmanifest", category: "business",
   authors: [{ name: "DuoTap LLC d/b/a ApplyPack" }], creator: "DuoTap LLC d/b/a ApplyPack", publisher: "DuoTap LLC d/b/a ApplyPack", referrer: "strict-origin-when-cross-origin", formatDetection: { address: false, email: false, telephone: false },

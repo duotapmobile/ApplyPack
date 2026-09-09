@@ -7,9 +7,21 @@ type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 export const BOARD_ADMISSION_VERSION = "board-admission-v2";
 
 export type BoardProfileEvidence = {
+  desiredActivities: string[];
+  avoidedActivities: string[];
+  optionalTitles: string[];
+  titleRestricted: boolean;
+  optionalIndustries: string[];
+  blockedIndustries: string[];
+  searchBreadth: string;
   workModes: string[];
   stateOrDc: string | null;
   employmentTypes: string[];
+  schedules: string[];
+  mustHaveBenefits: string[];
+  workConditionPreferences: Record<string, string>;
+  commuteDistanceMiles: number | null;
+  customDealbreaker: string | null;
   dealbreakers: string[];
   employerUnknownPolicies: Record<string, string>;
   salaryHardMinimumCents: number | null;
@@ -23,6 +35,8 @@ export type PersistedBoardJob = {
   title: string;
   description: string | null;
   department: string | null;
+  locationText: string | null;
+  scheduleType: string | null;
   employmentType: string;
   workMode: string;
   eligibleStates: string[];
@@ -90,12 +104,28 @@ function capabilityConnections(profile: BoardProfileEvidence, job: PersistedBoar
 export function evaluatePersistedBoardAdmission(profile: BoardProfileEvidence, job: PersistedBoardJob, now = new Date()): PersistedAdmissionDecision {
   const exclusions: string[] = [];
   const warnings: string[] = [];
+  const haystack = normalized([job.title, job.department, job.description].filter(Boolean).join(" "));
   if (!job.sourceAuthorizedForPaidDisplay && !job.syntheticStaging) exclusions.push("SOURCE_NOT_AUTHORIZED_FOR_PAID_DISPLAY");
   if (!job.isActive || job.listingStatus !== "open") exclusions.push("LISTING_NOT_ACTIVE");
   if (job.sourceFreshnessStatus === "stale") exclusions.push("SOURCE_STALE");
   if (job.closingAt && Date.parse(job.closingAt) <= now.getTime()) exclusions.push("LISTING_EXPIRED");
   if (job.rejectionReason) exclusions.push("PARSER_OR_POLICY_REJECTED");
   if (!job.applicationUrl || !safeHttps(job.applicationUrl)) exclusions.push("APPLICATION_LINK_UNSAFE_OR_MISSING");
+
+  if (profile.titleRestricted && profile.optionalTitles.length
+    && !profile.optionalTitles.some((title) => haystack.includes(normalized(title)))) {
+    exclusions.push("CONFIRMED_TITLE_FAMILY_MISMATCH");
+  }
+  for (const industry of profile.blockedIndustries) {
+    if (normalized(industry) && haystack.includes(normalized(industry))) exclusions.push(`CONFIRMED_BLOCKED_INDUSTRY_${code(industry)}`);
+  }
+  for (const activity of profile.avoidedActivities) {
+    const strength = profile.workConditionPreferences[`activity:${activity}`];
+    if (["DO_NOT_SHOW", "DEALBREAKER"].includes(strength) && normalized(activity) && haystack.includes(normalized(activity))) {
+      exclusions.push(`CONFIRMED_AVOIDED_ACTIVITY_${code(activity)}`);
+    }
+  }
+  if (profile.customDealbreaker) exclusions.push("CUSTOM_DEALBREAKER_REQUIRES_HUMAN_REVIEW");
 
   const modes = allowedWorkModes(profile);
   if (job.workMode === "unknown") unknownOutcome(profile, "work_condition:WORK_MODE", exclusions, warnings);
@@ -121,15 +151,31 @@ export function evaluatePersistedBoardAdmission(profile: BoardProfileEvidence, j
   }
 
   const dealbreakers = new Set(profile.dealbreakers);
-  if (dealbreakers.has("SALES") && job.salesFlag) exclusions.push("CONFIRMED_DEALBREAKER_SALES");
+  const hardConditions = new Set(Object.entries(profile.workConditionPreferences)
+    .filter(([, strength]) => ["DO_NOT_SHOW", "DEALBREAKER"].includes(strength)).map(([key]) => key));
+  if ((dealbreakers.has("SALES") || hardConditions.has("SALES")) && job.salesFlag) exclusions.push("CONFIRMED_DEALBREAKER_SALES");
   if (dealbreakers.has("COMMISSION_ONLY") && job.commissionFlag) exclusions.push("CONFIRMED_DEALBREAKER_COMMISSION");
-  if ((dealbreakers.has("HEAVY_PHONE") || dealbreakers.has("COLD_CALLING"))
+  if ((dealbreakers.has("HEAVY_PHONE") || dealbreakers.has("COLD_CALLING") || hardConditions.has("PHONE_INTENSITY"))
     && (job.phoneIntensity === "high" || job.highVolumeContactCenterFlag)) exclusions.push("CONFIRMED_DEALBREAKER_PHONE");
   if (profile.employerUnknownPolicies["benefit:EMPLOYER_PROVIDED"] && job.benefitsStatus === "unknown") {
     unknownOutcome(profile, "benefit:EMPLOYER_PROVIDED", exclusions, warnings);
   }
 
+  for (const requiredBenefit of profile.mustHaveBenefits) {
+    if (job.benefitsStatus === "not_provided") exclusions.push(`CONFIRMED_REQUIRED_BENEFIT_MISSING_${code(requiredBenefit)}`);
+    else if (job.benefitsStatus !== "provided") unknownOutcome(profile, `benefit:${requiredBenefit}`, exclusions, warnings);
+  }
+  if (profile.schedules.length && !job.scheduleType && hardConditions.has("FLEXIBILITY")) {
+    unknownOutcome(profile, "work_condition:FLEXIBILITY", exclusions, warnings);
+  }
+  if (profile.commuteDistanceMiles !== null && ["hybrid", "onsite"].includes(job.workMode)) {
+    exclusions.push("COMMUTE_DISTANCE_NOT_VERIFIED");
+  }
+
   const connections = capabilityConnections(profile, job);
+  for (const activity of profile.desiredActivities) if (normalized(activity) && haystack.includes(normalized(activity))) connections.push(`ACTIVITY_${code(activity)}`);
+  for (const title of profile.optionalTitles) if (normalized(title) && haystack.includes(normalized(title))) connections.push(`TITLE_${code(title)}`);
+  for (const industry of profile.optionalIndustries) if (normalized(industry) && haystack.includes(normalized(industry))) connections.push(`INDUSTRY_${code(industry)}`);
   if (!connections.length) exclusions.push("NO_DEFENSIBLE_CAPABILITY_CONNECTION");
   return { admitted: exclusions.length === 0, connectionCodes: [...new Set(connections)], exclusionCodes: [...new Set(exclusions)], warningCodes: [...new Set(warnings)] };
 }
@@ -146,10 +192,24 @@ function profileEvidence(snapshot: Record<string, unknown>, facts: Array<Record<
   const capabilities = facts.filter((fact) => fact.verification === "CUSTOMER_CONFIRMED"
     && ["CAN_DO_NOW", "DONE_BEFORE_NEEDS_REFRESHER"].includes(String(fact.capability_status || "")))
     .map((fact) => String(fact.semantic_key || "").replace(/^capability:/, "")).filter(Boolean);
+  const benefits = object(snapshot.benefits);
+  const travel = object(snapshot.travel);
   return {
+    desiredActivities: strings(snapshot.desired_activities),
+    avoidedActivities: strings(snapshot.avoided_activities),
+    optionalTitles: strings(snapshot.optional_titles),
+    titleRestricted: Boolean(snapshot.confirmed_title_restriction),
+    optionalIndustries: strings(snapshot.optional_industries),
+    blockedIndustries: strings(snapshot.blocked_industries),
+    searchBreadth: String(snapshot.search_breadth || "ADJACENT_OPPORTUNITIES"),
     workModes: strings(snapshot.work_modes),
     stateOrDc: snapshot.us_state_or_dc ? String(snapshot.us_state_or_dc) : null,
     employmentTypes: strings(snapshot.employment_types),
+    schedules: strings(snapshot.schedules),
+    mustHaveBenefits: strings(benefits.mustHave),
+    workConditionPreferences: object(snapshot.work_condition_preferences) as Record<string, string>,
+    commuteDistanceMiles: numeric(travel.commuteDistanceMiles),
+    customDealbreaker: travel.customDealbreaker ? String(travel.customDealbreaker) : null,
     dealbreakers: strings(snapshot.dealbreakers),
     employerUnknownPolicies: snapshot.employer_unknown_policy && typeof snapshot.employer_unknown_policy === "object"
       ? snapshot.employer_unknown_policy as Record<string, string> : {},
@@ -169,6 +229,8 @@ function persistedJob(row: Record<string, unknown>): PersistedBoardJob {
     id: String(row.id), title: String(row.title || row.raw_title || ""),
     description: row.description ? String(row.description) : null,
     department: row.department ? String(row.department) : null,
+    locationText: row.location_text ? String(row.location_text) : null,
+    scheduleType: row.schedule_type ? String(row.schedule_type) : null,
     employmentType: String(row.employment_type || "unknown"), workMode: String(row.work_mode || "unknown"),
     eligibleStates: strings(row.eligible_states), salaryMin: numeric(row.salary_min), salaryMax: numeric(row.salary_max),
     salaryCurrency: row.salary_currency ? String(row.salary_currency) : null,
@@ -180,10 +242,14 @@ function persistedJob(row: Record<string, unknown>): PersistedBoardJob {
     listingStatus: String(row.listing_status || "inactive"), sourceFreshnessStatus: String(row.source_freshness_status || "unknown"),
     closingAt: row.closing_at ? String(row.closing_at) : null, rejectionReason: row.rejection_reason ? String(row.rejection_reason) : null,
     applicationUrl: row.official_application_url ? String(row.official_application_url) : row.source_job_url ? String(row.source_job_url) : null,
-    sourceAuthorizedForPaidDisplay: sourceRecord.paid_display_permission_status === "approved_public_endpoint"
+    sourceAuthorizedForPaidDisplay: sourceRecord.paid_display_permission_status === "documented_paid_display_authorized"
       && Boolean(sourceRecord.permission_evidence_url) && Boolean(sourceRecord.is_active),
     syntheticStaging: synthetic,
   };
+}
+
+function object(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
 function numeric(value: unknown) {
@@ -198,7 +264,7 @@ function inputHash(profile: BoardProfileEvidence, job: PersistedBoardJob) {
 
 async function recomputeProfile(admin: AdminClient, customerId: string, snapshotId: string, onlyJobId?: string) {
   const snapshotResult = await admin.from("ap_intake_snapshots")
-    .select("id,customer_id,work_modes,us_state_or_dc,employment_types,dealbreakers,employer_unknown_policy,salary_hard_minimum_cents,salary_period,salary_unpublished_policy")
+    .select("id,customer_id,desired_activities,avoided_activities,optional_titles,confirmed_title_restriction,optional_industries,blocked_industries,search_breadth,work_modes,us_state_or_dc,employment_types,schedules,travel,benefits,work_condition_preferences,dealbreakers,employer_unknown_policy,salary_hard_minimum_cents,salary_period,salary_unpublished_policy")
     .eq("id", snapshotId).maybeSingle();
   if (snapshotResult.error || !snapshotResult.data) throw snapshotResult.error || new Error("BOARD_PROFILE_NOT_FOUND");
   if (snapshotResult.data.customer_id !== customerId) {
@@ -209,7 +275,7 @@ async function recomputeProfile(admin: AdminClient, customerId: string, snapshot
   const factsResult = await admin.from("ap_candidate_facts").select("semantic_key,capability_status,verification")
     .eq("snapshot_id", snapshotId).is("superseded_at", null);
   if (factsResult.error) throw factsResult.error;
-  let jobsQuery = admin.from("jobs").select("id,title,raw_title,description,department,employment_type,work_mode,eligible_states,salary_min,salary_max,salary_currency,pay_period,sales_flag,commission_flag,phone_intensity,high_volume_contact_center_flag,benefits_status,is_active,listing_status,source_freshness_status,closing_at,rejection_reason,official_application_url,source_job_url,source_id,source:job_sources(paid_display_permission_status,permission_evidence_url,is_active)");
+  let jobsQuery = admin.from("jobs").select("id,title,raw_title,description,department,location_text,schedule_type,employment_type,work_mode,eligible_states,salary_min,salary_max,salary_currency,pay_period,sales_flag,commission_flag,phone_intensity,high_volume_contact_center_flag,benefits_status,is_active,listing_status,source_freshness_status,closing_at,rejection_reason,official_application_url,source_job_url,source_id,source:job_sources(paid_display_permission_status,permission_evidence_url,is_active)");
   if (onlyJobId) jobsQuery = jobsQuery.eq("id", onlyJobId);
   const jobsResult = await jobsQuery.limit(5_000);
   if (jobsResult.error) throw jobsResult.error;
