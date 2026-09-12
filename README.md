@@ -1,9 +1,10 @@
 # ApplyPack
 
-ApplyPack is DuoTap LLC's manual-first job-search and application-document service at `applypack.work`.
+ApplyPack is DuoTap LLC's filtered job-board, human-reviewed job-search, and application-document service at `applypack.work`.
 
+- Filtered Job Board: $6.99 weekly, $19.99 monthly, or $44.99 every three calendar months; no free trial and no personalized ranking.
 - Job Match Search: $20 for 10 current, human-reviewed job matches.
-- Application Pack: $8 per selected job for one tailored resume and one tailored cover letter.
+- Application Pack: $8 per eligible board or delivered Top 10 job for one tailored resume and one tailored cover letter.
 - Turnaround: within 24 hours after successful payment and all required information is available.
 - Capacity defaults: one search and two Application Packs per rolling 24-hour window.
 
@@ -49,14 +50,23 @@ The provider-backed flows intentionally return configuration errors until valid 
 
 ## Stripe setup
 
-Use test mode first. Configure the signed webhook endpoint at `/api/stripe/webhook` for:
+Use test mode first. Configure the three exact recurring board prices plus the two one-time products. Configure the signed webhook endpoint at `/api/stripe/webhook` for:
 
 - `checkout.session.completed`
 - `checkout.session.expired`
-- `charge.refunded`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+- `invoice.paid`
+- `invoice.payment_failed`
+- `refund.created`
+- `refund.updated`
+- `refund.failed`
 - `charge.dispute.created`
+- `charge.dispute.updated`
+- `charge.dispute.closed`
 
-The server fixes prices at 2,000 cents for a search and 800 cents per Application Pack. Payment status changes only from verified provider events.
+The server fixes recurring board prices at 699 cents weekly, 1,999 cents monthly, and 4,499 cents every three months; one-time prices are 2,000 cents for a search and 800 cents per Application Pack. Payment status changes only from verified provider events.
 
 ## Email and inbound mail
 

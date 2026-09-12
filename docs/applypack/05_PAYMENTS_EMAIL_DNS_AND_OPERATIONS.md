@@ -1,6 +1,8 @@
 # ApplyPack Payments, Email, DNS, and Operations
 
-Last updated: September 1, 2026
+Last updated: September 9, 2026
+
+Payment and operations must follow `11_SEPTEMBER_9_FINAL_PRODUCT_AMENDMENT.md`. The three board subscriptions are separate from the one-time Top 10 and materials products.
 
 ## Provider rule
 
@@ -348,6 +350,13 @@ Create in Stripe test mode first.
 Recommended products:
 
 ```text
+Product: ApplyPack Filtered Job Board
+Recurring prices: $6.99 weekly; $19.99 monthly; $44.99 every three calendar months
+Free trial: none
+Plan changes: cancel, then select another plan after the applicable term
+```
+
+```text
 Product: ApplyPack Job Match Search
 One-time price: $20 USD
 Internal lookup key: job_match_search_usd_2000
@@ -359,9 +368,9 @@ One-time unit price: $8 USD
 Internal lookup key: apply_pack_usd_800
 ```
 
-Use one unit of the $8 price for each selected job. The server calculates and validates quantity from eligible selected job records. The browser cannot set a lower price or arbitrary quantity.
+Use one unit of the $8 price for each eligible selected job. Eligibility comes from either the customer's current subscription board or delivered Top 10. The server calculates and validates quantity from owned records. The browser cannot set a lower price or arbitrary quantity.
 
-Do not use subscriptions.
+Use subscriptions only for the filtered board and only with the three exact approved recurring prices. Top 10 and materials remain one-time charges.
 
 ## Stripe Checkout behavior
 
@@ -429,8 +438,17 @@ At minimum, handle:
 ```text
 checkout.session.completed
 checkout.session.expired
-charge.refunded or refund.updated, based on integration
+customer.subscription.created
+customer.subscription.updated
+customer.subscription.deleted
+invoice.paid
+invoice.payment_failed
+refund.created
+refund.updated
+refund.failed
 charge.dispute.created
+charge.dispute.updated
+charge.dispute.closed
 ```
 
 If any asynchronous payment method is enabled, also handle the relevant asynchronous success and failure events. The recommended launch configuration avoids delayed methods.

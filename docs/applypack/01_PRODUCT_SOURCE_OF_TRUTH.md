@@ -1,6 +1,8 @@
 # ApplyPack Product Source of Truth
 
-Last updated: September 1, 2026
+Last updated: September 9, 2026
+
+The current subscription-board and board-origin materials contract is defined in `11_SEPTEMBER_9_FINAL_PRODUCT_AMENDMENT.md`. It supersedes incompatible historical scope below.
 
 ## Product definition
 
@@ -74,7 +76,7 @@ Example:
 $20 search + 10 Apply Packs at $8 each = $100 total
 ```
 
-There is no subscription and no obligation to purchase an Apply Pack for every delivered job.
+The $20 Top 10 has no subscription prerequisite, and there is no obligation to purchase an Apply Pack for every delivered job. The optional filtered board is a separate renewing subscription at $6.99 weekly, $19.99 monthly, or $44.99 every three calendar months, with no free trial.
 
 ## Turnaround rules
 
@@ -394,7 +396,7 @@ Do not add unless the user expressly authorizes them:
 - Customer-to-employer messaging
 - Interview scheduling
 - Automated scraping of large job boards
-- Subscription plans
+- Additional subscription plans beyond the three approved board intervals
 - Mobile app
 - LinkedIn profile rewriting
 - Public customer profiles

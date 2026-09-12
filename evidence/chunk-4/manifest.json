@@ -1,0 +1,557 @@
+{
+  "schema_version": 2,
+  "chunk": 4,
+  "chunk_status": "COMPLETE",
+  "closeout_round": "initial",
+  "created_at": "2026-09-06T23:32:51.2932566-04:00",
+  "worktree": "C:\\Users\\mskir\\Desktop\\Apply_Pack\\applypack-phase0-e9c3aea0d45447bfaa6517e488356e0d",
+  "branch": "codex/applypack-corrected-build-2026-09-04",
+  "base_commit": "aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8",
+  "required_phase_0_commit": "0595ae7cec5c2f36d06b11b691fd319742cb692c",
+  "accepted_chunk_1_commit": "e8c77426b892a54b802dde516552449825754df8",
+  "accepted_chunk_2_final_evidence_commit": "93644d52c53340cef187fa08e3d574a75d42a97a",
+  "accepted_chunk_3_final_evidence_commit": "dba720ac2f396b28fd88c757ab3a9498b43091ff",
+  "chunk_start_head": "dba720ac2f396b28fd88c757ab3a9498b43091ff",
+  "tested_code_commit": "9751222fb51953e3e49ce7a50795a44bf699e0fa",
+  "tested_tree": "8fd898ccf4f5b6a6285ab905e14d63adc8bfd982",
+  "artifact_hash_scope": "tested_code_commit",
+  "evidence_artifact_hash_scope": "evidence_attestation_content",
+  "contract_sha256": "df4e32e2ea0c37abd3f39904c36576c0af3935f9754bb1b81979782dc002d69f",
+  "corrected_packet_sha256": "96720cbfa395c07292cf631174bf31944f3c485c02448eddb71cd011ddc3e691",
+  "supplemental_addendum_sha256": "c60e1ad79aa63a3c8beaa575b443045fef22fc2da6275c56d5ded7f7b11b0610",
+  "environment": {
+    "git": "2.50.0.windows.2",
+    "node": "22.22.0",
+    "npm": "10.9.4",
+    "os": "Microsoft Windows NT 10.0.26200.0",
+    "supabase_cli": "2.116.0",
+    "timezone": "America/New_York"
+  },
+  "checks": [
+    {
+      "id": "C4-MIGRATE",
+      "command": "npx.cmd supabase db reset --local",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 30,
+      "evidence": "The disposable local database applied all 30 migrations from zero through 202609060030_chunk4_commerce_release.sql and recorded the Chunk 4 checkpoint."
+    },
+    {
+      "id": "C4-DB",
+      "command": "npm.cmd run test:database",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 4,
+      "evidence": "All four transactional fixture families passed, including capacity/payment races, stale and duplicate paid attempts, exact-ten release and refund serialization, adjustments, disputes, access, outbox recovery, and scheduler catch-up."
+    },
+    {
+      "id": "C4-LEGACY",
+      "command": "npm.cmd run test:legacy-backfill",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 2,
+      "evidence": "The legacy paid-order validation passed before and after the idempotent backfill rerun, then restored the complete 30-migration schema."
+    },
+    {
+      "id": "C4-ROLLBACK",
+      "command": "npm.cmd run test:rollback",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 2,
+      "evidence": "The isolated guarded rollback reported ROLLBACK_OK and self-restored all 30 migrations before RESTORE_OK."
+    },
+    {
+      "id": "C4-TYPES",
+      "command": "npm.cmd run types:database:check",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 1,
+      "evidence": "Checked-in TypeScript database types exactly matched the fully migrated local schema."
+    },
+    {
+      "id": "C4-LINT",
+      "command": "npm.cmd run lint",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": null,
+      "evidence": "ESLint completed without findings or warnings."
+    },
+    {
+      "id": "C4-TYPE",
+      "command": "npm.cmd run typecheck",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": null,
+      "evidence": "TypeScript no-emit validation completed without errors."
+    },
+    {
+      "id": "C4-UNIT",
+      "command": "npm.cmd test -- --pool=threads --maxWorkers=1",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 292,
+      "evidence": "All 292 tests in 44 files passed, including Chunk 4 commerce, access, email, deadline/DST, exact-ten, route-security, and prior regression coverage.",
+      "prior_attempt": "A resource-contended default-fork rerun was rejected after Windows timed out starting 15 workers; it executed only 29 files and returned exit 1.",
+      "retest": "The complete suite was immediately rerun in one thread worker on the same code and passed 44/44 files and 292/292 tests with exit 0."
+    },
+    {
+      "id": "C4-BUILD",
+      "command": "npm.cmd run build",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 51,
+      "evidence": "Next.js production compilation, TypeScript, page-data collection, and all 51 generated routes/pages completed successfully with providers disabled."
+    },
+    {
+      "id": "C4-E2E",
+      "command": "npm.cmd run test:e2e -- --reporter=list,json",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 72,
+      "evidence": "All 72 applicable desktop/mobile Playwright cases passed; two duplicate-platform cases were intentionally skipped among 74 scheduled cases. Older Chunk 2 screenshot side effects were restored byte-for-byte and excluded."
+    },
+    {
+      "id": "C4-A11Y-VISUAL",
+      "command": "npx.cmd playwright test tests/e2e/chunk4-evidence.spec.ts --reporter=list",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 22,
+      "evidence": "Both configured projects passed 11 commerce states each with zero serious or critical axe findings, layout assertions, exact-ten count checks, and 22 deterministic 1440/390 PNG captures."
+    },
+    {
+      "id": "C4-TRACE",
+      "command": "Chunk 4 stable-row ownership/status audit",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 115,
+      "evidence": "All 115 primary Chunk 4 stable rows map to implementation, tests, evidence, and IMPLEMENTED status; pending, unmapped, multiply owned, and unimplemented rows are zero."
+    },
+    {
+      "id": "C4-FORMAT",
+      "command": "git diff --check and git diff --cached --check",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 2,
+      "evidence": "Both working-tree and staged whitespace checks completed without errors; line-ending notices were advisory only."
+    },
+    {
+      "id": "C4-INTEGRATION-EXTERNAL",
+      "command": "npm.cmd run test:integration",
+      "status": "NOT_APPLICABLE_LOCAL",
+      "exit_code": 0,
+      "assertion_count": 3,
+      "evidence": "Both real-scanner files and all three tests were explicitly skipped because no approved production scanner is configured. Deterministic fail-closed coverage passed and production processing remains disabled."
+    }
+  ],
+  "required_tests": {
+    "numerator": 13,
+    "denominator": 13,
+    "failed": [],
+    "blocked": [],
+    "not_applicable_local": [
+      "C4-INTEGRATION-EXTERNAL"
+    ]
+  },
+  "cumulative_required_tests": {
+    "numerator": 57,
+    "denominator": 57,
+    "phase_0": "9/9",
+    "chunk_1": "11/11",
+    "chunk_2": "12/12",
+    "chunk_3": "12/12",
+    "chunk_4": "13/13"
+  },
+  "traceability": {
+    "chunk_4_owning_rows": 115,
+    "implemented_rows": 115,
+    "unmapped_rows": 0,
+    "multiply_owned_rows": 0,
+    "cumulative_rows_through_chunk_4": 358
+  },
+  "screenshot_inventory": {
+    "desktop_1440": 11,
+    "mobile_390": 11,
+    "total": 22,
+    "serious_or_critical_axe_findings": 0
+  },
+  "artifacts": [
+    {
+      "path": ".env.example",
+      "bytes": 2850,
+      "sha256": "ecbd4ae0978cd4b514b13aaa3a76c0a14be4ea99e3fb4ebdd8a40219fcdc42c8"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "bytes": 2143,
+      "sha256": "0c34fa77a50b1f37f341f7d037e256f1ead56e17aee60051f8329ef213ec2335"
+    },
+    {
+      "path": "docs/CONFIG_DECISIONS.md",
+      "bytes": 17701,
+      "sha256": "0a71548594af68cad18383343bf14344820dc03aba34736fa9efba37ca849ab4"
+    },
+    {
+      "path": "docs/DEPLOYMENT_RUNBOOK.md",
+      "bytes": 38953,
+      "sha256": "b875d64912f2d98190a2830401484685c804f3b462d3f9b9b3e13467f651565f"
+    },
+    {
+      "path": "docs/IMPLEMENTATION_STATUS.md",
+      "bytes": 73479,
+      "sha256": "65964f28f55e4a0c713111e39d03680c860f64ff2d53c30b231f5b7bc3e1983f"
+    },
+    {
+      "path": "docs/MATCHING_POLICY.md",
+      "bytes": 20127,
+      "sha256": "129cd3ade45b7053a87663dd96677dfbc3f158afa9ede4be164b9e0b10d663e0"
+    },
+    {
+      "path": "docs/REQUIREMENT_TRACEABILITY.md",
+      "bytes": 634432,
+      "sha256": "c4782d3828ba117885185151268ccf34355db9256fbdb82345e1b9375a9efa5b"
+    },
+    {
+      "path": "playwright.config.ts",
+      "bytes": 840,
+      "sha256": "db5b8b19e8f8f12194a8f8381359da91ec59cd11675bd26fe97a50def9c51d3b"
+    },
+    {
+      "path": "scripts/run-supabase-db-tests-v2.mjs",
+      "bytes": 995,
+      "sha256": "1cde5e66c10f0005ba901cfa877564d8d684e3e37dae7ba328509d51b0d08f13"
+    },
+    {
+      "path": "src/app/admin/page.tsx",
+      "bytes": 19013,
+      "sha256": "8fc68b0a9a1b59b2824c8d2714c8d8f59097a524564f8972db0f24d7b5b0218b"
+    },
+    {
+      "path": "src/app/api/admin/search-orders/[id]/deliver/route.ts",
+      "bytes": 5967,
+      "sha256": "81f4fcbc75532217167f86c2d10a41aa65788fc136970dc27788d1612ced1590"
+    },
+    {
+      "path": "src/app/api/admin/search-services/[id]/reviews/route.ts",
+      "bytes": 1679,
+      "sha256": "d35f0b1d23849546c78bca64e4bdd2e90ccbca4feca74f69294147e3b2a2b222"
+    },
+    {
+      "path": "src/app/api/auth/order-access/resend/route.ts",
+      "bytes": 4119,
+      "sha256": "8567f8ecae29e478e5a5bd0a8d8515a9fc080fb887972ad6bffe185b05582cea"
+    },
+    {
+      "path": "src/app/api/checkout/search/edit/route.ts",
+      "bytes": 1208,
+      "sha256": "bdc87dd47e32694e966d13da9c343b1ec68b1855c2fed2b106bdc71e4590d955"
+    },
+    {
+      "path": "src/app/api/checkout/search/route.ts",
+      "bytes": 11878,
+      "sha256": "356aaff20e9b8b40edf421575c1f2d2f9d36c4d1b531cc07dafed971281e239c"
+    },
+    {
+      "path": "src/app/api/checkout/search/status/route.ts",
+      "bytes": 2646,
+      "sha256": "6fb3170385dd0db5ada9fa9fffd80c08d10c7223eda8b435b26fbaabd6c42898"
+    },
+    {
+      "path": "src/app/api/cron/maintenance/route.ts",
+      "bytes": 9565,
+      "sha256": "8ccba5f2d823a5c5e5da9926f6ff4e63b987b949f000c87a1f032f669c7a1593"
+    },
+    {
+      "path": "src/app/api/customer/search-adjustments/[id]/route.ts",
+      "bytes": 4551,
+      "sha256": "abd2d22cd9f82c19fe572b80cd89a445fc5b4a61340a2a4a1fd31a2bef57d648"
+    },
+    {
+      "path": "src/app/api/intake/anonymous-draft/feasibility/route.ts",
+      "bytes": 881,
+      "sha256": "7a76733dcb4c6eca59122aca221554d8e4e6f28de9d449e8265e2899f3413d53"
+    },
+    {
+      "path": "src/app/api/intake/anonymous-draft/finalize/route.ts",
+      "bytes": 6326,
+      "sha256": "767ce25ac7993530075563c23e6c0bf0860fbde1001042a7e10425c087d8fda5"
+    },
+    {
+      "path": "src/app/api/stripe/webhook/route.ts",
+      "bytes": 21377,
+      "sha256": "e0fe0d3dd457bcac3878c9db066df10ef6026da3be78c87e4afeafc1d68cf2b8"
+    },
+    {
+      "path": "src/app/auth/order-access/route.ts",
+      "bytes": 2146,
+      "sha256": "d592d010ee12e1a3dc8c1d8fcf4b60db2764d90598fd9a7449f409775271ff87"
+    },
+    {
+      "path": "src/app/checkout/return/page.tsx",
+      "bytes": 4415,
+      "sha256": "87f9b3f2fb5709e5f1cadee904bc74501f2248e5c343a9d7307e1a7263eb4a1d"
+    },
+    {
+      "path": "src/app/e2e/chunk4/page.tsx",
+      "bytes": 6939,
+      "sha256": "69879fb7af12d7e2830a6850bbea59638a428eadacf2a1b80fe50780923ff31c"
+    },
+    {
+      "path": "src/app/get-started/wizard-v3.tsx",
+      "bytes": 66257,
+      "sha256": "b7d07d0d27edf6ec326d9dfd82e0f3a9285b96bfd329a97f7cac59be7452e89b"
+    },
+    {
+      "path": "src/app/globals.css",
+      "bytes": 81110,
+      "sha256": "2a88240c8d66597cec34ac7a2e04d00003d396402621f966d624583426f73bb5"
+    },
+    {
+      "path": "src/app/my-applypack/page.tsx",
+      "bytes": 13240,
+      "sha256": "45bcf3b3d710df55a113f749b8d7220d185a20fe88c3be626ebee4e7cd60ab33"
+    },
+    {
+      "path": "src/components/admin/chunk4-staff-queue.tsx",
+      "bytes": 10021,
+      "sha256": "cae55e4de88de73fa052b2b574d367ab56cbae606e044c36d03330a98cbe30ed"
+    },
+    {
+      "path": "src/components/commerce/checkout-status.tsx",
+      "bytes": 2501,
+      "sha256": "2631be68b7cd15a4f1aa36e256a315e870a63394082c9158c9ed6ff81d9315b8"
+    },
+    {
+      "path": "src/components/portal/apply-pack-selector-v2.tsx",
+      "bytes": 18601,
+      "sha256": "7074ef993601b02212283dab6a44c3d668eb437439385707c659688e48449d98"
+    },
+    {
+      "path": "src/components/portal/search-order-progress.tsx",
+      "bytes": 8476,
+      "sha256": "0dd8b3932913b9bae8eb6bd8f3074c1e31faf108c204a50628d40de2ba0754b7"
+    },
+    {
+      "path": "src/lib/commerce/email.ts",
+      "bytes": 6965,
+      "sha256": "50a4d0d20ecdb9dca54464e810579a166c68613a426d357f8d8ff680c8788f9a"
+    },
+    {
+      "path": "src/lib/commerce/outbox.ts",
+      "bytes": 11447,
+      "sha256": "88326848d7eabf504e24119be31b9e78b83e749ab90149a18086c7bc6151b67f"
+    },
+    {
+      "path": "src/lib/commerce/presentation.ts",
+      "bytes": 6964,
+      "sha256": "c0ae0c4496e5ab993b16ffd6b7b0ec3c26a34b1ae72b0532fa19457d2d29d5bc"
+    },
+    {
+      "path": "src/lib/commerce/server.ts",
+      "bytes": 5680,
+      "sha256": "545471e0945ad4f4da223d1f7007abed7f8299d432d7a43176a37431c6eb763d"
+    },
+    {
+      "path": "src/lib/commerce/workers.ts",
+      "bytes": 12036,
+      "sha256": "43a8e94222ce93759e539a3c2b6d155eb0c2dae717b5ea912f04aa57a48ab12e"
+    },
+    {
+      "path": "src/lib/database.types.ts",
+      "bytes": 292989,
+      "sha256": "409a9f7aeda04370c8c3106052e2f3244ad2175b4644007264c6fe711d22daff"
+    },
+    {
+      "path": "src/lib/env.ts",
+      "bytes": 4656,
+      "sha256": "8485bbcd8c91294cf5dfe2f86e81894070c277a08db333c68902c218f0c49ad0"
+    },
+    {
+      "path": "src/lib/matching/persisted-runtime.ts",
+      "bytes": 19573,
+      "sha256": "1152be9d45ddfff14a8882a77627d93395b61b53b690bc552401ca5e509ba824"
+    },
+    {
+      "path": "src/lib/stripe/mode.ts",
+      "bytes": 2025,
+      "sha256": "06c3ec40d5fd549c4433fdee3a4b54147134df8866a1282a74a72329ef22c0e5"
+    },
+    {
+      "path": "src/lib/stripe/server.ts",
+      "bytes": 1524,
+      "sha256": "d50482fec2a461d2de42f7ad0f41ec4efa24f1b6f3d68f48b328ee9501fb3a2b"
+    },
+    {
+      "path": "supabase/config.toml",
+      "bytes": 1284,
+      "sha256": "bf6f8a97f290e55c22f7ed83528971ac33fe5d8a0233af31e8e94e941a98485d"
+    },
+    {
+      "path": "supabase/migrations/202609060030_chunk4_commerce_release.sql",
+      "bytes": 174379,
+      "sha256": "69097f360b48a86201bc8e3093cc50ce69b185fabb3e27154b83844f3fa068b5"
+    },
+    {
+      "path": "tests/e2e/chunk4-evidence.spec.ts",
+      "bytes": 5216,
+      "sha256": "bed7612ff52b7f3239de3aa786d16603ba3afff10b116c9f31b3f2d0c228946d"
+    },
+    {
+      "path": "tests/integration/chunk4-commerce-release.sql",
+      "bytes": 99104,
+      "sha256": "63312ff5e9ee798f82492e85967b0a09501bec909030b704df5b383635887075"
+    },
+    {
+      "path": "tests/unit/checkout-drafts-safety.test.ts",
+      "bytes": 2084,
+      "sha256": "176cf4e22bfb0344346dd3503a70c849974c453e90b4deec2f2b46cc83d3f690"
+    },
+    {
+      "path": "tests/unit/chunk4-commerce.test.ts",
+      "bytes": 12144,
+      "sha256": "58e2c4a2f1d215d3bbb0292480dd7cb7be5a1dcfae97d829d934f085cc0748a2"
+    },
+    {
+      "path": "tests/unit/guest-intake-auth.test.ts",
+      "bytes": 1875,
+      "sha256": "303bcb48269af61aa51aa89591a9ba80ce6348974abed68e65bb511b726d8b43"
+    },
+    {
+      "path": "tests/unit/payment-route-safety.test.ts",
+      "bytes": 1659,
+      "sha256": "d64465b8bcbec88778ef8d1b32e9a43a1466817facddc1fbee0066293798c096"
+    }
+  ],
+  "evidence_artifacts": [
+    {
+      "path": "evidence/chunk-4/screenshots/1440-adjustment-required.png",
+      "bytes": 218621,
+      "sha256": "cdee277b8c9a0b4215c944b9e286949622860d97e495615d5c3549e1834d1b9f"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/1440-capacity-exception.png",
+      "bytes": 136206,
+      "sha256": "6423b52ca0aa25ca6d6e3634ace68c803287121b33c8ba0a16839e5a4e6d9dd4"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/1440-confirmed-search-portal.png",
+      "bytes": 133848,
+      "sha256": "b01d47339faea5fb5b1c8fb2e95ad6ca0d5858ea50d23baac87233a06e1eeade"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/1440-delivered-exact-ten.png",
+      "bytes": 1035005,
+      "sha256": "e40c0ea55e9bc9d6918d41249356a05111d6f9570e4ab50e5f5ea883a40c30cf"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/1440-feasibility-error.png",
+      "bytes": 317773,
+      "sha256": "9ce2b78dd3734422c680be44e5e231d95a2bbb17fcb71078c3e7c5adf04f6979"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/1440-feasibility-infeasible.png",
+      "bytes": 317474,
+      "sha256": "5038afe5541e1dc715b8a5135fc538e138c0eccd6234beb1ee7b4275a7b4e6bb"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/1440-feasibility-limited.png",
+      "bytes": 321708,
+      "sha256": "302c1bd98222f2dc231294c93dca2764d22980dfc369bf9c569b61fd510f5fe9"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/1440-feasibility-stale.png",
+      "bytes": 319304,
+      "sha256": "584934253e147598602d08f9564f502222ce4b6c61ad716717d62322d135fb14"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/1440-payment-confirming.png",
+      "bytes": 132605,
+      "sha256": "38cf951ffac7fa67175309b4ea47c2a54b3cb0b3edc3a10ce564a6b2a100e341"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/1440-refund-processing.png",
+      "bytes": 158510,
+      "sha256": "19952c9fb20c1951aa5b7804c4fcb1ecd798148de4db5ef535067698701c7ace"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/1440-review-and-likely-checkout.png",
+      "bytes": 327378,
+      "sha256": "c86ff9c8485d4d21f97568a6632647b04fce2e652942eae27762f039cc3f8afc"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/390-adjustment-required.png",
+      "bytes": 179918,
+      "sha256": "95bef9b089740ce433ef9e4f0ec6cfcd717e07939a3eadd426546a5d2f6932af"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/390-capacity-exception.png",
+      "bytes": 96351,
+      "sha256": "5d52146c2ab82ee1c1b4c4382098c05aa3b59dff69416af97a92d937e39ff8bb"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/390-confirmed-search-portal.png",
+      "bytes": 98195,
+      "sha256": "6024dc64af0969be9b40729b0858b069c47381b915b39ba3dc1b7aef94683240"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/390-delivered-exact-ten.png",
+      "bytes": 1006409,
+      "sha256": "196b0c73372a6496e5024d46a2fc83e7034fecabb698bd72661ef9b714be8235"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/390-feasibility-error.png",
+      "bytes": 263599,
+      "sha256": "cd39782bdfa183a7fc75dd6226db22063172dd049b164a32696bccf05739f155"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/390-feasibility-infeasible.png",
+      "bytes": 251781,
+      "sha256": "b5587ec1ca7f558b9be450730e5c70057f992a8e35435162b16f9900b6f8d5ea"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/390-feasibility-limited.png",
+      "bytes": 266323,
+      "sha256": "67d045842c998fda3b783a0b932412d9d822a3c6e0955ad5a931c2524fecb30d"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/390-feasibility-stale.png",
+      "bytes": 253095,
+      "sha256": "ebfae6d2fe1d651ee618df45bb7f356457b07d1642dd89473c8d309af0a90fe1"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/390-payment-confirming.png",
+      "bytes": 95987,
+      "sha256": "6840a605e2ee58900442787015f3b4fee81ec0369ad3f413505f7544f4e85973"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/390-refund-processing.png",
+      "bytes": 118906,
+      "sha256": "260cdcbb6feb16bc620b62a2076bbc1bfeec993f28b97061dd46d0e6198b6503"
+    },
+    {
+      "path": "evidence/chunk-4/screenshots/390-review-and-likely-checkout.png",
+      "bytes": 272779,
+      "sha256": "075f6331025d5101047f075635b507bb9528fb677cebaf26d81c6864c12feb05"
+    }
+  ],
+  "unimplemented_chunk_requirements": [],
+  "unresolved_release_blockers": [
+    "Approved tax-inclusive treatment is not yet recorded.",
+    "Stripe production credentials, exact price mapping and API version, signed webhook endpoint, immediate-card methods, refund and dispute behavior, reconciliation, and separate live enablement are not configured or verified.",
+    "Production Supabase identity settings and the exact callback allowlist are not configured or verified.",
+    "The Resend sender, monitored reply-to, SPF, DKIM, DMARC, disabled tracking, and accepted-send idempotency and reconciliation guarantee are not verified.",
+    "Production search capacity, staffing, protected staff assignments, and staff training are not configured.",
+    "Scheduled-worker topology, monitored alerts, and operational ownership are not activated or exercised in production.",
+    "Production KMS, malware scanning, sandbox parser and OCR, permitted-model policy, reference isolation, and leak scanning remain unconfigured; document processing remains fail closed.",
+    "Approved retention and deletion durations, matching Privacy Policy language, and production legal-version publication remain unset.",
+    "No automated job source has documentary authorization, and the production source matrix and exact query, result, lookback, pagination, and release-verification bounds are not approved.",
+    "Manual assistive-technology and live-provider exercises remain outstanding and are not represented by local synthetic evidence."
+  ],
+  "next_chunk_started": false,
+  "next_chunk_authorized": false,
+  "provider_contacted": false,
+  "production_database_changed": false,
+  "payment_or_checkout_activated": false,
+  "pushed_or_deployed": false,
+  "protected_checkouts_modified": false,
+  "raw_source_bundle_committed": false
+}

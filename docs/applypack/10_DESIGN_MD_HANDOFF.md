@@ -1,5 +1,7 @@
 # ApplyPack DESIGN.md Handoff
 
+Last updated: September 9, 2026. Preserve the established visual system while adding the product surfaces required by `11_SEPTEMBER_9_FINAL_PRODUCT_AMENDMENT.md`.
+
 The user will create a separate `DESIGN.md` after receiving this package.
 
 ## Required filename and location

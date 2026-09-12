@@ -14,9 +14,9 @@
 ## Stripe
 
 1. Use test mode first.
-2. Create active one-time USD products and prices named Job Match Search at 2000 cents and Apply Pack at 800 cents. The server verifies names, amounts, currency, recurrence, product status, and price status.
+2. Run the guarded test-price setup to create or reuse five active test-mode products/prices: Job Match Search at 2000 cents once; Tailored Resume + Cover Letter at 800 cents once; and the filtered board at 699 cents weekly, 1999 cents monthly, and 4499 cents every three calendar months. The server verifies names where applicable, amounts, currency, recurrence, interval count, licensed quantity, product status, and price status.
 3. Add the environment-specific /api/stripe/webhook endpoint.
-4. Subscribe to checkout.session.completed, checkout.session.expired, refund.created, refund.updated, refund.failed, and charge.dispute.created.
+4. Subscribe to checkout.session.completed, checkout.session.expired, customer.subscription.created, customer.subscription.updated, customer.subscription.deleted, invoice.paid, invoice.payment_failed, refund.created, refund.updated, refund.failed, charge.dispute.created, charge.dispute.updated, and charge.dispute.closed.
 5. Set the signing secret and server key in Railway.
 6. Set the statement descriptor to APPLYPACK and inspect public receipt details for residential-address exposure.
 7. Verify successful, cancelled, expired, mismatched-price, wrong-mode, in-progress replay, completed replay, refund, and dispute events.

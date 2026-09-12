@@ -1,0 +1,343 @@
+{
+  "schema_version": 2,
+  "chunk": 3,
+  "chunk_status": "COMPLETE",
+  "remediation_round": 4,
+  "created_at": "2026-09-06T14:08:13.5965067-04:00",
+  "worktree": "C:\\Users\\mskir\\Desktop\\Apply_Pack\\applypack-phase0-e9c3aea0d45447bfaa6517e488356e0d",
+  "branch": "codex/applypack-corrected-build-2026-09-04",
+  "base_commit": "aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8",
+  "required_phase_0_commit": "0595ae7cec5c2f36d06b11b691fd319742cb692c",
+  "accepted_chunk_1_commit": "e8c77426b892a54b802dde516552449825754df8",
+  "accepted_chunk_2_final_evidence_commit": "93644d52c53340cef187fa08e3d574a75d42a97a",
+  "remediation_start_head": "ab18f288cb906cf6c11f7d43c4945b7f08be8f38",
+  "tested_code_commit": "8ce3a8ac1f1e6cf4cbdfcf998010a0934e7d4ba7",
+  "tested_tree": "9b8324d5e6e0460f26d02b6c2c30f43bf2b3acac",
+  "artifact_hash_scope": "tested_code_commit",
+  "contract_sha256": "df4e32e2ea0c37abd3f39904c36576c0af3935f9754bb1b81979782dc002d69f",
+  "superseded_evidence": {
+    "original_tested_code_commit": "152fc529cbf39652cd59dedc734f50433419bb31",
+    "original_final_evidence_commit": "1ec2eb6ffdb7b942acbe76f87e53c5bcbbe7c3c6",
+    "original_manifest_bytes": 9671,
+    "original_manifest_sha256": "2cea9aae5ef4f8bdc7925084cfac94d695db38facf90664fbb1d250cc52ee89f",
+    "first_remediation_commit": "077c55d1b57366de929223886379eca14255355a",
+    "second_remediation_commit": "4fbf4edb6ac703ae5eb06326f89b49c065f550a2",
+    "second_final_evidence_commit": "32ac9ec42699476ac2a74b4da66a82e19e99b271",
+    "second_manifest_bytes": 15363,
+    "second_manifest_sha256": "13481fe3176c35de65507f2131643e1c1d044574cbebd5b51bd6f4a8be9d986d",
+    "second_manifest_canonical_sha256": "747c61809d3eb243dda1ef8b3b0fb82f9ef88f7a96f6e6548612ceeb862735d5",
+    "third_remediation_commit": "b9c2848de5908cf1ae75072aeb2aa85f69d51b14",
+    "third_final_evidence_commit": "ab18f288cb906cf6c11f7d43c4945b7f08be8f38",
+    "third_manifest_bytes": 19212,
+    "third_manifest_sha256": "850a6bc4aea94ebb1e4fe7fd12c1837f9503d2aae78e0e16a14608a6d9d3cea2",
+    "third_manifest_canonical_sha256": "40aa9944a3c2d7592fe4093994d76fa0cb6fde33597f0a482b34770a0556b539",
+    "acceptance_state": "REJECTED_SUPERSEDED"
+  },
+  "environment": {
+    "git": "2.50.0.windows.2",
+    "node": "22.22.0",
+    "npm": "10.9.4",
+    "os": "Microsoft Windows NT 10.0.26200.0",
+    "supabase_cli": "2.116.0",
+    "timezone": "America/New_York"
+  },
+  "remediated_findings": [
+    {
+      "id": "C3-R2-01",
+      "finding": "CALLER_ASSIGNED_DECISIONS_AND_SCORES",
+      "status": "CLOSED",
+      "evidence": "The strict evaluation request accepts only immutable record IDs. The server reloads the intake, job tree, fact versions, current reviews, and source authorization before deriving gates, salary, fit, confidence, preferences, readiness, and risk."
+    },
+    {
+      "id": "C3-R2-02",
+      "finding": "INCOMPLETE_PARSE_AND_BOOLEAN_BYPASS",
+      "status": "CLOSED",
+      "evidence": "listing-requirements-v3 preserves supported ANY_OF alternatives, incomplete material hard parsing blocks evaluation, and the active route evaluates the reconstructed persisted tree with evaluateRequirementTree."
+    },
+    {
+      "id": "C3-R2-03",
+      "finding": "RANKING_STAGES_NOT_PERSISTED",
+      "status": "CLOSED",
+      "evidence": "Immutable idempotent selection runs and members persist base rank, selected rank, rank explanation, selector explanation, and each diversity displacement. Active search, release, and replacement paths require the run identity."
+    },
+    {
+      "id": "C3-R2-04",
+      "finding": "CUSTOMER_EXPLANATIONS_NOT_CANDIDATE_DERIVED",
+      "status": "CLOSED",
+      "evidence": "Five explanation sections bind exact evidence nodes and candidate fact versions. Matching-experience output is rendered from current confirmed or independently verified candidate facts; typed criteria checks and employer sections use their persisted evidence."
+    },
+    {
+      "id": "C3-R2-05",
+      "finding": "ALL_NOT_APPLICABLE_FIT_NAN",
+      "status": "CLOSED",
+      "evidence": "The fit calculator returns null with NO_APPLICABLE_COMPONENTS for a zero applicable denominator and rejects non-finite results. The product path still enforces the contract's always-applicable core-responsibility component."
+    },
+    {
+      "id": "C3-R2-06",
+      "finding": "SOURCE_AUTHORIZATION_NOT_RECHECKED_AT_RELEASE",
+      "status": "CLOSED",
+      "evidence": "Persisted evaluation loading fetches the latest authorization per source; selection, deliverability, and release verification reject a superseded or revoked linked authorization."
+    },
+    {
+      "id": "C3-R3-01",
+      "finding": "CUSTOMER_HARD_CRITERIA_NOT_FULLY_EVALUATED",
+      "status": "CLOSED",
+      "evidence": "The evaluation route loads every persisted intake criterion and deriveCustomerHardGates creates independent gates for work mode, geography/state and conditional commute, employment type, hard title restriction, blocked industries, schedules, must-have benefits, dealbreakers including custom text, and hard work conditions. Missing employer evidence remains blocking unless the exact immutable criterion policy allows it."
+    },
+    {
+      "id": "C3-R3-02",
+      "finding": "SALARY_ENDPOINT_CURRENCY_AND_LOCATION_SEMANTICS_LOST",
+      "status": "CLOSED",
+      "evidence": "listing-requirements-v4 preserves three-letter currency, RANGE/STARTING_AT/UP_TO/FIXED endpoint meaning, and location applicability. Production salary comparison requires the current exact-subject compensation review and exact cited listing node; unsupported currency and ambiguous location ranges fail closed."
+    },
+    {
+      "id": "C3-R3-03",
+      "finding": "OLDER_FAVORABLE_REVIEW_REPLAYABLE",
+      "status": "CLOSED",
+      "evidence": "Migration 028 backfills stable review subject keys, permits one current review per exact subject, atomically invalidates the prior current review on insert, and uses per-job/per-subject advisory locks. The evaluation route rejects any caller-supplied review ID that is no longer current."
+    },
+    {
+      "id": "C3-R3-04",
+      "finding": "PARSER_CORRECTION_REVIEW_WAS_NO_OP",
+      "status": "CLOSED",
+      "evidence": "A parser correction reparses corrected listing text and atomically persists a new immutable job snapshot, requirement tree with correction history, inventory version/member, and cloned coverage lineage. The old job is superseded, its evaluations are invalidated, and both route and database guards reject further evaluation against it."
+    },
+    {
+      "id": "C3-R3-05",
+      "finding": "SELECTED_SOFT_PREFERENCES_IGNORED",
+      "status": "CLOSED",
+      "evidence": "Equal-weight preference derivation covers desired responsibility, exact title, optional industry, preferred work mode, preferred employment type, would-prefer benefit, schedule, soft avoidance, and target pay. Accepted hard choices are not double counted."
+    },
+    {
+      "id": "C3-R3-06",
+      "finding": "MATERIAL_SOURCE_QUALITY_INFLATED",
+      "status": "CLOSED",
+      "evidence": "Ingestion persists 1.00 only when an active source-registry record verifies employer-hosted application provenance. Manual or third-party discovery remains 0.80, caller labels and same-host coincidence cannot inflate it, and confidence uses the minimum persisted material-source quality."
+    },
+    {
+      "id": "C3-R4-01",
+      "finding": "REVIEW_DISPOSITION_OVERRIDES_CANDIDATE_FACT_TRUTH",
+      "status": "CLOSED",
+      "evidence": "Hard-requirement outcomes are derived from exact current persisted candidate facts, semantic relevance, capability status, independently substantiating authorization, overlap-safe calendar duration, and FTE intensity. Reviewer dispositions classify evidence but cannot manufacture a passing outcome; contradictions fail closed."
+    },
+    {
+      "id": "C3-R4-02",
+      "finding": "CUSTOMER_CRITERION_REVIEW_NOT_BOUND_TO_EXACT_NODE",
+      "status": "CLOSED",
+      "evidence": "The review route and migration 029 require typed customer-criterion evidence for the exact criterion and reject wrong-node, stale-fact, or absent-node assertions."
+    },
+    {
+      "id": "C3-R4-03",
+      "finding": "COMMUTE_AND_SCHEDULE_GATE_SEMANTICS",
+      "status": "CLOSED",
+      "evidence": "Commute is evaluated only for the actual HYBRID or ONSITE job mode. Schedule answers are retained as soft preferences and are not duplicated as hard gates."
+    },
+    {
+      "id": "C3-R4-04",
+      "finding": "PARSER_NEGATION_PHYSICAL_TRAVEL_AND_UNTYPED_HARD_GAPS",
+      "status": "CLOSED",
+      "evidence": "listing-requirements-v5 preserves Boolean alternatives, handles not-remote and weekday/weekend negation, promotes required physical and travel thresholds into the hard tree, and marks material unsupported hard language incomplete so evaluation cannot bypass it."
+    },
+    {
+      "id": "C3-R4-05",
+      "finding": "APPLICATION_PROVENANCE_SELF_LABELING",
+      "status": "CLOSED",
+      "evidence": "Application provenance is selected server-side from the source registry. Raw URLs, caller labels, and same-host coincidence cannot claim EMPLOYER_HOSTED; manual discovery remains quality 0.80."
+    },
+    {
+      "id": "C3-R4-06",
+      "finding": "FIT_AND_UNKNOWN_OUTCOMES_NOT_EXACTLY_EVIDENCE_BOUND",
+      "status": "CLOSED",
+      "evidence": "Fit uses candidate facts semantically relevant to the exact criterion, and requirement-tree unknowns are reported only when counterfactual evaluation proves they can change the root outcome."
+    }
+  ],
+  "checks": [
+    {
+      "id": "C3-MIGRATE",
+      "command": "npx.cmd supabase db reset --local",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 29,
+      "evidence": "All 29 migrations applied from zero through additive migration 202609060029_chunk3_final_acceptance_remediation.sql."
+    },
+    {
+      "id": "C3-DB",
+      "command": "npm.cmd run test:database",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 3,
+      "evidence": "All three transactional fixtures passed, including exact customer-criterion node binding, current-fact guards, current-review supersession, stale-review rejection, immutable parser-correction lineage, old-evaluation invalidation, superseded-job rejection, idempotent rank-stage persistence, client denial, and prior Chunk 1-3 invariants."
+    },
+    {
+      "id": "C3-LEGACY",
+      "command": "npm.cmd run test:legacy-backfill",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 2,
+      "evidence": "The legacy paid order survived migrations 022 through 029; compatibility validation passed before and after the idempotent rerun, and the complete schema was restored."
+    },
+    {
+      "id": "C3-ROLLBACK",
+      "command": "npm.cmd run test:rollback",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 2,
+      "evidence": "The disposable rollback returned ROLLBACK_OK and self-restored all 29 migrations before returning RESTORE_OK."
+    },
+    {
+      "id": "C3-TYPES",
+      "command": "npm.cmd run types:database:check",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 1,
+      "evidence": "Checked-in TypeScript database types exactly matched the fully migrated local schema."
+    },
+    {
+      "id": "C3-LINT",
+      "command": "npm.cmd run lint",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": null,
+      "evidence": "ESLint completed without findings."
+    },
+    {
+      "id": "C3-TYPE",
+      "command": "npm.cmd run typecheck",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": null,
+      "evidence": "TypeScript no-emit validation completed without errors."
+    },
+    {
+      "id": "C3-UNIT",
+      "command": "npm.cmd test -- --pool=threads --maxWorkers=1 --reporter=dot",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 279,
+      "evidence": "All 279 tests in 43 files passed, including fact-derived hard requirements, overlap-safe duration and intensity, caregiving exclusion, exact criterion review binding, conditional commute, schedule soft-only behavior, negation and physical/travel parsing, fail-closed unsupported hard language, registry-derived application provenance, exact-criterion fit, outcome-determinative unknowns, and prior regressions."
+    },
+    {
+      "id": "C3-BUILD",
+      "command": "npm.cmd run build",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 49,
+      "evidence": "Next.js production compilation, strict TypeScript, page-data collection, and all 49 generated routes/pages passed without activating a provider."
+    },
+    {
+      "id": "C3-E2E",
+      "command": "npm.cmd run test:e2e",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 70,
+      "evidence": "All 70 applicable desktop/mobile Playwright cases passed in the exact-commit run. Two of 72 scheduled cases were intentional duplicate-platform skips. Generated Chunk 2 screenshot changes were restored from the implementation commit and were not included."
+    },
+    {
+      "id": "C3-TRACE",
+      "command": "Chunk 3 traceability ownership/status audit",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 243,
+      "evidence": "All 243 literal Chunk 3 traceability rows end in IMPLEMENTED; pending/unimplemented rows are zero, and the persisted-evidence remediation mapping supplements the stable IDs."
+    },
+    {
+      "id": "C3-FORMAT",
+      "command": "git diff --check and git diff --cached --check",
+      "status": "PASS",
+      "exit_code": 0,
+      "assertion_count": 2,
+      "evidence": "Both exact-commit whitespace checks completed without errors."
+    },
+    {
+      "id": "C3-INTEGRATION-EXTERNAL",
+      "command": "npm.cmd run test:integration",
+      "status": "NOT_APPLICABLE_LOCAL",
+      "exit_code": 0,
+      "assertion_count": 3,
+      "evidence": "Two real-scanner files and all three tests were explicitly skipped because no approved production scanner is configured. Deterministic fail-closed coverage passed and production processing remains disabled.",
+      "excluded_from_required_denominator": true
+    }
+  ],
+  "required_tests": {
+    "numerator": 12,
+    "denominator": 12,
+    "failed": [],
+    "blocked": [],
+    "not_applicable_local": [
+      "C3-INTEGRATION-EXTERNAL"
+    ]
+  },
+  "cumulative_required_tests": {
+    "numerator": 44,
+    "denominator": 44,
+    "phase_0": "9/9",
+    "chunk_1": "11/11",
+    "chunk_2": "12/12",
+    "chunk_3": "12/12"
+  },
+  "traceability": {
+    "owning_rows": 243,
+    "implemented_rows": 243,
+    "unmapped_rows": 0
+  },
+  "artifacts": [
+    { "path": "supabase/migrations/202609040025_chunk3_matching_engine.sql", "bytes": 23584, "sha256": "c40db6163eae7bb4d99e7e0d21364b548a173eafdbbea9133214942607a1cd96" },
+    { "path": "supabase/migrations/202609050026_chunk3_audit_remediation.sql", "bytes": 19518, "sha256": "3b781c8ab2ee167329a9ebd8f2e6bf43a79d031e3f7e9cff6c7b44a98a1769a3" },
+    { "path": "supabase/migrations/202609050027_chunk3_persisted_evidence_remediation.sql", "bytes": 19508, "sha256": "998cc8db34f61cc64f766c1d0e088605c7c8cacd69f5425984fbe8ca27707e77" },
+    { "path": "supabase/migrations/202609050028_chunk3_contract_completion.sql", "bytes": 26248, "sha256": "4f300a2eceac50b156726d8fdbe0ec649fda1d9e7c5f2ca7d38b0780a78d38d3" },
+    { "path": "supabase/migrations/202609060029_chunk3_final_acceptance_remediation.sql", "bytes": 3696, "sha256": "351fac869f37c207f3428bbff16e5b43a231905786034c141b9b3e8184c7b143" },
+    { "path": "src/lib/database.types.ts", "bytes": 257327, "sha256": "896f1ab1c79fba8a4e9e6bf2869fdacb6e1c99c950cfe82ada9e8b44fed7dd3a" },
+    { "path": "src/lib/domain/foundation.ts", "bytes": 21711, "sha256": "10eab3d604372eea94ef55922558f9549e06cf7c3f2ef751a670dca8bfeab3a9" },
+    { "path": "src/lib/intake/four-step.ts", "bytes": 27657, "sha256": "cb8d5d746c03931b29186ef8670fd81889e3c11cec59f3b4cb6bd591d77b76c6" },
+    { "path": "src/lib/matching/retrieval.ts", "bytes": 6125, "sha256": "b279b18d5fb7253581c2da29d965931df517d3bdd18ff22c081123524d564a3b" },
+    { "path": "src/lib/matching/requirements.ts", "bytes": 13609, "sha256": "8ac534095389ca0e41dfbcb90eb0f9d98a9e7eb07131ec3e9ff671c8c48ec21c" },
+    { "path": "src/lib/matching/evaluation-engine.ts", "bytes": 22498, "sha256": "8c6cdea14b267d68fdeb466b2bcafe61ff858c75066f647d8c15dc3eb91babcc" },
+    { "path": "src/lib/matching/evidence-derived.ts", "bytes": 52330, "sha256": "4c04c9056c07a8be58c7b32679cb449b2051a458d2fb76b578a44ec250a316da" },
+    { "path": "src/lib/matching/listing-parser.ts", "bytes": 18627, "sha256": "6cce5063ed2ba6903d89bca85c420abb331080dd9221e6afd42ea1c3fa6e9d02" },
+    { "path": "src/lib/matching/persisted-runtime.ts", "bytes": 18233, "sha256": "8b8f46a5ed0a100dd9373caa5eafecc8485b11c1e88ed8f6cc7631bbfd80d903" },
+    { "path": "src/lib/matching/review.ts", "bytes": 12917, "sha256": "d995ea9ac322b260a6dbb57b55ff8ad123a645144c856a5e462c0b7540aa0136" },
+    { "path": "src/lib/matching/verification.ts", "bytes": 2517, "sha256": "c9eeaec5fae605e43835f6c34aff3cadd1175ef5c5e064a290da2e33d1ec54ea" },
+    { "path": "src/lib/matching/deduplication.ts", "bytes": 4649, "sha256": "2a981d5b6e55cd40b60da1205602ef2524b6a6704e7e65b36502d412d6c9df1a" },
+    { "path": "src/lib/matching/feasibility.ts", "bytes": 8675, "sha256": "5d5486f1d9028e871171bae7e38bf5bc5422ca93c2437d3195a62cdd9bbc7d92" },
+    { "path": "src/lib/matching/feasibility-worker.ts", "bytes": 2263, "sha256": "90982c221485b4856668ea2aa2a7019374df4672410b09df9148103e4577ffa7" },
+    { "path": "src/lib/matching/supabase-feasibility-store.ts", "bytes": 11537, "sha256": "6447ef49ec35c055081088b1a2fcedac8f6c7563c7924caedb36df256dbb1ad4" },
+    { "path": "src/lib/matching/tool-clusters.ts", "bytes": 3079, "sha256": "14e1a90dcc170618cf47d7614a553e420b67d7318ce69e1e973ae0bd06c491a5" },
+    { "path": "src/lib/jobs/source-registry.ts", "bytes": 14441, "sha256": "30332bace68ad3190c53243219164ebaf8c6721bd769267c258bb10f296d40d9" },
+    { "path": "src/app/api/admin/matching-evaluations/route.ts", "bytes": 13951, "sha256": "2d75739e7b30b7448740a66bd00fa1165e339109fbe026fee62e2960621de2fa" },
+    { "path": "src/app/api/admin/matching-reviews/route.ts", "bytes": 11575, "sha256": "3f5f45694d149be924ee6450463bffc19fbacd30bc5f3f45fb7d4ffa47a853bf" },
+    { "path": "src/app/api/admin/jobs/route.ts", "bytes": 11527, "sha256": "53285396fee2a6c5567c82d23c81c02771bcf3950d07356ed95b49967db4b0fb" },
+    { "path": "src/app/api/admin/search-orders/[id]/deliver/route.ts", "bytes": 6407, "sha256": "9c2976dc28231918ee1dcd4bc0b44dc68340a760c618b8fa07bbbcc99018d930" },
+    { "path": "src/app/api/admin/conflicts/[id]/resolve/route.ts", "bytes": 6094, "sha256": "c1074fd2afe8d323f8adc789bfcfabb002397ce7cb66ec810e785c58e4c9e52a" },
+    { "path": "src/lib/workflow/process.ts", "bytes": 10668, "sha256": "ee78aa163ebff89cd43d51218920a79535b52d45b89ff1c6f0efc8351aa610e3" },
+    { "path": "tests/integration/chunk3-matching-engine.sql", "bytes": 46271, "sha256": "618649ef7c9aa1cddaee7a95205937205d5e293991a024189647036e912395e7" },
+    { "path": "tests/fixtures/chunk3-personas.ts", "bytes": 1127, "sha256": "07f88876e70b510337a4e967299f77eba19a851eb7e09a6d4526f4dbd155087a" },
+    { "path": "tests/unit/chunk3-evaluation.test.ts", "bytes": 17691, "sha256": "5fd68d8acb93d4bece8893a3e495669e1c5fa567f8f5ca649ebf3069993a2b18" },
+    { "path": "tests/unit/chunk3-feasibility-worker.test.ts", "bytes": 3771, "sha256": "9e00a245169a556caf3039de80e17ef053b7f500cdd9f631d128999a31f3e4c2" },
+    { "path": "tests/unit/chunk3-persisted-evidence.test.ts", "bytes": 17094, "sha256": "3da77dd76c2cffef83ea9a94c477d304eb36fb4d6b38800246248e36c1c3895a" },
+    { "path": "tests/unit/chunk3-remediation.test.ts", "bytes": 17635, "sha256": "e6fe36fcf875cbcf1b48603d80e0727301d6d8300428788e82473fd27cba457e" },
+    { "path": "tests/unit/chunk3-requirements.test.ts", "bytes": 13423, "sha256": "2872ee74ca444eb664932263e86c169fe51b0b83a561e81450ed44cd9c28046f" },
+    { "path": "tests/unit/chunk3-retrieval-source.test.ts", "bytes": 9655, "sha256": "35e224488960b46fc4d1a82dbf6e6a2261311fb194ef33c0e38da5b6300f1b05" },
+    { "path": "tests/unit/chunk3-review.test.ts", "bytes": 2349, "sha256": "c35cfa7bb4f259079852a05361b1f241d314647995ab4717e6aa10219913fc8f" },
+    { "path": "docs/MATCHING_POLICY.md", "bytes": 17548, "sha256": "b8545663f560f12e69cb10fa9b0294d637512c0325c84da4c761110dbfc0406a" },
+    { "path": "docs/job-search/SOURCE_EXPANSION.md", "bytes": 10936, "sha256": "9ec6dfeae907145ac49df8782fdc868733ab375912c22e5aa8973849c468997a" },
+    { "path": "docs/DEPLOYMENT_RUNBOOK.md", "bytes": 31216, "sha256": "1b906dd5f1bac06ded41413bf0a835a797f9a3ef37c5e22009b06449e60c27a7" },
+    { "path": "docs/IMPLEMENTATION_STATUS.md", "bytes": 60569, "sha256": "06c87d9a0a0992006c5f816d4e5dd6fdc5525b542f500762876e4030b7c865c8" },
+    { "path": "docs/REQUIREMENT_TRACEABILITY.md", "bytes": 615044, "sha256": "7924894d75ca92306761e7facfe98c1689364d4ceacba7f7d4cd34eda1bfee09" }
+  ],
+  "unimplemented_chunk_requirements": [],
+  "unresolved_release_blockers": [
+    "No job source has documentary AUTHORIZED_AUTOMATED approval; all automated retrieval remains default deny.",
+    "The production source/query matrix, exact result/lookback/pagination bounds, and release-verification TTL are not approved or configured.",
+    "Production KMS, malware scanning, sandbox parsing/OCR, reference isolation/leak scanning, and permitted-model policy remain unconfigured; document processing remains fail closed.",
+    "Approved retention/deletion durations and matching Privacy Policy language remain unset.",
+    "Stripe tax-inclusive configuration, capacity/staffing, monitoring, worker scheduling, and trained protected staff remain unconfigured.",
+    "Real-provider integration evidence is unavailable locally and no production-looking mock substitutes for it.",
+    "Chunks 4 through 7 remain unimplemented and require explicit authorization."
+  ],
+  "next_chunk_started": false,
+  "next_chunk_authorized": false,
+  "provider_contacted": false,
+  "production_database_changed": false,
+  "payment_or_checkout_activated": false,
+  "pushed_or_deployed": false
+}

@@ -1,0 +1,131 @@
+{
+  "schemaVersion": "applypack-chunk5-render-evidence-v1",
+  "createdAt": "2026-09-09T05:39:29.767Z",
+  "scenarioCount": 3,
+  "artifactCount": 7,
+  "pageCount": 8,
+  "rendererIdentity": "libreoffice-26.8.0.3-console-poppler-25.07.0-windows",
+  "toolSha256": {
+    "office": "95016b59e08da1e6cbb02fc8f027593c076bf47df795092578afdd995306ac85",
+    "pdfInfo": "8ec2033f36247092866c757137d8815ab834d228e8322c45a820a12e14002f20",
+    "pdfFonts": "b95b2d3d567b515b55825b19e4efc51fb25138d46504b8f24b27da19db6ec2b6",
+    "pdfText": "e66e7ada660a910918dd2974ce6486170a20c2ac73a78b003e9888b97152a82a",
+    "pdfPpm": "dfaba6d6dd265b9f3d8ecfd58c887ea590942b4dfb45c6f5c7d4fa63927639d7",
+    "arial": "b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a"
+  },
+  "records": [
+    {
+      "scenario": "returning-operations",
+      "artifact": "RESUME",
+      "expectedPages": 1,
+      "actualPages": 1,
+      "docxSha256": "2dcd567c67550a5d064e0738199c373bcc39adf0397f3e1574a1d05c75c335d3",
+      "packageQaSha256": "ccc2029064978324be68ccd7957f7e6f06b55deb4a7d09723b4a35b016af0d5e",
+      "extractedTextSha256": "0a30291f60116be4a5e3ec80fa70725e3690e111f976e20fd0bfd0abc1b78616",
+      "searchablePdfSha256": "3efefe88813ec57e7cf799843798268a3ccdd2e03a9f91974d3ea7064805979c",
+      "pageImageSha256": [
+        "08662d375fd8d3bd154016c50619fd9195f570e5897e845781ea8e5c8c54ea51"
+      ],
+      "rendererIdentity": "libreoffice-26.8.0.3-console-poppler-25.07.0-windows",
+      "arialFontSha256": "b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a",
+      "arialResolved": true
+    },
+    {
+      "scenario": "returning-operations",
+      "artifact": "COVER_LETTER",
+      "expectedPages": 1,
+      "actualPages": 1,
+      "docxSha256": "1a9ef750daa9c392239fceeb5c5f9279fdb82101ab00e245c7e99a1138973694",
+      "packageQaSha256": "0ee53dfe7687bc1741256832c9bf261641603f2ed287e64cb1191ccc6e502b9f",
+      "extractedTextSha256": "b4cef55de7c5a79f37613ed989b658d530c1a4961db61a11e14c5cef2d0a0beb",
+      "searchablePdfSha256": "39afd97da238009e79504a140fe858b7fc57f60fe759bfd10c92baec7cce9edf",
+      "pageImageSha256": [
+        "37e19f33ffb2c86f662216e6df34d46e92e84b214550ebe1d6f3c8d9824df60b"
+      ],
+      "rendererIdentity": "libreoffice-26.8.0.3-console-poppler-25.07.0-windows",
+      "arialFontSha256": "b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a",
+      "arialResolved": true
+    },
+    {
+      "scenario": "returning-operations",
+      "artifact": "REFERENCE_SHEET",
+      "expectedPages": 1,
+      "actualPages": 1,
+      "docxSha256": "be268175112f2a925848811224b3ea1d4016f471ead3bd0de68a34e9605e5b6a",
+      "packageQaSha256": "d7f30d020a3101c43ee3b1f7cd74bc5178b02e5ccde4453c2baf029ae4a8b0e2",
+      "extractedTextSha256": "0e1ab614aea354a55d942380a4275d7c6f469c28c290d207d2ccd872a410b92d",
+      "searchablePdfSha256": "df377a573cd4a2c442be440704dd971b3e6b3a703b494ce661e073c68d94b88a",
+      "pageImageSha256": [
+        "2a7d7af251f7acd5acd40e7eb0a9a41f50d5279d87a41b43c535492352fd7767"
+      ],
+      "rendererIdentity": "libreoffice-26.8.0.3-console-poppler-25.07.0-windows",
+      "arialFontSha256": "b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a",
+      "arialResolved": true
+    },
+    {
+      "scenario": "career-change-support",
+      "artifact": "RESUME",
+      "expectedPages": 1,
+      "actualPages": 1,
+      "docxSha256": "25d37b780870074b37af6ee9932b6e35e413cc22cf5048216701d3aee1694b72",
+      "packageQaSha256": "351633caad8f6e31cc4fe5ad38596bbc2c0904687a49b121f707273de1d161f3",
+      "extractedTextSha256": "640d7e21b1f8e99aa4149f28b5f50ac0bd93c2b6ad648118b069f1fa34d75af3",
+      "searchablePdfSha256": "8a506e2889facbbb6c00b417a801bde9ea8eed6fdf6dbbf15b152b9aabecdd55",
+      "pageImageSha256": [
+        "dfb4606e29d8ea6ccf99ab95a2f9b19313337e5ca6e3af0b834c3f01f5983993"
+      ],
+      "rendererIdentity": "libreoffice-26.8.0.3-console-poppler-25.07.0-windows",
+      "arialFontSha256": "b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a",
+      "arialResolved": true
+    },
+    {
+      "scenario": "career-change-support",
+      "artifact": "COVER_LETTER",
+      "expectedPages": 1,
+      "actualPages": 1,
+      "docxSha256": "86ae678eb7dc0cc69018ca3b9e4fc7726847ab382d345861bd1fe31179541c98",
+      "packageQaSha256": "4ace80055acd000a50d7660acbdc58cb6dced92486b077e2a01f315b8e62065b",
+      "extractedTextSha256": "f4093a3039904d483737013f090d9fbd43b28c67047c914ac9a8352115c56819",
+      "searchablePdfSha256": "03bd2bac013db3ea6e1370b185d6f1ffe0fcdb41e2055e859d9f01f1bc0951bf",
+      "pageImageSha256": [
+        "5731a200454a6a5f2604bd895c3789498e35010c48cfbce85d6740ef6e543db1"
+      ],
+      "rendererIdentity": "libreoffice-26.8.0.3-console-poppler-25.07.0-windows",
+      "arialFontSha256": "b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a",
+      "arialResolved": true
+    },
+    {
+      "scenario": "senior-program",
+      "artifact": "RESUME",
+      "expectedPages": 2,
+      "actualPages": 2,
+      "docxSha256": "56cad4eae8761eb657b83fd14c26324237da2cd0dd8662752dba270f42f29eab",
+      "packageQaSha256": "14bc0a7ec0ca33ad74ad1dae376af5c674e5c7660563439a2b1ccd22f8fa403b",
+      "extractedTextSha256": "4c4ddf0b7d19f4fe6607370287c7ea6afaad1f641b69c7ef266b553696f241c9",
+      "searchablePdfSha256": "fea0e45ec3f486e173ce660cd918870705729caf1dec573ad0f6a1df2ca7e28e",
+      "pageImageSha256": [
+        "136d5ba1ea6fe25b301fd90aeaaa198016687ba0356da09c792f8dfcce7ccf39",
+        "d501b0e47545ed2b2fafa5616faab2c2a5ef4dd9af29363a88ca9d1d4f1449dd"
+      ],
+      "rendererIdentity": "libreoffice-26.8.0.3-console-poppler-25.07.0-windows",
+      "arialFontSha256": "b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a",
+      "arialResolved": true
+    },
+    {
+      "scenario": "senior-program",
+      "artifact": "COVER_LETTER",
+      "expectedPages": 1,
+      "actualPages": 1,
+      "docxSha256": "db435702c7ed55b0156974db7a450221d31b917164972fdf59d40e81d3ef574b",
+      "packageQaSha256": "dc58f0be76d1a743ba2c0d5c645506927a9b14f6ebac33041d4d93d0c721c0ea",
+      "extractedTextSha256": "623efccdd92a122dc9791374c3d2fc211ed049748432594542742d5de72df14c",
+      "searchablePdfSha256": "af0896d01afd9f841dcc1c893a11a1b4efc5da35bf76e6bfea1da6c2387f79ca",
+      "pageImageSha256": [
+        "e4fffbaedbc5f12e8b11bfec5129f3d7bce374ac036eceddbb8abfe4778cefac"
+      ],
+      "rendererIdentity": "libreoffice-26.8.0.3-console-poppler-25.07.0-windows",
+      "arialFontSha256": "b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a",
+      "arialResolved": true
+    }
+  ]
+}

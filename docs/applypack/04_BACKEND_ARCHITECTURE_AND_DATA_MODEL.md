@@ -1,6 +1,8 @@
 # ApplyPack Backend Architecture and Data Model
 
-Last updated: September 1, 2026
+Last updated: September 9, 2026
+
+The architecture must implement `11_SEPTEMBER_9_FINAL_PRODUCT_AMENDMENT.md`, including immutable profile claims, subscription entitlements, unranked board admissions, durable recomputation, and board-origin $8 material lineage.
 
 ## Architecture rule
 

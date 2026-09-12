@@ -6,12 +6,10 @@ import { validateDocumentBytes } from "@/lib/files/document-safety";
 import { docxMimeType } from "@/lib/files/signatures";
 import { createSourceAdapter } from "@/lib/jobs/adapters";
 import { deduplicateJobs } from "@/lib/jobs/deduplicate";
-import { filterJobs } from "@/lib/jobs/filter";
 import { normalizeJob } from "@/lib/jobs/normalize";
-import { fromJobDatabaseRow, persistNormalizedJob } from "@/lib/jobs/persistence";
-import { rankJobs } from "@/lib/jobs/rank";
-import { jobSources } from "@/lib/jobs/source-registry";
-import type { RankedJob } from "@/lib/jobs/types";
+import { persistNormalizedJob } from "@/lib/jobs/persistence";
+import { jobSources, sourceMayBeAccessedAutomatically } from "@/lib/jobs/source-registry";
+import { loadPersistedEvaluationsForOrder, searchCandidateRow, selectAndPersistEvaluations } from "@/lib/matching/persisted-runtime";
 import { workflowErrorCode } from "@/lib/workflow/errors";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -55,46 +53,55 @@ async function processSearchDiscovery(admin: AdminClient, task: WorkflowTask) {
 
   let fetched = 0;
   if (process.env.APP_JOB_SOURCE_SYNC_ENABLED === "true") {
-    for (const source of jobSources.filter((item) => item.automationStatus === "automated" && item.isActive)) {
+    for (const source of jobSources.filter((item) => sourceMayBeAccessedAutomatically(item) && item.automationStatus === "automated" && item.scheduleEnabled === true)) {
+      const { data: run, error: runError } = await admin.from("job_source_runs")
+        .insert({ source_id: source.id, status: "started" }).select("id").single();
+      if (runError || !run) throw runError || new Error(`Could not record source run for ${source.id}.`);
       try {
         const raw = await createSourceAdapter(source.id).fetchJobs();
         fetched += raw.length;
         const normalized = raw.map((job) => normalizeJob(job)).filter((job) => !job.rejectionReason && job.isActive);
-        for (const candidate of deduplicateJobs(normalized)) await persistNormalizedJob(admin, candidate.job);
-      } catch {
-        await admin.from("job_source_runs").insert({
-          source_id: source.id,
-          status: "failed",
-          completed_at: new Date().toISOString(),
+        const accepted = deduplicateJobs(normalized);
+        for (const candidate of accepted) await persistNormalizedJob(admin, candidate.job);
+        const completedAt = new Date().toISOString();
+        await admin.from("job_source_runs").update({
+          status: "succeeded",
+          completed_at: completedAt,
+          fetched_count: raw.length,
+          accepted_count: accepted.length,
+          rejected_count: raw.length - accepted.length,
+        }).eq("id", run.id);
+        await admin.from("job_sources").update({
+          health_status: "healthy",
+          last_health_checked_at: completedAt,
+          last_successful_sync_at: completedAt,
+          updated_at: completedAt,
+        }).eq("id", source.id);
+      } catch (error) {
+        const completedAt = new Date().toISOString();
+        const message = error instanceof Error ? error.message.slice(0, 1000) : "Source synchronization failed.";
+        await admin.from("job_source_runs").update({
+          status: message.toLowerCase().includes("rate limit") ? "rate_limited" : "failed",
+          completed_at: completedAt,
           error_code: "workflow_source_sync_failed",
-        });
+          error_message: message,
+        }).eq("id", run.id);
+        await admin.from("job_sources").update({
+          health_status: "failing",
+          last_health_checked_at: completedAt,
+          updated_at: completedAt,
+        }).eq("id", source.id);
       }
     }
   }
 
-  const state = await stateForOrder(admin, task.order_id);
-  const { data: rows, error: jobsError } = await admin.from("jobs")
-    .select("*").eq("is_active", true).neq("review_status", "rejected").limit(500);
-  if (jobsError) throw jobsError;
-  const idByJob = new WeakMap<object, string>();
-  const normalizedJobs = (rows || []).map((row) => {
-    const job = fromJobDatabaseRow(row as Record<string, unknown>);
-    idByJob.set(job, String(row.id));
-    return job;
-  });
-  const ranked = rankJobs(filterJobs(normalizedJobs, {
-    workerRelationship: "w2",
-    includeSales: false,
-    includeMarketing: false,
-    includeApplicantCost: false,
-    includeStale: false,
-    state: state || undefined,
-  }), { state: state || undefined }).slice(0, 30);
+  const evaluations = await loadPersistedEvaluationsForOrder(admin, task.order_id);
+  const ranked = (await selectAndPersistEvaluations(admin, evaluations, 30, "SEARCH_WORKFLOW", task.order_id)).selected;
 
   await admin.from("search_candidates").delete().eq("search_order_id", task.order_id).eq("review_status", "proposed");
   if (ranked.length) {
     const { error: candidateError } = await admin.from("search_candidates").upsert(
-      ranked.map((candidate) => candidateRow(task.order_id, idByJob.get(candidate.job)!, candidate)),
+      ranked.map((evaluation) => searchCandidateRow(task.order_id, evaluation)),
       { onConflict: "search_order_id,job_id" },
     );
     if (candidateError) throw candidateError;
@@ -104,7 +111,7 @@ async function processSearchDiscovery(admin: AdminClient, task: WorkflowTask) {
     status: "awaiting_review",
     locked_at: null,
     last_error_code: ranked.length < 10 ? "fewer_than_ten_candidates" : null,
-    summary: { fetched, candidates: ranked.length, state: state || null },
+    summary: { fetched, candidates: ranked.length, evaluationSource: "PERSISTED_MATCH_EVALUATIONS" },
     updated_at: new Date().toISOString(),
   }).eq("id", task.id).eq("status", "processing");
   await notifyAdmin(admin, task.order_id, "search_qa_ready", "ApplyPack search candidates need review", [
@@ -171,35 +178,6 @@ async function processDocumentDraft(admin: AdminClient, task: WorkflowTask) {
   await admin.from("workflow_tasks").update({ status: "awaiting_review", locked_at: null, last_error_code: null, summary: { generator: drafts.generatorVersion, generated_at: generatedAt }, updated_at: generatedAt }).eq("id", task.id).eq("status", "processing");
   await notifyAdmin(admin, task.order_id, "document_qa_ready", "ApplyPack document drafts need review", ["Private first-party drafts are ready for factual and job-specific review.", "Download both drafts, edit as needed, and use the reviewed delivery upload before anything reaches the customer."]);
   return { id: task.id, status: "awaiting_review" };
-}
-
-function candidateRow(orderId: string, jobId: string, candidate: RankedJob) {
-  return {
-    search_order_id: orderId,
-    job_id: jobId,
-    ranking_score: candidate.score,
-    ranking_reason_codes: candidate.reasonCodes,
-    fit_summary: candidateFitSummary(candidate),
-    requirements: [],
-    concerns: candidate.reasonCodes.filter((reason) => reason.points < 0).map((reason) => reason.explanation),
-  };
-}
-
-export function candidateFitSummary(candidate: RankedJob): string {
-  const positives = candidate.reasonCodes.filter((reason) => reason.points > 0).slice(0, 3).map((reason) => reason.explanation);
-  return positives.length
-    ? positives.join(" ")
-    : "This posting requires operator review against the customer's approved search criteria before delivery.";
-}
-
-async function stateForOrder(admin: AdminClient, orderId: string): Promise<string | null> {
-  const { data } = await admin.from("orders").select("intake:intakes(intake_answers(answers))").eq("id", orderId).maybeSingle();
-  const intake = Array.isArray(data?.intake) ? data.intake[0] : data?.intake;
-  const answerRow = Array.isArray(intake?.intake_answers) ? intake.intake_answers[0] : intake?.intake_answers;
-  const value = answerRow?.answers && typeof answerRow.answers === "object" && "state" in answerRow.answers
-    ? String(answerRow.answers.state || "").toUpperCase()
-    : "";
-  return /^[A-Z]{2}$/.test(value) ? value : null;
 }
 
 async function notifyAdmin(admin: AdminClient, orderId: string, template: string, subject: string, lines: string[]) {

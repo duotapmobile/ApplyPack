@@ -18,12 +18,15 @@ export function fileScanConfiguration() {
   const host = process.env.CLAMAV_HOST || "";
   const port = Number(process.env.CLAMAV_PORT || 3310);
   const timeoutMs = Number(process.env.CLAMAV_TIMEOUT_MS || 15_000);
+  const identity = process.env.APP_MALWARE_SCANNER_IDENTITY?.trim() || "";
   return {
     mode,
+    identity,
     host,
     port,
     timeoutMs,
-    ready: mode === "document_validation" || (mode === "clamav" && Boolean(host) && Number.isInteger(port) && port > 0 && timeoutMs >= 1_000),
+    ready: Boolean(identity) && (mode === "document_validation" || (mode === "clamav" && Boolean(host) && Number.isInteger(port) && port > 0 && timeoutMs >= 1_000)),
+    liveReady: Boolean(identity) && mode === "clamav" && Boolean(host) && Number.isInteger(port) && port > 0 && timeoutMs >= 1_000,
   } as const;
 }
 
@@ -70,11 +73,11 @@ export async function scanBuffer(bytes: Buffer, options: { structureValidated?: 
   if (configuration.mode === "document_validation") {
     return options.structureValidated
       ? {
-          status: "clean",
+          status: "pending",
           sha256,
           provider: "document_validation",
           providerReference: "document_validation:strict_container_checks",
-          errorCode: null,
+          errorCode: "malware_scan_required",
           scannedAt: new Date().toISOString(),
         }
       : {

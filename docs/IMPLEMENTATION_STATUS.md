@@ -1,0 +1,614 @@
+# ApplyPack implementation status
+
+## Phase 0 attestation
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-04 |
+| Phase | Phase 0: Install the controlling contract and perform discovery |
+| Branch | `codex/applypack-corrected-build-2026-09-04` |
+| Dedicated worktree | `C:\Users\mskir\Desktop\Apply_Pack\applypack-phase0-e9c3aea0d45447bfaa6517e488356e0d` |
+| Base authority | Explicit user authorization: `origin/main` at `aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8` |
+| Start HEAD | `aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8` |
+| Local `main` at discovery | `9a42ba692c7b618cdfcc1b3378642ce30c9011f6` (mismatch documented; not moved) |
+| `origin/main` at discovery | `aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8` |
+| Runtime behavior changes | None |
+
+The canonical checkout and its four pre-existing changes were not modified, copied, stashed, reset, switched, or committed. Existing duplicate-path worktree registrations were inspected read-only and left unchanged. No fetch, pull, merge, rebase, prune, repair, unlock, or push was performed.
+
+## Packet and contract identity
+
+| Artifact | Version/boundary | Bytes | Raw SHA-256 | Normalized LF/UTF-8 SHA-256 |
+| --- | --- | ---: | --- | --- |
+| `APPLYPACK_CODEX_IMPLEMENTATION_CHUNKS_CORRECTED.md` | 2026-09-04; Part I lines 37-1147; Phase 0 lines 1148-1186; Chunks 1-7 begin at lines 1188, 1291, 1392, 1546, 1724, 1901, and 2074 | 275782 | `96720cbfa395c07292cf631174bf31944f3c485c02448eddb71cd011ddc3e691` | `96720cbfa395c07292cf631174bf31944f3c485c02448eddb71cd011ddc3e691` |
+| Part I source body | Lines 37-1147 | 136360 | `95887f7c6afb312f5f3699f0851fdfc3746f7dfff6190d307d1788a7abc09510` | `95887f7c6afb312f5f3699f0851fdfc3746f7dfff6190d307d1788a7abc09510` |
+| `docs/APPLYPACK_PRODUCT_CONTRACT.md` body | Text following the non-normative identity header | 136360 | `95887f7c6afb312f5f3699f0851fdfc3746f7dfff6190d307d1788a7abc09510` | `95887f7c6afb312f5f3699f0851fdfc3746f7dfff6190d307d1788a7abc09510` |
+
+The full repository contract file is 136951 bytes with SHA-256 `df4e32e2ea0c37abd3f39904c36576c0af3935f9754bb1b81979782dc002d69f`; that digest includes the repository-local non-normative identity header and is not a checksum entry from the private bundle. The authoritative Part I body alone is 136360 bytes with SHA-256 `95887f7c6afb312f5f3699f0851fdfc3746f7dfff6190d307d1788a7abc09510`, exactly matching the body installed below that header.
+
+The ZIP central directory contained 14 regular files and two directory members. It contained no absolute path, traversal, duplicate path, symlink, device, socket, FIFO, or other non-regular member. All 13 checks in `SHA256SUMS.txt` passed before use and passed again before Phase 0 documentation was completed. No older implementation-chunks file is tracked in this repository, so no precedence notice was needed. The controlling contract itself identifies the corrected packet and precedence.
+
+## Required source manifest
+
+Only contract-permitted safe ledger fields are recorded. Private extraction paths and source excerpts are intentionally omitted.
+
+| Neutral filename | Found | Bytes | SHA-256 | PII class | Custody |
+| --- | --- | ---: | --- | --- | --- |
+| `APPLYPACK_FINAL_COPY_INTERACTION_CORRECTION_PROMPT.md` | true | 35454 | `44d228f0399e1c7e96e9ba0b985e6fe0912e112680ad2a875eb195e488317096` | POTENTIAL | PRIVATE_BUNDLE |
+| `APPLY_PACK_INTAKE_CHECKOUT_EMAIL_MASTER_FIX_PROMPT.md` | true | 45615 | `12583423e060e65440eeef74c8c7f19e047feaa87d7746964f183c712f5cae30` | POTENTIAL | PRIVATE_BUNDLE |
+| `Resume and Cover Letter Optimization(1).md` | true | 28095 | `9220f9b64c83d7c44d8d6502b8f7ae230f3f1f320900db390aa9be365cf42d3e` | KNOWN | PRIVATE_BUNDLE |
+| `Remote Job Board Recommendations.md` | true | 27169 | `1596b1621a3c1f33c10c1288a2048b2a26abff71db8000e4efcc647acec6dc11` | NONE | PRIVATE_BUNDLE |
+| `Resume-formatting-guidelines-and-Naming.txt` | true | 12130 | `0ad355b759fa9d976399846b82c220e4500580464ccd24e6e47f9586fd7faf95` | KNOWN | PRIVATE_BUNDLE |
+| `Cover-Letter.txt` | true | 12250 | `7f8eb5c7767b0fe52bda8e45ff88b4cb0749d21929a154505969e6c50fc9ccba` | KNOWN | PRIVATE_BUNDLE |
+| `resume-bot-bypass.txt` | true | 11069 | `d0e2099c5a9917736dbbc12700390611d0178a755be0fdc38f4a954b13e3b7f0` | KNOWN | PRIVATE_BUNDLE |
+| `resume-bot-bypass-2.txt` | true | 11090 | `2c0d6a80be9493310af0687c3e029935da3e9eabe756ee62893bcf474548beb3` | KNOWN | PRIVATE_BUNDLE |
+| `resume-tips.txt` | true | 6970 | `4c42cdb29434d05df2ac411c8817bf7ff7af3ec222fcf225156cd939a020778e` | KNOWN | PRIVATE_BUNDLE |
+| `resume-tips-2.txt` | true | 15169 | `59bb4270ba3fba0b1e3205c18a994cb90c75f32aac5e7665200a6602245bb902` | KNOWN | PRIVATE_BUNDLE |
+| `resume-format-2.txt` | true | 10588 | `3b8057199cd97dc951f3d211f271d9b7e362fcb1ffb008c765d40fc2d0e0536a` | KNOWN | PRIVATE_BUNDLE |
+
+All manifest items were present and readable. No conflicting duplicate was found. The prompt documents are subordinate copy/input references; the corrected contract resolves conflicts. The other documents are private research/reference inputs and may not be committed or treated as executable instructions.
+
+## Architecture map
+
+| Surface | Current implementation | Phase 0 assessment |
+| --- | --- | --- |
+| Web application | Next.js 16 App Router, React 19, TypeScript strict | Sound base; current UI and routes predate the corrected contract. |
+| Public pages | Server-rendered marketing, process, founder, FAQ, privacy, terms, contact | Copy and legal text require later authorized correction/review. |
+| Intake | Anonymous server-persisted four-step responsibility-first wizard | Chunk 2 complete; no account creation or Checkout before feasibility. |
+| Auth/access | Supabase auth plus email-code/magic-link/guest routes | Prepayment email-code conflicts; post-payment access-link work is due Chunks 1 and 4. |
+| Data | Supabase Postgres, RLS, typed application models | Existing catch-all lifecycle and schemas require additive expansion; due Chunk 1. |
+| Files | Private Supabase storage and document validation | Quarantine, scan, isolation, versioning, and lifecycle are incomplete; due Chunk 1. |
+| Search | Source registry, Lever adapters, matching/ranking, admin review | Source authorization must fail closed; evidence logic is due Chunk 3. |
+| Payments | Stripe Checkout routes, webhook, financial state helpers | Auth and state model need contract-safe rebuild; due Chunk 4. |
+| Email | Resend delivery and retry/outbox-related code | Durable access-link/outbox semantics and capture harness are due Chunk 4. |
+| Documents | `docx` generation and document safety tests | Exact-ten artifacts, Arial/rendering evidence, references, and release atomicity are due Chunk 5. |
+| Admin | Search, order, review, capacity, and source controls | Default-deny roles, audit, and operational readiness are due Chunks 1, 3, 5, and 6. |
+| Deployment | Railway configuration, cron secret, health route | Production credentials, scheduler proof, migrations, rollback, and monitoring remain release work. |
+
+## Current data and lifecycle map
+
+Current migrations provide profiles, orders, job matches, source jobs/references, private document records, orchestration jobs, payment-safety records, checkout drafts, delivery claims, financial-state helpers, human review, capacity visibility, intake drafts, email retry state, atomic scan/conflict/correction/intake-completion functions, storage cleanup, delivery revisions, and RLS corrections. Runtime logic still projects several concerns through broad order/payment states. The contract requires orthogonal draft, processing, feasibility, capacity, checkout, settlement, dispute, refund-operation, refund-aggregate, search fulfillment, adjustment, email, material readiness/fulfillment/substitution, entitlement, release, and audit records.
+
+## Existing migrations and compatibility risks
+
+The repository contains 21 migrations from `202609010001_initial_schema.sql` through `202609030021_fix_rls_policy_scope.sql`. They are historical inputs, not proof of corrected-contract compliance.
+
+| Risk | Existing behavior/evidence | Controlling resolution | Owner/status |
+| --- | --- | --- | --- |
+| Catch-all lifecycle fields | Orders and financial helpers combine concerns | Additive orthogonal guarded dimensions and derived aggregate implemented; legacy adapter retained | Chunk 1 / COMPLETE |
+| Legacy paid orders | Existing schemas/routes depend on legacy fields | Additive compatibility view plus idempotent checkpointed backfill; paid fixture preserved | Chunk 1 / COMPLETE |
+| Reservation duration | Existing env/migrations use 150 minutes | Corrected allocation RPC enforces a 30-minute half-open reservation; legacy path retained only for compatibility | Chunk 1 / COMPLETE |
+| Draft/source retention | Existing values are 7 and 30 days | `UNSET_BLOCKING` until owner/legal approval and configuration | Chunk 1 / BLOCKED_FOR_RELEASE |
+| Job freshness | Existing 24/72-hour defaults | Governed configuration, not an invented universal value | Chunk 3 / UNSET_BLOCKING |
+| Capacity | Existing defaults are one search/two material units per day | Staffing-versioned governed configuration | Chunks 1/4 / UNSET_BLOCKING |
+| Signed URL | Existing generation uses 60 seconds | Locked 15-minute post-reauth download URL | Chunk 4 / PENDING |
+| Schema rollback | Prior state had no corrected rollback proof | Up/backfill/idempotency/guarded rollback/type drift rehearsed in disposable Supabase | Chunk 1 / COMPLETE |
+
+## Requirement conflicts and precedence decisions
+
+| Conflict ID | Existing source/runtime | Controlling Part I rule | Due/status |
+| --- | --- | --- | --- |
+| CF-001 | Seven intake steps | Exactly four responsibility-first steps | Chunk 2 / COMPLETE |
+| CF-002 | Prepayment six-digit email authentication | Anonymous prepayment draft; immutable access email; secure post-payment access link | Chunk 2 anonymous boundary COMPLETE; Chunk 4 post-payment access PENDING |
+| CF-003 | “Application Pack” naming | Customer-facing product is “Resume + Cover Letter Pack” | Chunks 5/6 / PENDING |
+| CF-004 | Fixed 7-day draft and 30-day source retention | Retention durations are governed and blocking until approved/configured | Chunks 1/6 / UNSET_BLOCKING |
+| CF-005 | 150-minute reservation | Checkout reservation is 30 minutes | Chunks 1/4 / PENDING |
+| CF-006 | 24/72-hour freshness defaults | Freshness windows require approved source/config decisions | Chunk 3 / UNSET_BLOCKING |
+| CF-007 | Current capacity defaults | Capacity values require approved staffing configuration | Chunks 1/4 / UNSET_BLOCKING |
+| CF-008 | Existing refund/timing copy | Exact-ten invariant, full search refund where required, deadline from latest prerequisite | Chunks 4/5/6 / PENDING |
+| CF-009 | Privacy says uploads occur after account access | Resume upload occurs anonymously before payment/auth | Chunks 2/6 / LEGAL_REVIEW_BLOCKING |
+| CF-010 | Terms omit exact-ten/full-refund detail | Exact ten or full $20 search refund | Chunks 4/6 / LEGAL_REVIEW_BLOCKING |
+| CF-011 | Incomplete reference PII/permission/revocation terms | Separate permissioned, purpose-scoped, revocable reference domain; no model exposure | Chunks 1/5/6 / LEGAL_REVIEW_BLOCKING |
+| CF-012 | 60-second signed URL/account assumptions | Fresh reauthentication and 15-minute signed URL | Chunk 4 / PENDING |
+| CF-013 | Registry enables two Lever adapters | Automation default deny without documentary approval; legality not inferred; Liveops blocked | Chunks 0/3 / UNVERIFIED_DISABLED |
+| CF-014 | Simplified unknown/evidence handling | Requirement expression tree, Boolean gates, source-grade limits, human review, auditable scoring | Chunk 3 / PENDING |
+
+Part I and the active chunk prompt control every listed conflict. Earlier docs remain evidence of the prior implementation and compatibility inputs only.
+
+## Legal gap audit
+
+Owner for all substantive legal decisions: **DuoTap owner with qualified legal counsel**. Every row is `RELEASE_BLOCKING`; Phase 0 does not draft or approve legal promises.
+
+| Legal ID | Gap/conflict | Required approval/evidence |
+| --- | --- | --- |
+| LEG-001 | Privacy describes uploads only after account access | Approve anonymous prepayment upload, storage, processing, and access language |
+| LEG-002 | No approved entity retention/deletion/crypto-shred matrix | Approve durations, legal holds, deletion semantics, provider propagation |
+| LEG-003 | Reference PII permission/reconfirmation/revocation/access incomplete | Approve reference privacy and consent terms |
+| LEG-004 | Terms do not fully express exact-ten/full-search-refund invariant | Approve exact service/refund language |
+| LEG-005 | Duplicate/stale attempts, disputes, and line refunds need aligned terms | Approve state-specific financial language |
+| LEG-006 | Access-link delivery, reauthentication, and downloads not fully disclosed | Approve access/security language |
+| LEG-007 | Deletion effects on paid/audit/tax/dispute evidence unspecified | Approve exceptions and request process |
+| LEG-008 | No stored legal version tied to consent/order snapshots | Approve versioning and re-consent policy |
+
+## Baseline verification
+
+Commands ran in the dedicated worktree at start HEAD `aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8`. Runtime baselines preceded documentation-only edits. Final documentation validators and `npm run check` are recorded in the evidence manifest.
+
+| Check ID | Command | Result | Counts/notes | Due chunk |
+| --- | --- | --- | --- | --- |
+| P0-WORKTREE | Git identity/status checks | PASS | Exact base; clean at creation; canonical dirty checkout untouched | Phase 0 |
+| P0-BUNDLE | ZIP audit plus `sha256sum -c SHA256SUMS.txt` | PASS | 15 members; 13/13 hashes pass | Phase 0 |
+| P0-CONTRACT | Normalized Part I body comparison | PASS | 136360 bytes; identical SHA-256 | Phase 0 |
+| P0-LINT | `npm run lint` | PASS | Exit 0 | Phase 0 |
+| P0-TYPE | `npm run typecheck` | PASS | Exit 0 | Phase 0 |
+| P0-UNIT | `npm test` | PASS | 26 files; 115 tests | Phase 0 |
+| P0-BUILD | `npm run build` | PASS | 41 routes/pages generated | Phase 0 |
+| P0-E2E | `npm run test:e2e` | PASS | 42/42 desktop/mobile | Phase 0 mandatory regression |
+| C1-INTEGRATION | `npm run test:database` | PASS | Disposable Supabase invariant fixture; transaction rolls back synthetic rows | Chunk 1 |
+
+Offline `npm ci` printed 498 packages and zero audited vulnerabilities, but its wrapper received an interrupt immediately after completion; `npm ls --depth=0` then exited 0. Each required baseline ran independently and passed.
+
+## Test-harness inventory
+
+| Harness ID | Procedure | First due | Status | Evidence/gap owner |
+| --- | --- | --- | --- | --- |
+| H-001 | Vitest unit suite | Phase 0 | AVAILABLE | `npm test`; engineering |
+| H-002 | ESLint | Phase 0 | AVAILABLE | `npm run lint`; engineering |
+| H-003 | TypeScript strict check | Phase 0 | AVAILABLE | `npm run typecheck`; engineering |
+| H-004 | Production Next build | Phase 0 | AVAILABLE | `npm run build`; engineering |
+| H-005 | Playwright desktop/mobile | Phase 0 | AVAILABLE | `npm run test:e2e`; engineering |
+| H-006 | Supabase integration suite | Chunk 1 | AVAILABLE | `npm run test:database`; engineering |
+| H-007 | Migration up/rollback rehearsal | Chunk 1 | AVAILABLE | `supabase db reset`, `npm run test:rollback`; database owner |
+| H-008 | Generated DB-type drift check | Chunk 1 | AVAILABLE | `npm run types:database:check`; engineering |
+| H-009 | Transaction barriers/failure injection | Chunk 1 | AVAILABLE | optimistic conflict, uniqueness, lease, rollback fixtures; engineering |
+| H-010 | Format check | Chunk 1 | AVAILABLE | `git diff --check`; engineering |
+| H-011 | Axe accessibility | Chunk 2 | AVAILABLE | Playwright axe; design/engineering |
+| H-012 | Deterministic visual regression/artifacts | Chunk 2 | AVAILABLE | Playwright captures for every step at 1440 and 390 pixels plus mobile error state; design/engineering |
+| H-013 | Fake clock/timezone/DST | Chunk 3 | MISSING_REPOSITORY_HARNESS | Engineering |
+| H-014 | Recorded permitted job fixtures | Chunk 3 | PARTIAL | Authorization fixtures due; search owner |
+| H-015 | Signed synthetic Stripe webhook fixtures | Chunk 4 | PARTIAL | Full lifecycle due; payments owner |
+| H-016 | Local email capture | Chunk 4 | MISSING_REPOSITORY_HARNESS | Engineering |
+| H-017 | Separate browser contexts | Chunk 4 | AVAILABLE | Playwright; security owner |
+| H-018 | Structural DOCX inspection | Chunk 5 | PARTIAL | Exact artifact assertions due |
+| H-019 | Rendered DOCX/Arial verification | Chunk 5 | MISSING_EXTERNAL_DEPENDENCY | Approved renderer/font environment |
+| H-020 | PDF extraction comparison | Chunk 5 | MISSING_REPOSITORY_HARNESS | Document owner |
+| H-021 | Built-route crawl/link/assets | Chunk 6 | AVAILABLE | Next build/Playwright |
+| H-022 | Static/security/dependency scan | Chunk 7 | PARTIAL | Full release scan policy due |
+| H-023 | Secret scan | Chunk 7 | MISSING_REPOSITORY_HARNESS | Security owner |
+| H-024 | Synthetic PII leak fixtures | Chunk 1 | AVAILABLE | deterministic local/non-model isolation suite; security owner |
+
+`PARTIAL` here describes future-chunk capability, not a Phase 0 required-check result. No harness first due in Phase 0 is missing.
+
+## External credentials and settings unavailable
+
+No secret values were read or recorded. Unavailable/unverified settings include production Supabase admin credentials, Stripe secret/webhook/price/tax configuration, Resend credentials and verified domain, KMS/encryption, production malware scanner, parser/OCR services, storage signing/callback allowlists, scheduler/lease proof, staff roles, approved Arial rendering, monitoring/alerts, analytics/consent, approved retention/legal versions, capacity/staffing values, and documentary authorization for automated job sources. See `docs/CONFIG_DECISIONS.md`.
+
+## Phase 0 evidence
+
+The canonical `evidence/chunk-0/manifest.json` is 7611 bytes with SHA-256 `3190e84ac83b61f5d824c59387333603bf87087d5996553a5aaf43184c8f61b9`. It records 9 applicable Phase 0 checks and 9 passes against documentation commit `0dc823cf95cf75cc95400250cef91da99debf2f2` (with the unchanged-runtime E2E baseline explicitly tied to base commit `aa60adf85d0a1ae7c42769ac4171e2ff8eea18e8`). The final Phase 0 commit is evidence-only relative to the tested documentation commit.
+
+## Phase ledger
+
+| Phase/chunk | State | Notes |
+| --- | --- | --- |
+| Phase 0 | COMPLETE after commit | Documentation, precedence, baselines, and evidence only |
+| Chunk 1 | COMPLETE after evidence commit | Additive secure foundation; production gates remain disabled |
+| Chunk 2 | COMPLETE after evidence commit | Anonymous four-step intake, secure finalization, pending feasibility handoff, admin visibility, accessibility, and responsive evidence |
+| Chunks 3-7 | NOT AUTHORIZED / PENDING | Boundaries indexed; no work performed |
+## Chunk 1 implementation: secure typed foundation
+
+### Entity relationship summary
+
+```text
+anonymous draft --< document versions --< candidate facts --< conflicts
+       |                    |                    |
+       |                    +-- local quarantine/isolation provenance
+       +--< immutable intake snapshots --< feasibility plans/assessments --< immutable quotes
+                                      |                         |
+                                      +--< match evaluations    +-- capacity allocation/audit
+
+quote + held capacity + durable provider command -> checkout attempt -> payment attempt
+payment attempt -> refund operations -> derived refund aggregate
+paid search order -> original/active criteria snapshots -> amendments -> job snapshots/evaluations
+paid search order -> material purchase -> lines -> immutable line revisions -> artifacts/file versions
+material line + (delivered order, delivered match) -> entitlement history -> one current claim
+reference record -> encrypted versions -> exact-job permissions -> access audit/revocation
+all deliverable effects -> atomic releases + transactional outbox + scheduled leases + audit events
+```
+
+Migration `202609040022_corrected_chunk1_foundation.sql` is additive. It creates corrected `ap_*` records beside the legacy schema, default-deny RLS, private service-role capability RPCs, compatibility/backfill records, state guards, revision invalidation procedures, configuration gates, and job leases. `src/lib/database.types.ts` is generated from the migrated schema.
+
+### Orthogonal state dimensions
+
+| Dimension | Source of truth | Values/derivation |
+| --- | --- | --- |
+| Draft | `ap_anonymous_drafts.state` | in progress, complete, locked to Checkout, converted, expired |
+| Source processing | `ap_document_versions.processing_state` | uploaded, quarantined, scanning, extracting, ready, failed, superseded |
+| Feasibility | assessment state/outcome/blocker | run state separated from likely/limited/infeasible and candidate/human blocker |
+| Capacity | allocation lifecycle + debit | none/reserved/consumed/completed/superseded/released/expired separated from none/held/spent/returned |
+| Checkout | `ap_checkout_attempts.state` | none, open, canceled, expired, completed, failed |
+| Payment | settlement + dispute | unpaid/processing/paid/failed independent of none/open/won/lost |
+| Refund | operations plus aggregate view | scoped pending/succeeded/failed operations; derived none/pending/partial/full/failed |
+| Search | fulfillment + adjustment | fulfillment independent of proposed/accepted/declined/expired adjustment; delayed is projected only |
+| Material | readiness + fulfillment + substitution | three guarded concerns, never one catch-all field |
+| Communication | outbox state | queued, sending, sent, retry, dead letter |
+| Customer portal | `projectCustomerState` | derived precedence only; no editable aggregate-state column |
+
+### Transition ownership and invariants
+
+- Anonymous routes own draft capability creation/read/save and private versioned upload registration. The opaque UUID never authorizes; the separate 256-bit secret is sent only in an HttpOnly SameSite cookie and only its SHA-256 is stored. Optimistic versions return a recoverable `409` conflict.
+- Checkout orchestration owns draft lock/cancel return. Open Checkout requires an approved tax-inclusive configuration plus the same subject's unexpired immutable quote and held capacity. No public UI was changed in Chunk 1.
+- The secure file worker owns `QUARANTINED -> MALWARE_SCAN -> SANDBOXED_PARSE -> REFERENCE_ISOLATION -> LEAK_SCAN -> MODEL_READY`. Missing configuration, scanner uncertainty, empty/scanned-only text, reference uncertainty, or leak detection produces no model input. Superseded uploads ignore late results.
+- Snapshot/revision procedures own invalidation. Pre-activation edits invalidate the prior feasibility, quote, review, evaluation, and never-consumed capacity. After activation, an accepted child revision preserves the winning quote, payment, order, original snapshot, and historical deadline while invalidating only prior revision work. Paid material corrections supersede only that line revision's files/approvals/capacity.
+- Capacity availability is `total - held - spent`; earliest ending bucket then UUID is the deterministic tie rule. Spent capacity can become completed/superseded but never returned. Multi-line reservations validate attributable member-unit totals atomically.
+- Payment settlement never becomes “refunded.” Refund operations use integer cents, payment/optional-line scope, idempotency, and a derived aggregate. Dispute WON requires resolution plus secured/restored funds; LOST requires a distinct funds-reversed time.
+- Materials use immutable entitlement history plus one atomic current claim keyed by `(delivered_order_id, delivered_match_id)`. A successful full line refund and terminal history are required before release; pending, disputed, partial, or delivered claims remain locked.
+- Provider events, authenticated-envelope sensitive payloads, snapshots, entitlement history, capacity audit, general audit, and reference-access history are immutable. Quote commercial content is immutable; only one-way invalidation metadata can change. Sensitive payloads store AES-256-GCM ciphertext, nonce, tag, wrapped data key, exact KMS identity/version, and context hash; processing fails closed until the approved KMS adapter is configured.
+- General snapshots and public draft responses exclude provider IDs, storage paths, extracted resume text, sensitive wording, and reference PII. Sensitive wording is referenced through encrypted immutable payload IDs/hashes. References use opaque client IDs, encrypted version records, exact-job permission snapshots, contact-change reconfirmation, revocation, purpose-based access, and separate reference-sheet artifacts.
+- `CUSTOMER_SUPPLIED_INGESTION` is false by default and database-guarded by an approval reference. No public intake or price exists.
+- Retention records and cleanup leases exist, but the corrected cleanup gate remains false until owner-approved draft/file durations and matching Privacy Policy approval are stored. No new duration was invented.
+
+### Retention and deletion configuration matrix
+
+This is a required configuration matrix, not a retention approval. Every duration, lawful/business purpose, backup rule, and legal approval remains `UNSET_BLOCKING`; therefore corrected cleanup cannot run and production release remains blocked. Execution order is always revoke capabilities/downloads first, then delete or crypto-shred sensitive data, then retain only an approved non-linkable tombstone if required.
+
+| Entity/domain | Fields eligible to remain | Duration | Purpose/legal basis | Primary deletion mechanism | Backup behavior | Accountable owner / approval |
+| --- | --- | --- | --- | --- | --- | --- |
+| Anonymous draft/session | Opaque non-linkable tombstone only after deletion | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Revoke/rotate capability; delete answers, email linkage, linkable hashes, and session records | `UNSET_BLOCKING`; restore must reapply deletion | Privacy/platform / legal `UNSET_BLOCKING` |
+| Raw source uploads | No document bytes, extracted text, filename, path, or linkable content hash after deletion | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Revoke access; delete private objects and metadata; destroy any keyed linkability material | `UNSET_BLOCKING`; object/PITR propagation required | Security/privacy / legal `UNSET_BLOCKING` |
+| Extracted candidate facts | Non-PII aggregate tombstone only if approved | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Delete typed PII/facts, conflicts, locators, and unkeyed PII-derived hashes; preserve no claim text | `UNSET_BLOCKING`; restore must reapply deletion | Privacy/product / legal `UNSET_BLOCKING` |
+| Sensitive free-text payloads | Opaque non-linkable tombstone only | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Revoke access and crypto-shred wrapped data key, then delete ciphertext/context hashes as approved | `UNSET_BLOCKING`; wrapped keys must not be recoverable after final erasure | Security/privacy / legal `UNSET_BLOCKING` |
+| Job and customer/order snapshots | Public job evidence may remain only under approved source rules; customer-linked criteria/facts may not | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Unlink/delete customer PII and linkable hashes; retain only approved operational tombstone | `UNSET_BLOCKING`; restore must reapply unlink/deletion | Product/privacy / legal `UNSET_BLOCKING` |
+| Payment/refund records | Minimum approved financial/legal fields only; no resume, reference, or custom wording | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Remove customer PII not legally required; retain minimal provider/accounting evidence under legal hold rules | `UNSET_BLOCKING`; finance/legal restore controls required | Finance/privacy / legal `UNSET_BLOCKING` |
+| Generated artifacts/files | No generated document bytes, storage path, embedded PII, or linkable content hash after deletion | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Revoke downloads first; delete private files and PII-bearing metadata; tombstone release without identity | `UNSET_BLOCKING`; storage/PITR propagation required | Document/privacy / legal `UNSET_BLOCKING` |
+| Reference records/permissions | Non-PII permission/revocation tombstone only if approved | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Revoke exact-job permissions/downloads; crypto-shred contact payload and delete linkable hashes/identity | `UNSET_BLOCKING`; no recoverable contact after final erasure | Privacy/operations / legal `UNSET_BLOCKING` |
+| Authentication records/linkages | Non-linkable security event only if approved | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Revoke links/tokens/sessions, remove email/account linkage, and delete auth PII | `UNSET_BLOCKING`; restored auth state must remain revoked | Security/platform / legal `UNSET_BLOCKING` |
+| Analytics | Only approved coarse allowlisted events with no PII/free text | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Delete pseudonymous linkage and disallowed payloads; honor consent/deletion propagation | `UNSET_BLOCKING`; provider deletion proof required | Privacy/product / legal `UNSET_BLOCKING` |
+| Audit/operational history | Opaque non-linkable event type, time, and approved non-PII reason only | `UNSET_BLOCKING` | `UNSET_BLOCKING` | Replace customer/entity linkage and PII with irreversible non-linkable tombstone; never retain names/text | `UNSET_BLOCKING`; restored copies must repeat tombstoning | Security/legal / legal `UNSET_BLOCKING` |
+### Migration, compatibility, and rollback
+
+The executed sequence is expand -> regenerate types -> compatibility reads/writes -> idempotent checkpointed legacy backfill -> invariant validation -> later authorized cutover. Checkpoint `202609040022 / LEGACY_ORDERS_V1` maps legacy payments/orders without modifying them; `ap_legacy_order_compatibility` preserves reads. New corrected records do not require deprecated fields. The disposable migration and invariant fixture preserve legacy tables and roll back all synthetic data.
+
+Normal rollback reverts code/traffic and leaves the additive schema. The compensating script is guarded, unactivated-only, refuses operational corrected data, and was rehearsed in a disposable database; it preserves the legacy schema. Exact commands, queries, owners, recovery, and blockers are in `docs/DEPLOYMENT_RUNBOOK.md`.
+
+### Chunk 1 verification inventory
+
+| Check ID | Procedure | Intended result |
+| --- | --- | --- |
+| C1-MIGRATE | `supabase db reset` | All 22 migrations apply from zero |
+| C1-DB | `npm run test:database` | Synthetic transaction verifies draft/auth/version/file/RLS/snapshot/capacity/payment/refund/entitlement/flag/lease invariants |
+| C1-LEGACY | `npm run test:legacy-backfill` | Pre-Chunk-1 paid order/payment survive migration, compatibility backfill, checkpoint, and idempotent rerun |
+| C1-ROLLBACK | `npm run test:rollback` | Guarded rollback succeeds in disposable empty state and legacy `orders` remains |
+| C1-TYPES | `npm run types:database:check` | Generated schema types match |
+| C1-UNIT | `npm test` | Typed unions, provenance, canonicalization, pipeline, upload, and all regression units pass |
+| C1-INTEGRATION-EXTERNAL | `npm run test:integration` | Real scanner tests are local N/A without approved scanner; deterministic fail-closed tests are mandatory |
+| C1-LINT/TYPE/BUILD/E2E | standard repository commands | Relevant regression suite passes |
+| C1-FORMAT | `git diff --check` | No whitespace errors |
+
+Production credentials were not used. The unconfigured production malware scanner/parser/model boundary and actual retention/privacy approvals remain explicit release blockers, permitted by Chunk 1 only because the repository has deterministic local contract fixtures and the affected features fail closed.
+
+### Chunk 1 verified result
+
+Tested code commit `cd267dc8bbfad07107b22f88c06e26cbdbbaed34` (tree `a029a26c3b33235bc34f8d54048549cc353611f1`) passed all 11 applicable Chunk 1 checks: zero-to-latest migration, database invariants, legacy paid-order backfill/idempotency, guarded rollback, generated-type equality, lint, TypeScript, 135/135 repository tests in 32 files, production build with 43 generated pages, 42/42 desktop/mobile Playwright cases, and staged whitespace validation. The real-scanner integration suite reported 3/3 tests skipped across two files because no approved production scanner was configured; this is `NOT_APPLICABLE_LOCAL`, is excluded from the denominator, and does not weaken the mandatory deterministic fail-closed tests.
+
+The cumulative verified ledger through Chunk 1 is 20/20 applicable checks: 9/9 from Phase 0 and 11/11 from Chunk 1. Failed tests: none. Blocked applicable tests: none. Chunk 2 results are recorded below.
+
+
+## Chunk 2 implementation: anonymous four-step intake
+
+### Flow and data relationship summary
+
+```text
+anonymous capability cookie -> four-step draft + optimistic version
+                                  |
+                                  +-- private resume/optional-cover versions
+                                  +-- presented candidate-fact decisions
+                                  +-- structured customer assertions/experience
+                                  +-- typed criteria and policy choices
+                                  +-- encrypted sensitive wording reference
+                                  |
+                                  +-- atomic finalization
+                                           |
+                                           +-- immutable intake snapshot + content hash
+                                           +-- immutable fact review history
+                                           +-- typed experience/capability facts
+                                           +-- PENDING feasibility request
+
+protected staff role -> pending-intake summary (not a feasibility result, quote, reservation, or payment)
+```
+
+The active public route renders `wizard-v3.tsx` without a prepayment authentication gate. Exactly four numbered steps are stored (`0` through `3`): basics and private documents; work direction; candidate-fact review and experience; preferences, pay, exclusions, review, and the single combined Terms/Privacy agreement. Adaptive sections do not become additional steps. Back, refresh, same-session return, payment-cancel return, progressive saves, and recoverable optimistic-version conflicts use the server draft and capability cookie; document bytes and draft answers are never placed in browser local storage.
+
+### Transition ownership and invariants
+
+- The anonymous draft route owns typed partial saves and current-step progression. Every read/write requires the separate capability secret; the draft ID is insufficient. Visible-step validation permits partial autosave and blocks forward navigation or finalization until the current step is valid.
+- The document route owns PDF/DOCX server validation, private version registration, replacement/supersession, removal, and explicit retry. Upload status is visible and errors remain actionable. Finalization requires a non-failed resume record but never exposes storage paths or extracted text.
+- Fact-presentation records prove which fact/version was shown. `CONFIRMED`, `REJECTED`, `CORRECTED`, and skipped decisions create immutable review history. Resume or cover-letter text inspection remains unconfirmed evidence; only customer confirmation or independently substantiated human evidence may satisfy a claim or hard gate.
+- Structured experience records retain actual identity, dates/precision, responsibilities, tools, scope, outcome, intensity, and conditional education detail. Caregiving and other relevant life context remain optional context and receive no occupational credit.
+- Atomic finalization owns immutable normalized access email, a canonical content hash, one protected encrypted sensitive-payload reference, fact transitions, customer-asserted facts, experience identities, and a real `PENDING` feasibility request. It does not create Checkout, payment, quote, capacity, or a feasibility outcome.
+- A newer pre-activation snapshot stales the superseded feasibility request and invalidates only the superseded snapshot's assessment, quote, evaluations, review, and never-consumed reserved capacity. Winning post-activation commercial records remain governed by Chunk 1 revision procedures.
+- The production encryption adapter is a fail-closed remote KMS boundary. It requires exact HTTPS wrap/unwrap endpoints, bearer authorization, key identity/version agreement, timeout handling, and successful authenticated wrapping. Missing configuration disables finalization; no production mock path exists.
+- Aggregate intake analytics accept only an allowlisted event name and numbered step. Names, email, free text, document metadata, draft IDs, capability values, and arbitrary dimensions are not accepted.
+- The staff pending-intake surface is protected by existing admin authorization and labels pending records accurately. No public customer-supplied-job product, pricing, matching, Checkout, or site-wide redesign was added.
+
+### Chunk 2 oversight remediation
+
+The prior `161/161 IMPLEMENTED`, `UNIMPLEMENTED_CHUNK_REQUIREMENTS: NONE`, and `CHUNK_STATUS: COMPLETE` declarations were withdrawn when oversight identified seven unsupported or inaccurate claims. Starting from remediation authority commit `6256250693adefe2762a5f921c81fbfbcc305c75`, this correction:
+
+- preserves all selected matching preferences in the immutable snapshot and clears hidden or inapplicable title/preference state before save and finalization;
+- gives `NEITHER` an immediate document-removal action and a server-side fail-safe that supersedes any still-current prior cover letter before finalization;
+- replaces generic correction text with a strict discriminated union and typed persisted payloads for employer/organization, role/relationship, date range, responsibility, tool capability, education, credential, and other structured facts;
+- derives employer-unknown questions from every active hard dealbreaker, required benefit, and hard work-condition preference;
+- exposes separate human-readable review sections with per-section Edit, direct return to review after earlier-step edits, and retained uploaded-document state;
+- associates adjacent errors with their controls, keeps focus on the linked summary until the customer activates an error link, and adds full keyboard-only and browser-engine scaling checks; and
+- corrects Phase 0 bundle-member counts, chunk boundaries, and contract-hash qualification;
+- makes rollback verification self-restoring and verifies the final table, function, and 24-entry migration ledger;
+- renders friendly preferred-employment labels without exposing stored enums; and
+- keeps noncomparable-pay consent fail closed until a concrete comparison issue exists.
+
+Tested implementation commit `0717a60c1440aac9eb8af09c339b2059f23303eb` records the final review fixes before the evidence-only closeout. No Chunk 3 code, provider activation, production migration, push, merge, or deployment is included.
+### Accessibility, responsive behavior, and recovery
+
+The wizard uses native checkbox/radio controls, labelled fields and fieldsets, a linked focusable error summary that retains focus until its user-activated link focuses the corresponding control, stable adjacent error IDs with `aria-describedby` associations, polite save/status announcements, visible keyboard focus, minimum 44-pixel targets, reduced-motion behavior, forced-color support, and responsive layouts from 320 through 1440 pixels. Automated browser coverage includes complete keyboard-only progression, a Chromium DevTools browser-metrics 2:1 zoom-equivalent reflow check with no CSS `zoom`, reduced motion, forced colors, every step at desktop/mobile sizes, adaptive task follow-ups, and a mobile validation-error capture. These checks do not constitute manual screen-reader or assistive-technology certification. The app image-viewer ACL fault previously prevented a separate manual in-app image inspection; committed screenshots and automated layout assertions remain evidence, not a manual accessibility certification.
+
+### Migration, compatibility, and rollback
+
+Additive migration `202609040023_chunk2_four_step_intake.sql` follows the Chunk 1 foundation. Additive remediation migration `202609040024_chunk2_remediation.sql` then preserves preferred work mode, preferred employment type, and all work-condition preferences; stores structured corrections without generic-text collapse; and enforces `NEITHER` as a server-side supersession boundary for any current prior cover letter. Existing and paid legacy records are not rewritten or dropped. Generated database types include the expanded schema.
+
+Deployment order remains expand -> regenerate types -> compatibility deploy -> checkpoint/validate -> later authorized cutover. Code rollback restores the prior route while leaving the additive compatible schema. No destructive down migration is supplied for operational Chunk 2 data; any compensating migration requires separate database-owner proof and approval. Production activation remains fail closed until KMS, file processing, retention/privacy, capacity/staffing, source authorization, and later-chunk gates are approved.
+
+### Chunk 2 verification inventory
+
+| Check ID | Procedure | Intended result |
+| --- | --- | --- |
+| C2-MIGRATE | `supabase db reset --local` | All 24 migrations apply from zero |
+| C2-DB | `npm run test:database` | Chunk 1 invariants plus lossless preferences, typed fact corrections, cover-letter supersession, invalidation, and pending-feasibility transactions pass |
+| C2-LEGACY | `npm run test:legacy-backfill` | Legacy paid records and idempotent compatibility backfill remain intact |
+| C2-ROLLBACK | `npm run test:rollback` | Guarded Chunk 1 rollback rehearsal passes, self-restores all 24 migrations, and verifies the latest table/function/ledger state |
+| C2-TYPES | `npm run types:database:check` | Generated schema types match |
+| C2-LINT | `npm run lint` | Static lint passes |
+| C2-TYPE | `npm run typecheck` | Strict TypeScript passes |
+| C2-UNIT | `npm test` | Four-step validation, duration/fact regressions, KMS fail-closed behavior, and repository units pass |
+| C2-BUILD | `npm run build` | Production build and route generation pass |
+| C2-E2E | `npm run test:e2e` | Full desktop/mobile regression plus exact review/edit, keyboard, error-association, cover removal, friendly employment labels, conservative noncomparable-pay handling, browser-metrics scaling, and media-preference coverage pass |
+| C2-A11Y-VISUAL | `tests/e2e/chunk2-evidence.spec.ts` plus committed PNGs | Axe/layout assertions and deterministic step/adaptive/error captures pass |
+| C2-INTEGRATION-EXTERNAL | `npm run test:integration` | Real scanner tests are local N/A without an approved scanner; fail-closed deterministic tests remain mandatory |
+| C2-FORMAT | `git diff --check` and staged check | No whitespace errors |
+
+### Chunk 2 remediation verified result
+
+Tested implementation commit `0717a60c1440aac9eb8af09c339b2059f23303eb` (tree `480962788aa7b14b69cf875d3e0985bf5785c844`) passed all 12 applicable Chunk 2 checks: all 24 migrations from zero; both transactional Chunk 1/2 database fixtures, including lossless preference persistence, typed correction supersession, and server-side prior-cover deactivation; legacy paid-order preservation and idempotent backfill; self-restoring guarded rollback with final table/function/24-entry ledger verification; generated database-type equality; lint; strict TypeScript; 148/148 unit tests in 34 files; production build with 47 generated pages; and 70 passing desktop/mobile Playwright cases with 2 intentional duplicate-platform skips across 72 scheduled cases. The new desktop/mobile regression proves friendly preferred-employment labels, absence of raw enums, and conservative noncomparable-pay handling. The browser suite refreshed all nine required 1440/390 step, adaptive, and error captures. The repository image viewer remained unavailable because its Windows ACL helper could not traverse the isolated worktree, so no separate manual image-inspection or assistive-technology certification is claimed.
+
+The real-scanner integration suite reported 3/3 tests skipped in two files because no approved production scanner is configured. This remains `NOT_APPLICABLE_LOCAL`, is excluded from the applicable-test denominator, and leaves production processing fail closed. The corrected Chunk 2 ledger is 161/161 `IMPLEMENTED`; unmapped and unimplemented Chunk 2 requirements are zero. The cumulative verified ledger is 32/32 applicable checks: 9/9 from Phase 0, 11/11 from Chunk 1, and 12/12 from Chunk 2. Failed applicable tests: none. Blocked applicable tests: none.
+
+Production KMS, malware scanning, sandbox parsing/OCR, leak scanning and permitted-model policy, approved retention durations and matching Privacy Policy language, Stripe tax-inclusive configuration, capacity/staffing, monitoring, staff roles, documentary job-source authorization, and manual image/assistive-technology verification remain explicit release blockers. Chunks 3 through 7 were unimplemented at the Chunk 2 closeout. No push, merge, deployment, production migration, or provider activation occurred.
+
+## Chunk 3 implementation: deterministic matching and feasibility
+
+### Relationship summary
+
+```text
+confirmed snapshot + candidate facts -> neutral responsibility query families
+                                      -> immutable coverage plan --< required source/query cells
+
+authorized source record + bounded source configuration -> normalized job snapshots
+                                                        -> immutable inventory version --< members
+                                                        -> duplicate graph --< displacements
+
+job requirement tree + candidate evidence -> root/leaf evaluation -> eligibility
+eligibility + categorical usefulness      -> fit + preference + confidence + readiness/risk
+evaluations + complete coverage            -> feasibility worker -> immutable assessment
+pending request -> claimed -> completed | pending retry | stale | error
+```
+
+Migrations `202609040025_chunk3_matching_engine.sql`, `202609050026_chunk3_audit_remediation.sql`, `202609050027_chunk3_persisted_evidence_remediation.sql`, `202609050028_chunk3_contract_completion.sql`, and `202609060029_chunk3_final_acceptance_remediation.sql` are additive. Together they add immutable source-authorization evidence, mandatory bounded source configuration, normalized inventory membership, query-family coverage links, deduplication displacements, exact evaluation provenance, five-section explanation evidence, immutable base/diversity selection runs, current-review supersession, immutable parser-correction lineage, material-source quality, service-role-only feasibility request transitions, and database enforcement of exact criterion/current-fact review binding. Generated database types are regenerated from all 29 migrations.
+
+### Ownership and invariants
+
+- `responsibility-retrieval-v1` owns neutral query families. Search breadth changes verified expansion scope only. Optional title, industry, target-pay, and soft-avoidance hints cannot delete families or filter inventory; confirmed hard restrictions remain filters.
+- `source-auth-v1` is default deny. Indeed, HiringCafe, every named employer/ATS source, and the retained Lever adapters are `UNVERIFIED_DISABLED`; no automated source is authorized. `manual-reviewed` is the documentary compatibility path for approved human research. Liveops is blocked at registry, ingestion, selection, and release boundaries.
+- Discovery and application provenance are distinct. The engine prefers an authorized active employer-hosted application path, retains third-party discovery, and accurately labels an approved actionable third-party path.
+- `dedup-graph-v1` evaluates null-safe requisition, canonical-URL, and conditional fingerprint OR edges, applies the strict quality order, selects a deterministic greedy maximal independent set, records displacement edges, and preserves a final pairwise check. Connected-component and input-order clustering are not used.
+- `requirement-engine-v1` validates typed, nonempty, acyclic Boolean trees; preserves nested alternatives; rejects active `NOT_APPLICABLE`; tracks outcome-determinative unknowns; and records one deterministic satisfaction path. Duration is overlap-safe and separates calendar/FTE intensity. Caregiving and career breaks receive no occupational credit.
+- `tool-clusters-v1` defines explicit Boolean task trees for spreadsheet, CRM, reporting/BI, SQL, and system-administration work. Posting-named tasks override generic clusters; equivalent-tool mappings require version and rationale.
+- Eligibility validates exact employer-root equality and derives every persisted customer hard gate: work mode, geography/state and job-mode-conditional commute, employment type, hard title restriction, blocked industries, must-have benefits, dealbreakers/custom dealbreaker, and explicitly hard work conditions. Schedule selections are soft preferences and are not double-counted as gates. Employer omissions remain unknown and need exact criterion-specific typed source evidence plus immutable consent/warning. Candidate unknowns create targeted input needs. Parser/conflict/unwaivable uncertainty requires protected resolution. A reviewer classifies evidence relation but cannot assign or override the result derived from current fact content, duration, capability, education, credential, or authorization state.
+- `salary-rules-v1` uses integer cents, employer-published like-for-like USD evidence, exact endpoint/basis/location/worker rules, stored schedule conversions, exact current compensation-review/cited-node binding, and separate target-pay preference. `listing-requirements-v5` preserves three-letter currency, endpoint meaning, location applicability, Boolean alternatives, negated work-mode/schedule values, and required physical/travel thresholds; material hard text that cannot be typed holds the listing for correction. Non-USD always fails at launch.
+- `matching-rules-v3` accepts only immutable evidence identifiers at the evaluation boundary. It reloads the complete intake snapshot, persisted requirement tree, current candidate facts, current exact-subject human-review records, compensation evidence, material source qualities, and source authorization; derives eligibility and the salary gate before categorical usefulness; then derives normalized 35/25/20/10/10 fit, all selected equal-weight soft preferences, 40/25/20/15 confidence using the minimum material-source quality, readiness, risk, and five-section evidence. No caller score or factor is accepted.
+- `bounded-diversity-v2` filters ineligible, evidence-insufficient, revoked-source, and Liveops candidates before its inclusive 5.00-fit/0.05-preference, non-lower-confidence reordering. It persists both ranking stages and every displacement in immutable, idempotent selection-run records required by search, release, and replacement.
+- `feasibility-v1` requires an immutable plan with every required family and authorized source cell, positive bounds, terminal result, parser completion, normalization/deduplication, and manual checklist where applicable. Missing configuration and any result-changing defect are pending/error, never limited/infeasible. Only a current complete `LIKELY` result with no blocker can later support Checkout; Chunk 3 creates no Checkout.
+- `feasibility-worker-v1` owns claim, calculation, immutable assessment persistence, and guarded complete/defer/stale/error transitions. It derives counts and outcomes server-side; caller totals are rejected. Human corrections must add evidence and rerun.
+- The previous point-based `rankLegacyJob(s)` surface is explicitly compatibility-only for historical paid/admin records. It does not create corrected-contract evaluations.
+
+### Migration, compatibility, and rollback
+
+Deployment remains expand -> regenerate database types -> deploy compatibility code -> validate checkpoint `202609040025 / CHUNK3_MATCHING_ENGINE_EXPAND` -> configure documentary source authorization and bounded matrices -> separately authorized cutover. Existing job snapshots/evaluations are marked `legacy_compatibility=true`; new strict records default false. Earlier fixtures now mark legacy inserts explicitly. No legacy paid order, payment, match, source reference, or evaluation is rewritten or dropped.
+
+Normal rollback returns code/traffic to the preceding compatible build while leaving the additive schema and immutable evidence in place. Disable feasibility workers and source synchronization first. Do not drop inventory, coverage, evaluation, displacement, or authorization history. A compensating migration requires database-owner proof and separate authorization.
+
+### Chunk 3 verification inventory
+
+| Check ID | Procedure | Intended result |
+| --- | --- | --- |
+| C3-MIGRATE | `supabase db reset --local` | All 29 migrations apply from zero |
+| C3-DB | `npm run test:database` | All Chunk 1-3 transactional fixtures and guarded worker/source/coverage invariants pass |
+| C3-LEGACY | `npm run test:legacy-backfill` | Legacy paid data and idempotent compatibility records remain intact |
+| C3-ROLLBACK | `npm run test:rollback` | Self-restoring guarded rollback retains the expanded compatible schema |
+| C3-TYPES | `npm run types:database:check` | Generated database types match all 29 migrations |
+| C3-LINT | `npm run lint` | Static lint passes |
+| C3-TYPE | `npm run typecheck` | Strict TypeScript passes |
+| C3-UNIT | `npm test` | Matching truth tables, source policy, deduplication, scoring, feasibility, and prior regressions pass |
+| C3-BUILD | `npm run build` | Production compilation and route generation pass without activating providers |
+| C3-E2E | `npm run test:e2e` | Existing public/admin flows regress cleanly; no public redesign is introduced |
+| C3-INTEGRATION-EXTERNAL | `npm run test:integration` | External scanner tests remain local N/A; deterministic fail-closed coverage remains mandatory |
+| C3-TRACE | Chunk 3 ownership/status audit | All 243 Chunk 3 rows map to implementation, tests, evidence, and `IMPLEMENTED` status |
+| C3-FORMAT | `git diff --check` plus staged check | No whitespace errors |
+
+### Chunk 3 verified result
+
+The original tested implementation commit `152fc529cbf39652cd59dedc734f50433419bb31` and evidence commit `1ec2eb6ffdb7b942acbe76f87e53c5bcbbe7c3c6` were rejected by oversight. The first remediation commit `077c55d1b57366de929223886379eca14255355a` was rejected because reachable evaluation still trusted caller primitives and did not persist or recheck all required provenance. The second-remediation implementation/evidence pair `4fbf4edb6ac703ae5eb06326f89b49c065f550a2` / `32ac9ec42699476ac2a74b4da66a82e19e99b271` closed those issues but was superseded after six additional contract gaps were found. Those historical results are not current acceptance evidence.
+
+The real-scanner integration suite reported three tests skipped in two files because no approved production scanner is configured. This is `NOT_APPLICABLE_LOCAL`, is excluded from the applicable-test denominator, and leaves production processing fail closed. The cumulative verified ledger is 44/44 applicable checks: 9/9 from Phase 0, 11/11 from Chunk 1, 12/12 from Chunk 2, and 12/12 from Chunk 3.
+
+The third-remediation implementation commit is `b9c2848de5908cf1ae75072aeb2aa85f69d51b14` (tree `8a1a8f9ca60355576b58e082eaddb76d90796e4f`) from remediation start HEAD `32ac9ec42699476ac2a74b4da66a82e19e99b271`. The final canonical `evidence/chunk-3/manifest.json` is 19,212 bytes with file SHA-256 `850a6bc4aea94ebb1e4fe7fd12c1837f9503d2aae78e0e16a14608a6d9d3cea2` and sorted canonical-content SHA-256 `40aa9944a3c2d7592fe4093994d76fa0cb6fde33597f0a482b34770a0556b539`. Its 40 artifact hashes are scoped explicitly to the tested implementation commit, preventing the evidence-only ledger update from creating a circular hash claim. The superseded second-remediation manifest was 15,363 bytes with SHA-256 `13481fe3176c35de65507f2131643e1c1d044574cbebd5b51bd6f4a8be9d986d`. No source was contacted, no production database changed, and no payment, Checkout, push, merge, deploy, public redesign, or Chunk 4 work occurred.
+
+### Chunk 3 contract-completion remediation result
+
+The implementation now derives all customer hard gates and selected soft preferences from persisted intake evidence; preserves compensation endpoint, currency, and location semantics; requires exact current compensation review evidence; atomically supersedes reviews by exact subject; makes parser corrections create immutable successor job/tree/inventory/coverage records; invalidates evaluations tied to superseded parses; and derives confidence from the minimum persisted quality across material sources. Migration `202609050028` makes strict v3 evaluation creation fail closed on stale reviews, superseded job snapshots, missing source-quality evidence, or malformed server-derived metadata. Per-job and per-subject database locks make correction, review, and evaluation races deterministic.
+
+At the now-superseded third-remediation implementation commit, all 12 applicable Chunk 3 gates passed: 28/28 migrations from zero; 3/3 transactional database fixtures; generated database-type equality; two-pass idempotent legacy backfill; rollback plus full 28-migration restore; lint; strict TypeScript; 271/271 unit and property tests in 43 files; production build with 49 routes/pages; 70/70 applicable Playwright cases with two intentional duplicate-platform skips among 72 scheduled; 243/243 Chunk 3 traceability rows implemented; and both whitespace checks. That evidence was later rejected for the defects recorded in the final acceptance remediation below and is historical only.
+
+### Remaining release blockers
+
+No source has documentary `AUTHORIZED_AUTOMATED` approval or an approved production source/query matrix, result/lookback/pagination bounds, or release-verification TTL. KMS, malware scanning, sandbox parser/OCR, reference isolation/leak scanning and permitted-model policy, retention durations and matching Privacy Policy language, Stripe/tax, capacity/staffing, monitoring, and trained protected staff remain `UNSET_BLOCKING`. Synthetic tests and the manual compatibility record are not production authorization. No source was contacted, no production database changed, and no payment, Checkout, push, merge, deploy, or Chunk 4 work occurred.
+
+### Chunk 3 final acceptance remediation
+
+The fourth review identified six remaining acceptance defects. The implementation now derives employer hard-requirement outcomes from exact current persisted candidate facts rather than accepting a review disposition as the outcome; duration is overlap-safe when complete date intervals are present and otherwise uses only the single conservative maximum rather than summing potentially overlapping facts. Tool status uses the locked capability matrix. Unsupported, transferable, semantically unrelated, stale, or incomplete evidence remains `UNKNOWN` or conflicts with a claimed review disposition and fails closed.
+
+Customer-criterion reviews must cite a typed node for the exact gate in both the route and additive migration `202609060029`. A remote-only job no longer acquires a commute gate merely because the customer also accepts hybrid or onsite work. Schedule answers remain soft preferences and are not duplicated as hard gates. `listing-requirements-v5` handles negated remote/weekday/weekend language, promotes required physical/travel demands into the Boolean hard tree, and holds material untyped qualification language for correction. Manual discovery remains quality `0.80`; only registry-verified employer application provenance can add quality `1.00` or be labeled `EMPLOYER_HOSTED`. Caller labels and same-host coincidence do not grant that status.
+
+Migration `202609060029_chunk3_final_acceptance_remediation.sql` is expand-only. It adds exact-node and current-fact insert guards plus checkpoint `202609060029 / CHUNK3_FINAL_ACCEPTANCE_EXPAND`; it does not rewrite legacy rows. Code rollback leaves the compatible schema and immutable evidence in place.
+
+Final acceptance was verified against implementation commit `8ce3a8ac1f1e6cf4cbdfcf998010a0934e7d4ba7` (tree `9b8324d5e6e0460f26d02b6c2c30f43bf2b3acac`) from remediation start HEAD `ab18f288cb906cf6c11f7d43c4945b7f08be8f38`. All 12 applicable Chunk 3 gates passed: all 29 migrations from zero; 3/3 transactional database fixtures; generated database-type equality; two-pass idempotent legacy backfill; rollback plus full 29-migration restore; lint; strict TypeScript; 279/279 unit and property tests in 43 files; production build with 49 routes/pages; 70/70 applicable Playwright cases with two intentional duplicate-platform skips among 72 scheduled; 243/243 Chunk 3 traceability rows implemented; and exact-commit plus staged whitespace checks. The real-provider suite reported 3/3 intentional skips because no approved scanner is configured and remains `NOT_APPLICABLE_LOCAL`; production processing remains fail closed.
+
+The remediation-round-4 `evidence/chunk-3/manifest.json` is 22,258 bytes with file SHA-256 `3112ce2d94f2ed72553b9e46b0f4ca89a0862b01f541b1323b3a89dcfc7460cf` and sorted canonical-content SHA-256 `26cf46af06c48c95fa271f316ae52f77a5b2c8265fb439cff56bfc4782e368b6`. All 42 artifact byte counts and hashes were independently recomputed from the tested implementation commit with zero mismatches. The evidence-only commit SHA and final clean-state attestation are reported in the mandatory handoff because a commit cannot contain its own SHA. No source was contacted, no production database changed, and no payment, Checkout, push, merge, deploy, public redesign, or Chunk 4 work occurred.
+
+## Chunk 4 implementation: commerce, fulfillment, and exact-ten release
+
+### Relationship summary
+
+```text
+current finalized snapshot + current LIKELY assessment + legal acceptance
+    -> immutable $20 USD quote -> atomic capacity reservation
+    -> provisional Checkout command -> provider Session -> promoted equal expiry
+
+raw signed provider event -> immediate paid verification
+    -> atomic winning activation + consumed capacity + persisted 24h deadline + outbox
+    -> immediate scoped browser access + 15-minute cross-device email access
+
+active search -> protected evidence/review queues
+    -> current exact-ten selection + final verification -> atomic release + earned revenue
+    -> shortage adjustment -> accepted child snapshot/revised capacity/deadline
+    -> decline/expiry/capacity loss/deadline miss -> idempotent full refund
+
+database clock -> leased scheduled work -> expiry/refund/reconciliation/outbox/catch-up
+               -> non-sensitive monitor snapshot + protected operational alerts
+```
+
+Migration `202609060030_chunk4_commerce_release.sql` is additive after the 29 accepted migrations. It extends the Chunk 1 commerce foundation rather than creating a parallel payment model. It adds current legal-acceptance and quote binding, durable Checkout commands and compensation, monotonic provider-event/payment/refund handling, narrow order-access capabilities, immutable deadline history, protected release reviews, exact-ten release guards, adjustment and dispute transitions, leased scheduled work, outbox recovery, monitoring, audit records, RLS, service-role-only functions, and checkpoint `202609060030 / CHUNK4_COMMERCE_RELEASE_V1`. Generated types cover all 30 migrations.
+
+### Ownership and invariants
+
+- The finalized current snapshot, a complete unexpired current `LIKELY` feasibility assessment, current immutable legal versions, an enabled matching capacity bucket, and an exact server-side quote are prerequisites for Checkout. Limited, infeasible, stale, pending, and error states remain editable and cannot open Checkout.
+- A pre-activation material edit uses `ap_begin_pre_activation_edit`: it creates/uses a new snapshot through the intake flow, invalidates old feasibility, quote, evaluation, selection, and review state, returns only never-consumed held capacity, queues provider expiry, and unlocks the draft. A stale session paid afterward is refunded and never activates work.
+- Search capacity is one unit from the search pool only. Allocation uses database locking, half-open buckets, earliest bucket then stable ID, and subtracts every held or spent unit. Completed and consumed-superseded work remains spent; only never-consumed held work returns. The Checkout provisional lease, provider Session, and promoted allocation are compensated or reconciled idempotently and the customer-facing expiries are equal before a URL is exposed.
+- The quote fixes one-time `USD 20.00`, quantity one, no added fee, immutable snapshot/assessment/allocation/legal/pricing/tax versions, and an idempotency key. The browser supplies none of those facts. Tax approval, price mapping, payment credentials, immediate method configuration, and all enablement flags remain external fail-closed gates.
+- Payment state belongs to each attempt. The signed raw-body webhook reloads Stripe Checkout Session, PaymentIntent, and charge evidence and accepts only an immediate paid card settlement. One transaction records the provider event, first valid winning activation, consumed capacity, exact persisted deadline, access capabilities, audit event, and outbox. Replay, delay, concurrency, duplicate payment, expired capacity, stale Checkout, invalid activation, and local/provider split-brain outcomes converge through unique keys and explicit reconciliation/refund states.
+- `service_started_at` is the maximum of intake completion, verified payment, and capacity confirmation; `delivery_due_at` is persisted once at exactly 24 elapsed hours in UTC and displayed in `America/New_York` with ET. Weekends, holidays, and DST do not change duration.
+- Anonymous access remains valid through Checkout. Verified activation rotates the draft capability and issues only one order-scoped immediate capability. The separately encrypted email capability is single-use and 15 minutes, aligns to its outbox claim, works cross-device through the canonical callback, removes token material, permits safe relative returns only, and never uses payer or document-contact email to grant ownership. Existing history requires proof sent to the immutable access email.
+- The authenticated minimum `My ApplyPack` route projects pending, research, review, adjustment, refund problem/processing/completed, error, and delivered states from real order records. A delivered release shows all ten immutable jobs, provenance-aware host labels, compensation/unknown status, dates, five evidence sections, and allowed-unknown warnings under server ownership checks.
+- Protected staff queues cover research, parser correction, evidence questions, job/package review, release, adjustment, lateness, refund, and email failure. Reviews bind the active snapshot, current fact IDs, job content, selection run, and full rules/version bundle. A reviewer may add evidence or request input and rerun; database guards prohibit approval of hard failure, unresolved candidate/core unknown, invalid salary, insufficient evidence/usefulness, or blocked readiness.
+- Exact-ten release reselects against current persisted evaluations, rechecks all ten paths/listing facts, rejects stale facts/criteria/job/source/parser/rules/selector/review evidence and any successor/closed/Liveops/duplicate/ineligible job, and publishes ten or zero under the search-service row lock. It sets delivery and revenue once, completes spent capacity, and queues delivery email without making email success part of delivery.
+- Adjustment proposals preserve the current valid count, neutral reasons, exact constraints, precise before/after diff, estimated duration, and expiry no later than the active deadline. Explicit authenticated acceptance atomically creates the child snapshot, transfers/supersedes prior allocation correctly, confirms revised capacity, and only then persists a new exact 24-hour deadline. Decline, no response, capacity failure, and the active-deadline miss start an idempotent full refund; questions never pause time.
+- Refund history is immutable except for the tightly constrained pending terminal transition and audited failed-to-pending retry. Full-service and material-line scopes cannot exceed their paid amounts. Release and deadline refund serialize on one service row. Dispute `OPEN`, `LOST`, and `WON` preserve per-scope delivery/revenue and capacity truth without double refund or work resumption.
+- Transactional email is committed through the outbox, uses accessible escaped HTML and plain text, absolute production URLs, immutable deduplication/provider keys, retry/backoff, reconciliation, and dead-letter visibility. Claims remain database-blocked until the provider's idempotent-submission and accepted-send reconciliation guarantee has an approved reference. Sender/DNS/tracking are not claimed configured.
+- Database-clock workers enqueue and lease Checkout/proposal expiry, invalidated Session expiry, deadline refund, refund submit/reconcile, and outbox work; expired leases are reclaimable, handlers are idempotent, and catch-up follows downtime. The monitor exposes only non-sensitive capacity, webhook, deadline, adjustment, refund, outbox, stale-review, and worker-lag counts.
+
+### Migration, compatibility, rollback, and activation boundary
+
+Existing paid, payment, refund, capacity, order, material-entitlement, and audit rows are retained. Legacy paths remain readable, but corrected Checkout and release use only the new guarded functions and current matching provenance. The legacy-backfill fixture remains two-pass idempotent. Rollback testing removes migration 030 only in an isolated disposable database and restores all 30 migrations; operational rollback leaves the additive schema and evidence intact, disables Checkout and workers, returns traffic to the preceding compatible build, reconciles ambiguous provider operations, and repairs forward.
+
+No Stripe Session, email, source, DNS, production database, or hosted setting was contacted or changed. `APP_PAYMENT_MODE=disabled`, `APP_CHECKOUT_ENABLED=false`, `APP_LIVE_PAYMENTS_ENABLED=false`, and a blank worker identity keep the feature unactivated.
+
+### Chunk 4 verification inventory
+
+| Check ID | Procedure | Intended result |
+| --- | --- | --- |
+| C4-MIGRATE | `npx supabase db reset --local` | All 30 migrations apply from zero and checkpoint 030 exists |
+| C4-DB | `npm run test:database` | All four transactional fixtures pass, including commerce concurrency, payment races, release/refund serialization, adjustments, disputes, outbox, and scheduler recovery |
+| C4-LEGACY | `npm run test:legacy-backfill` | Existing paid records remain intact and two-pass compatibility backfill is idempotent |
+| C4-ROLLBACK | `npm run test:rollback` | Guarded isolated rollback passes and self-restores all 30 migrations |
+| C4-TYPES | `npm run types:database:check` | Generated database types exactly match the 30-migration local schema |
+| C4-LINT | `npm run lint` | Static lint passes without warnings |
+| C4-TYPE | `npm run typecheck` | Strict TypeScript passes |
+| C4-UNIT | `npm test` | Commerce, access, email, clock/DST, release, security, and all prior unit/property tests pass |
+| C4-BUILD | `npm run build` | Production compilation and route generation pass with providers disabled |
+| C4-E2E | `npm run test:e2e` | Full desktop/mobile regression and Chunk 4 state/accessibility assertions pass |
+| C4-A11Y-VISUAL | `tests/e2e/chunk4-evidence.spec.ts` plus committed PNGs | Axe/layout assertions and deterministic desktop/mobile commerce-state captures pass |
+| C4-INTEGRATION-EXTERNAL | `npm run test:integration` | Approved real-scanner coverage remains local N/A; deterministic fail-closed coverage remains mandatory |
+| C4-TRACE | Chunk 4 ownership/status audit | All 115 Chunk 4 rows map to implementation, tests, evidence, and `IMPLEMENTED` status |
+| C4-FORMAT | `git diff --check` plus staged check | No whitespace errors |
+
+### Chunk 4 verified result
+
+Tested implementation commit `9751222fb51953e3e49ce7a50795a44bf699e0fa` (tree `8fd898ccf4f5b6a6285ab905e14d63adc8bfd982`) passed all 13 applicable Chunk 4 checks. The local database applied all 30 migrations from zero; all four transactional fixture families passed; legacy compatibility passed before and after its idempotent rerun; guarded rollback reported `ROLLBACK_OK`, restored all 30 migrations, and reported `RESTORE_OK`; generated database types matched; lint and strict TypeScript passed; the production build generated 51 routes/pages with providers disabled; and all 115 primary Chunk 4 traceability rows are `IMPLEMENTED`.
+
+The final unit run used one thread worker to avoid the Windows host's process-start bottleneck and passed 44/44 files and 292/292 tests. A preceding resource-contended default-fork rerun is not acceptance evidence: Windows failed to start 15 workers, only 29 files ran, and that attempt returned exit 1. The complete constrained rerun used the same tested code and returned exit 0.
+
+The definitive browser run passed 72/72 applicable desktop/mobile Playwright cases, with two intentional duplicate-platform skips among 74 scheduled cases. The focused Chunk 4 evidence path passed in both projects and produced 22 deterministic PNGs: 11 at 1440 pixels and 11 at 390 pixels, covering likely review/Checkout, payment confirmation, confirmed search, capacity exception, adjustment, refund processing, exact-ten delivery, and limited/infeasible/stale/error feasibility. Each captured state passed its serious/critical axe scan. No manual assistive-technology or live-provider certification is claimed.
+
+The real-scanner integration suite reported three intentional skips in two files because no approved production scanner exists. `C4-INTEGRATION-EXTERNAL` is therefore `NOT_APPLICABLE_LOCAL`, is excluded from the applicable denominator, and leaves production processing fail closed. The cumulative verified ledger is 57/57 applicable checks: 9/9 Phase 0, 11/11 Chunk 1, 12/12 Chunk 2, 12/12 Chunk 3, and 13/13 Chunk 4. Failed applicable checks: none. Blocked applicable checks: none.
+
+`evidence/chunk-4/manifest.json` is 21,664 bytes with raw file SHA-256 `9e373c19054af5f3f8e59645dae44384556342570e29443fa57b07aa26ed43cd` and recursively key-sorted canonical-content SHA-256 `9c77ff62f085e4c8b2dc8d624e442e43e23f2661574b86e003511fe66d72e1ad`. Its 49 implementation artifact hashes are scoped to the tested implementation commit; its 22 evidence artifact hashes are scoped to the evidence-attestation content. Independent recalculation found zero byte-count or SHA-256 mismatches. The evidence-only commit contains the manifest, screenshots, and this implementation-status attestation; its containing commit hash is reported in the external handoff because a tracked artifact is not required to identify the commit that contains itself.
+
+Chunk 4 is complete, but Chunk 5 was not started and is not authorized by this closeout. A new explicit user authorization is required before any Chunk 5 work.
+
+### Remaining release blockers
+
+Repository completion does not make the product production-ready. Blocking external work includes approved tax-inclusive treatment; Stripe production credentials, exact price mapping/API version, webhook endpoint/signature, immediate-card methods, refunds/disputes, reconciliation and separate live enablement; production Supabase identity/callback allowlist; verified Resend sender, monitored reply-to, SPF/DKIM/DMARC, disabled open/click tracking, and accepted-send idempotency/reconciliation evidence; production capacity/staffing configuration; protected staff assignments/training; scheduler topology and monitored alerts; KMS, malware scanner, sandbox parser/OCR, permitted-model/leak boundary; approved retention/privacy/legal versions; approved source matrix/bounds and documentary source authorization; and manual assistive-technology/provider exercises. No Chunk 5 work is included.
+
+## Chunk 5 implementation: materials purchase, generation, references, and secure delivery
+
+### Relationship summary
+
+An immutable delivered exact-ten search release supplies the only eligible jobs. A readiness pass binds the current job, candidate facts, employer instructions, document decisions, and optional exact-job reference permissions before a server-priced materials Checkout can begin. Verified payment creates immutable line/revision/deadline state. Listing changes or accepted fact corrections produce an explicit substitution or line-scoped full refund under the same row lock. Generation binds both files to one current version bundle, and release requires structural approval plus separate human content and visual approvals. Private artifacts are exposed only through server ownership checks and 15-minute download capabilities.
+
+Migration 202609070031_chunk5_materials_delivery.sql is additive after the 30 accepted migrations. It adds employer submission rules, immutable checkout/item/line/revision and entitlement-claim history, material listing checks, substitution and fact-correction proposals, line-scoped refunds and disputes, generation attempts, artifact/file revisions and quality reviews, exact-job reference permissions and isolation reviews, reference regenerations, download audits, private support cases, scheduled work, monitor projections, RLS, service-role functions, and checkpoint 202609070031 / CHUNK5_MATERIALS_DELIVERY_V1. Generated TypeScript types cover the 31-migration schema.
+
+### Ownership and invariants
+
+- Materials are available only for a customer-owned job in that customer's immutable paid exact-ten release. Zero, one, several, or all eligible lines may be selected. A job outside the release, an already purchased job, a duplicate selection, a closed listing, unresolved readiness, an unsupported employer instruction, missing capacity, or unapproved tax treatment blocks Checkout.
+- The server fixes a tax-inclusive USD 8.00 total for each selected line, quantity one, no added fee, and a durable checkout/idempotency record. Materials, payment, Stripe, email, renderer, capacity, and worker activation remain independently fail closed.
+- Entitlement claims are immutable and unique across original and substitution targets. Delivered, pending-refund, disputed, and partially refunded lines retain the claim. Only a successful terminal full line refund releases it.
+- Each original, substitution, correction, and reference-regeneration request owns immutable start/deadline history derived from its latest prerequisite plus 24 elapsed hours. No accepted substitution or fact correction silently resets a paid clock outside those rules.
+- Listing and employer instructions are rechecked before Checkout, generation, and release. A changed or closed listing creates a precise customer choice between a valid owned unclaimed replacement and a line-scoped full refund. No silent substitution is possible.
+- Document generation uses locked resume, cover-letter, provenance, filename, relationship, and injection rules. Historical titles remain truthful; career-break choices are exact; references never appear on the resume; factual claims require current bound provenance; narrative connective text cannot introduce a factual claim.
+- DOCX artifacts are deterministic structured packages with native paragraphs and bullets, linear extraction, sanitized metadata and relationship inspection, and one-page default or recorded two-page exception. Optional PDF output is derived from the DOCX only through the configured local no-network renderer chain.
+- The renderer adapter verifies the SHA-256 identity of LibreOffice, PDF inspection/extraction/raster tools, and Arial before use. It checks page count, actual Arial resolution, normalized extracted-text equality, page-image count, and searchable PDF signature. Missing or mismatched configuration blocks generation/release.
+- References are unavailable before paid exact-ten delivery and never form a standalone product. One optional exact-job sheet can accompany a paid line for no added charge only after permission is complete and frozen. Contact fields remain isolated from candidate facts, prompts, analytics, URLs, logs, snapshots, fixtures, errors, metadata, and other customers.
+- Resume, cover letter, and any selected reference sheet publish atomically or remain unavailable. Current files stay private; ownership is checked server-side; expired links require fresh authorization and issue a new 15-minute capability.
+- A postdelivery false-claim correction revokes future hosted downloads and opens protected support. It does not rewrite release, earned revenue, payment, refund, reference-regeneration, entitlement, or SLA history, and does not silently create a refund, free regeneration, or new clock.
+
+### Migration, compatibility, rollback, and activation boundary
+
+Existing search, order, payment, refund, release, capacity, matching, upload, and legal records remain intact. The corrected path extends the prior commerce model with line-scoped material state and preserves legacy reads. The legacy fixture passes before and after an idempotent migration replay. The guarded rollback test removes migration 031 only in a disposable local database and then restores all 31 migrations. Operational rollback is forward-safe: keep the additive schema/evidence, disable materials checkout and workers, stop download issuance, reconcile ambiguous provider operations, and deploy the preceding compatible code until a reviewed forward repair is ready.
+
+No production provider, source, DNS, database, identity setting, payment object, email, or customer file was contacted or changed. Materials checkout, live payment, scanner/model processing, renderer execution, and workers remain disabled until separately approved production configuration is present.
+
+### Chunk 5 verification inventory
+
+| Check ID | Procedure | Result |
+| --- | --- | --- |
+| C5-MIGRATE | Local database reset | PASS: all 31 migrations applied from zero |
+| C5-DB | Database contract fixtures | PASS: all five transactional fixture families |
+| C5-LEGACY | Legacy backfill rehearsal | PASS: pre/post assertions and idempotent second pass |
+| C5-ROLLBACK | Guarded rollback rehearsal | PASS: ROLLBACK_OK, full restore, RESTORE_OK |
+| C5-TYPES | Generated database-type equality | PASS |
+| C5-LINT | ESLint | PASS |
+| C5-TYPE | Strict TypeScript no-emit | PASS |
+| C5-UNIT | Full constrained unit/property suite | PASS: 302/302 tests in 45/45 files |
+| C5-BUILD | Production build with providers disabled | PASS: 53/53 routes/pages generated |
+| C5-E2E | Full desktop/mobile Playwright regression | PASS: 75 applicable tests; five intentional project-matrix skips |
+| C5-A11Y-VISUAL | Chunk 5 width/state screenshots, axe, layout, keyboard, zoom, forced colors, reduced motion | PASS: 31 deterministic PNGs; no serious/critical automated findings |
+| C5-DOCX | Focused document structure/provenance, portal, and scanner bundle | PASS: 15/15 tests in 3/3 files |
+| C5-RENDER-VISUAL | Real DOCX-to-page renderer, resolved Arial, and per-page human visual inspection | BLOCKED: no approved/configured renderer chain is available |
+| C5-MANUAL-AT | Manual screen-reader and assistive-technology exercise | BLOCKED: no manual provider/device exercise was performed |
+| C5-TRACE | Stable-row ownership/status audit | PASS: 103/103 Chunk 5 rows implemented; zero pending |
+| C5-FORMAT | Working-tree and staged whitespace checks | PASS |
+| C5-INTEGRATION-EXTERNAL | Real external scanner integration | NOT_APPLICABLE_LOCAL: three tests in two files intentionally skipped without an approved scanner |
+
+### Chunk 5 verified result and limitations
+
+Tested implementation commit cb66c0a005b64e78f0838978ee2afd83d7455efc (tree 0f54c4814160703d0ea4a9db7e452d0c031dbc07) passed 14 of 16 applicable Chunk 5 checks. No applicable check failed. C5-RENDER-VISUAL and C5-MANUAL-AT are blocked, so the binding status is PARTIAL and Chunk 6 is not authorized.
+
+The fixed commit passed a clean 31-migration reset; all five database fixture families; two-pass legacy preservation; guarded rollback and full restore; exact database types; lint; strict TypeScript; 302 unit/property tests; a 53-page/route production build; and 75 applicable Playwright cases with five intentional project-matrix skips. The 31 new captures cover six required widths and pending search, exact-ten selection, selection review, payment, generation, substitution, line refund, correction, delivery, private postdelivery support, exact-job references, expired download, protected staff review, forced colors, reduced motion, and 200 percent zoom. Automated screenshots and axe/layout assertions are not a manual assistive-technology or document visual certification.
+
+Arial exists locally at C:\Windows\Fonts\arial.ttf with SHA-256 b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a, but the required renderer identity, LibreOffice path/hash, PDF inspection/extraction/raster paths/hashes, and configured Arial path/hash are unset. No Word, LibreOffice/soffice, ONLYOFFICE, WPS, or WordPad executable was available. The adapter therefore fails closed and no real DOCX render, Arial-resolution proof, PDF equivalence proof, or per-page human visual approval is claimed.
+
+The real-scanner integration harness reported three intentional skips in two files. It remains NOT_APPLICABLE_LOCAL, is excluded from the applicable denominator, and leaves production processing disabled. Cumulative applicable checks are 71/73 through Chunk 5: 9/9 Phase 0, 11/11 Chunk 1, 12/12 Chunk 2, 12/12 Chunk 3, 13/13 Chunk 4, and 14/16 Chunk 5. The cumulative requirement ledger is 461 stable rows through Chunk 5; all 103 Chunk 5 owning rows are IMPLEMENTED.
+
+Production release remains blocked on approved tax treatment; Stripe live credentials, price/API/webhook/card/refund/dispute/reconciliation configuration; production Supabase identity and callbacks; verified Resend sender/reply-to/DNS/tracking/delivery guarantees; materials/search/reference capacity and staffing; protected staff assignments and training; scheduler deployment and monitoring; KMS, malware scanning, sandbox parser/OCR, permitted-model and leak controls; retention/privacy/legal publication; documentary source authorization and bounded source matrix; licensed/configured renderer and real Arial/render inspection; and manual assistive-technology/live-provider exercises.
+
+The evidence-only closeout commit contains the manifest, screenshots, and this status attestation. No push, merge, deployment, production migration, provider activation, protected-checkout change, or Chunk 6 work occurred.
+
+The committed Chunk 5 manifest is 26,851 bytes with raw SHA-256 49c356e38822f73fe5c88d97f56b71e418ea6a42391164262b79fa26c6053235 and recursively key-sorted canonical-content SHA-256 6b5a3005c5ebd6103368e8296992f02c5da13e51f2873c6b9c93f160cb2d3dc4. Independent recalculation verified all 54 implementation artifact hashes, all 31 evidence hashes and PNG dimensions, the tested tree, the 14/16 applicable-test denominator, and both blocked-check IDs with zero mismatches.

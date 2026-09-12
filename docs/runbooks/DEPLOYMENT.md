@@ -12,6 +12,7 @@
 
 1. In Railway, create a project from `duotapmobile/ApplyPack`.
 2. Confirm Railpack detects Node, runs `npm run build`, and starts with `npm run start`.
+   The committed `railpack.json` adds LibreOffice Writer, Poppler, fontconfig, and Liberation fonts to the runtime image. After deployment, record executable hashes and configure the exact approved renderer identity. Liberation is not Arial and cannot satisfy the Arial release gate; install an appropriately licensed Arial file only after legal approval, then record and pin its hash.
 3. Add every variable from `.env.example` through Railway Variables. Generate high-entropy independent webhook and cron secrets.
 4. Configure process liveness at `/api/live` and dependency readiness at `/api/health`.
 5. Deploy the exact reviewed commit.

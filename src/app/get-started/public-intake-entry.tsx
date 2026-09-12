@@ -31,7 +31,7 @@ export function PublicIntakeEntry() {
         <p className="eyebrow">TELL US WHAT FITS</p>
         <h1>Start with the life your next job needs to fit.</h1>
         <p className="brief-intake-lede">You do not need the perfect job title or a perfectly updated resume. Tell us about your experience, priorities, preferences, and dealbreakers.</p>
-        <div className="brief-order-summary"><strong>10 researched job matches</strong><span>$20 one time</span><span>Delivered within 24 hours after intake and payment</span></div>
+        <div className="brief-order-summary"><strong>One shared profile</strong><span>Use it for the filtered board or the $20 Top 10</span><span>The Top 10 is delivered within 24 hours after intake, payment, and capacity confirmation</span></div>
         <section className="brief-first-field" aria-labelledby="begin-heading">
           <h2 id="begin-heading">Begin your secure intake.</h2>
           <p>Your progress and documents stay connected to a private guest session. Email verification is not required before checkout.</p>

@@ -124,3 +124,64 @@ The owner's latest direct feedback replaces the compact, playful process control
 - The dedicated `/how-it-works` page now explains intake, capacity and payment timing, research, the complete 10-match delivery, customer selection, optional $8 application materials, truthful human review, customer submission, and the no-guarantee boundary.
 - `/how-it-works` explains the operational journey. `/experience-connections`, labeled `How Matching Works`, remains focused on the reasoning used to identify credible experience and life-fit connections.
 - `What it demonstrate` is corrected to `What it demonstrates`, with the caregiving example retaining the qualified wording `What it may demonstrate`.
+
+## September 4, 2026 Chunk 2 oversight remediation
+
+The oversight verdict supersedes the earlier Chunk 2 completion and accessibility claims until the remediation is implemented and reverified. The authorized start is `6256250693adefe2762a5f921c81fbfbcc305c75`; scope is Chunk 2 remediation and evidence correction only.
+
+- Immutable intake snapshots now retain preferred work mode, preferred employment type, schedules, benefits, all work-condition preferences, and criterion-specific employer-unknown policies. A shared normalizer removes hidden or inapplicable title/preference state before save and finalization.
+- A prior cover letter set to `NEITHER` is removed through the capability-protected document route; finalization also supersedes any still-current prior letter before downstream processing can use it.
+- Extracted-fact corrections use a strict discriminated union. The database retains the category in `value_kind` and the category-specific fields in `typed_value`; the original extracted fact remains rejected and superseded for audit.
+- Hard employer-unknown decisions are derived independently for dealbreakers, must-have benefits, and hard work-condition preferences. Namespaced keys prevent collisions.
+- Review is divided into distinct human-readable sections, each with its own Edit action. Editing an earlier step returns directly to review after a successful save and retains the document record.
+- Error summaries retain focus until the customer activates a link. Controls and groups expose stable adjacent error IDs through `aria-describedby`. Keyboard evidence traverses and operates the complete flow. The 200 percent assertion uses Chromium browser-engine metrics and explicitly does not use CSS `zoom`; automated checks do not claim manual assistive-technology certification.
+- Migration `202609040024_chunk2_remediation.sql` is additive. Normal rollback reverts code/traffic while retaining the compatible schema; a destructive down migration remains prohibited without separate proof and approval.
+- The Phase 0 bundle inventory is corrected to 14 regular files plus 2 directories, Chunk 3 through 7 boundaries are corrected, and full-file versus authoritative-body contract checksums are distinguished.
+
+No provider was activated, no production database was changed, and no Chunk 3 work was started.
+
+## September 5, 2026 Chunk 3 deterministic matching boundary
+
+Chunk 3 replaces the corrected-contract path's implicit/title-led and caller-scored behavior with versioned evidence calculations while retaining the old point rank under explicit `rankLegacyJob(s)` names for historical paid/admin compatibility.
+
+- Source access is default deny. Named employer, ATS, Indeed, HiringCafe, and retained Lever entries stay `UNVERIFIED_DISABLED`; no automated source is authorized. The repository records policy state and evidence but makes no legal determination.
+- Responsibility-first retrieval preserves neutral families under title, industry, target-pay, and soft-avoidance changes. Search breadth expands only into verified nearby/adjacent/broad families and never grants speculative qualifications or points.
+- Requirements retain Boolean structure, locators, excerpts, classification, confidence, corrections, and stable identities. Unknowns remain typed; active N/A is rejected; one deterministic passing alternative supplies required-branch denominators.
+- Tool matching is task-level. CRM, reporting/BI, SQL, system administration, and spreadsheets are distinct explicit Boolean clusters. Posting-named tasks override generic clusters, and equivalent mappings need a version plus rationale.
+- Only eligible and categorically useful jobs are scored. Fit is 35/25/20/10/10, preferences are an exact-fit-only equal-weight tie-break, confidence is separate 40/25/20/15, and readiness/presentation risk remain independent. Career break and other identity/proxy fields cannot alter these values by themselves.
+- Deduplication uses the non-transitive pairwise graph algorithm and stores immutable membership/displacement evidence. Bounded diversity filters ineligible, evidence-insufficient, and Liveops records before applying the exact inclusive bounds.
+- Feasibility owns immutable coverage plans and guarded request transitions. Missing authorization, required-family coverage, positive bounds, parser completion, normalization, manual checklist, or TTL/configuration cannot produce an outcome or Checkout.
+- Migration `202609040025_chunk3_matching_engine.sql` is additive and legacy-compatible. Normal rollback reverts code/traffic and stops workers while leaving immutable expanded data in place.
+
+This decision activates no source, Checkout, payment, production migration, push, merge, deployment, or Chunk 4 work. Production authorization, bounds, TTL, staff/monitoring, provider, retention/privacy, KMS/file-processing, and capacity dependencies remain explicit blockers.
+## September 8, 2026 source inventory and guarded expansion
+
+- The source audit found 69 database registry rows but zero source runs, jobs, or source references in both staging and production. No source is represented as successfully searched.
+- The canonical job-source registry is distinct from the read-only master software-reference inventory and from supporting board-recommendation research.
+- Duolingo, Ultimate Medical Academy, Brightwheel, ClassDojo, Capella University, Outschool, Stripe, Block, and Coinbase were reconciled. Stride's existing row was corrected and its exact Workday tenant recorded.
+- Reusable Greenhouse and Ashby adapters were added alongside Lever. ATS support applies only to explicitly configured tenants.
+- Every new structured source is unscheduled. Recurring source work requires both the environment gate and per-source schedule activation. Workflow attempts now record success and failure evidence.
+- EdTech.com's fully remote page remains inactive and blocked because the audit client received HTTP 403 and no ingestion or paid-display permission was established.
+- A reusable CSV intake and validator detects duplicate source IDs, URLs, and ATS tenants, requires permission evidence, and rejects scheduled activation for a new batch.
+
+## September 7, 2026 Chunk 5 parser-audit remediation
+
+The owner authorized correction of the Chunk 5 document templates after a supplied local and Affinda audit. The audit is diagnostic evidence, not product authority, and its embedded recommendations do not override the evidence-bound generation, privacy, provenance, or human-review rules.
+
+- Generator version `applypack-evidence-bound-v2` uses real Word Heading 2 section semantics while preserving the approved visible Arial treatment.
+- Resume job blocks use separate ordinary title, employer, and date/location paragraphs. Keep-with-next and keep-lines properties bind the block to its first content paragraph, and the page-fit estimate accounts for the additional lines.
+- Experience defaults to stable reverse-chronological ordering based only on supplied date precision. A separately approved chronological-hybrid presentation may opt out; no month or date is invented.
+- Career-break output remains separately authorized and is labeled as a non-employment timeline note in its own section so it is not presented as paid work or assigned an employer.
+- Cover-letter generation fails closed when the opening is not specific to the verified target, a different title is described as the target role, or an eight-word sequence is repeated three times.
+- Parser-review fixtures use realistic fictional names, organizations, month/year ranges, a non-ASCII name, varied substantive bullets, education, and target-correct letter content. The prior deliberately repetitive material remains historical stress evidence, not a writing-quality example.
+
+The corrected seven DOCX/PDF pairs passed local XML, Mammoth, and pdfplumber checks: normalized DOCX/PDF text matched, every PDF page contained text, no page was image-only, resume headings converted to HTML headings, native Word lists remained intact, and the two-page resume kept every job heading with its first bullet. The PDFs resolved only Arial-family font names in the local inspection. This does not establish Affinda, Greenhouse, Workday, Lever, or universal ATS compatibility. A fresh external parser comparison remains required before structured-parser sign-off. The prior pinned renderer suite was not rerun because its `pdffonts` and `pdftotext` executables are no longer present locally; the corrected PDFs were rendered with installed LibreOffice and independently checked without relabeling that result as the missing pinned-renderer proof.
+
+## September 10, 2026 production observability before MCP
+
+- Production MCP remains denied by default and is never a production-runtime dependency. No incident severity bypasses exact founder approval.
+- ApplyPack first uses one deterministic maintenance pass, an AAL2-and-role-protected aggregate operations summary, /api/health, Railway evidence, provider-native tooling and existing admin controls.
+- Existing heartbeat and operational-alert tables are sufficient for PII-free counts and stable codes; no migration is added.
+- The three-scenario production drill runs immediately after production is safely available. A production MCP proposal is permissible only if at least two scenarios expose the same unresolved safe-aggregate gap and the equivalent staging MCP answer is correct in at most two read-only calls.
+- UptimeRobot Free at five-minute intervals plus a prepaid 10-credit SMS pack is the selected external-monitoring design. On September 11, 2026, the founder explicitly authorized account creation, founder email/SMS registration, MFA setup, the $3 purchase and the provider notification test. Provider setup remains unverified until the founder completes the personal verification/payment steps and confirms actual email and SMS receipt.
+- On September 11, 2026, the founder also authorized deployment and the three production drills. Those actions remain fail-closed until independent review passes, the production database is restored and migration readiness is proved, provider configuration is safe, and production /api/health can be evaluated without exposing customer content. This authorization does not permit a production MCP connection.

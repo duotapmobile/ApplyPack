@@ -17,12 +17,15 @@ Secrets, personal addresses, full DNS token values, customer content, and paymen
 
 ## Stripe test mode
 
-- [ ] Product Job Match Search, one-time USD price 2000 cents.
-- [ ] Product Apply Pack, one-time USD price 800 cents.
+- [x] Sandbox product/price exists for Job Match Search, one-time USD 2000 cents.
+- [x] Sandbox product/price exists for Tailored Resume + Cover Letter, one-time USD 800 cents.
+- [x] Sandbox recurring prices exist for the filtered board: USD 699/week, USD 1999/month, and USD 4499 every three months; no trial.
+- [ ] Deployable restricted test secret is stored and both test checkout flags are enabled only after all provider gates pass.
 - [ ] Account statement descriptor APPLYPACK.
 - [ ] Public business name and support email are correct; no residential address is exposed in a test receipt.
-- [ ] Webhook signs and delivers checkout completion/expiration, refund updates, and disputes.
-- [ ] Replays do not duplicate orders, payments, capacity commitments, or mail.
+- [x] Sandbox webhook endpoint exists with the governed subscription, invoice, checkout, refund, and dispute event allowlist.
+- [ ] Signed delivery to staging is proven; replays and out-of-order events do not duplicate or corrupt orders, subscriptions, payments, capacity, or mail.
+- [ ] Renewal, cancel-at-period-end, cancellation reversal, failed payment, recovery, expiration, historical/current-period refund, dispute, and billing portal behavior are provider-tested.
 - [ ] Cancelled and expired sessions do not become paid work.
 - [ ] Duplicate/incorrect and eligible unfinished-item refunds reconcile locally and in Stripe.
 - [ ] Customer-dependent email tests use only a founder-authenticated synthetic test identity.

@@ -1,6 +1,8 @@
 # ApplyPack Build Handoff, Start Here
 
-Last updated: September 1, 2026
+Last updated: September 9, 2026
+
+Current product authority: read `11_SEPTEMBER_9_FINAL_PRODUCT_AMENDMENT.md` immediately after this file. It supersedes incompatible historical language in the September 1 handoff.
 
 ## Purpose
 
@@ -14,10 +16,10 @@ The core promise is:
 
 ## Required local locations
 
-The user will place these files in:
+The governed documents and application are in:
 
 ```text
-C:\Users\mskir\Desktop\Apply_Pack\Chat docs
+C:\Users\mskir\Desktop\Apply_Pack\applypack-production-v2
 ```
 
 The user's reusable repository and skill library is located at:
@@ -26,25 +28,26 @@ The user's reusable repository and skill library is located at:
 C:\Users\mskir\Desktop\Repos
 ```
 
-The exact ApplyPack website repository path and GitHub remote are not yet embedded in these documents. The executing agent must ask for both in its single preflight question set before making changes.
+Canonical remote: `https://github.com/duotapmobile/ApplyPack.git`. Reverify the root, remote, branch, commit, and complete working-tree state before writing. Never use or modify the protected secondary `site` checkout.
 
 ## Required reading order
 
 Before planning, editing, installing packages, creating accounts, changing DNS, or writing code, read every file in this folder in this order:
 
 1. `00_START_HERE.md`
-2. `01_PRODUCT_SOURCE_OF_TRUTH.md`
-3. `02_SITE_COPY_AND_PAGE_MAP.md`
-4. `03_CUSTOMER_AND_ADMIN_WORKFLOWS.md`
-5. `04_BACKEND_ARCHITECTURE_AND_DATA_MODEL.md`
-6. `05_PAYMENTS_EMAIL_DNS_AND_OPERATIONS.md`
-7. `06_SECURITY_PRIVACY_ACCESSIBILITY_SEO.md`
-8. `07_TEST_PLAN_AND_SHIP_CHECKLIST.md`
-9. `08_PREFLIGHT_QUESTIONS_AND_CREDENTIALS.md`
-10. `09_ENVIRONMENT_VARIABLES_TEMPLATE.md`
-11. `10_DESIGN_MD_HANDOFF.md`
-12. `AGENTS.md`
-13. `CODEX_MASTER_BUILD_PROMPT.md`
+2. `11_SEPTEMBER_9_FINAL_PRODUCT_AMENDMENT.md`
+3. `01_PRODUCT_SOURCE_OF_TRUTH.md`
+4. `02_SITE_COPY_AND_PAGE_MAP.md`
+5. `03_CUSTOMER_AND_ADMIN_WORKFLOWS.md`
+6. `04_BACKEND_ARCHITECTURE_AND_DATA_MODEL.md`
+7. `05_PAYMENTS_EMAIL_DNS_AND_OPERATIONS.md`
+8. `06_SECURITY_PRIVACY_ACCESSIBILITY_SEO.md`
+9. `07_TEST_PLAN_AND_SHIP_CHECKLIST.md`
+10. `08_PREFLIGHT_QUESTIONS_AND_CREDENTIALS.md`
+11. `09_ENVIRONMENT_VARIABLES_TEMPLATE.md`
+12. `10_DESIGN_MD_HANDOFF.md`
+13. `AGENTS.md`
+14. `CODEX_MASTER_BUILD_PROMPT.md`
 
 Then inspect the ApplyPack repository and read all repository-local guidance, including every applicable `AGENTS.md`, `README`, `START_HERE`, `PROJECT_MAP`, `PROJECT_STATUS`, `RECOVERY`, `.agent-guidance`, package manifest, deployment configuration, environment example, migration folder, and test configuration.
 

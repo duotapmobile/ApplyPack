@@ -20,7 +20,7 @@
 - Stripe purchase creates one order, deadline, payment, capacity commitment, and receipt.
 - Replayed Stripe events create no duplicate work or email.
 - Cancelled and expired sessions create no paid work.
-- Apply Pack checkout cannot exceed 10 items, delivered-search eligibility, or current measured capacity.
+- A materials checkout cannot exceed 10 items, current measured capacity, or eligible customer-owned lineage from either an active board admission or a delivered Top 10.
 - Capacity-full checkout makes no charge.
 - Resend domain is verified and an external receipt passes SPF, DKIM, and DMARC.
 - help@, orders@, and admin@ reach the securely confirmed monitored business inbox using the minimum aliases/mailboxes.
