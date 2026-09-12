@@ -4,6 +4,7 @@ import { assertConfiguredPrice, assertConfiguredRecurringPrice, createStripeOper
 import { checkoutConfiguration } from "@/lib/stripe/mode";
 import { boardPlans, boardPlanPriceId } from "@/lib/job-board/plans";
 import { checkFileScannerHealth, fileScanConfiguration } from "@/lib/files/scanner";
+import { maintenanceHeartbeatIsFresh } from "@/lib/operations/summary";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,7 @@ export async function GET() {
     email: Boolean(process.env.RESEND_API_KEY && (process.env.EMAIL_FROM_ADDRESS || process.env.EMAIL_FROM) && emailRecentlyVerified),
     publicOrigin,
     fileSafety: scannerHealthy,
-    maintenance: Boolean(process.env.CRON_SECRET),
+    maintenance: false,
   };
   let database = false;
   let jobSourcesRegistered = false;
@@ -69,6 +70,26 @@ export async function GET() {
   if (configured.supabase) {
     const admin = createSupabaseAdminClient();
     if (admin) {
+      const [
+        { data: heartbeat, error: heartbeatError },
+        { count: unresolvedOperationalAlerts, error: alertError },
+        { count: unresolvedCriticalAlerts, error: criticalAlertError },
+      ] = await Promise.all([
+        admin.from("operational_heartbeats").select("last_succeeded_at").eq("task_name", "maintenance").maybeSingle(),
+        admin.from("ap_operational_alerts").select("id", { count: "exact", head: true })
+          .eq("state", "OPEN").in("category", ["WORKER", "OUTBOX", "WEBHOOK"]),
+        admin.from("ap_operational_alerts").select("id", { count: "exact", head: true })
+          .eq("state", "OPEN").eq("severity", "CRITICAL"),
+      ]);
+      configured.maintenance = Boolean(
+        process.env.CRON_SECRET
+        && !heartbeatError
+        && !alertError
+        && !criticalAlertError
+        && maintenanceHeartbeatIsFresh(heartbeat?.last_succeeded_at)
+        && (unresolvedOperationalAlerts || 0) === 0
+        && (unresolvedCriticalAlerts || 0) === 0
+      );
       const { data, error } = await admin.from("capacity_limits").select("kind,units_per_24h,enabled");
       database = !error && data?.length === 2;
       const { data: sources, error: sourceError } = await admin.from("job_sources")
