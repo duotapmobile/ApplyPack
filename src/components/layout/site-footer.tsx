@@ -3,7 +3,7 @@ import Link from "next/link";
 import { siteConfig } from "@/config/site";
 
 const groups = [
-  { title: "Service", links: [["/how-it-works", "How It Works"], ["/experience-connections", "How Matching Works"], ["/before-and-after", "Before and After"], ["/pricing", "Pricing"], ["/faq", "FAQ"]] },
+  { title: "Service", links: [["/how-it-works", "How It Works"], ["/experience-connections", "How Matching Works"], ["/before-and-after", "Before and After"], ["/why-customize", "Why customize?"], ["/pricing", "Pricing"], ["/faq", "FAQ"]] },
   { title: "About", links: [["/why-apply-pack", "Why Apply Pack?"], ["/about", "About ApplyPack"], ["/contact", "Contact"], ["/accessibility", "Accessibility"]] },
   { title: "Legal", links: [["/privacy", "Privacy Policy"], ["/terms", "Terms of Service"]] },
 ] as const;

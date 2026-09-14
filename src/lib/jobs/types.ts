@@ -51,8 +51,19 @@ export type PhoneIntensity = (typeof phoneIntensities)[number];
 export const experienceLevels = ["entry_level", "early_career", "mid_level", "senior", "unknown"] as const;
 export type ExperienceLevel = (typeof experienceLevels)[number];
 
-export type SourceAdapterKind = "lever" | "official_link_only" | "existing_import";
+export type SourceAdapterKind = "lever" | "greenhouse" | "ashby" | "official_link_only" | "existing_import";
+export const sourceAuthorizationStates = [
+  "AUTHORIZED_AUTOMATED",
+  "AUTHORIZED_MANUAL_ONLY",
+  "UNVERIFIED_DISABLED",
+  "BLOCKED",
+] as const;
+export type SourceAuthorizationState = (typeof sourceAuthorizationStates)[number];
+/** @deprecated Historical database/UI compatibility only. Never authorizes access. */
 export type SourceAutomationStatus = "automated" | "official_link_only" | "existing_import" | "pending_verification";
+export type AtsPlatform = "lever" | "greenhouse" | "ashby" | "workday" | "custom" | "unknown" | "none";
+export type SourceAccessMethod = "public_structured_endpoint" | "manual_official_career_page" | "manual_import" | "blocked";
+export type PermissionStatus = "approved_public_endpoint" | "documented_paid_display_authorized" | "manual_research_only" | "direct_link_only" | "unverified" | "requires_license_or_written_permission";
 
 export type SourceDefinition = {
   id: string;
@@ -64,6 +75,17 @@ export type SourceDefinition = {
   alternateOfficialUrls?: readonly string[];
   adapterKind: SourceAdapterKind;
   adapterKey?: string;
+  authorizationStatus: SourceAuthorizationState;
+  authorizationEvidenceId: string | null;
+  authorizationVersion: string;
+  atsPlatform?: AtsPlatform;
+  atsTenantIdentifier?: string;
+  accessMethod?: SourceAccessMethod;
+  refreshSchedule?: string | null;
+  scheduleEnabled?: boolean;
+  ingestionPermissionStatus?: PermissionStatus;
+  paidDisplayPermissionStatus?: PermissionStatus;
+  permissionEvidenceUrl?: string | null;
   automationStatus: SourceAutomationStatus;
   isOfficial: boolean;
   isDirectEmployer: boolean;
@@ -127,6 +149,11 @@ export type NormalizedJob = {
   sourceJobUrl: string | null;
   normalizedSourceUrl: string | null;
   externalJobId: string | null;
+  externalJobIdReliable?: boolean;
+  canonicalEmployerListingUrl?: string | null;
+  firstSeenAt?: string;
+  verifiedRequirementCount?: number;
+  verifiedCompensationFieldCount?: number;
   normalizedTitle: string;
   rawTitle: string;
   description: string | null;
@@ -183,6 +210,7 @@ export type DeduplicatedJob = {
   job: NormalizedJob;
   sourceReferences: JobSourceReference[];
   matchedBy: "external_job_id" | "source_url" | "content" | "new";
+  displaced?: Array<{ displacedId: string; selectedId: string; edgeReason: "external_job_id" | "canonical_url" | "fingerprint" }>;
 };
 
 export type JobFilterOptions = {

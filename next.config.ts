@@ -17,10 +17,15 @@ const nextConfig: NextConfig = {
     ];
   },
   async headers() {
+    const stagingHeaders = process.env.APP_DEPLOYMENT_ENV === "production"
+      ? []
+      : [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }];
+
     return [
       {
         source: "/(.*)",
         headers: [
+          ...stagingHeaders,
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },

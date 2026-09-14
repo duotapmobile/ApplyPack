@@ -24,6 +24,9 @@ type LeverPosting = {
 export class LeverAdapter implements JobSourceAdapter {
   constructor(readonly source: SourceDefinition) {
     if (!source.adapterKey) throw new Error(`Lever source ${source.id} has no site key.`);
+    if (source.authorizationStatus !== "AUTHORIZED_AUTOMATED" || !source.authorizationEvidenceId) {
+      throw new Error(`Lever source ${source.id} is not documentarily authorized for automated access.`);
+    }
   }
 
   async healthCheck(): Promise<SourceHealth> {
@@ -39,7 +42,7 @@ export class LeverAdapter implements JobSourceAdapter {
   }
 
   async fetchJobs(): Promise<RawJobPosting[]> {
-    const maximum = boundedCount(process.env.APP_JOB_SOURCE_MAX_POSTINGS, 250);
+    const maximum = requiredBoundedCount(process.env.APP_JOB_SOURCE_MAX_POSTINGS);
     const response = await fetchOfficialJson(this.endpoint(maximum), ["api.lever.co"]);
     if (response.status === 429) throw new Error("Lever source is rate limited; no jobs were changed.");
     if (!response.ok) throw new Error(`Lever source returned HTTP ${response.status}; no jobs were changed.`);
@@ -91,7 +94,8 @@ function stripHtml(value: string | null): string {
   return (value || "").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
 }
 
-function boundedCount(value: string | undefined, fallback: number): number {
+function requiredBoundedCount(value: string | undefined): number {
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.min(500, Math.max(1, Math.floor(parsed))) : fallback;
+  if (!Number.isFinite(parsed) || parsed < 1) throw new Error("Source result bound is required configuration.");
+  return Math.min(500, Math.floor(parsed));
 }

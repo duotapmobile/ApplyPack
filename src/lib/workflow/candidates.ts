@@ -1,6 +1,7 @@
 export function candidatePayload(candidate: Record<string, unknown>, job: Record<string, unknown>): Record<string, unknown> {
   const sourceUrl = stringValue(job.official_application_url || job.source_job_url || job.source_url);
   return {
+    evaluationId: stringValue(candidate.evaluation_id),
     company: stringValue(job.employer_display_name || job.company, "Unknown employer"),
     title: stringValue(job.raw_title || job.title, "Unknown role"),
     sourceId: stringValue(job.source_id, "manual-reviewed"),

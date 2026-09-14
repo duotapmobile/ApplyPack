@@ -2,17 +2,16 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { notifyCustomer } from "@/lib/email/notify";
-import { normalizeJob } from "@/lib/jobs/normalize";
-import { persistNormalizedJob, rankingDatabaseValues } from "@/lib/jobs/persistence";
-import { jobPayloadSchema, payloadToRawJob } from "@/lib/jobs/schemas";
+import { deliveryRow, loadPersistedEvaluationsForOrder, selectAndPersistEvaluations } from "@/lib/matching/persisted-runtime";
+import { releaseVerification } from "@/lib/matching/verification";
 import { isSameOriginRequest } from "@/lib/security/origin";
 
 const schema = z.object({
   status: z.enum(["accepted", "rejected"]),
   resolution: z.string().trim().min(10).max(2000),
-  replacement: jobPayloadSchema.optional(),
+  replacementEvaluationId: z.string().uuid().optional(),
 }).superRefine((value, context) => {
-  if (value.status === "accepted" && !value.replacement) context.addIssue({ code: "custom", path: ["replacement"], message: "Accepted conflicts require a reviewed replacement." });
+  if (value.status === "accepted" && !value.replacementEvaluationId) context.addIssue({ code: "custom", path: ["replacementEvaluationId"], message: "Accepted conflicts require a persisted replacement evaluation." });
 });
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -29,33 +28,46 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!review || review.status !== "submitted") return NextResponse.json({ error: "This conflict review is no longer open." }, { status: 409 });
   let replacementJobId: string | null = null;
   let replacementEvidence: Record<string, unknown> | null = null;
-  if (parsed.data.status === "accepted" && parsed.data.replacement) {
+  if (parsed.data.status === "accepted" && parsed.data.replacementEvaluationId) {
     const { count, error: itemCountError } = await auth.admin.from("apply_pack_items").select("id", { count: "exact", head: true }).eq("job_match_id", review.job_match_id);
     if (itemCountError) return NextResponse.json({ error: "Apply Pack eligibility could not be verified." }, { status: 502 });
     if (count) return NextResponse.json({ error: "This job already has a Tailored Resume + Cover Letter order and cannot be replaced automatically." }, { status: 409 });
-    const replacement = parsed.data.replacement;
-    const freshnessMs = Number(process.env.APP_JOB_FRESHNESS_HOURS || 24) * 60 * 60 * 1000;
-    if (Date.now() - new Date(replacement.checkedAt).getTime() > freshnessMs) {
-      return NextResponse.json({ error: "The replacement listing must be freshly rechecked." }, { status: 409 });
-    }
-    const normalized = normalizeJob(payloadToRawJob(replacement));
-    if (normalized.rejectionReason) return NextResponse.json({ error: "An excluded or held employer/source cannot be saved." }, { status: 400 });
     try {
-      replacementJobId = await persistNormalizedJob(auth.admin, normalized, replacement.salary || null);
+      if (!searchOrderId) throw new Error("search_order_required");
+      const evaluations = await loadPersistedEvaluationsForOrder(auth.admin, searchOrderId);
+      const selection = await selectAndPersistEvaluations(auth.admin, evaluations, 500, "CONFLICT_REPLACEMENT", reviewId);
+      const evaluation = selection.selected.find((item) => item.id === parsed.data.replacementEvaluationId);
+      if (!evaluation) throw new Error("persisted_replacement_not_current");
+      const verification = releaseVerification({
+        sourceId: evaluation.job_snapshot.discovery_source,
+        company: evaluation.job_snapshot.company,
+        urls: [evaluation.job_snapshot.canonical_application_url],
+        sourceAuthorized: evaluation.job_snapshot.source_authorization?.id === evaluation.job_snapshot.current_source_authorization?.id
+          && ["AUTHORIZED_AUTOMATED", "AUTHORIZED_MANUAL_ONLY"].includes(evaluation.job_snapshot.current_source_authorization?.state ?? ""),
+        listingActive: evaluation.job_snapshot.listing_activity_result === "PASS",
+        applicationActionable: evaluation.job_snapshot.application_path_result === "PASS",
+        lastLiveVerifiedAt: evaluation.job_snapshot.live_verified_at,
+        now: new Date().toISOString(),
+        ttlSeconds: Number(process.env.APP_RELEASE_VERIFICATION_TTL_SECONDS),
+      });
+      if (!verification.eligible) return NextResponse.json({ error: "The replacement failed current release verification.", reason: verification.reason }, { status: 409 });
+      const persisted = deliveryRow(evaluation, 1);
+      replacementJobId = persisted.job_id;
+      replacementEvidence = {
+        fit_summary: persisted.fit_summary,
+        matching_experience: persisted.matching_experience,
+        primary_outcome: persisted.primary_outcome,
+        core_responsibilities: persisted.core_responsibilities,
+        requirements: persisted.requirements,
+        hidden_job_functions: persisted.hidden_job_functions,
+        concerns: persisted.concerns,
+        criteria_checks: persisted.criteria_checks,
+        ranking_score: persisted.ranking_score,
+        ranking_reason_codes: persisted.ranking_reason_codes,
+      };
     } catch {
-      return NextResponse.json({ error: "The replacement job could not be saved." }, { status: 502 });
+      return NextResponse.json({ error: "The current persisted replacement evaluation could not be verified." }, { status: 409 });
     }
-    replacementEvidence = {
-      fit_summary: replacement.fitSummary,
-      matching_experience: replacement.matchingExperience,
-      primary_outcome: replacement.primaryOutcome,
-      core_responsibilities: replacement.coreResponsibilities,
-      requirements: replacement.requirements,
-      hidden_job_functions: replacement.hiddenJobFunctions,
-      concerns: replacement.concerns,
-      criteria_checks: replacement.criteriaChecks,
-      ...rankingDatabaseValues(normalized),
-    };
   }
   const { data: resolved, error } = await auth.admin.rpc("resolve_conflict_review", {
     p_review_id: reviewId,

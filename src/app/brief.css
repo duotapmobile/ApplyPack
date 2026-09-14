@@ -108,6 +108,7 @@
 .brief-document-copy { padding: 1.1rem; border: 1px solid #d1cdbb; border-radius: .7rem; background: white; font-family: var(--font-body); line-height: 1.65; }
 .brief-document-copy mark { padding: .1rem; background: #fff0a6; color: inherit; text-decoration: underline 3px var(--logo-violet); text-underline-offset: .18em; }
 .brief-supporting { grid-column: 2; margin: -.8rem 0 0; color: var(--muted); font-size: .92rem; }
+.brief-tailoring-link { grid-column: 2; justify-self: start; margin-top: -.35rem; }
 
 .brief-section-pricing { background: #eefaff !important; }
 .brief-pricing-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
@@ -167,6 +168,7 @@
   .brief-process { grid-template-columns: repeat(2, 1fr); }
   .brief-tailoring { grid-template-columns: 1fr; }
   .brief-supporting { grid-column: 1; }
+  .brief-tailoring-link { grid-column: 1; }
   .brief-price-examples { grid-template-columns: repeat(2, 1fr); }
 }
 

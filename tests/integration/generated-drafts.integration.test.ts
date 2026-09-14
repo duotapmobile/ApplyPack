@@ -25,7 +25,7 @@ integration("generated DOCX security scanning", () => {
     const coverSafety = validateDocumentBytes(drafts.coverLetter, docxMimeType);
     expect(resumeSafety).toEqual({ safe: true });
     expect(coverSafety).toEqual({ safe: true });
-    await expect(scanBuffer(drafts.resume, { structureValidated: resumeSafety.safe })).resolves.toMatchObject({ status: "clean" });
-    await expect(scanBuffer(drafts.coverLetter, { structureValidated: coverSafety.safe })).resolves.toMatchObject({ status: "clean" });
+    await expect(scanBuffer(drafts.resume, { structureValidated: resumeSafety.safe })).resolves.toMatchObject({ status: "pending", errorCode: "malware_scan_required" });
+    await expect(scanBuffer(drafts.coverLetter, { structureValidated: coverSafety.safe })).resolves.toMatchObject({ status: "pending", errorCode: "malware_scan_required" });
   });
 });

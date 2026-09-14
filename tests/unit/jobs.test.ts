@@ -3,7 +3,7 @@ import { canonicalizeEmployer, exclusionReason, isLiveopsReference } from "@/lib
 import { deduplicateJobs } from "@/lib/jobs/deduplicate";
 import { defaultJobFilters, filterJobs } from "@/lib/jobs/filter";
 import { normalizeJob } from "@/lib/jobs/normalize";
-import { rankJob } from "@/lib/jobs/rank";
+import { rankLegacyJob } from "@/lib/jobs/rank";
 import { inferSourceId, jobPayloadSchema } from "@/lib/jobs/schemas";
 import { shouldReplacePreferredJob } from "@/lib/jobs/persistence";
 import type { NormalizedJob, RawJobPosting } from "@/lib/jobs/types";
@@ -98,7 +98,7 @@ describe("normalization and classification", () => {
     expect(high.phoneIntensity).toBe("high");
     expect(high.highVolumeContactCenterFlag).toBe(true);
     expect(filterJobs([high], { ...defaultJobFilters })).toHaveLength(1);
-    expect(rankJob(high).reasonCodes.map((reason) => reason.code)).toContain("HIGH_PHONE");
+    expect(rankLegacyJob(high).reasonCodes.map((reason) => reason.code)).toContain("HIGH_PHONE");
 
     const low = job({ description: "Email-only and chat-based non-phone support." });
     expect(low.phoneIntensity).toBe("low");
@@ -157,13 +157,14 @@ describe("deduplication, filtering, and ranking", () => {
     )).toBe(true);
   });
 
-  it("uses default W-2, non-sales, non-marketing, no-cost filters", () => {
+  it("does not turn soft legacy preferences into default inventory filters", () => {
     const accepted = job();
     const contractor = job({ sourceId: "nexrep", employerName: "NexRep", sourceJobUrl: "https://nexrep.com/agents/opportunities/", officialApplicationUrl: "https://nexrep.com/agents/opportunities/" });
     const sales = job({ description: "Full-time remote in the United States with upselling quota." });
     const marketing = job({ description: "Full-time remote in the United States supporting paid media marketing." });
     const cost = job({ applicantCost: 20 });
-    expect(filterJobs([accepted, contractor, sales, marketing, cost])).toEqual([accepted]);
+    expect(filterJobs([accepted, contractor, sales, marketing, cost])).toEqual([accepted, contractor, sales, marketing, cost]);
+    expect(filterJobs([accepted, contractor, sales, marketing, cost], { workerRelationship: "w2", includeSales: false, includeMarketing: false, includeApplicantCost: false })).toEqual([accepted]);
     expect(filterJobs([contractor], { workerRelationship: "contractor" })).toEqual([contractor]);
   });
 
@@ -183,7 +184,7 @@ describe("deduplication, filtering, and ranking", () => {
   });
 
   it("emits explainable ranking reason codes", () => {
-    const ranked = rankJob(job({ salaryMin: 45_000, salaryMax: 55_000 }), { state: "NY" });
+    const ranked = rankLegacyJob(job({ salaryMin: 45_000, salaryMax: 55_000 }), { state: "NY" });
     expect(ranked.reasonCodes.map((reason) => reason.code)).toEqual(expect.arrayContaining([
       "OFFICIAL_DIRECT_SOURCE", "W2_EMPLOYMENT", "EARLY_CAREER", "FRESH_POSTING", "STATE_ELIGIBLE", "SALARY_TRANSPARENT", "DIRECT_APPLICATION_URL",
     ]));

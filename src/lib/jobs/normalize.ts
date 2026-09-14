@@ -65,7 +65,12 @@ export function normalizeJob(raw: RawJobPosting, now = new Date()): NormalizedJo
     : suppliedApplicationUrl && employerSource && sourceUrlMatchesDefinition(employerSource, suppliedApplicationUrl)
       ? suppliedApplicationUrl
       : null;
-  const rejected = exclusionReason({ employerName: raw.employerName, sourceName: raw.sourceName || source.sourceName, sourceUrl: sourceJobUrl, applicationUrl: officialApplicationUrl });
+  const sourceRestriction = !source.isActive
+    ? `source_disabled:${source.id}`
+    : source.ingestionPermissionStatus === "requires_license_or_written_permission" || source.paidDisplayPermissionStatus === "requires_license_or_written_permission"
+      ? `source_permission_blocked:${source.id}`
+      : null;
+  const rejected = sourceRestriction || exclusionReason({ employerName: raw.employerName, sourceName: raw.sourceName || source.sourceName, sourceUrl: sourceJobUrl, applicationUrl: officialApplicationUrl });
   const normalizedTitle = normalizeTitle(raw.title);
   const contentHash = sha256([normalizedTitle, description || "", location || ""].join("\n"));
   const locationKey = (location || "unknown").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();

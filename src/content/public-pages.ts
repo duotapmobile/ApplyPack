@@ -54,8 +54,8 @@ export const publicPages: Record<string, PublicPage> = {
   },
   pricing: {
     slug: "pricing", eyebrow: "AFFORDABLE BY DESIGN", title: "Start with the search. Add application help only when you want it.",
-    seoTitle: "ApplyPack Pricing | 10 Job Matches for $20", description: "Get 10 researched job matches for $20, then add a tailored resume and cover letter for $8 per selected job.",
-    intro: ["Get 10 researched job matches for $20. Then choose whether you want a tailored resume and cover letter for any of them."],
+    seoTitle: "ApplyPack Pricing | Filtered Board, Top 10, and Documents", description: "Choose a no-trial filtered job-board subscription, a $20 human-reviewed Top 10, or an $8 tailored resume and cover letter for an eligible job.",
+    intro: ["Choose subscription access to the filtered board or buy the standalone $20 Top 10. A tailored resume and cover letter costs $8 for an eligible board or delivered Top 10 job."],
     sections: [], ...start,
   },
   faq: {
@@ -80,9 +80,11 @@ export const publicPages: Record<string, PublicPage> = {
     description: "ApplyPack's accessibility target and support contact.", intro: ["DuoTap LLC d/b/a ApplyPack is committed to a website and service usable by as many people as possible."],
     sections: [
       { title: "Our target", body: ["We aim to conform to WCAG 2.2 Level AA."], bullets: ["Keyboard access", "Visible focus", "Clear structure and labels", "Sufficient contrast", "Reflow and reduced motion", "Manual and automated testing"] },
-      { title: "Need help or another format?", body: ["Email help@applypack.work with the page or service step, what happened, the accommodation or alternative you need, and how you prefer us to respond."] },
+      { title: "Need help or another format?", body: ["Email accessibility@applypack.work with the page or service step, what happened, the accommodation or alternative you need, and how you prefer us to respond."] },
       { title: "Ongoing work", body: ["Accessibility is reviewed during design, development, content changes, and major releases. Automated checks support, but do not replace, keyboard, reflow, screen-reader, and human review."] },
-    ], ctaLabel: "Email Accessibility Help", ctaHref: "mailto:help@applypack.work",
+      { title: "Known limitations", body: ["Manual assistive-technology verification for the current staging release is still pending. If a barrier prevents use, contact us for an alternative path while it is corrected."] },
+      { title: "Last reviewed", body: ["September 9, 2026."] },
+    ], ctaLabel: "Email Accessibility Help", ctaHref: "mailto:accessibility@applypack.work",
   },
   privacy: {
     slug: "privacy", eyebrow: "PRIVACY POLICY", title: "Your information is for providing your service.", seoTitle: "Privacy Policy | ApplyPack",
@@ -103,7 +105,9 @@ export const publicPages: Record<string, PublicPage> = {
     sections: [
       { title: "Service and eligibility", body: ["ApplyPack serves customers 18 or older. It researches public opportunities and prepares materials. It does not contact employers or submit applications for customers."] },
       { title: "10 Researched Job Matches", body: ["The $20 one-time fee pays for exactly 10 researched opportunities. The 24-clock-hour period begins only after a complete intake, verified payment, and confirmed capacity."] },
+      { title: "Filtered Job Board subscription", body: ["The filtered board costs $6.99 weekly, $19.99 monthly, or $44.99 every three calendar months. There is no free trial. A subscription renews automatically until canceled. Canceling stops a future renewal; access normally continues through the paid period. Failed or disputed payments may suspend access. The board filters against your confirmed profile but never ranks jobs or promises that every listing was individually human-reviewed."] },
       { title: "Tailored Resume + Cover Letter", body: ["Each $8 unit covers one truthful, tailored resume and one truthful, tailored cover letter for one selected job. Every delivery requires human review."] },
+      { title: "Billing, cancellation, and refunds", body: ["Use the customer billing portal to manage payment methods, view invoices, or cancel a board renewal. Refund requests and disputes are reviewed against the posted service policy and provider-confirmed payment state. A refund or dispute may end the related paid access, but previously purchased and approved document deliveries remain available in My ApplyPack."] },
       { title: "Your review and responsibility", body: ["Provide accurate facts and documents you have the right to use, review each delivery, answer employer questions, and submit applications yourself."] },
       { title: "Corrections and listing changes", body: ["One factual-correction round is included for each document set when requested within three calendar days. Jobs may close or change after they are checked."] },
       { title: "No outcome guarantee", body: ["ApplyPack does not guarantee ATS ranking, employer review, interviews, offers, salary, employment, or continued listing availability. Employers control hiring decisions and job availability."] },

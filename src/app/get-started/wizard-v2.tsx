@@ -288,7 +288,7 @@ export function IntakeWizard({ authenticatedEmail }: { authenticatedEmail: strin
           <p className="eyebrow eyebrow--light">YOUR 24-HOUR SEARCH</p>
           <h1>Let&apos;s find what fits next.</h1>
           <p>10 researched job matches for $20. Your firm 24-hour deadline appears after both intake and payment are complete.</p>
-          <div className="wizard-price"><strong>$20</strong><span>one search<br />no subscription</span></div>
+          <div className="wizard-price"><strong>$20</strong><span>one search<br />no subscription required</span></div>
           <p className="wizard-security"><LockKeyhole aria-hidden="true" /> Files stay in private secure storage. Document contents are never stored in this browser draft.</p>
         </aside>
         <section ref={panelRef} className="wizard-panel" aria-labelledby="wizard-title">

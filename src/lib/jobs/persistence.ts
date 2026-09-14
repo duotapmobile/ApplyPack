@@ -1,5 +1,5 @@
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { rankJob } from "./rank";
+import { rankLegacyJob } from "./rank";
 import type { NormalizedJob, SourceCategory } from "./types";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -67,7 +67,7 @@ export function toJobDatabaseRow(job: NormalizedJob, salaryText: string | null =
 }
 
 export function rankingDatabaseValues(job: NormalizedJob, state?: string) {
-  const ranked = rankJob(job, { state });
+  const ranked = rankLegacyJob(job, { state });
   return { ranking_score: ranked.score, ranking_reason_codes: ranked.reasonCodes };
 }
 

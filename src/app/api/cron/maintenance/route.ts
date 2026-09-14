@@ -5,6 +5,11 @@ import { retryFailedEmails } from "@/lib/email/retry";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { processWorkflowTasks } from "@/lib/workflow/process";
 import { processPendingFileScans } from "@/lib/files/process-scans";
+import { processPendingFeasibilityRequests } from "@/lib/matching/supabase-feasibility-store";
+import { processChunk4Workers } from "@/lib/commerce/workers";
+import { reconcileBoardSubscriptions } from "@/lib/job-board/stripe-events";
+import { processBoardRecomputeJobs } from "@/lib/job-board/recompute";
+import { createStripeOperationalClient } from "@/lib/stripe/server";
 
 export const dynamic = "force-dynamic";
 
@@ -163,8 +168,21 @@ export async function POST(request: Request) {
     }
   }
   const fileScans = await processPendingFileScans(admin, 5);
+  const feasibility = await processPendingFeasibilityRequests(admin, 5);
   const workflow = await processWorkflowTasks(admin, 2);
   const emailRetries = await retryFailedEmails(admin, 10);
+  const chunk4 = await processChunk4Workers(admin, 20).catch(() => ({
+    status: "error" as const,
+    reason: "CHUNK4_MAINTENANCE_FAILED",
+    processed: 0,
+  }));
+  const stripe = createStripeOperationalClient();
+  const boardSubscriptionsReconciled = stripe
+    ? await reconcileBoardSubscriptions(stripe, admin).catch(() => -1)
+    : 0;
+  const boardAdmissions = await processBoardRecomputeJobs(admin, 10).catch(() => ({
+    status: "error" as const, reason: "BOARD_RECOMPUTE_FAILED", processed: 0, decisions: 0,
+  }));
   return NextResponse.json({
     ok: true,
     expiredReservations: reservationResult.data?.length || 0,
@@ -176,7 +194,11 @@ export async function POST(request: Request) {
     staleJobs: Number(staleJobs || 0),
     alerts,
     workflow,
+    feasibility,
     fileScans,
     emailRetries,
+    chunk4,
+    boardSubscriptionsReconciled,
+    boardAdmissions,
   });
 }
