@@ -8,6 +8,7 @@ import { createSourceAdapter } from "@/lib/jobs/adapters";
 import { deduplicateJobs } from "@/lib/jobs/deduplicate";
 import { normalizeJob } from "@/lib/jobs/normalize";
 import { persistNormalizedJob } from "@/lib/jobs/persistence";
+import { decideMissingListingClosure } from "@/lib/jobs/source-lifecycle";
 import { jobSources, sourceMayBeAccessedAutomatically } from "@/lib/jobs/source-registry";
 import { loadPersistedEvaluationsForOrder, searchCandidateRow, selectAndPersistEvaluations } from "@/lib/matching/persisted-runtime";
 import { workflowErrorCode } from "@/lib/workflow/errors";
@@ -107,11 +108,18 @@ async function processSearchDiscovery(admin: AdminClient, task: WorkflowTask) {
     if (candidateError) throw candidateError;
   }
 
+  const closureEvaluation = decideMissingListingClosure({
+    runSucceeded: true,
+    inventorySnapshotComplete: false,
+    consecutiveCompleteMisses: 0,
+    minimumCompleteMisses: 2,
+    withinVisibilityWindow: true,
+  });
   await admin.from("workflow_tasks").update({
     status: "awaiting_review",
     locked_at: null,
     last_error_code: ranked.length < 10 ? "fewer_than_ten_candidates" : null,
-    summary: { fetched, candidates: ranked.length, evaluationSource: "PERSISTED_MATCH_EVALUATIONS" },
+    summary: { fetched, candidates: ranked.length, evaluationSource: "PERSISTED_MATCH_EVALUATIONS", closureEvaluation },
     updated_at: new Date().toISOString(),
   }).eq("id", task.id).eq("status", "processing");
   await notifyAdmin(admin, task.order_id, "search_qa_ready", "ApplyPack search candidates need review", [

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { createSourceAdapter } from "@/lib/jobs/adapters";
 import { deduplicateJobs } from "@/lib/jobs/deduplicate";
 import { normalizeJob } from "@/lib/jobs/normalize";
 import { persistNormalizedJob } from "@/lib/jobs/persistence";
+import { decideMissingListingClosure } from "@/lib/jobs/source-lifecycle";
 import { affiliateDirectories, getSource, jobSources, sourceMayBeAccessedAutomatically } from "@/lib/jobs/source-registry";
 import { isSameOriginRequest } from "@/lib/security/origin";
 
@@ -58,35 +58,24 @@ export async function POST(request: Request) {
     const normalized = raw.map((job) => normalizeJob(job));
     const accepted = deduplicateJobs(normalized.filter((job) => !job.rejectionReason && job.isActive));
     const rejectedCount = normalized.length - accepted.length;
-    const seenReferenceIds: string[] = [];
-    for (const item of accepted) {
-      const jobId = await persistNormalizedJob(auth.admin, item.job);
-      seenReferenceIds.push(jobId);
-    }
-    await deactivateMissingSourceReferences(auth.admin, source.id, new Set(seenReferenceIds));
+    for (const item of accepted) await persistNormalizedJob(auth.admin, item.job);
+    const closure = decideMissingListingClosure({
+      runSucceeded: true,
+      inventorySnapshotComplete: false,
+      consecutiveCompleteMisses: 0,
+      minimumCompleteMisses: 2,
+      withinVisibilityWindow: true,
+    });
     const completedAt = new Date().toISOString();
     await auth.admin.from("job_source_runs").update({
       status: "succeeded", completed_at: completedAt, fetched_count: raw.length,
       accepted_count: accepted.length, rejected_count: rejectedCount,
     }).eq("id", run.id);
     await auth.admin.from("job_sources").update({ health_status: "healthy", last_successful_sync_at: completedAt, updated_at: completedAt }).eq("id", source.id);
-    return NextResponse.json({ sourceId: source.id, status: "succeeded", fetched: raw.length, accepted: accepted.length, rejected: rejectedCount });
+    return NextResponse.json({ sourceId: source.id, status: "succeeded", fetched: raw.length, accepted: accepted.length, rejected: rejectedCount, closure });
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 1000) : "Source synchronization failed.";
     await auth.admin.from("job_source_runs").update({ status: message.includes("rate limit") ? "rate_limited" : "failed", completed_at: new Date().toISOString(), error_code: "source_sync_failed", error_message: message }).eq("id", run.id);
     return NextResponse.json({ error: message }, { status: 502 });
-  }
-}
-
-async function deactivateMissingSourceReferences(admin: SupabaseClient, sourceId: string, seenJobIds: Set<string>) {
-  const { data: references, error } = await admin.from("job_source_references").select("id,job_id").eq("source_id", sourceId).eq("is_active", true);
-  if (error) throw error;
-  for (const reference of references || []) {
-    if (seenJobIds.has(reference.job_id)) continue;
-    const checkedAt = new Date().toISOString();
-    const { error: updateError } = await admin.from("job_source_references").update({ is_active: false, last_verified_at: checkedAt }).eq("id", reference.id);
-    if (updateError) throw updateError;
-    const { count } = await admin.from("job_source_references").select("id", { count: "exact", head: true }).eq("job_id", reference.job_id).eq("is_active", true);
-    if (!count) await admin.from("jobs").update({ is_active: false, listing_status: "closed", source_freshness_status: "stale" }).eq("id", reference.job_id);
   }
 }
