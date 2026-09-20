@@ -708,7 +708,7 @@ alter table public.job_source_discovery_snapshots enable row level security;
 alter table public.job_source_candidates enable row level security;
 
 revoke all on public.ap_source_authorization_heads,public.job_source_schedules,public.job_source_run_listings,
-  public.job_source_discovery_snapshots,public.job_source_candidates from public,anon,authenticated;
+  public.job_source_discovery_snapshots,public.job_source_candidates from public,anon,authenticated,service_role;
 grant select on public.ap_source_authorization_heads,public.job_source_schedules,
   public.job_source_discovery_snapshots,public.job_source_candidates to service_role;
 grant select,insert on public.job_source_run_listings to service_role;

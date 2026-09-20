@@ -16,7 +16,9 @@ create table public.job_source_listing_projections (
   unique(run_id,listing_key,projector_version)
 );
 alter table public.job_source_listing_projections enable row level security;
-revoke all on public.job_source_listing_projections from anon,authenticated;
+-- Supabase grants new public tables to service_role by default. Reset those
+-- defaults before allowing only reads; writes must pass the validated RPC.
+revoke all on public.job_source_listing_projections from public,anon,authenticated,service_role;
 grant select on public.job_source_listing_projections to service_role;
 create function public.ap_guard_source_projection_immutable() returns trigger
 language plpgsql set search_path='' as $$

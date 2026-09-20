@@ -44,6 +44,11 @@ create table storage.buckets (
 );
 grant usage on schema auth, storage, extensions to anon, authenticated, service_role;
 grant execute on all functions in schema auth to anon, authenticated, service_role;
+-- Model Supabase's permissive public-schema defaults so migrations must
+-- explicitly revoke inherited table writes before granting narrower access.
+alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role;
+alter default privileges for role postgres in schema public grant all on functions to anon, authenticated, service_role;
 '@
 $bootstrapPath = Join-Path $inputPath 'bootstrap.sql'
 Set-Content -LiteralPath $bootstrapPath -Value $bootstrap -Encoding utf8
@@ -90,13 +95,18 @@ function Invoke-Native([string]$Executable, [string[]]$Arguments, [int]$TimeoutS
   $stderr = Join-Path $evidenceRoot "$commandId.stderr"
   $quoted = $Arguments | ForEach-Object { '"' + $_.Replace('"', '\"') + '"' }
   $process = Start-Process -FilePath (Join-Path $PostgresBin $Executable) -ArgumentList $quoted -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+  # Windows PowerShell 5.1 can otherwise release the process handle before
+  # ExitCode is read, returning null even after a successful WaitForExit.
+  $null = $process.Handle
   $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
   while (!$process.WaitForExit(1000)) {
     if ([DateTime]::UtcNow -ge $deadline) { $process.Kill(); throw "$Executable exceeded $TimeoutSeconds seconds" }
   }
+  $process.Refresh()
   $code = $process.ExitCode
   $output = @(Get-Content -LiteralPath $stdout; Get-Content -LiteralPath $stderr)
   $output | Out-File -LiteralPath $logPath -Append -Encoding utf8
+  if ($null -eq $code) { throw "$Executable exited without a readable exit code; refusing to infer success" }
   if ($code -ne 0) { $output | Select-Object -Last 18 | Write-Host; throw "$Executable failed with exit $code" }
 }
 $previousOptions = $env:PGOPTIONS

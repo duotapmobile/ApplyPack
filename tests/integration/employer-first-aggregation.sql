@@ -12,6 +12,15 @@ select pg_temp.assert_true(
   and not has_function_privilege('authenticated','public.ap_set_job_source_schedule_state(uuid,boolean,bigint,text,uuid)','execute'),
   'source operations leaked to authenticated users'
 );
+select pg_temp.assert_true(
+  not has_table_privilege('service_role','public.ap_source_authorization_heads','INSERT,UPDATE,DELETE,TRUNCATE')
+  and not has_table_privilege('service_role','public.job_source_schedules','INSERT,UPDATE,DELETE,TRUNCATE')
+  and not has_table_privilege('service_role','public.job_source_discovery_snapshots','INSERT,UPDATE,DELETE,TRUNCATE')
+  and not has_table_privilege('service_role','public.job_source_candidates','INSERT,UPDATE,DELETE,TRUNCATE')
+  and has_table_privilege('service_role','public.job_source_run_listings','INSERT')
+  and not has_table_privilege('service_role','public.job_source_run_listings','UPDATE,DELETE,TRUNCATE'),
+  'source authority and immutable evidence permit unfenced service writes'
+);
 
 insert into auth.users(id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
 values('17000000-0000-4000-8000-000000000001','00000000-0000-0000-0000-000000000000','authenticated','authenticated','source-operator@example.invalid','',now(),'{}','{}',now(),now());
@@ -224,7 +233,7 @@ end $$;
 select pg_temp.assert_true(
   not has_table_privilege('authenticated','public.job_source_listing_projections','INSERT')
   and not has_table_privilege('anon','public.job_source_listing_projections','INSERT')
-  and not has_table_privilege('service_role','public.job_source_listing_projections','INSERT')
+  and not has_table_privilege('service_role','public.job_source_listing_projections','INSERT,UPDATE,DELETE,TRUNCATE')
   and not has_function_privilege('authenticated','public.ap_project_source_observation(uuid,text,text,text,jsonb)','EXECUTE'),
   'projection ledger permits direct writes or customer RPC execution'
 );
