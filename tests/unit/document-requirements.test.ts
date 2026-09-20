@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { pdfStructureIsValid } from "@/lib/documents/pdf-validation";
+import { pdfStructureIsValid, pdfCatalogLanguageMatches } from "@/lib/documents/pdf-validation";
 import {
   DOCUMENT_GENERATOR_VERSION,
   DOCUMENT_REQUIREMENTS,
@@ -9,6 +9,12 @@ import {
 } from "@/lib/documents/requirements";
 
 describe("versioned document requirements", () => {
+  it("reads language from the catalog, never page text or an unrelated object", () => {
+    const valid = Buffer.from("%PDF-1.7\n1 0 obj\n<</Type/Catalog /Lang(en-US)>>\nendobj\ntrailer<</Root 1 0 R>>");
+    expect(pdfCatalogLanguageMatches(valid, "en-US")).toBe(true);
+    expect(pdfCatalogLanguageMatches(valid, "fr-FR")).toBe(false);
+    expect(pdfCatalogLanguageMatches(Buffer.from("%PDF\n1 0 obj<</Type/Catalog>>endobj\n2 0 obj<</Lang(en-US)>>endobj\ntrailer<</Root 1 0 R>>"), "en-US")).toBe(false);
+  });
   it("binds content, template, and tagged-PDF exporter versions into one cache key", () => {
     expect(DOCUMENT_GENERATOR_VERSION).toContain(`content=${DOCUMENT_VERSIONS.content}`);
     expect(DOCUMENT_GENERATOR_VERSION).toContain(`template=${DOCUMENT_VERSIONS.template}`);

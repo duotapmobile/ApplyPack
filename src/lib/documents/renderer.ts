@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 
 import { pdfFontTableUsesArial } from "@/lib/documents/font-validation";
-import { pdfStructureIsValid } from "@/lib/documents/pdf-validation";
+import { pdfStructureIsValid, pdfCatalogLanguageMatches } from "@/lib/documents/pdf-validation";
 import { DOCUMENT_REQUIREMENTS } from "@/lib/documents/requirements";
 import { normalizeRenderedDocumentText } from "@/lib/documents/text-validation";
 import type { ArtifactProvenance, DocumentMetadata } from "@/lib/documents/generate";
@@ -86,7 +86,8 @@ export async function renderDocumentLocallyForQa(input: {
     if (!/^Tagged:\s+yes\s*$/im.test(pdfInfo)) throw new Error("rendered_pdf_not_tagged");
     assertPdfMetadata(pdfInfo, input.expectedMetadata);
     const pdfMetadata = await execute(configuration.tools.pdfInfo.path, ["-meta", pdfPath], 10_000);
-    if (!new RegExp(`(?:>|\\b)${escapeRegExp(input.expectedMetadata.language)}(?:<|\\b)`, "i").test(pdfMetadata)) {
+    if (!new RegExp(`(?:>|\\b)${escapeRegExp(input.expectedMetadata.language)}(?:<|\\b)`, "i").test(pdfMetadata)
+      && !pdfCatalogLanguageMatches(await readFile(pdfPath), input.expectedMetadata.language)) {
       throw new Error("rendered_pdf_language_metadata_invalid");
     }
     const structureTree = await execute(configuration.tools.pdfInfo.path, ["-struct", pdfPath], 10_000);
@@ -125,7 +126,7 @@ export async function renderDocumentLocallyForQa(input: {
       structureTreeSha256: hash(Buffer.from(structureTree, "utf8")),
     };
   } finally {
-    if (resolve(work).startsWith(safeRoot)) await rm(work, { recursive: true, force: true });
+    if (resolve(work).startsWith(safeRoot)) await rm(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 }
 

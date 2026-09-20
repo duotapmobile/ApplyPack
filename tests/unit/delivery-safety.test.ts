@@ -16,14 +16,13 @@ describe("payment metadata and delivered-file safety", () => {
     expect(applyMetadata).not.toMatch(/customer_id|search_order_id|job_match_ids/);
   });
 
-  it("scans both original and corrected delivery files before private storage", () => {
-    expect(delivery.indexOf("Promise.all([scanFile(resume), scanFile(coverLetter)])")).toBeLessThan(delivery.indexOf('storage.from("customer-deliveries").upload'));
-    expect(correction.indexOf("Promise.all([scanFile(resume), scanFile(coverLetter)])")).toBeLessThan(correction.indexOf('storage.from("customer-deliveries").upload'));
+  it("retires upload-only delivery and correction in favor of canonical material releases", () => {
+    expect(delivery).toContain("rejectLegacyMaterialWrite");
+    expect(correction).toContain("rejectLegacyMaterialWrite");
+    expect(delivery).not.toContain('storage.from("customer-deliveries").upload');
   });
 
   it("uses a compare-and-set delivery claim and recovers abandoned claims", () => {
-    expect(delivery).toContain('status: "delivery_processing"');
-    expect(delivery).toContain('.eq("status", priorStatus)');
     expect(maintenance).toContain('.eq("status", "delivery_processing")');
     expect(maintenance).toContain("15 * 60_000");
   });

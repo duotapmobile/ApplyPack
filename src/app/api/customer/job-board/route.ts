@@ -11,9 +11,18 @@ export async function GET(request: Request) {
   const pageSize = Math.min(50, Math.max(1, Number.parseInt(url.searchParams.get("pageSize") || "25", 10) || 25));
   const sort = url.searchParams.get("sort") === "salary_high" ? "salary_high" : "newest";
   let query = access.admin.from("ap_board_admissions")
-    .select("id,warning_codes,evaluated_at,job:jobs(id,company,title,location_text,salary_text,salary_min,salary_max,posted_at,last_verified_at,source_name)", { count: "exact" })
+    .select("id,warning_codes,evaluated_at,job:jobs!inner(id,company,title,location_text,salary_text,salary_min,salary_max,posted_at,last_verified_at,source_name,source:job_sources!inner(id))", { count: "exact" })
     .eq("customer_id", access.customerId).eq("profile_snapshot_id", access.profileId)
-    .eq("admission_version", access.admissionVersion).is("superseded_at", null).eq("decision", "ADMITTED");
+    .eq("admission_version", access.admissionVersion).is("superseded_at", null).eq("decision", "ADMITTED")
+    .eq("job.is_active", true).eq("job.listing_status", "open")
+    .or(`closing_at.is.null,closing_at.gt.${new Date().toISOString()}`, { referencedTable: "job" })
+    .eq("job.application_path_status", "verified_actionable")
+    .in("job.source_freshness_status", ["fresh", "aging"])
+    .gte("job.last_successfully_verified_at", new Date(Date.now() - 72 * 60 * 60 * 1_000).toISOString())
+    .lte("job.last_successfully_verified_at", new Date().toISOString())
+    .eq("job.source.is_active", true)
+    .eq("job.source.paid_display_permission_status", "documented_paid_display_authorized")
+    .not("job.source.permission_evidence_url", "is", null);
   query = sort === "salary_high"
     ? query.order("salary_min", { referencedTable: "jobs", ascending: false, nullsFirst: false }).order("id", { ascending: true })
     : query.order("freshness_sort_at", { referencedTable: "jobs", ascending: false, nullsFirst: false }).order("id", { ascending: true });

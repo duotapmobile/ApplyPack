@@ -1,3 +1,4 @@
+import { credentialState, combineCredentialStates } from "./credential-state";
 import { canonicalSha256, overlapSafeCalendarDays, semanticComparisonKey, typedCriterionSchema, type CapabilityStatus, type TypedCriterion } from "@/lib/domain/foundation";
 import {
   MATCHING_RULES_VERSION,
@@ -281,10 +282,7 @@ function deterministicallyEvaluateCandidateCriterion(criterion: TypedCriterion, 
     return !required || !actual ? "UNKNOWN" as const : actual >= required ? "PASS" as const : "FAIL" as const;
   }
   if (criterion.kind === "CERTIFICATION_LICENSE") {
-    const states = relevant.map((fact) => semanticComparisonKey(JSON.stringify(fact.typed_value)));
-    if (states.some((value) => /active|current|valid|completed/u.test(value))) return "PASS" as const;
-    if (states.some((value) => /expired|revoked|not done|not held/u.test(value))) return "FAIL" as const;
-    return "UNKNOWN" as const;
+    return combineCredentialStates(relevant.map((fact) => credentialState(fact.typed_value)));
   }
   if (criterion.kind === "AUTHORIZATION_SPONSORSHIP") {
     const values = relevant.map((fact) => typedBoolean(fact.typed_value, ["authorizedToWork", "meetsEmployerRule", "eligibleWithoutSponsorship"]));

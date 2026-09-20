@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
-export const BOARD_ADMISSION_VERSION = "board-admission-v2";
+export const BOARD_ADMISSION_VERSION = "board-admission-v3";
 
 export type BoardProfileEvidence = {
   desiredActivities: string[];
@@ -52,6 +52,8 @@ export type PersistedBoardJob = {
   isActive: boolean;
   listingStatus: string;
   sourceFreshnessStatus: string;
+  applicationPathStatus?: string;
+  lastSuccessfullyVerifiedAt?: string | null;
   closingAt: string | null;
   rejectionReason: string | null;
   applicationUrl: string | null;
@@ -107,7 +109,10 @@ export function evaluatePersistedBoardAdmission(profile: BoardProfileEvidence, j
   const haystack = normalized([job.title, job.department, job.description].filter(Boolean).join(" "));
   if (!job.sourceAuthorizedForPaidDisplay && !job.syntheticStaging) exclusions.push("SOURCE_NOT_AUTHORIZED_FOR_PAID_DISPLAY");
   if (!job.isActive || job.listingStatus !== "open") exclusions.push("LISTING_NOT_ACTIVE");
-  if (job.sourceFreshnessStatus === "stale") exclusions.push("SOURCE_STALE");
+  if (!["fresh", "aging"].includes(job.sourceFreshnessStatus)) exclusions.push("SOURCE_STALE_OR_UNKNOWN");
+  const verifiedAt = Date.parse(job.lastSuccessfullyVerifiedAt || "");
+  if (job.applicationPathStatus !== "verified_actionable" || !Number.isFinite(verifiedAt)
+    || verifiedAt > now.getTime() || now.getTime() - verifiedAt > 72 * 60 * 60 * 1_000) exclusions.push("DIRECT_VERIFICATION_REQUIRED");
   if (job.closingAt && Date.parse(job.closingAt) <= now.getTime()) exclusions.push("LISTING_EXPIRED");
   if (job.rejectionReason) exclusions.push("PARSER_OR_POLICY_REJECTED");
   if (!job.applicationUrl || !safeHttps(job.applicationUrl)) exclusions.push("APPLICATION_LINK_UNSAFE_OR_MISSING");
@@ -240,6 +245,8 @@ function persistedJob(row: Record<string, unknown>): PersistedBoardJob {
     highVolumeContactCenterFlag: Boolean(row.high_volume_contact_center_flag),
     benefitsStatus: String(row.benefits_status || "unknown"), isActive: Boolean(row.is_active),
     listingStatus: String(row.listing_status || "inactive"), sourceFreshnessStatus: String(row.source_freshness_status || "unknown"),
+    applicationPathStatus: String(row.application_path_status || "unknown"),
+    lastSuccessfullyVerifiedAt: row.last_successfully_verified_at ? String(row.last_successfully_verified_at) : null,
     closingAt: row.closing_at ? String(row.closing_at) : null, rejectionReason: row.rejection_reason ? String(row.rejection_reason) : null,
     applicationUrl: row.official_application_url ? String(row.official_application_url) : row.source_job_url ? String(row.source_job_url) : null,
     sourceAuthorizedForPaidDisplay: sourceRecord.paid_display_permission_status === "documented_paid_display_authorized"
@@ -275,7 +282,7 @@ async function recomputeProfile(admin: AdminClient, customerId: string, snapshot
   const factsResult = await admin.from("ap_candidate_facts").select("semantic_key,capability_status,verification")
     .eq("snapshot_id", snapshotId).is("superseded_at", null);
   if (factsResult.error) throw factsResult.error;
-  let jobsQuery = admin.from("jobs").select("id,title,raw_title,description,department,location_text,schedule_type,employment_type,work_mode,eligible_states,salary_min,salary_max,salary_currency,pay_period,sales_flag,commission_flag,phone_intensity,high_volume_contact_center_flag,benefits_status,is_active,listing_status,source_freshness_status,closing_at,rejection_reason,official_application_url,source_job_url,source_id,source:job_sources(paid_display_permission_status,permission_evidence_url,is_active)");
+  let jobsQuery = admin.from("jobs").select("id,title,raw_title,description,department,location_text,schedule_type,employment_type,work_mode,eligible_states,salary_min,salary_max,salary_currency,pay_period,sales_flag,commission_flag,phone_intensity,high_volume_contact_center_flag,benefits_status,is_active,listing_status,source_freshness_status,application_path_status,last_successfully_verified_at,closing_at,rejection_reason,official_application_url,source_job_url,source_id,source:job_sources(paid_display_permission_status,permission_evidence_url,is_active)");
   if (onlyJobId) jobsQuery = jobsQuery.eq("id", onlyJobId);
   const jobsResult = await jobsQuery.limit(5_000);
   if (jobsResult.error) throw jobsResult.error;

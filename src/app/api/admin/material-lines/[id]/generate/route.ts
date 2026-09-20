@@ -12,6 +12,7 @@ import {
   type ReferenceSheetRecord,
 } from "@/lib/documents/generate";
 import { documentRendererConfiguration, renderDocumentLocallyForQa } from "@/lib/documents/renderer";
+import { validateMaterialClaims } from "@/lib/documents/claim-validation";
 import { fileScanConfiguration, scanBuffer } from "@/lib/files/scanner";
 import { materialFilename } from "@/lib/materials/contract";
 import { readReferencePayload, type StoredReferenceEnvelope } from "@/lib/materials/references";
@@ -273,10 +274,10 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
       return response({ error: "Every current job requirement must be classified exactly once." }, 409);
     }
     const [{ data: facts }, { data: evidence }] = await Promise.all([
-      auth.admin.from("ap_candidate_facts").select("id").in("id", candidateFactIds)
+      auth.admin.from("ap_candidate_facts").select("id,typed_value,capability_status").in("id", candidateFactIds)
         .eq("customer_id", purchase.customer_id).eq("snapshot_id", revision.source_snapshot_id)
         .in("verification", ["CUSTOMER_CONFIRMED", "HUMAN_VERIFIED"]).is("superseded_at", null),
-      auth.admin.from("ap_requirement_nodes").select("id").in("id", jobEvidenceIds).eq("job_snapshot_id", job.id),
+      auth.admin.from("ap_requirement_nodes").select("id,source_excerpt").in("id", jobEvidenceIds).eq("job_snapshot_id", job.id),
     ]);
     if ((facts || []).length !== candidateFactIds.length || (evidence || []).length !== jobEvidenceIds.length) {
       return response({ error: "One or more factual provenance bindings are stale or outside the current line." }, 409);
@@ -311,6 +312,14 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
       humanApprovedTwoPageException: input.data.humanApprovedTwoPageException,
       humanApprovedLongLetter: input.data.humanApprovedLongLetter,
     };
+    try {
+      validateMaterialClaims(generationInput, facts || [], evidence || []);
+      const manager = input.data.verifiedHiringManager;
+      if (manager && !(evidence || []).some((node) => node.id === manager.evidenceId
+        && node.source_excerpt?.includes(manager.name))) throw new Error("hiring_manager_not_supported");
+    } catch {
+      return response({ error: "Document wording must be supported by its cited verified facts. Review unsupported claims before generation." }, 409);
+    }
     const generated = await generateEvidenceBoundMaterials(generationInput).catch(() => null);
     if (!generated) return response({ error: "Generation stopped because content, provenance, layout, or truthfulness checks failed." }, 409);
     artifacts = [

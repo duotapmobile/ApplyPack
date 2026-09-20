@@ -19,10 +19,18 @@ const job: PersistedBoardJob = {
   salaryMin: 55_000, salaryMax: 70_000, salaryCurrency: "USD", payPeriod: "year", salesFlag: false,
   commissionFlag: false, phoneIntensity: "low", highVolumeContactCenterFlag: false, benefitsStatus: "provided",
   isActive: true, listingStatus: "open", sourceFreshnessStatus: "fresh", closingAt: null, rejectionReason: null,
+  applicationPathStatus: "verified_actionable", lastSuccessfullyVerifiedAt: new Date().toISOString(),
   applicationUrl: "https://jobs.example.invalid/operations", sourceAuthorizedForPaidDisplay: true, syntheticStaging: false,
 };
 
 describe("persisted subscription-board admission", () => {
+  it("rejects observations, expired verification and future timestamps", () => {
+    for (const change of [
+      { applicationPathStatus: "unverified" }, { lastSuccessfullyVerifiedAt: null },
+      { lastSuccessfullyVerifiedAt: "2000-01-01T00:00:00Z" },
+      { lastSuccessfullyVerifiedAt: "2100-01-01T00:00:00Z" }, { sourceFreshnessStatus: "unknown" },
+    ]) expect(evaluatePersistedBoardAdmission(profile, { ...job, ...change }).admitted).toBe(false);
+  });
   it("admits on evidence and hard filters without producing a score or rank", () => {
     const result = evaluatePersistedBoardAdmission(profile, job);
     expect(result).toEqual({ admitted: true, connectionCodes: ["CAPABILITY_EXCEL_DATA_CLEANING"], exclusionCodes: [], warningCodes: [] });
@@ -35,7 +43,7 @@ describe("persisted subscription-board admission", () => {
       sourceFreshnessStatus: "stale", workMode: "onsite", salesFlag: true });
     expect(result.admitted).toBe(false);
     expect(result.exclusionCodes).toEqual(expect.arrayContaining([
-      "SOURCE_NOT_AUTHORIZED_FOR_PAID_DISPLAY", "SOURCE_STALE", "CONFIRMED_WORK_MODE_MISMATCH", "CONFIRMED_DEALBREAKER_SALES",
+      "SOURCE_NOT_AUTHORIZED_FOR_PAID_DISPLAY", "SOURCE_STALE_OR_UNKNOWN", "CONFIRMED_WORK_MODE_MISMATCH", "CONFIRMED_DEALBREAKER_SALES",
     ]));
   });
 

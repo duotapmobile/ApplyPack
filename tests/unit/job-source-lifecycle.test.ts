@@ -49,13 +49,17 @@ describe("job source missing-listing lifecycle", () => {
     })).toEqual({ mayCloseMissing: true, reason: "confirmed_absent_after_complete_runs" });
   });
 
-  it("keeps both collection entry points on the bounded-snapshot policy", () => {
+  it("keeps source collection out of customer workflows and queues admin refreshes", () => {
     const adminRoute = readFileSync(resolve(process.cwd(), "src/app/api/admin/job-sources/route.ts"), "utf8");
     const legacyWorkflow = readFileSync(resolve(process.cwd(), "src/lib/workflow/process.ts"), "utf8");
 
-    expect(adminRoute).toContain("inventorySnapshotComplete: false");
-    expect(adminRoute).not.toContain("deactivateMissingSourceReferences");
-    expect(legacyWorkflow).toContain("inventorySnapshotComplete: false");
-    expect(legacyWorkflow).toContain("closureEvaluation");
+    expect(adminRoute).toContain("ap_enqueue_job_source_sync");
+    expect(adminRoute).toContain("ap_set_job_source_schedule_state");
+    expect(adminRoute).toContain("status: 202");
+    expect(adminRoute).not.toContain("persistNormalizedJob");
+    expect(adminRoute).not.toContain("enumerateJobs(");
+    expect(legacyWorkflow).toContain("INDEPENDENT_SCHEDULED_ROTATION");
+    expect(legacyWorkflow).not.toContain("createSourceAdapter");
+    expect(legacyWorkflow).not.toContain("fetchJobs(");
   });
 });

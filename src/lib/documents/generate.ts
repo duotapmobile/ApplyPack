@@ -11,6 +11,7 @@ import {
   convertInchesToTwip,
 } from "docx";
 import JSZip from "jszip";
+import { isNonfactualNarrative } from "./claim-validation";
 import { DOCUMENT_REQUIREMENTS, DOCUMENT_VERSIONS } from "@/lib/documents/requirements";
 import {
   MATERIAL_GENERATOR_VERSION,
@@ -416,6 +417,7 @@ function provenance(
 
 function recordClaim(claims: ClaimProvenanceEntry[], placement: string, sentence: EvidenceSentence) {
   const text = assertDeliverableText(sentence.text);
+  if (sentence.narrative && !isNonfactualNarrative(text)) throw new Error("document_narrative_contains_unverified_claim");
   const candidateFactIds = unique(sentence.candidateFactIds || []);
   const jobEvidenceIds = unique(sentence.jobEvidenceIds || []);
   if (candidateFactIds.some((id) => !UUID.test(id)) || jobEvidenceIds.some((id) => !UUID.test(id))) {
@@ -677,7 +679,7 @@ function documentWith(children: Paragraph[], metadata: DocumentMetadata) {
     styles: {
       default: {
         document: {
-          run: { font: "Arial", size: 21, color: "000000" },
+          run: { font: "Arial", size: 21, color: "000000", language: { value: metadata.language } },
           paragraph: { spacing: { before: 0, after: 0, line: 240 } },
         },
       },
@@ -746,6 +748,7 @@ async function packCleanDocument(document: Document, metadata: DocumentMetadata)
 function majorHeading(text: string, before: number) {
   return new Paragraph({
     heading: HeadingLevel.HEADING_1,
+    outlineLevel: 0,
     keepNext: true,
     keepLines: true,
     spacing: { before, after: DOCUMENT_REQUIREMENTS.spacingTwips.headingAfter },
@@ -1058,70 +1061,4 @@ function decodeXml(value: string) {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'");
-}
-
-export type DocumentDraftInput = {
-  fullName: string;
-  email: string;
-  location: string;
-  jobTitle: string;
-  employer: string;
-  direction: string;
-  backgroundDetails: string;
-  backgroundTypes: string[];
-  tools: string;
-  credentials: string;
-  emphasisNotes: string;
-};
-
-/** Compatibility boundary for the pre-corrected fulfillment workflow. */
-export async function generateApplyPackDrafts(input: DocumentDraftInput) {
-  const fullName = displayPersonName(input.fullName);
-  const jobTitle = assertDeliverableText(input.jobTitle);
-  const employer = assertDeliverableText(input.employer);
-  const contact = [input.email, input.location].map(assertDeliverableText).join(" | ");
-  const facts = [input.backgroundDetails, ...input.backgroundTypes, input.tools, input.credentials]
-    .map((value) => value.trim()).filter(Boolean).map(assertDeliverableText);
-  if (!facts.length) throw new Error("document_source_data_missing");
-  const resumeMetadata: DocumentMetadata = {
-    title: `${fullName} - Resume - ${employer}`,
-    author: fullName,
-    subject: `${jobTitle} application`,
-    language: DOCUMENT_REQUIREMENTS.language,
-    keywords: "",
-  };
-  const coverMetadata: DocumentMetadata = {
-    ...resumeMetadata,
-    title: `${fullName} - Cover Letter - ${employer}`,
-  };
-  const resume = documentWith([
-    paragraph(fullName, { alignment: AlignmentType.CENTER, size: 36, after: DOCUMENT_REQUIREMENTS.spacingTwips.nameAfter }),
-    paragraph(contact, { alignment: AlignmentType.CENTER, size: 19, after: DOCUMENT_REQUIREMENTS.spacingTwips.resumeContactAfter }),
-    majorHeading("PROFESSIONAL SUMMARY", 0),
-    paragraph(`Target role: ${jobTitle}`, { line: DOCUMENT_REQUIREMENTS.lineSpacingTwips.summary, after: 0, size: 21 }),
-    paragraph(facts[0], { line: DOCUMENT_REQUIREMENTS.lineSpacingTwips.summary, after: 0, size: 21 }),
-    majorHeading("CORE SKILLS", DOCUMENT_REQUIREMENTS.spacingTwips.skillsHeadingBefore),
-    paragraph(facts.slice(1).join(" | ") || assertDeliverableText(input.direction), { line: DOCUMENT_REQUIREMENTS.lineSpacingTwips.skills, after: 0, size: 21 }),
-    majorHeading("WORK EXPERIENCE", DOCUMENT_REQUIREMENTS.spacingTwips.experienceHeadingBefore),
-    paragraph(facts.join(" "), { line: DOCUMENT_REQUIREMENTS.lineSpacingTwips.bullets, after: 0, size: 20 }),
-  ], resumeMetadata);
-  const coverLetter = documentWith([
-    paragraph(fullName, { alignment: AlignmentType.CENTER, size: 36, after: DOCUMENT_REQUIREMENTS.spacingTwips.nameAfter }),
-    paragraph(contact, { alignment: AlignmentType.CENTER, size: 19, after: DOCUMENT_REQUIREMENTS.spacingTwips.coverContactAfter }),
-    paragraph(`${employer} Hiring Team`, { after: DOCUMENT_REQUIREMENTS.spacingTwips.coverBlockAfter, size: 21 }),
-    paragraph(`Re: ${jobTitle}`, { after: DOCUMENT_REQUIREMENTS.spacingTwips.coverSubjectAfter, size: 21, bold: true }),
-    paragraph(`Dear ${employer} Hiring Team,`, { after: DOCUMENT_REQUIREMENTS.spacingTwips.coverParagraphAfter, size: 21 }),
-    paragraph(`${facts.join(" ")} This background is relevant to the ${jobTitle} opportunity and the customer's stated ${assertDeliverableText(input.direction)} direction.`, { line: DOCUMENT_REQUIREMENTS.lineSpacingTwips.coverLetter, after: DOCUMENT_REQUIREMENTS.spacingTwips.coverParagraphAfter, size: 21 }),
-    paragraph("Sincerely,", { before: DOCUMENT_REQUIREMENTS.spacingTwips.signoffBefore, after: DOCUMENT_REQUIREMENTS.spacingTwips.signoffAfter, size: 21 }),
-    paragraph(fullName, { after: 0, size: 21 }),
-  ], coverMetadata);
-  const [resumeBuffer, coverLetterBuffer] = await Promise.all([
-    packCleanDocument(resume, resumeMetadata),
-    packCleanDocument(coverLetter, coverMetadata),
-  ]);
-  return {
-    resume: resumeBuffer,
-    coverLetter: coverLetterBuffer,
-    generatorVersion: MATERIAL_GENERATOR_VERSION,
-  };
 }

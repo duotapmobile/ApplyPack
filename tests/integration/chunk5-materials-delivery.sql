@@ -244,6 +244,11 @@ select pg_temp.assert_true(
   'exact-order exact-match entitlement was not unique'
 );
 
+insert into public.ap_candidate_facts(id,customer_id,snapshot_id,semantic_key,value_kind,typed_value,
+  source_kind,customer_assertion_snapshot_id,assertion_control_id,source_locator,verification,catalog_version,schema_version)
+values('65000000-0000-4000-8000-000000000001','15000000-0000-4000-8000-000000000001',
+  '45000000-0000-4000-8000-000000000001','fixture.responsibility','RESPONSIBILITY','{"activity":"Maintained records"}',
+  'CUSTOMER_ASSERTION','45000000-0000-4000-8000-000000000001','fixture','fixture','CUSTOMER_CONFIRMED','fixture-v1','fixture-v1');
 insert into public.ap_generated_artifacts(
   id,customer_id,order_id,material_line_id,job_snapshot_id,artifact_type,source_snapshot_id,
   source_line_revision_id,claim_provenance,generator_version,current_file_version
@@ -252,7 +257,7 @@ insert into public.ap_generated_artifacts(
   '25000000-0000-4000-8000-000000000001','b5000000-0000-4000-8000-000000000001',
   '75000000-0000-4000-8000-000000000001','RESUME',
   '45000000-0000-4000-8000-000000000001','c5000000-0000-4000-8000-000000000001',
-  '{"claims":[{"source":"customer-confirmed"}]}','chunk5-generator-v1',1
+  '{"sourceBinding":{"candidateFactIds":["65000000-0000-4000-8000-000000000001"]},"claims":[{"source":"customer-confirmed"}]}','chunk5-generator-v1',1
 );
 insert into public.ap_generated_file_versions(
   id,artifact_id,version,storage_bucket,storage_path,checksum_sha256,mime_type,size_bytes,
@@ -345,6 +350,114 @@ select pg_temp.assert_true(
      where artifact_id='e5000000-0000-4000-8000-000000000001'),
   'secure download did not create an exact 15-minute immutable audit'
 );
+
+savepoint job_closure_regression;
+update public.jobs set checked_at=clock_timestamp(),last_verified_at=clock_timestamp()
+where id='65000000-0000-4000-8000-000000000001';
+select public.ap_assert_current_artifact_facts('e5000000-0000-4000-8000-000000000001');
+select pg_temp.assert_true(
+  (select downloads_revoked_at is null from public.ap_generated_file_versions where id='f5000000-0000-4000-8000-000000000001'),
+  'routine job verification timestamp refresh revoked a purchased artifact');
+update public.jobs set listing_status='closed'
+where id='65000000-0000-4000-8000-000000000001';
+select pg_temp.assert_true(
+  (select downloads_revoked_at is not null from public.ap_generated_file_versions where id='f5000000-0000-4000-8000-000000000001')
+    and (select invalidated_at is not null from public.ap_artifact_quality_reviews where id='aa500000-0000-4000-8000-000000000001')
+    and exists(select 1 from public.ap_releases where id='ab500000-0000-4000-8000-000000000001'),
+  'confirmed job closure must revoke file and approval while preserving its release');
+do $$ begin
+  perform public.ap_authorize_material_download('15000000-0000-4000-8000-000000000001',
+    'e5000000-0000-4000-8000-000000000001','f5000000-0000-4000-8000-000000000001',clock_timestamp()-interval '1 second');
+  raise exception 'closed_job_download_accepted';
+exception when raise_exception then
+  if sqlerrm<>'material_download_unavailable' then raise; end if;
+end $$;
+do $$ begin
+  perform public.ap_assert_current_artifact_facts('e5000000-0000-4000-8000-000000000001');
+  raise exception 'closed_job_dependency_accepted';
+exception when raise_exception then
+  if sqlerrm<>'material_download_unavailable' then raise; end if;
+end $$;
+rollback to savepoint job_closure_regression;
+
+savepoint job_inactivation_regression;
+update public.jobs set is_active=false where id='65000000-0000-4000-8000-000000000001';
+do $$ begin
+  perform public.ap_assert_current_artifact_facts('e5000000-0000-4000-8000-000000000001');
+  raise exception 'inactive_job_dependency_accepted';
+exception when raise_exception then
+  if sqlerrm<>'material_download_unavailable' then raise; end if;
+end $$;
+rollback to savepoint job_inactivation_regression;
+
+savepoint job_closing_date_regression;
+update public.jobs set closing_at=clock_timestamp()-interval '1 second' where id='65000000-0000-4000-8000-000000000001';
+do $$ begin
+  perform public.ap_assert_current_artifact_facts('e5000000-0000-4000-8000-000000000001');
+  raise exception 'expired_job_dependency_accepted';
+exception when raise_exception then
+  if sqlerrm<>'material_download_unavailable' then raise; end if;
+end $$;
+rollback to savepoint job_closing_date_regression;
+
+savepoint job_supersession_regression;
+-- An independent snapshot is not a replacement and must not revoke this release.
+insert into public.ap_job_snapshots
+select (jsonb_populate_record(null::public.ap_job_snapshots,to_jsonb(original)||jsonb_build_object(
+  'id','75000000-0000-4000-8000-000000000002',
+  'external_job_id','CHUNK5-OTHER-JOB',
+  'canonical_application_url','https://chunk5-employer.example/apply/2'))).*
+from public.ap_job_snapshots original where original.id='75000000-0000-4000-8000-000000000001';
+select public.ap_assert_current_artifact_facts('e5000000-0000-4000-8000-000000000001');
+select pg_temp.assert_true(
+  (select downloads_revoked_at is null from public.ap_generated_file_versions where id='f5000000-0000-4000-8000-000000000001'),
+  'independent job snapshot incorrectly revoked a purchased artifact');
+insert into public.ap_human_review_records(id,customer_id,draft_id,reviewer_id,snapshot_id,job_snapshot_id,
+  review_kind,rationale,catalog_version,decision)
+select 'ad500000-0000-4000-8000-000000000001',snapshot.customer_id,snapshot.draft_id,
+  '15000000-0000-4000-8000-000000000003',snapshot.id,'75000000-0000-4000-8000-000000000001',
+  'PARSER_CORRECTION','Fixture records an explicit replacement of this exact job snapshot.','fixture-v1','{}'
+from public.ap_intake_snapshots snapshot where snapshot.id='45000000-0000-4000-8000-000000000001';
+insert into public.ap_job_snapshots
+select (jsonb_populate_record(null::public.ap_job_snapshots,to_jsonb(original)||jsonb_build_object(
+  'id','75000000-0000-4000-8000-000000000003',
+  'supersedes_job_snapshot_id',original.id,
+  'correction_review_id','ad500000-0000-4000-8000-000000000001',
+  'content_sha256',repeat('9',64)))).*
+from public.ap_job_snapshots original where original.id='75000000-0000-4000-8000-000000000001';
+select pg_temp.assert_true(
+  (select downloads_revoked_at is not null from public.ap_generated_file_versions where id='f5000000-0000-4000-8000-000000000001')
+    and (select invalidated_at is not null from public.ap_artifact_quality_reviews where id='aa500000-0000-4000-8000-000000000001')
+    and exists(select 1 from public.ap_releases where id='ab500000-0000-4000-8000-000000000001'),
+  'job replacement must revoke file and approval while preserving the historical release');
+do $$ begin
+  perform public.ap_authorize_material_download('15000000-0000-4000-8000-000000000001',
+    'e5000000-0000-4000-8000-000000000001','f5000000-0000-4000-8000-000000000001',clock_timestamp()-interval '1 second');
+  raise exception 'superseded_job_download_accepted';
+exception when raise_exception then
+  if sqlerrm<>'material_download_unavailable' then raise; end if;
+end $$;
+do $$ begin
+  perform public.ap_assert_current_artifact_facts('e5000000-0000-4000-8000-000000000001');
+  raise exception 'superseded_job_dependency_accepted';
+exception when raise_exception then
+  if sqlerrm<>'material_download_unavailable' then raise; end if;
+end $$;
+rollback to savepoint job_supersession_regression;
+
+savepoint fact_supersession_regression;
+update public.ap_candidate_facts set superseded_at=clock_timestamp() where id='65000000-0000-4000-8000-000000000001';
+select pg_temp.assert_true(
+  (select downloads_revoked_at is not null from public.ap_generated_file_versions where id='f5000000-0000-4000-8000-000000000001'),
+  'superseded candidate fact did not revoke downloads');
+do $$ begin
+  perform public.ap_authorize_material_download('15000000-0000-4000-8000-000000000001',
+    'e5000000-0000-4000-8000-000000000001','f5000000-0000-4000-8000-000000000001',clock_timestamp()-interval '1 second');
+  raise exception 'superseded_fact_download_accepted';
+exception when raise_exception then
+  if sqlerrm<>'material_download_unavailable' then raise; end if;
+end $$;
+rollback to savepoint fact_supersession_regression;
 
 do $$
 declare support_case_id uuid;

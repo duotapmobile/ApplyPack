@@ -27,9 +27,9 @@ describe("checkout preparation and private draft safety", () => {
 
   it("stores drafts privately and leaves customer delivery behind admin review", () => {
     expect(migration).toContain("values ('operator-drafts', 'operator-drafts', false)");
-    expect(workflow).toContain('status: "draft_ready"');
+    expect(workflow).toContain('last_error_code: "evidence_bound_material_line_required"');
     expect(workflow).toContain('status: "awaiting_review"');
-    expect(workflow).toContain('storage.from("operator-drafts")');
+    expect(workflow).not.toContain("generateApplyPackDrafts");
     expect(workflow).not.toContain('storage.from("customer-deliveries")');
   });
 });
