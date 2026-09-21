@@ -52,6 +52,16 @@ export function validateMaterialClaims(
     }
   };
   const sentence = (claim: EvidenceSentence, candidateOnly: boolean) => {
+    if (claim.segments) {
+      const ids = [...new Set(claim.segments.flatMap((segment) => segment.candidateFactIds))].sort();
+      if (!claim.segments.length || claim.narrative
+        || claim.text !== claim.segments.map((segment) => segment.text).join(" ")
+        || JSON.stringify(ids) !== JSON.stringify([...new Set(claim.candidateFactIds || [])].sort())) {
+        throw new Error("document_composite_claim_binding_invalid");
+      }
+      claim.segments.forEach((segment) => supported(segment.text, segment.candidateFactIds));
+      return;
+    }
     if (claim.narrative) {
       if (candidateOnly || !isNonfactualNarrative(claim.text)) throw new Error("document_narrative_contains_unverified_claim");
       return;

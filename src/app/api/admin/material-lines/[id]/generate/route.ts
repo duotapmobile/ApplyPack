@@ -25,6 +25,7 @@ type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 const id = z.uuid();
 const sentence = z.object({
   text: z.string().trim().min(1).max(1_500),
+  segments: z.array(z.object({ text: z.string().trim().min(1).max(1_500), candidateFactIds: z.array(id).min(1).max(30) }).strict()).min(1).max(12).optional(),
   candidateFactIds: z.array(id).max(30).default([]),
   jobEvidenceIds: z.array(id).max(30).default([]),
   narrative: z.boolean().default(false),

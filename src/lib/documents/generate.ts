@@ -41,6 +41,7 @@ const TWO_PAGE_FIT_UNITS = 150;
 
 export type EvidenceSentence = {
   text: string;
+  segments?: Array<{ text: string; candidateFactIds: string[] }>;
   candidateFactIds?: string[];
   jobEvidenceIds?: string[];
   narrative?: boolean;

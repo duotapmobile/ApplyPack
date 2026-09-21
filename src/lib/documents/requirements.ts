@@ -7,7 +7,7 @@
  * used to reject output created under an older contract.
  */
 export const DOCUMENT_VERSIONS = Object.freeze({
-  content: "applypack-content-2026-09-20.1",
+  content: "applypack-content-2026-09-20.2",
   template: "applypack-template-2026-09-20.1",
   exporter: "libreoffice-tagged-pdf-2026-09-13.1",
 });

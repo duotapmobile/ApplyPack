@@ -92,26 +92,10 @@ export async function GET() {
       );
       const { data, error } = await admin.from("capacity_limits").select("kind,units_per_24h,enabled");
       database = !error && data?.length === 2;
-      const { data: sources, error: sourceError } = await admin.from("job_sources")
-        .select("id,last_successful_sync_at,health_status")
-        .eq("is_active", true)
-        .eq("schedule_enabled", true)
-        .eq("automation_status", "automated")
-        .eq("ingestion_permission_status", "approved_public_endpoint")
-        .eq("paid_display_permission_status", "documented_paid_display_authorized")
-        .not("last_successful_sync_at", "is", null);
-      jobSourcesRegistered = !sourceError && (sources?.length || 0) > 0;
-      const sourceIds = (sources || []).filter((source) => source.health_status === "healthy").map((source) => source.id);
-      if (sourceIds.length && process.env.APP_JOB_SOURCE_SYNC_ENABLED === "true") {
-        const [{ count: runCount, error: runError }, { count: inventoryCount, error: inventoryError }] = await Promise.all([
-          admin.from("job_source_runs").select("id", { count: "exact", head: true })
-            .in("source_id", sourceIds).eq("status", "succeeded").gt("accepted_count", 0).is("error_code", null),
-          admin.from("jobs").select("id", { count: "exact", head: true })
-            .in("source_id", sourceIds).eq("is_active", true).eq("listing_status", "open")
-            .neq("source_freshness_status", "stale"),
-        ]);
-        authorizedSourceInventory = !runError && !inventoryError && (runCount || 0) > 0 && (inventoryCount || 0) > 0;
-      }
+      const { data: sourceReadiness, error: sourceError } = await admin.rpc("ap_current_source_readiness");
+      jobSourcesRegistered = !sourceError && sourceReadiness?.jobSourcesRegistered === true;
+      authorizedSourceInventory = !sourceError && process.env.APP_JOB_SOURCE_SYNC_ENABLED === "true"
+        && sourceReadiness?.authorizedSourceInventory === true;
     }
   }
   const ready = Object.values(configured).every(Boolean) && database && jobSourcesRegistered && authorizedSourceInventory;
