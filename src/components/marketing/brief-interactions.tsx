@@ -145,6 +145,7 @@ export function TailoringExample() {
       <div className="brief-tailoring-desktop"><article><h4>Original</h4><p className="brief-document-copy">{original}</p></article><article><h4>Tailored for client onboarding</h4><p className="brief-document-copy"><span className="brief-change-label">Changed:</span> <mark>{tailored}</mark></p></article><details><summary>Why it changed</summary>{reasons}</details></div>
       <div className="brief-tailoring-mobile"><Tabs label="Original and tailored resume example" items={[{ label: "Original", content: <p className="brief-document-copy">{original}</p> }, { label: "Tailored for client onboarding", content: <p className="brief-document-copy"><span className="brief-change-label">Changed:</span> <mark>{tailored}</mark></p> }, { label: "Why it changed", content: reasons }]} /></div>
       <p className="brief-supporting">The cover letter makes the same honest connection in a more personal way, using the selected employer and role.</p>
+      <Link className="brief-text-link brief-tailoring-link" href="/why-customize">Why customize? <ChevronRight aria-hidden="true" /></Link>
     </div>
   );
 }
@@ -252,8 +253,9 @@ export function ProcessSteps({ detailed = false }: { detailed?: boolean }) {
 export function PricingCards() {
   return (
     <div className="brief-pricing-grid">
+      <article className="brief-price-card"><p className="brief-demo-kicker">FILTERED JOB BOARD</p><strong>$6.99 <small>weekly</small></strong><p>Browse current jobs that pass your confirmed profile filters. Choose $19.99 monthly or $44.99 every three calendar months instead.</p><b>No free trial. Renews until canceled. Jobs are newest-first, never ranked or scored.</b><Link className="button-link button-link--primary" href="/job-board">View Board Plans</Link></article>
       <article className="brief-price-card brief-price-card-primary"><p className="brief-demo-kicker">10 RESEARCHED JOB MATCHES</p><strong>$20 <small>one time</small></strong><p>Ten current opportunities selected for your experience, priorities, and dealbreakers, with direct links and a clear explanation of each match.</p><b>Delivered within 24 hours after your intake and payment are complete.</b><Link className="button-link button-link--primary" href="/get-started">Find My 10 Jobs</Link></article>
-      <article className="brief-price-card"><p className="brief-demo-kicker">TAILORED RESUME + COVER LETTER</p><strong>$8 <small>per job</small></strong><p>A job-specific resume and cover letter based on your verified experience and the role you select.</p><b>Delivered within 24 hours after your selection and payment are complete.</b><p className="brief-control">Choose one job, several jobs, all 10, or none. The decision stays with you.</p></article>
+      <article className="brief-price-card"><p className="brief-demo-kicker">TAILORED RESUME + COVER LETTER</p><strong>$8 <small>per job</small></strong><p>A job-specific resume and cover letter based on your verified experience and an eligible role from your board or delivered Top 10.</p><b>Delivered within 24 hours after your selection and payment are complete.</b><p className="brief-control">Choose only the jobs you want. The decision stays with you.</p></article>
     </div>
   );
 }

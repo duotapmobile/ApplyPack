@@ -13,7 +13,16 @@
     "test:e2e": "playwright test",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build",
     "test:integration": "vitest run --config vitest.integration.config.mts",
-    "stripe:configure:test": "node scripts/configure-stripe-test-prices.mjs"
+    "test:database": "node scripts/run-supabase-db-tests-v2.mjs",
+    "test:legacy-backfill": "node scripts/run-supabase-legacy-backfill-test.mjs",
+    "test:rollback": "node scripts/run-supabase-rollback-test.mjs",
+    "test:document-render": "vitest run --config vitest.render.config.mts",
+    "types:database:check": "node scripts/check-database-types.mjs",
+    "jobs:sources:validate": "node scripts/validate-job-source-batch.mjs",
+    "jobs:sources:export": "node --experimental-strip-types scripts/export-job-source-inventory.mjs",
+    "stripe:configure:test": "node scripts/configure-stripe-test-prices.mjs",
+    "jobs:seed:synthetic-staging": "node scripts/seed-synthetic-board-staging.mjs --confirm-staging-synthetic",
+    "staging:readiness": "node scripts/report-staging-readiness.mjs"
   },
   "dependencies": {
     "@fontsource/lato": "5.3.0",
@@ -21,6 +30,7 @@
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.112.4",
     "docx": "9.7.1",
+    "jszip": "3.10.1",
     "lucide-react": "^1.39.0",
     "next": "16.3.4",
     "react": "19.2.8",

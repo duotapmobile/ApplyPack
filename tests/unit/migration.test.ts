@@ -12,6 +12,11 @@ const jobSourceSql = readFileSync(
   "utf8"
 ).replace(/\s+/g, " ");
 
+const aggregationSql = readFileSync(
+  resolve(process.cwd(), "supabase/migrations/202609150037_employer_first_job_aggregation.sql"),
+  "utf8"
+).replace(/\s+/g, " ");
+
 describe("production migration invariants", () => {
   it("quarantines new source documents until scanning passes", () => {
     expect(sql).toContain("source_scan_status text not null default 'pending'");
@@ -97,5 +102,64 @@ describe("job source expansion migration invariants", () => {
       expect(jobSourceSql).toContain(`alter table public.${table} enable row level security`);
     }
     expect(jobSourceSql).toContain("grant all privileges on public.employers");
+  });
+});
+
+describe("employer-first aggregation migration invariants", () => {
+  it("keeps source schedules disabled and pinned to revisioned authorization", () => {
+    expect(aggregationSql).toContain("create table public.ap_source_authorization_heads");
+    expect(aggregationSql).toContain("create table public.job_source_schedules");
+    expect(aggregationSql).toContain("enabled boolean not null default false");
+    expect(aggregationSql).toContain("authorization_head_revision bigint not null");
+    expect(aggregationSql).toContain("state_revision bigint not null default 1");
+    expect(aggregationSql).toContain("ap_set_job_source_schedule_state");
+    expect(aggregationSql).toContain("state_revision=state_revision+1");
+    expect(aggregationSql).not.toContain("insert into public.job_source_schedules");
+  });
+
+  it("isolates source work from commerce and fences every lease", () => {
+    expect(aggregationSql).toContain("worker_pool='COMMERCE'");
+    expect(aggregationSql).toContain("worker_pool='JOB_SOURCE'");
+    expect(aggregationSql).toContain("lease_epoch=lease_epoch+1");
+    expect(aggregationSql).toContain("ap_one_live_job_source_sync_per_schedule");
+    expect(aggregationSql).toContain("scheduled.lease_owner=p_owner");
+  });
+
+  it("requires authorization to cover every operational bound", () => {
+    for (const bound of ["resultBound", "pageBound", "requestBound", "responseByteBound", "durationMsBound", "hostConcurrencyBound", "quotaUnitBound"]) {
+      expect(aggregationSql).toContain(`rate_and_result_bounds->>'${bound}'`);
+    }
+    expect(aggregationSql).toContain("host_concurrency_bound integer not null default 1 check (host_concurrency_bound = 1)");
+    expect(aggregationSql).toContain("quota_unit_bound integer not null default 0 check (quota_unit_bound = 0)");
+    expect(aggregationSql).toContain("pg_advisory_xact_lock");
+  });
+
+  it("preserves an immutable complete-run ledger before absence closure", () => {
+    expect(aggregationSql).toContain("create table public.job_source_run_listings");
+    expect(aggregationSql).toContain("job_source_run_listing_immutable");
+    expect(aggregationSql).toContain("complete_run_listing_ledger_mismatch");
+    expect(aggregationSql).toContain("complete_verified_projection_required_for_closure");
+    expect(aggregationSql).toContain("OBSERVATION_ONLY_NOT_PROJECTED");
+    expect(aggregationSql).toContain("REPEATED_COMPLETE_ENUMERATION_ABSENCE");
+    expect(aggregationSql).toContain("job_source_run_already_reconciled");
+    expect(aggregationSql).toContain("run_row.schedule_generation<=schedule_row.last_reconciled_generation");
+    expect(aggregationSql).toContain("reference.last_complete_miss_at<=now_at-make_interval(secs=>schedule_row.cadence_seconds)");
+    expect(aggregationSql).toContain("reference.external_job_id is not null or reference.normalized_source_url is not null");
+  });
+
+  it("keeps discovery evidence quarantined from runtime inventory", () => {
+    expect(aggregationSql).toContain("create table public.job_source_discovery_snapshots");
+    expect(aggregationSql).toContain("create table public.job_source_candidates");
+    expect(aggregationSql).toContain("admitted_source_id is null or status='VERIFIED'");
+    expect(aggregationSql).not.toContain("insert into public.jobs select");
+  });
+
+  it("adds canonical observation, verification, lifecycle, revision, path, and merge fields", () => {
+    for (const field of [
+      "last_observed_at", "last_successfully_verified_at", "lifecycle_state",
+      "content_revision", "application_path_status", "recoverable_merge_evidence",
+    ]) expect(aggregationSql).toContain(`add column ${field}`);
+    expect(aggregationSql).toContain("ap_track_job_content_revision");
+    expect(aggregationSql).toContain("observation alone must not update this field");
   });
 });

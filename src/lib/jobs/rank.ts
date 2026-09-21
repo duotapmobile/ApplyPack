@@ -1,11 +1,15 @@
 import { isEligibleForState } from "./filter";
 import type { JobFilterOptions, NormalizedJob, RankedJob, RankingAdjustment } from "./types";
 
-export function rankJobs(jobs: readonly NormalizedJob[], context: Pick<JobFilterOptions, "state"> = {}): RankedJob[] {
-  return jobs.map((job) => rankJob(job, context)).sort((a, b) => b.score - a.score || b.job.lastVerifiedAt.localeCompare(a.job.lastVerifiedAt));
+// Historical paid-order/admin compatibility only. Corrected-contract evaluations
+// must use src/lib/matching/evaluation-engine.ts and ap_match_evaluations.
+export const LEGACY_RANKING_COMPATIBILITY_ONLY = true;
+
+export function rankLegacyJobs(jobs: readonly NormalizedJob[], context: Pick<JobFilterOptions, "state"> = {}): RankedJob[] {
+  return jobs.map((job) => rankLegacyJob(job, context)).sort((a, b) => b.score - a.score || b.job.lastVerifiedAt.localeCompare(a.job.lastVerifiedAt));
 }
 
-export function rankJob(job: NormalizedJob, context: Pick<JobFilterOptions, "state"> = {}): RankedJob {
+export function rankLegacyJob(job: NormalizedJob, context: Pick<JobFilterOptions, "state"> = {}): RankedJob {
   const reasons: RankingAdjustment[] = [];
   add(reasons, job.isOfficialSource && job.isDirectEmployerSource, "OFFICIAL_DIRECT_SOURCE", 40, "Official direct-employer posting.");
   add(reasons, !job.isDirectEmployerSource, "THIRD_PARTY_SOURCE", -20, "Third-party source; an official direct posting is preferred.");

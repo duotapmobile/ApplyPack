@@ -18,95 +18,7 @@ const reviewChecklistTemplate = {
 
 const matchTemplate = JSON.stringify({
   reviewChecklist: reviewChecklistTemplate,
-  matches: Array.from({ length: 10 }, (_, index) => ({
-    company: "Company " + (index + 1),
-    title: "Job title",
-    sourceId: "manual-reviewed",
-    sourceName: "Official employer careers page",
-    sourceUrl: "https://employer.example/jobs/role",
-    officialApplicationUrl: "https://employer.example/jobs/role",
-    externalJobId: "employer-job-id",
-    description: "Paste the posting text used for remote, phone, sales, marketing, and experience classification.",
-    department: "Customer Operations",
-    location: "Remote",
-    employmentType: "Full-time",
-    remoteScope: "Paste the exact remote eligibility language.",
-    eligibleStates: [],
-    eligibleCountries: ["US"],
-    timezoneRequirement: "",
-    scheduleType: "Full-time",
-    salary: "Not listed",
-    salaryMin: null,
-    salaryMax: null,
-    salaryCurrency: "USD",
-    payPeriod: "year",
-    payModel: "unknown",
-    applicantCost: null,
-    benefitsStatus: "unknown",
-    languageRequirements: [],
-    fitSummary: "Explain the evidence-based connection to the customer's approved criteria.",
-    matchingExperience: ["Name the confirmed customer duty or experience supporting this connection"],
-    primaryOutcome: "State the employer's primary expected outcome for this role.",
-    coreResponsibilities: ["A core responsibility verified from the employer listing"],
-    requirements: ["Requirement confirmed from the employer listing"],
-    hiddenJobFunctions: [],
-    concerns: ["Any unknown or concern, or leave this array empty"],
-    criteriaChecks: {
-      dutiesAligned: false,
-      experienceConfirmed: false,
-      levelAcceptable: false,
-      scheduleAcceptable: false,
-      locationAcceptable: false,
-      compensationAcceptable: false,
-      nonNegotiablesSatisfied: false,
-    },
-    checkedAt: new Date().toISOString(),
-  })),
-}, null, 2);
-
-const replacementTemplate = JSON.stringify({
-  company: "Company name",
-  title: "Job title",
-  sourceId: "manual-reviewed",
-  sourceName: "Official employer careers page",
-  sourceUrl: "https://employer.example/jobs/role",
-  officialApplicationUrl: "https://employer.example/jobs/role",
-  externalJobId: "employer-job-id",
-  description: "Paste the posting text used for remote, phone, sales, marketing, and experience classification.",
-  department: "Customer Operations",
-  location: "Remote",
-  employmentType: "Full-time",
-  remoteScope: "Paste the exact remote eligibility language.",
-  eligibleStates: [],
-  eligibleCountries: ["US"],
-  timezoneRequirement: "",
-  scheduleType: "Full-time",
-  salary: "Not listed",
-  salaryMin: null,
-  salaryMax: null,
-  salaryCurrency: "USD",
-  payPeriod: "year",
-  payModel: "unknown",
-  applicantCost: null,
-  benefitsStatus: "unknown",
-  languageRequirements: [],
-  fitSummary: "Explain the evidence-based connection to the customer's approved criteria.",
-  matchingExperience: ["Name the confirmed customer duty or experience supporting this connection"],
-  primaryOutcome: "State the employer's primary expected outcome for this role.",
-  coreResponsibilities: ["A core responsibility verified from the employer listing"],
-  requirements: ["A requirement verified from the employer listing"],
-  hiddenJobFunctions: [],
-  concerns: ["Any unknown or concern, or leave this array empty"],
-  criteriaChecks: {
-    dutiesAligned: false,
-    experienceConfirmed: false,
-    levelAcceptable: false,
-    scheduleAcceptable: false,
-    locationAcceptable: false,
-    compensationAcceptable: false,
-    nonNegotiablesSatisfied: false,
-  },
-  checkedAt: new Date().toISOString(),
+  evaluationIds: Array.from({ length: 10 }, () => "replace-with-persisted-evaluation-uuid"),
 }, null, 2);
 
 export function AdminOperations({ searchOrders, applyItems, conflicts, corrections, capacityLimits }: {
@@ -138,7 +50,7 @@ export function AdminOperations({ searchOrders, applyItems, conflicts, correctio
 
   function deliverSearch(orderId: string) {
     const raw = matchJson[orderId];
-    if (!raw) return setMessage("Load the 10-match template, replace every placeholder, and recheck every listing.");
+    if (!raw) return setMessage("Load the current persisted ten-match selection and recheck every listing.");
     let body: unknown;
     try { body = JSON.parse(raw); } catch { return setMessage("The match JSON is not valid."); }
     return request("/api/admin/search-orders/" + orderId + "/deliver", {
@@ -171,12 +83,12 @@ export function AdminOperations({ searchOrders, applyItems, conflicts, correctio
           <a href={"/api/admin/intakes/" + order.intake_id + "/source?kind=resume"}>Download source resume</a>
           {order.has_cover_letter ? <a href={"/api/admin/intakes/" + order.intake_id + "/source?kind=cover_letter"}>Download source cover letter</a> : null}
         </div> : <p role="status">Source retrieval locked: document safety status is {order.source_scan_status}.</p>}
-        <label>Validated match payload
-          <textarea className="admin-json" value={matchJson[order.id] || ""} onChange={(event) => setMatchJson((current) => ({ ...current, [order.id]: event.target.value }))} placeholder="Load the required template, then replace every placeholder." />
+        <label>Persisted evaluation release payload
+          <textarea className="admin-json" value={matchJson[order.id] || ""} onChange={(event) => setMatchJson((current) => ({ ...current, [order.id]: event.target.value }))} placeholder="Load the current persisted selection." />
         </label>
         <div className="admin-buttons">
-          {order.suggested_matches.length ? <button type="button" onClick={() => setMatchJson((current) => ({ ...current, [order.id]: JSON.stringify({ reviewChecklist: reviewChecklistTemplate, matches: order.suggested_matches }, null, 2) }))}>Load pulled candidates</button> : null}
-          <button type="button" onClick={() => setMatchJson((current) => ({ ...current, [order.id]: matchTemplate }))}>Load 10-match template</button>
+          {order.suggested_matches.length === 10 ? <button type="button" onClick={() => setMatchJson((current) => ({ ...current, [order.id]: JSON.stringify({ reviewChecklist: reviewChecklistTemplate, evaluationIds: order.suggested_matches.map((match) => match.evaluationId) }, null, 2) }))}>Load persisted selection</button> : null}
+          <button type="button" onClick={() => setMatchJson((current) => ({ ...current, [order.id]: matchTemplate }))}>Show required payload shape</button>
           <button className="wizard-next" type="button" disabled={busy === "search-" + order.id} onClick={() => deliverSearch(order.id)}>Deliver reviewed matches</button>
         </div>
       </article>) : <p>No paid searches need match delivery.</p>}
@@ -205,21 +117,13 @@ export function AdminOperations({ searchOrders, applyItems, conflicts, correctio
       {conflicts.length ? conflicts.map((review) => <article className="admin-work-card" key={review.id}>
         <div><strong>{review.title}</strong><span>{review.company}</span></div><p>{review.explanation}</p>
         <label>Operator resolution<textarea id={"resolution-" + review.id} minLength={10} /></label>
-        <label>Fresh replacement job JSON<textarea id={"replacement-" + review.id} className="admin-json" placeholder="Load the replacement template, replace every placeholder, and mark every verified criteria check true." /></label>
+        <label>Current replacement evaluation ID<input id={"replacement-" + review.id} placeholder="Persisted evaluation UUID" /></label>
         <div className="admin-buttons">
-          <button type="button" onClick={() => {
-            const field = document.getElementById("replacement-" + review.id) as HTMLTextAreaElement | null;
-            if (field) field.value = replacementTemplate;
-          }}>Load replacement template</button>
           {(["accepted", "rejected"] as const).map((status) => <button key={status} type="button" onClick={() => {
             const resolution = (document.getElementById("resolution-" + review.id) as HTMLTextAreaElement)?.value || "";
-            let replacement: unknown;
-            if (status === "accepted") {
-              try { replacement = JSON.parse((document.getElementById("replacement-" + review.id) as HTMLTextAreaElement)?.value || ""); }
-              catch { setMessage("Accepted conflicts require valid fresh replacement JSON."); return; }
-            }
+            const replacementEvaluationId = status === "accepted" ? (document.getElementById("replacement-" + review.id) as HTMLInputElement)?.value || "" : undefined;
             request("/api/admin/conflicts/" + review.id + "/resolve", {
-              method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status, resolution, replacement }),
+              method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status, resolution, replacementEvaluationId }),
             }, "conflict-" + review.id);
           }}>{status === "accepted" ? "Accept conflict" : "Reject conflict"}</button>)}
         </div>

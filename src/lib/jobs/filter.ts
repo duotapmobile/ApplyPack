@@ -1,10 +1,6 @@
 import type { JobFilterOptions, NormalizedJob } from "./types";
 
 export const defaultJobFilters: Readonly<JobFilterOptions> = {
-  workerRelationship: "w2",
-  includeSales: false,
-  includeMarketing: false,
-  includeApplicantCost: false,
   includeStale: false,
 };
 
@@ -14,9 +10,9 @@ export function filterJobs(jobs: readonly NormalizedJob[], options: JobFilterOpt
     if (job.rejectionReason || job.reviewStatus === "rejected" || !job.isActive) return false;
     if (!filters.includeStale && job.sourceFreshnessStatus === "stale") return false;
     if (filters.workerRelationship && filters.workerRelationship !== "all" && job.w2OrContractor !== filters.workerRelationship) return false;
-    if (!filters.includeSales && job.salesFlag) return false;
-    if (!filters.includeMarketing && job.marketingFlag) return false;
-    if (!filters.includeApplicantCost && job.applicantCost !== null && job.applicantCost > 0) return false;
+    if (filters.includeSales === false && job.salesFlag) return false;
+    if (filters.includeMarketing === false && job.marketingFlag) return false;
+    if (filters.includeApplicantCost === false && job.applicantCost !== null && job.applicantCost > 0) return false;
     if (filters.remoteScopes?.length && !filters.remoteScopes.includes(job.workMode)) return false;
     if (filters.phoneIntensities?.length && !filters.phoneIntensities.includes(job.phoneIntensity)) return false;
     if (filters.entryLevelOnly && !["entry_level", "early_career"].includes(job.experienceLevel)) return false;

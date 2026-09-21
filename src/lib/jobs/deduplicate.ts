@@ -1,48 +1,20 @@
+import { duplicateEdgeReason, selectIndependentInventory, stableNormalizedJobId } from "@/lib/matching/deduplication";
 import { normalizeUrl } from "./normalize";
 import type { DeduplicatedJob, JobSourceReference, NormalizedJob } from "./types";
 
 export function deduplicateJobs(jobs: readonly NormalizedJob[]): DeduplicatedJob[] {
-  const results: DeduplicatedJob[] = [];
-  for (const incoming of jobs) {
-    const match = findExactDuplicate(results, incoming);
-    const reference = toReference(incoming);
-    if (!match) {
-      results.push({ job: incoming, sourceReferences: [reference], matchedBy: "new" });
-      continue;
-    }
-    if (!match.sourceReferences.some((item) => sameReference(item, reference))) match.sourceReferences.push(reference);
-    match.job = preferJob(match.job, incoming);
-  }
-  return results;
-}
-
-function findExactDuplicate(results: DeduplicatedJob[], incoming: NormalizedJob): DeduplicatedJob | undefined {
-  for (const result of results) {
-    if (result.job.canonicalEmployerId !== incoming.canonicalEmployerId) continue;
-    if (incoming.externalJobId && result.sourceReferences.some((ref) => ref.externalJobId === incoming.externalJobId)) {
-      result.matchedBy = "external_job_id";
-      return result;
-    }
-    if (incoming.normalizedSourceUrl && result.sourceReferences.some((ref) => normalizeUrl(ref.sourceJobUrl) === incoming.normalizedSourceUrl)) {
-      result.matchedBy = "source_url";
-      return result;
-    }
-    if (result.job.deduplicationKey === incoming.deduplicationKey) {
-      result.matchedBy = "content";
-      return result;
-    }
-  }
-  return undefined;
-}
-
-function preferJob(current: NormalizedJob, incoming: NormalizedJob): NormalizedJob {
-  if (incoming.isOfficialSource && incoming.isDirectEmployerSource && !(current.isOfficialSource && current.isDirectEmployerSource)) {
-    return { ...incoming, employerAliases: [...new Set([...current.employerAliases, ...incoming.employerAliases])] };
-  }
-  if (!current.officialApplicationUrl && incoming.officialApplicationUrl) {
-    return { ...current, officialApplicationUrl: incoming.officialApplicationUrl };
-  }
-  return current;
+  const graph = selectIndependentInventory(jobs);
+  return graph.selected.map((selected) => {
+    const selectedId = stableNormalizedJobId(selected);
+    const displaced = graph.displacements.filter((item) => item.selectedId === selectedId);
+    const memberIds = new Set([selectedId, ...displaced.map((item) => item.displacedId)]);
+    const references = jobs.filter((job) => memberIds.has(stableNormalizedJobId(job))).map(toReference)
+      .filter((reference, index, all) => all.findIndex((other) => sameReference(reference, other)) === index);
+    const matchedBy = displaced.some((item) => item.edgeReason === "external_job_id") ? "external_job_id"
+      : displaced.some((item) => item.edgeReason === "canonical_url") ? "source_url"
+        : displaced.some((item) => item.edgeReason === "fingerprint") ? "content" : "new";
+    return { job: selected, sourceReferences: references, matchedBy, displaced };
+  });
 }
 
 function toReference(job: NormalizedJob): JobSourceReference {
@@ -69,4 +41,8 @@ export function fuzzySimilarity(a: NormalizedJob, b: NormalizedJob): number {
   const intersection = [...left].filter((word) => right.has(word)).length;
   const union = new Set([...left, ...right]).size;
   return union ? intersection / union : 0;
+}
+
+export function finalPairwiseDuplicateCheck(jobs: readonly NormalizedJob[]) {
+  return jobs.every((job, index) => jobs.slice(index + 1).every((other) => duplicateEdgeReason(job, other) === null));
 }

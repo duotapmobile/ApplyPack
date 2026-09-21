@@ -1,5 +1,5 @@
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { rankJob } from "./rank";
+import { rankLegacyJob } from "./rank";
 import type { NormalizedJob, SourceCategory } from "./types";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -50,6 +50,9 @@ export function toJobDatabaseRow(job: NormalizedJob, salaryText: string | null =
     posted_at: job.postedAt,
     closing_at: job.closingAt,
     last_verified_at: job.lastVerifiedAt,
+    last_observed_at: job.lastVerifiedAt,
+    lifecycle_state: "observed_open",
+    application_path_status: job.officialApplicationUrl ? "unverified" : "unavailable",
     source_freshness_status: job.sourceFreshnessStatus,
     content_hash: job.contentHash,
     deduplication_key: job.deduplicationKey,
@@ -67,7 +70,7 @@ export function toJobDatabaseRow(job: NormalizedJob, salaryText: string | null =
 }
 
 export function rankingDatabaseValues(job: NormalizedJob, state?: string) {
-  const ranked = rankJob(job, { state });
+  const ranked = rankLegacyJob(job, { state });
   return { ranking_score: ranked.score, ranking_reason_codes: ranked.reasonCodes };
 }
 
@@ -136,7 +139,16 @@ export function fromJobDatabaseRow(row: Record<string, unknown>): NormalizedJob 
   };
 }
 
+export type PersistedJobReference = {
+  jobId: string;
+  sourceReferenceId: string;
+};
+
 export async function persistNormalizedJob(admin: AdminClient, job: NormalizedJob, salaryText: string | null = null): Promise<string> {
+  return (await persistNormalizedJobWithReference(admin, job, salaryText)).jobId;
+}
+
+export async function persistNormalizedJobWithReference(admin: AdminClient, job: NormalizedJob, salaryText: string | null = null): Promise<PersistedJobReference> {
   if (job.rejectionReason || !job.isActive) throw new Error(job.rejectionReason || "Inactive jobs cannot be ingested.");
   if (!job.sourceJobUrl && !job.officialApplicationUrl) throw new Error("A source or application URL is required.");
 
@@ -177,9 +189,12 @@ export async function persistNormalizedJob(admin: AdminClient, job: NormalizedJo
     jobId = data.id;
   }
 
-  let referenceQuery = admin.from("job_source_references").select("id").eq("job_id", jobId).eq("source_id", job.sourceId);
+  let referenceQuery = admin.from("job_source_references").select("id,is_active,closure_reason").eq("job_id", jobId).eq("source_id", job.sourceId);
   referenceQuery = job.externalJobId ? referenceQuery.eq("external_job_id", job.externalJobId) : referenceQuery.is("external_job_id", null);
   const { data: existingReference } = await referenceQuery.maybeSingle();
+  const mayReopen = !existingReference
+    || existingReference.is_active
+    || existingReference.closure_reason === "REPEATED_COMPLETE_ENUMERATION_ABSENCE";
   const referenceRow = {
     job_id: jobId,
     source_id: job.sourceId,
@@ -191,14 +206,19 @@ export async function persistNormalizedJob(admin: AdminClient, job: NormalizedJo
     is_official: job.isOfficialSource,
     is_direct_employer: job.isDirectEmployerSource,
     last_verified_at: job.lastVerifiedAt,
-    is_active: true,
+    is_active: existingReference ? (mayReopen ? true : existingReference.is_active) : true,
+    consecutive_complete_misses: mayReopen ? 0 : undefined,
+    last_complete_miss_at: mayReopen ? null : undefined,
+    closed_at: mayReopen ? null : undefined,
+    closed_by_run_id: mayReopen ? null : undefined,
+    closure_reason: mayReopen ? null : undefined,
   };
-  const { error: referenceError } = existingReference
-    ? await admin.from("job_source_references").update(referenceRow).eq("id", existingReference.id)
-    : await admin.from("job_source_references").insert(referenceRow);
-  if (referenceError) throw referenceError;
+  const referenceResult = existingReference
+    ? await admin.from("job_source_references").update(referenceRow).eq("id", existingReference.id).select("id").single()
+    : await admin.from("job_source_references").insert(referenceRow).select("id").single();
+  if (referenceResult.error || !referenceResult.data) throw referenceResult.error || new Error("Source reference was not returned after persistence.");
   if (!jobId) throw new Error("Normalized job has no persistent identifier.");
-  return jobId;
+  return { jobId, sourceReferenceId: referenceResult.data.id };
 }
 
 function employerCategory(category: NormalizedJob["sourceCategory"]) {

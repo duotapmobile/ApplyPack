@@ -1,0 +1,11032 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+  public: {
+    Tables: {
+      affiliate_source_directories: {
+        Row: {
+          directory_name: string
+          id: string
+          is_employer: boolean
+          notes: string
+          official_url: string
+        }
+        Insert: {
+          directory_name: string
+          id: string
+          is_employer?: boolean
+          notes: string
+          official_url: string
+        }
+        Update: {
+          directory_name?: string
+          id?: string
+          is_employer?: boolean
+          notes?: string
+          official_url?: string
+        }
+        Relationships: []
+      }
+      ap_anonymous_drafts: {
+        Row: {
+          access_email_normalized: string | null
+          answers: Json
+          capability_rotated_at: string | null
+          capability_secret_hash: string
+          capability_version: number
+          checkout_attempt_id: string | null
+          converted_customer_id: string | null
+          converted_intake_id: string | null
+          created_at: string
+          current_step: number
+          expires_at: string
+          finalized_snapshot_id: string | null
+          flow_version: string | null
+          id: string
+          retention_due_at: string | null
+          retention_state: Database["public"]["Enums"]["ap_retention_state"]
+          state: Database["public"]["Enums"]["ap_draft_state"]
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          access_email_normalized?: string | null
+          answers?: Json
+          capability_rotated_at?: string | null
+          capability_secret_hash: string
+          capability_version?: number
+          checkout_attempt_id?: string | null
+          converted_customer_id?: string | null
+          converted_intake_id?: string | null
+          created_at?: string
+          current_step?: number
+          expires_at: string
+          finalized_snapshot_id?: string | null
+          flow_version?: string | null
+          id: string
+          retention_due_at?: string | null
+          retention_state?: Database["public"]["Enums"]["ap_retention_state"]
+          state?: Database["public"]["Enums"]["ap_draft_state"]
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          access_email_normalized?: string | null
+          answers?: Json
+          capability_rotated_at?: string | null
+          capability_secret_hash?: string
+          capability_version?: number
+          checkout_attempt_id?: string | null
+          converted_customer_id?: string | null
+          converted_intake_id?: string | null
+          created_at?: string
+          current_step?: number
+          expires_at?: string
+          finalized_snapshot_id?: string | null
+          flow_version?: string | null
+          id?: string
+          retention_due_at?: string | null
+          retention_state?: Database["public"]["Enums"]["ap_retention_state"]
+          state?: Database["public"]["Enums"]["ap_draft_state"]
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_anonymous_drafts_checkout_attempt_id_fkey"
+            columns: ["checkout_attempt_id"]
+            isOneToOne: false
+            referencedRelation: "ap_checkout_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_anonymous_drafts_converted_customer_id_fkey"
+            columns: ["converted_customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_anonymous_drafts_converted_intake_id_fkey"
+            columns: ["converted_intake_id"]
+            isOneToOne: false
+            referencedRelation: "intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_anonymous_drafts_finalized_snapshot_id_fkey"
+            columns: ["finalized_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_artifact_quality_reviews: {
+        Row: {
+          arial_font_sha256: string
+          arial_resolved: boolean
+          automated_passed_at: string | null
+          binding_sha256: string
+          content_approved_at: string | null
+          content_approved_by: string | null
+          content_attestation: string | null
+          created_at: string
+          extracted_text_sha256: string
+          file_version_id: string
+          id: string
+          invalidated_at: string | null
+          malware_scanner_identity: string
+          provenance_checks: Json
+          render_preview_bucket: string
+          render_preview_path: string
+          render_preview_sha256: string
+          rendered_page_count: number
+          rendered_page_sha256: string[]
+          renderer_identity: string
+          structural_checks: Json
+          visual_approved_at: string | null
+          visual_approved_by: string | null
+          visual_attestation: string | null
+        }
+        Insert: {
+          arial_font_sha256: string
+          arial_resolved: boolean
+          automated_passed_at?: string | null
+          binding_sha256: string
+          content_approved_at?: string | null
+          content_approved_by?: string | null
+          content_attestation?: string | null
+          created_at?: string
+          extracted_text_sha256: string
+          file_version_id: string
+          id?: string
+          invalidated_at?: string | null
+          malware_scanner_identity: string
+          provenance_checks: Json
+          render_preview_bucket: string
+          render_preview_path: string
+          render_preview_sha256: string
+          rendered_page_count: number
+          rendered_page_sha256: string[]
+          renderer_identity: string
+          structural_checks: Json
+          visual_approved_at?: string | null
+          visual_approved_by?: string | null
+          visual_attestation?: string | null
+        }
+        Update: {
+          arial_font_sha256?: string
+          arial_resolved?: boolean
+          automated_passed_at?: string | null
+          binding_sha256?: string
+          content_approved_at?: string | null
+          content_approved_by?: string | null
+          content_attestation?: string | null
+          created_at?: string
+          extracted_text_sha256?: string
+          file_version_id?: string
+          id?: string
+          invalidated_at?: string | null
+          malware_scanner_identity?: string
+          provenance_checks?: Json
+          render_preview_bucket?: string
+          render_preview_path?: string
+          render_preview_sha256?: string
+          rendered_page_count?: number
+          rendered_page_sha256?: string[]
+          renderer_identity?: string
+          structural_checks?: Json
+          visual_approved_at?: string | null
+          visual_approved_by?: string | null
+          visual_attestation?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_artifact_quality_reviews_content_approved_by_fkey"
+            columns: ["content_approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_artifact_quality_reviews_file_version_id_fkey"
+            columns: ["file_version_id"]
+            isOneToOne: true
+            referencedRelation: "ap_generated_file_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_artifact_quality_reviews_visual_approved_by_fkey"
+            columns: ["visual_approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_artifact_reference_permissions: {
+        Row: {
+          artifact_id: string
+          position: number
+          reference_permission_id: string
+        }
+        Insert: {
+          artifact_id: string
+          position: number
+          reference_permission_id: string
+        }
+        Update: {
+          artifact_id?: string
+          position?: number
+          reference_permission_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_artifact_reference_permissions_artifact_id_fkey"
+            columns: ["artifact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_generated_artifacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_artifact_reference_permissions_reference_permission_id_fkey"
+            columns: ["reference_permission_id"]
+            isOneToOne: false
+            referencedRelation: "ap_reference_permissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_audit_events: {
+        Row: {
+          action: string
+          actor_id: string | null
+          audit_version: string
+          customer_id: string | null
+          entity_id: string | null
+          entity_type: string
+          id: number
+          non_sensitive_details: Json
+          occurred_at: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          audit_version: string
+          customer_id?: string | null
+          entity_id?: string | null
+          entity_type: string
+          id?: never
+          non_sensitive_details?: Json
+          occurred_at?: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          audit_version?: string
+          customer_id?: string | null
+          entity_id?: string | null
+          entity_type?: string
+          id?: never
+          non_sensitive_details?: Json
+          occurred_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_audit_events_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_audit_events_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_board_admissions: {
+        Row: {
+          admission_version: string
+          capability_connection_codes: Json
+          customer_id: string
+          decision: string
+          evaluated_at: string
+          exclusion_codes: Json
+          id: string
+          input_sha256: string | null
+          job_id: string
+          profile_snapshot_id: string
+          superseded_at: string | null
+          warning_codes: Json
+        }
+        Insert: {
+          admission_version?: string
+          capability_connection_codes?: Json
+          customer_id: string
+          decision: string
+          evaluated_at?: string
+          exclusion_codes?: Json
+          id?: string
+          input_sha256?: string | null
+          job_id: string
+          profile_snapshot_id: string
+          superseded_at?: string | null
+          warning_codes?: Json
+        }
+        Update: {
+          admission_version?: string
+          capability_connection_codes?: Json
+          customer_id?: string
+          decision?: string
+          evaluated_at?: string
+          exclusion_codes?: Json
+          id?: string
+          input_sha256?: string | null
+          job_id?: string
+          profile_snapshot_id?: string
+          superseded_at?: string | null
+          warning_codes?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_board_admissions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_board_admissions_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_board_admissions_profile_snapshot_id_fkey"
+            columns: ["profile_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_board_material_orders: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          currency: string
+          customer_id: string
+          delivery_due_at: string | null
+          id: string
+          job_id: string
+          profile_snapshot_id: string
+          provider_checkout_session_id: string | null
+          provider_payment_intent_id: string | null
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          amount_cents?: number
+          created_at?: string
+          currency?: string
+          customer_id: string
+          delivery_due_at?: string | null
+          id?: string
+          job_id: string
+          profile_snapshot_id: string
+          provider_checkout_session_id?: string | null
+          provider_payment_intent_id?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          currency?: string
+          customer_id?: string
+          delivery_due_at?: string | null
+          id?: string
+          job_id?: string
+          profile_snapshot_id?: string
+          provider_checkout_session_id?: string | null
+          provider_payment_intent_id?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_board_material_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_board_material_orders_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_board_material_orders_profile_snapshot_id_fkey"
+            columns: ["profile_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_board_profile_claims: {
+        Row: {
+          access_email_normalized: string
+          claimed_at: string
+          customer_id: string
+          draft_id: string
+          profile_snapshot_id: string
+          profile_version: number
+        }
+        Insert: {
+          access_email_normalized: string
+          claimed_at?: string
+          customer_id: string
+          draft_id: string
+          profile_snapshot_id: string
+          profile_version: number
+        }
+        Update: {
+          access_email_normalized?: string
+          claimed_at?: string
+          customer_id?: string
+          draft_id?: string
+          profile_snapshot_id?: string
+          profile_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_board_profile_claims_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_board_profile_claims_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_board_profile_claims_profile_snapshot_id_fkey"
+            columns: ["profile_snapshot_id"]
+            isOneToOne: true
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_board_provider_events: {
+        Row: {
+          amount_cents: number | null
+          created_at: string
+          event_type: string
+          full_amount_cents: number | null
+          id: string
+          provider_created: number
+          provider_dispute_id: string | null
+          provider_event_id: string
+          provider_refund_id: string | null
+          provider_subscription_id: string
+          resulting_state: string
+        }
+        Insert: {
+          amount_cents?: number | null
+          created_at?: string
+          event_type: string
+          full_amount_cents?: number | null
+          id?: string
+          provider_created: number
+          provider_dispute_id?: string | null
+          provider_event_id: string
+          provider_refund_id?: string | null
+          provider_subscription_id: string
+          resulting_state: string
+        }
+        Update: {
+          amount_cents?: number | null
+          created_at?: string
+          event_type?: string
+          full_amount_cents?: number | null
+          id?: string
+          provider_created?: number
+          provider_dispute_id?: string | null
+          provider_event_id?: string
+          provider_refund_id?: string | null
+          provider_subscription_id?: string
+          resulting_state?: string
+        }
+        Relationships: []
+      }
+      ap_board_recompute_jobs: {
+        Row: {
+          attempts: number
+          available_at: string
+          completed_at: string | null
+          created_at: string
+          customer_id: string | null
+          id: string
+          idempotency_key: string
+          job_id: string | null
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          profile_snapshot_id: string | null
+          reason_code: string
+          scope: string
+          state: string
+        }
+        Insert: {
+          attempts?: number
+          available_at?: string
+          completed_at?: string | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          idempotency_key: string
+          job_id?: string | null
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          profile_snapshot_id?: string | null
+          reason_code: string
+          scope: string
+          state?: string
+        }
+        Update: {
+          attempts?: number
+          available_at?: string
+          completed_at?: string | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          idempotency_key?: string
+          job_id?: string | null
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          profile_snapshot_id?: string | null
+          reason_code?: string
+          scope?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_board_recompute_jobs_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_board_recompute_jobs_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_board_recompute_jobs_profile_snapshot_id_fkey"
+            columns: ["profile_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_board_subscriptions: {
+        Row: {
+          access_ends_at: string | null
+          cancel_at_period_end: boolean
+          created_at: string
+          current_period_starts_at: string | null
+          customer_id: string
+          id: string
+          last_provider_event_created: number
+          last_provider_event_id: string | null
+          plan_id: string
+          provider_checkout_session_id: string | null
+          provider_customer_id: string
+          provider_dispute_id: string | null
+          provider_refund_id: string | null
+          provider_subscription_id: string
+          refund_state: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          access_ends_at?: string | null
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_starts_at?: string | null
+          customer_id: string
+          id?: string
+          last_provider_event_created?: number
+          last_provider_event_id?: string | null
+          plan_id: string
+          provider_checkout_session_id?: string | null
+          provider_customer_id: string
+          provider_dispute_id?: string | null
+          provider_refund_id?: string | null
+          provider_subscription_id: string
+          refund_state?: string
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          access_ends_at?: string | null
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_starts_at?: string | null
+          customer_id?: string
+          id?: string
+          last_provider_event_created?: number
+          last_provider_event_id?: string | null
+          plan_id?: string
+          provider_checkout_session_id?: string | null
+          provider_customer_id?: string
+          provider_dispute_id?: string | null
+          provider_refund_id?: string | null
+          provider_subscription_id?: string
+          refund_state?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_board_subscriptions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_candidate_fact_conflicts: {
+        Row: {
+          conflicting_fact_id: string
+          created_at: string
+          fact_id: string
+          id: string
+          resolution: string
+          resolved_at: string | null
+          resolved_by: string | null
+        }
+        Insert: {
+          conflicting_fact_id: string
+          created_at?: string
+          fact_id: string
+          id?: string
+          resolution: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+        }
+        Update: {
+          conflicting_fact_id?: string
+          created_at?: string
+          fact_id?: string
+          id?: string
+          resolution?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_candidate_fact_conflicts_conflicting_fact_id_fkey"
+            columns: ["conflicting_fact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_candidate_facts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_candidate_fact_conflicts_fact_id_fkey"
+            columns: ["fact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_candidate_facts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_candidate_fact_conflicts_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_candidate_facts: {
+        Row: {
+          assertion_control_id: string | null
+          calendar_duration_days: number | null
+          capability_status: string | null
+          catalog_version: string
+          confirmed_or_corrected_at: string | null
+          created_at: string
+          customer_assertion_snapshot_id: string | null
+          customer_display_label: string | null
+          customer_display_value: Json | null
+          customer_id: string | null
+          document_version_id: string | null
+          draft_id: string | null
+          ends_on: string | null
+          extraction_confidence: number | null
+          fact_tier: Database["public"]["Enums"]["ap_fact_tier"]
+          human_reviewer_id: string | null
+          id: string
+          intensity_percent: number | null
+          schema_version: string
+          semantic_key: string
+          snapshot_id: string | null
+          source_kind: Database["public"]["Enums"]["ap_candidate_fact_source"]
+          source_locator: string
+          starts_on: string | null
+          superseded_at: string | null
+          supersedes_fact_id: string | null
+          supplied_source_id: string | null
+          typed_value: Json
+          value_kind: string
+          verification: Database["public"]["Enums"]["ap_evidence_verification"]
+        }
+        Insert: {
+          assertion_control_id?: string | null
+          calendar_duration_days?: number | null
+          capability_status?: string | null
+          catalog_version: string
+          confirmed_or_corrected_at?: string | null
+          created_at?: string
+          customer_assertion_snapshot_id?: string | null
+          customer_display_label?: string | null
+          customer_display_value?: Json | null
+          customer_id?: string | null
+          document_version_id?: string | null
+          draft_id?: string | null
+          ends_on?: string | null
+          extraction_confidence?: number | null
+          fact_tier?: Database["public"]["Enums"]["ap_fact_tier"]
+          human_reviewer_id?: string | null
+          id?: string
+          intensity_percent?: number | null
+          schema_version: string
+          semantic_key: string
+          snapshot_id?: string | null
+          source_kind: Database["public"]["Enums"]["ap_candidate_fact_source"]
+          source_locator: string
+          starts_on?: string | null
+          superseded_at?: string | null
+          supersedes_fact_id?: string | null
+          supplied_source_id?: string | null
+          typed_value: Json
+          value_kind: string
+          verification: Database["public"]["Enums"]["ap_evidence_verification"]
+        }
+        Update: {
+          assertion_control_id?: string | null
+          calendar_duration_days?: number | null
+          capability_status?: string | null
+          catalog_version?: string
+          confirmed_or_corrected_at?: string | null
+          created_at?: string
+          customer_assertion_snapshot_id?: string | null
+          customer_display_label?: string | null
+          customer_display_value?: Json | null
+          customer_id?: string | null
+          document_version_id?: string | null
+          draft_id?: string | null
+          ends_on?: string | null
+          extraction_confidence?: number | null
+          fact_tier?: Database["public"]["Enums"]["ap_fact_tier"]
+          human_reviewer_id?: string | null
+          id?: string
+          intensity_percent?: number | null
+          schema_version?: string
+          semantic_key?: string
+          snapshot_id?: string | null
+          source_kind?: Database["public"]["Enums"]["ap_candidate_fact_source"]
+          source_locator?: string
+          starts_on?: string | null
+          superseded_at?: string | null
+          supersedes_fact_id?: string | null
+          supplied_source_id?: string | null
+          typed_value?: Json
+          value_kind?: string
+          verification?: Database["public"]["Enums"]["ap_evidence_verification"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_candidate_facts_customer_assertion_snapshot_id_fkey"
+            columns: ["customer_assertion_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_candidate_facts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_candidate_facts_document_version_id_fkey"
+            columns: ["document_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_document_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_candidate_facts_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_candidate_facts_human_reviewer_id_fkey"
+            columns: ["human_reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_candidate_facts_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_candidate_facts_supersedes_fact_id_fkey"
+            columns: ["supersedes_fact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_candidate_facts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_candidate_facts_supplied_source_id_fkey"
+            columns: ["supplied_source_id"]
+            isOneToOne: false
+            referencedRelation: "ap_independent_verification_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_capacity_allocation_members: {
+        Row: {
+          allocation_id: string
+          completed_at: string | null
+          id: string
+          material_line_id: string | null
+          member_debit_disposition: Database["public"]["Enums"]["ap_capacity_debit"]
+          member_lifecycle: Database["public"]["Enums"]["ap_capacity_lifecycle"]
+          revision_id: string | null
+          superseded_at: string | null
+          units: number
+        }
+        Insert: {
+          allocation_id: string
+          completed_at?: string | null
+          id?: string
+          material_line_id?: string | null
+          member_debit_disposition?: Database["public"]["Enums"]["ap_capacity_debit"]
+          member_lifecycle?: Database["public"]["Enums"]["ap_capacity_lifecycle"]
+          revision_id?: string | null
+          superseded_at?: string | null
+          units?: number
+        }
+        Update: {
+          allocation_id?: string
+          completed_at?: string | null
+          id?: string
+          material_line_id?: string | null
+          member_debit_disposition?: Database["public"]["Enums"]["ap_capacity_debit"]
+          member_lifecycle?: Database["public"]["Enums"]["ap_capacity_lifecycle"]
+          revision_id?: string | null
+          superseded_at?: string | null
+          units?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_capacity_allocation_members_allocation_id_fkey"
+            columns: ["allocation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_capacity_allocations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_capacity_member_line_fk"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_capacity_member_revision_fk"
+            columns: ["revision_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_line_revisions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_capacity_allocations: {
+        Row: {
+          audit_version: string
+          bucket_id: string
+          consumed_at: string | null
+          created_at: string
+          criteria_revision_id: string | null
+          customer_id: string | null
+          debit_disposition: Database["public"]["Enums"]["ap_capacity_debit"]
+          draft_id: string | null
+          expires_at: string | null
+          id: string
+          lifecycle: Database["public"]["Enums"]["ap_capacity_lifecycle"]
+          material_line_id: string | null
+          order_id: string | null
+          request_key: string
+          reserved_at: string | null
+          returned_at: string | null
+          staffing_version: string
+          units: number
+          updated_at: string
+        }
+        Insert: {
+          audit_version: string
+          bucket_id: string
+          consumed_at?: string | null
+          created_at?: string
+          criteria_revision_id?: string | null
+          customer_id?: string | null
+          debit_disposition: Database["public"]["Enums"]["ap_capacity_debit"]
+          draft_id?: string | null
+          expires_at?: string | null
+          id?: string
+          lifecycle: Database["public"]["Enums"]["ap_capacity_lifecycle"]
+          material_line_id?: string | null
+          order_id?: string | null
+          request_key: string
+          reserved_at?: string | null
+          returned_at?: string | null
+          staffing_version: string
+          units: number
+          updated_at?: string
+        }
+        Update: {
+          audit_version?: string
+          bucket_id?: string
+          consumed_at?: string | null
+          created_at?: string
+          criteria_revision_id?: string | null
+          customer_id?: string | null
+          debit_disposition?: Database["public"]["Enums"]["ap_capacity_debit"]
+          draft_id?: string | null
+          expires_at?: string | null
+          id?: string
+          lifecycle?: Database["public"]["Enums"]["ap_capacity_lifecycle"]
+          material_line_id?: string | null
+          order_id?: string | null
+          request_key?: string
+          reserved_at?: string | null
+          returned_at?: string | null
+          staffing_version?: string
+          units?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_capacity_allocations_bucket_id_fkey"
+            columns: ["bucket_id"]
+            isOneToOne: false
+            referencedRelation: "ap_capacity_buckets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_capacity_allocations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_capacity_allocations_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_capacity_allocations_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_capacity_allocations_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_capacity_material_line_fk"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_capacity_audit: {
+        Row: {
+          actor_id: string | null
+          allocation_id: string
+          from_debit: Database["public"]["Enums"]["ap_capacity_debit"] | null
+          from_lifecycle:
+            | Database["public"]["Enums"]["ap_capacity_lifecycle"]
+            | null
+          id: number
+          occurred_at: string
+          reason_code: string
+          to_debit: Database["public"]["Enums"]["ap_capacity_debit"]
+          to_lifecycle: Database["public"]["Enums"]["ap_capacity_lifecycle"]
+        }
+        Insert: {
+          actor_id?: string | null
+          allocation_id: string
+          from_debit?: Database["public"]["Enums"]["ap_capacity_debit"] | null
+          from_lifecycle?:
+            | Database["public"]["Enums"]["ap_capacity_lifecycle"]
+            | null
+          id?: never
+          occurred_at?: string
+          reason_code: string
+          to_debit: Database["public"]["Enums"]["ap_capacity_debit"]
+          to_lifecycle: Database["public"]["Enums"]["ap_capacity_lifecycle"]
+        }
+        Update: {
+          actor_id?: string | null
+          allocation_id?: string
+          from_debit?: Database["public"]["Enums"]["ap_capacity_debit"] | null
+          from_lifecycle?:
+            | Database["public"]["Enums"]["ap_capacity_lifecycle"]
+            | null
+          id?: never
+          occurred_at?: string
+          reason_code?: string
+          to_debit?: Database["public"]["Enums"]["ap_capacity_debit"]
+          to_lifecycle?: Database["public"]["Enums"]["ap_capacity_lifecycle"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_capacity_audit_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_capacity_audit_allocation_id_fkey"
+            columns: ["allocation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_capacity_allocations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_capacity_buckets: {
+        Row: {
+          created_at: string
+          ends_at: string
+          id: string
+          pool_id: string
+          staffing_version: string
+          starts_at: string
+          total_units: number
+        }
+        Insert: {
+          created_at?: string
+          ends_at: string
+          id?: string
+          pool_id: string
+          staffing_version: string
+          starts_at: string
+          total_units: number
+        }
+        Update: {
+          created_at?: string
+          ends_at?: string
+          id?: string
+          pool_id?: string
+          staffing_version?: string
+          starts_at?: string
+          total_units?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_capacity_buckets_pool_id_fkey"
+            columns: ["pool_id"]
+            isOneToOne: false
+            referencedRelation: "ap_capacity_pools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_capacity_pools: {
+        Row: {
+          configuration_version: string
+          created_at: string
+          enabled: boolean
+          id: string
+          resource: Database["public"]["Enums"]["ap_capacity_resource"]
+          updated_at: string
+        }
+        Insert: {
+          configuration_version: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          resource: Database["public"]["Enums"]["ap_capacity_resource"]
+          updated_at?: string
+        }
+        Update: {
+          configuration_version?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          resource?: Database["public"]["Enums"]["ap_capacity_resource"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ap_catalog_versions: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          catalog_kind: string
+          content_sha256: string
+          created_at: string
+          id: string
+          version: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          catalog_kind: string
+          content_sha256: string
+          created_at?: string
+          id?: string
+          version: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          catalog_kind?: string
+          content_sha256?: string
+          created_at?: string
+          id?: string
+          version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_catalog_versions_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_checkout_attempts: {
+        Row: {
+          access_payload_id: string | null
+          browser_capability_secret_hash: string | null
+          capacity_allocation_id: string | null
+          capacity_exception_at: string | null
+          capacity_exception_reason: string | null
+          command_id: string
+          created_at: string
+          customer_id: string | null
+          draft_id: string | null
+          email_capability_secret_hash: string | null
+          expires_at: string | null
+          id: string
+          invalidated_at: string | null
+          promoted_at: string | null
+          provider_checkout_session_id: string | null
+          quote_id: string | null
+          reacquired_capacity_allocation_id: string | null
+          reacquisition_attempted_at: string | null
+          stale_reason: string | null
+          state: Database["public"]["Enums"]["ap_checkout_state"]
+          updated_at: string
+        }
+        Insert: {
+          access_payload_id?: string | null
+          browser_capability_secret_hash?: string | null
+          capacity_allocation_id?: string | null
+          capacity_exception_at?: string | null
+          capacity_exception_reason?: string | null
+          command_id: string
+          created_at?: string
+          customer_id?: string | null
+          draft_id?: string | null
+          email_capability_secret_hash?: string | null
+          expires_at?: string | null
+          id?: string
+          invalidated_at?: string | null
+          promoted_at?: string | null
+          provider_checkout_session_id?: string | null
+          quote_id?: string | null
+          reacquired_capacity_allocation_id?: string | null
+          reacquisition_attempted_at?: string | null
+          stale_reason?: string | null
+          state?: Database["public"]["Enums"]["ap_checkout_state"]
+          updated_at?: string
+        }
+        Update: {
+          access_payload_id?: string | null
+          browser_capability_secret_hash?: string | null
+          capacity_allocation_id?: string | null
+          capacity_exception_at?: string | null
+          capacity_exception_reason?: string | null
+          command_id?: string
+          created_at?: string
+          customer_id?: string | null
+          draft_id?: string | null
+          email_capability_secret_hash?: string | null
+          expires_at?: string | null
+          id?: string
+          invalidated_at?: string | null
+          promoted_at?: string | null
+          provider_checkout_session_id?: string | null
+          quote_id?: string | null
+          reacquired_capacity_allocation_id?: string | null
+          reacquisition_attempted_at?: string | null
+          stale_reason?: string | null
+          state?: Database["public"]["Enums"]["ap_checkout_state"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_checkout_attempts_access_payload_id_fkey"
+            columns: ["access_payload_id"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_checkout_attempts_capacity_allocation_id_fkey"
+            columns: ["capacity_allocation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_capacity_allocations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_checkout_attempts_command_id_fkey"
+            columns: ["command_id"]
+            isOneToOne: true
+            referencedRelation: "ap_external_commands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_checkout_attempts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_checkout_attempts_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_checkout_attempts_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "ap_quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_checkout_attempts_reacquired_capacity_allocation_id_fkey"
+            columns: ["reacquired_capacity_allocation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_capacity_allocations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_commerce_configuration: {
+        Row: {
+          access_callback_url: string | null
+          arial_font_sha256: string | null
+          canonical_site_url: string | null
+          checkout_enabled: boolean | null
+          currency: string
+          document_renderer_identity: string | null
+          download_ttl_seconds: number | null
+          immediate_payment_methods: string[]
+          malware_scanner_identity: string | null
+          material_line_price_cents: number
+          material_output_formats: string[]
+          materials_generation_approval_reference: string | null
+          materials_generation_approved: boolean
+          materials_rule_ttl_seconds: number | null
+          payment_api_version: string | null
+          payment_provider: string | null
+          pricing_version: string | null
+          privacy_version: string | null
+          provider_email_approval_reference: string | null
+          provider_idempotent_email_approved: boolean
+          reauthentication_window_seconds: number | null
+          release_verification_ttl_seconds: number | null
+          search_price_cents: number
+          singleton: boolean
+          tax_approval_reference: string | null
+          tax_configuration_approved: boolean
+          tax_inclusive: boolean
+          tax_treatment: string
+          tax_version: string | null
+          terms_version: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_callback_url?: string | null
+          arial_font_sha256?: string | null
+          canonical_site_url?: string | null
+          checkout_enabled?: boolean | null
+          currency?: string
+          document_renderer_identity?: string | null
+          download_ttl_seconds?: number | null
+          immediate_payment_methods?: string[]
+          malware_scanner_identity?: string | null
+          material_line_price_cents?: number
+          material_output_formats?: string[]
+          materials_generation_approval_reference?: string | null
+          materials_generation_approved?: boolean
+          materials_rule_ttl_seconds?: number | null
+          payment_api_version?: string | null
+          payment_provider?: string | null
+          pricing_version?: string | null
+          privacy_version?: string | null
+          provider_email_approval_reference?: string | null
+          provider_idempotent_email_approved?: boolean
+          reauthentication_window_seconds?: number | null
+          release_verification_ttl_seconds?: number | null
+          search_price_cents?: number
+          singleton?: boolean
+          tax_approval_reference?: string | null
+          tax_configuration_approved?: boolean
+          tax_inclusive?: boolean
+          tax_treatment?: string
+          tax_version?: string | null
+          terms_version?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_callback_url?: string | null
+          arial_font_sha256?: string | null
+          canonical_site_url?: string | null
+          checkout_enabled?: boolean | null
+          currency?: string
+          document_renderer_identity?: string | null
+          download_ttl_seconds?: number | null
+          immediate_payment_methods?: string[]
+          malware_scanner_identity?: string | null
+          material_line_price_cents?: number
+          material_output_formats?: string[]
+          materials_generation_approval_reference?: string | null
+          materials_generation_approved?: boolean
+          materials_rule_ttl_seconds?: number | null
+          payment_api_version?: string | null
+          payment_provider?: string | null
+          pricing_version?: string | null
+          privacy_version?: string | null
+          provider_email_approval_reference?: string | null
+          provider_idempotent_email_approved?: boolean
+          reauthentication_window_seconds?: number | null
+          release_verification_ttl_seconds?: number | null
+          search_price_cents?: number
+          singleton?: boolean
+          tax_approval_reference?: string | null
+          tax_configuration_approved?: boolean
+          tax_inclusive?: boolean
+          tax_treatment?: string
+          tax_version?: string | null
+          terms_version?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ap_criteria_amendments: {
+        Row: {
+          acceptance_idempotency_key: string | null
+          accepted_at: string | null
+          accepted_by: string | null
+          accepted_snapshot_content_sha256: string | null
+          blocking_constraints: Json
+          child_snapshot_id: string | null
+          created_at: string
+          criteria_diff: Json
+          current_valid_count: number | null
+          decline_idempotency_key: string | null
+          decline_reason: string | null
+          declined_at: string | null
+          estimated_revision_seconds: number | null
+          id: string
+          idempotency_key: string
+          parent_snapshot_id: string
+          proposal_expires_at: string
+          proposed_snapshot_patch: Json
+          reason_codes: string[]
+          revised_capacity_allocation_id: string | null
+          revision_due_at: string | null
+          revision_started_at: string | null
+          search_service_id: string
+          state: Database["public"]["Enums"]["ap_adjustment_state"]
+        }
+        Insert: {
+          acceptance_idempotency_key?: string | null
+          accepted_at?: string | null
+          accepted_by?: string | null
+          accepted_snapshot_content_sha256?: string | null
+          blocking_constraints?: Json
+          child_snapshot_id?: string | null
+          created_at?: string
+          criteria_diff: Json
+          current_valid_count?: number | null
+          decline_idempotency_key?: string | null
+          decline_reason?: string | null
+          declined_at?: string | null
+          estimated_revision_seconds?: number | null
+          id?: string
+          idempotency_key: string
+          parent_snapshot_id: string
+          proposal_expires_at: string
+          proposed_snapshot_patch?: Json
+          reason_codes?: string[]
+          revised_capacity_allocation_id?: string | null
+          revision_due_at?: string | null
+          revision_started_at?: string | null
+          search_service_id: string
+          state?: Database["public"]["Enums"]["ap_adjustment_state"]
+        }
+        Update: {
+          acceptance_idempotency_key?: string | null
+          accepted_at?: string | null
+          accepted_by?: string | null
+          accepted_snapshot_content_sha256?: string | null
+          blocking_constraints?: Json
+          child_snapshot_id?: string | null
+          created_at?: string
+          criteria_diff?: Json
+          current_valid_count?: number | null
+          decline_idempotency_key?: string | null
+          decline_reason?: string | null
+          declined_at?: string | null
+          estimated_revision_seconds?: number | null
+          id?: string
+          idempotency_key?: string
+          parent_snapshot_id?: string
+          proposal_expires_at?: string
+          proposed_snapshot_patch?: Json
+          reason_codes?: string[]
+          revised_capacity_allocation_id?: string | null
+          revision_due_at?: string | null
+          revision_started_at?: string | null
+          search_service_id?: string
+          state?: Database["public"]["Enums"]["ap_adjustment_state"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_criteria_amendments_accepted_by_fkey"
+            columns: ["accepted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_criteria_amendments_child_snapshot_id_fkey"
+            columns: ["child_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_criteria_amendments_parent_snapshot_id_fkey"
+            columns: ["parent_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_criteria_amendments_revised_capacity_allocation_id_fkey"
+            columns: ["revised_capacity_allocation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_capacity_allocations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_criteria_amendments_search_service_id_fkey"
+            columns: ["search_service_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["corrected_search_service_id"]
+          },
+          {
+            foreignKeyName: "ap_criteria_amendments_search_service_id_fkey"
+            columns: ["search_service_id"]
+            isOneToOne: false
+            referencedRelation: "ap_search_services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_deduplication_displacements: {
+        Row: {
+          comparator_version: string
+          created_at: string
+          displaced_job_snapshot_id: string
+          edge_reason: string
+          evidence: Json
+          id: string
+          inventory_version_id: string
+          selected_job_snapshot_id: string
+        }
+        Insert: {
+          comparator_version: string
+          created_at?: string
+          displaced_job_snapshot_id: string
+          edge_reason: string
+          evidence: Json
+          id?: string
+          inventory_version_id: string
+          selected_job_snapshot_id: string
+        }
+        Update: {
+          comparator_version?: string
+          created_at?: string
+          displaced_job_snapshot_id?: string
+          edge_reason?: string
+          evidence?: Json
+          id?: string
+          inventory_version_id?: string
+          selected_job_snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_deduplication_displacements_displaced_job_snapshot_id_fkey"
+            columns: ["displaced_job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_deduplication_displacements_inventory_version_id_fkey"
+            columns: ["inventory_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_inventory_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_deduplication_displacements_selected_job_snapshot_id_fkey"
+            columns: ["selected_job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_document_versions: {
+        Row: {
+          claimed_mime_type: string
+          created_at: string
+          customer_id: string | null
+          draft_id: string | null
+          failure_code: string | null
+          id: string
+          intake_id: string | null
+          is_current: boolean
+          kind: Database["public"]["Enums"]["ap_document_kind"]
+          leak_scan_status: string
+          malware_provider_ref: string | null
+          malware_status: string
+          model_ready_at: string | null
+          parse_status: string
+          parser_identity: string | null
+          parser_limits: Json | null
+          permitted_model_policy: string | null
+          processing_state: Database["public"]["Enums"]["ap_document_processing_state"]
+          reference_isolation_status: string
+          retention_due_at: string | null
+          retention_state: Database["public"]["Enums"]["ap_retention_state"]
+          safe_display_name: string
+          sha256: string
+          size_bytes: number
+          storage_bucket: string
+          storage_path: string
+          supersedes_id: string | null
+          updated_at: string
+          verified_mime_type: string
+          version: number
+        }
+        Insert: {
+          claimed_mime_type: string
+          created_at?: string
+          customer_id?: string | null
+          draft_id?: string | null
+          failure_code?: string | null
+          id?: string
+          intake_id?: string | null
+          is_current?: boolean
+          kind: Database["public"]["Enums"]["ap_document_kind"]
+          leak_scan_status?: string
+          malware_provider_ref?: string | null
+          malware_status?: string
+          model_ready_at?: string | null
+          parse_status?: string
+          parser_identity?: string | null
+          parser_limits?: Json | null
+          permitted_model_policy?: string | null
+          processing_state?: Database["public"]["Enums"]["ap_document_processing_state"]
+          reference_isolation_status?: string
+          retention_due_at?: string | null
+          retention_state?: Database["public"]["Enums"]["ap_retention_state"]
+          safe_display_name: string
+          sha256: string
+          size_bytes: number
+          storage_bucket: string
+          storage_path: string
+          supersedes_id?: string | null
+          updated_at?: string
+          verified_mime_type: string
+          version: number
+        }
+        Update: {
+          claimed_mime_type?: string
+          created_at?: string
+          customer_id?: string | null
+          draft_id?: string | null
+          failure_code?: string | null
+          id?: string
+          intake_id?: string | null
+          is_current?: boolean
+          kind?: Database["public"]["Enums"]["ap_document_kind"]
+          leak_scan_status?: string
+          malware_provider_ref?: string | null
+          malware_status?: string
+          model_ready_at?: string | null
+          parse_status?: string
+          parser_identity?: string | null
+          parser_limits?: Json | null
+          permitted_model_policy?: string | null
+          processing_state?: Database["public"]["Enums"]["ap_document_processing_state"]
+          reference_isolation_status?: string
+          retention_due_at?: string | null
+          retention_state?: Database["public"]["Enums"]["ap_retention_state"]
+          safe_display_name?: string
+          sha256?: string
+          size_bytes?: number
+          storage_bucket?: string
+          storage_path?: string
+          supersedes_id?: string | null
+          updated_at?: string
+          verified_mime_type?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_document_versions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_document_versions_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_document_versions_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_document_versions_supersedes_id_fkey"
+            columns: ["supersedes_id"]
+            isOneToOne: false
+            referencedRelation: "ap_document_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_employer_submission_rules: {
+        Row: {
+          allowed_formats: string[]
+          application_questions: Json
+          checked_at: string
+          content_sha256: string
+          cover_letter_filename_instruction: string | null
+          cover_letter_page_limit: number | null
+          cover_letter_requirement: string
+          created_at: string
+          hard_block_reason: string | null
+          human_confirmed_at: string
+          human_confirmed_by: string
+          id: string
+          injection_scan_state: string
+          is_current: boolean
+          job_snapshot_id: string
+          parser_version: string
+          portfolio_instruction: string | null
+          reference_count: number | null
+          reference_filename_instruction: string | null
+          reference_timing: string
+          resume_filename_instruction: string | null
+          resume_page_limit: number | null
+          resume_requirement: string
+          source_evidence_ids: string[]
+          submission_channel: string
+          superseded_at: string | null
+          work_sample_instruction: string | null
+        }
+        Insert: {
+          allowed_formats: string[]
+          application_questions?: Json
+          checked_at: string
+          content_sha256: string
+          cover_letter_filename_instruction?: string | null
+          cover_letter_page_limit?: number | null
+          cover_letter_requirement: string
+          created_at?: string
+          hard_block_reason?: string | null
+          human_confirmed_at: string
+          human_confirmed_by: string
+          id?: string
+          injection_scan_state: string
+          is_current?: boolean
+          job_snapshot_id: string
+          parser_version: string
+          portfolio_instruction?: string | null
+          reference_count?: number | null
+          reference_filename_instruction?: string | null
+          reference_timing: string
+          resume_filename_instruction?: string | null
+          resume_page_limit?: number | null
+          resume_requirement: string
+          source_evidence_ids: string[]
+          submission_channel: string
+          superseded_at?: string | null
+          work_sample_instruction?: string | null
+        }
+        Update: {
+          allowed_formats?: string[]
+          application_questions?: Json
+          checked_at?: string
+          content_sha256?: string
+          cover_letter_filename_instruction?: string | null
+          cover_letter_page_limit?: number | null
+          cover_letter_requirement?: string
+          created_at?: string
+          hard_block_reason?: string | null
+          human_confirmed_at?: string
+          human_confirmed_by?: string
+          id?: string
+          injection_scan_state?: string
+          is_current?: boolean
+          job_snapshot_id?: string
+          parser_version?: string
+          portfolio_instruction?: string | null
+          reference_count?: number | null
+          reference_filename_instruction?: string | null
+          reference_timing?: string
+          resume_filename_instruction?: string | null
+          resume_page_limit?: number | null
+          resume_requirement?: string
+          source_evidence_ids?: string[]
+          submission_channel?: string
+          superseded_at?: string | null
+          work_sample_instruction?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_employer_submission_rules_human_confirmed_by_fkey"
+            columns: ["human_confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_employer_submission_rules_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_experience_identities: {
+        Row: {
+          calendar_duration_days: number | null
+          created_at: string
+          customer_id: string | null
+          draft_id: string | null
+          ends_on: string | null
+          id: string
+          intensity_percent: number | null
+          kind: Database["public"]["Enums"]["ap_experience_kind"]
+          label: string
+          occupational_credit_eligible: boolean
+          source_fact_id: string
+          starts_on: string | null
+        }
+        Insert: {
+          calendar_duration_days?: number | null
+          created_at?: string
+          customer_id?: string | null
+          draft_id?: string | null
+          ends_on?: string | null
+          id?: string
+          intensity_percent?: number | null
+          kind: Database["public"]["Enums"]["ap_experience_kind"]
+          label: string
+          occupational_credit_eligible: boolean
+          source_fact_id: string
+          starts_on?: string | null
+        }
+        Update: {
+          calendar_duration_days?: number | null
+          created_at?: string
+          customer_id?: string | null
+          draft_id?: string | null
+          ends_on?: string | null
+          id?: string
+          intensity_percent?: number | null
+          kind?: Database["public"]["Enums"]["ap_experience_kind"]
+          label?: string
+          occupational_credit_eligible?: boolean
+          source_fact_id?: string
+          starts_on?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_experience_identities_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_experience_identities_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_experience_identities_source_fact_id_fkey"
+            columns: ["source_fact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_candidate_facts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_external_commands: {
+        Row: {
+          applied_at: string | null
+          command_kind: string
+          compensated_at: string | null
+          created_at: string
+          customer_id: string | null
+          draft_id: string | null
+          failure_code: string | null
+          id: string
+          immutable_input_sha256: string
+          lease_expires_at: string | null
+          provider: string
+          provider_idempotency_key: string
+          provider_object_id: string | null
+          reconciliation_state: string
+          result_metadata: Json
+          state: Database["public"]["Enums"]["ap_command_state"]
+          updated_at: string
+        }
+        Insert: {
+          applied_at?: string | null
+          command_kind: string
+          compensated_at?: string | null
+          created_at?: string
+          customer_id?: string | null
+          draft_id?: string | null
+          failure_code?: string | null
+          id?: string
+          immutable_input_sha256: string
+          lease_expires_at?: string | null
+          provider: string
+          provider_idempotency_key: string
+          provider_object_id?: string | null
+          reconciliation_state?: string
+          result_metadata?: Json
+          state?: Database["public"]["Enums"]["ap_command_state"]
+          updated_at?: string
+        }
+        Update: {
+          applied_at?: string | null
+          command_kind?: string
+          compensated_at?: string | null
+          created_at?: string
+          customer_id?: string | null
+          draft_id?: string | null
+          failure_code?: string | null
+          id?: string
+          immutable_input_sha256?: string
+          lease_expires_at?: string | null
+          provider?: string
+          provider_idempotency_key?: string
+          provider_object_id?: string | null
+          reconciliation_state?: string
+          result_metadata?: Json
+          state?: Database["public"]["Enums"]["ap_command_state"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_external_commands_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_external_commands_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_fact_presentations: {
+        Row: {
+          control_id: string
+          draft_id: string
+          draft_version: number
+          fact_id: string
+          id: number
+          presented_at: string
+        }
+        Insert: {
+          control_id: string
+          draft_id: string
+          draft_version: number
+          fact_id: string
+          id?: never
+          presented_at?: string
+        }
+        Update: {
+          control_id?: string
+          draft_id?: string
+          draft_version?: number
+          fact_id?: string
+          id?: never
+          presented_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_fact_presentations_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_fact_presentations_fact_id_fkey"
+            columns: ["fact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_candidate_facts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_fact_review_history: {
+        Row: {
+          correction_fact_id: string | null
+          decision: Database["public"]["Enums"]["ap_fact_review_decision"]
+          draft_id: string
+          fact_id: string
+          id: number
+          reviewed_at: string
+          snapshot_id: string
+        }
+        Insert: {
+          correction_fact_id?: string | null
+          decision: Database["public"]["Enums"]["ap_fact_review_decision"]
+          draft_id: string
+          fact_id: string
+          id?: never
+          reviewed_at?: string
+          snapshot_id: string
+        }
+        Update: {
+          correction_fact_id?: string | null
+          decision?: Database["public"]["Enums"]["ap_fact_review_decision"]
+          draft_id?: string
+          fact_id?: string
+          id?: never
+          reviewed_at?: string
+          snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_fact_review_history_correction_fact_id_fkey"
+            columns: ["correction_fact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_candidate_facts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_fact_review_history_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_fact_review_history_fact_id_fkey"
+            columns: ["fact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_candidate_facts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_fact_review_history_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_feasibility_assessments: {
+        Row: {
+          coverage_plan_id: string
+          created_at: string
+          excluded_count: number | null
+          expires_at: string | null
+          id: string
+          invalidated_at: string | null
+          outcome: Database["public"]["Enums"]["ap_feasibility_outcome"] | null
+          preliminarily_deliverable_count: number | null
+          primary_reason:
+            | Database["public"]["Enums"]["ap_feasibility_reason"]
+            | null
+          reasons: Database["public"]["Enums"]["ap_feasibility_reason"][]
+          resolution_blocker: Database["public"]["Enums"]["ap_resolution_blocker"]
+          reviewable_count: number | null
+          rules_version: string
+          snapshot_id: string
+          state: Database["public"]["Enums"]["ap_feasibility_run_state"]
+        }
+        Insert: {
+          coverage_plan_id: string
+          created_at?: string
+          excluded_count?: number | null
+          expires_at?: string | null
+          id?: string
+          invalidated_at?: string | null
+          outcome?: Database["public"]["Enums"]["ap_feasibility_outcome"] | null
+          preliminarily_deliverable_count?: number | null
+          primary_reason?:
+            | Database["public"]["Enums"]["ap_feasibility_reason"]
+            | null
+          reasons?: Database["public"]["Enums"]["ap_feasibility_reason"][]
+          resolution_blocker?: Database["public"]["Enums"]["ap_resolution_blocker"]
+          reviewable_count?: number | null
+          rules_version: string
+          snapshot_id: string
+          state?: Database["public"]["Enums"]["ap_feasibility_run_state"]
+        }
+        Update: {
+          coverage_plan_id?: string
+          created_at?: string
+          excluded_count?: number | null
+          expires_at?: string | null
+          id?: string
+          invalidated_at?: string | null
+          outcome?: Database["public"]["Enums"]["ap_feasibility_outcome"] | null
+          preliminarily_deliverable_count?: number | null
+          primary_reason?:
+            | Database["public"]["Enums"]["ap_feasibility_reason"]
+            | null
+          reasons?: Database["public"]["Enums"]["ap_feasibility_reason"][]
+          resolution_blocker?: Database["public"]["Enums"]["ap_resolution_blocker"]
+          reviewable_count?: number | null
+          rules_version?: string
+          snapshot_id?: string
+          state?: Database["public"]["Enums"]["ap_feasibility_run_state"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_feasibility_assessments_coverage_plan_id_fkey"
+            columns: ["coverage_plan_id"]
+            isOneToOne: false
+            referencedRelation: "ap_feasibility_coverage_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_feasibility_assessments_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_feasibility_coverage_cells: {
+        Row: {
+          authorization_mode: string
+          completed_at: string | null
+          configuration_id: string | null
+          configured_bound_satisfied: boolean
+          cursor_or_stop_reason: string | null
+          execution_path: string
+          id: string
+          lookback_bound: string
+          manual_checklist_complete: boolean
+          normalized_and_deduplicated: boolean
+          pagination_bound: number
+          parser_result: Json | null
+          plan_id: string
+          query_family_id: string | null
+          query_fingerprint: string
+          result_bound: number
+          result_changing_error_code: string | null
+          result_count: number | null
+          source_authorization_id: string | null
+          source_id: string
+          started_at: string | null
+          terminal_outcome: string | null
+        }
+        Insert: {
+          authorization_mode: string
+          completed_at?: string | null
+          configuration_id?: string | null
+          configured_bound_satisfied?: boolean
+          cursor_or_stop_reason?: string | null
+          execution_path: string
+          id?: string
+          lookback_bound: string
+          manual_checklist_complete?: boolean
+          normalized_and_deduplicated?: boolean
+          pagination_bound: number
+          parser_result?: Json | null
+          plan_id: string
+          query_family_id?: string | null
+          query_fingerprint: string
+          result_bound: number
+          result_changing_error_code?: string | null
+          result_count?: number | null
+          source_authorization_id?: string | null
+          source_id: string
+          started_at?: string | null
+          terminal_outcome?: string | null
+        }
+        Update: {
+          authorization_mode?: string
+          completed_at?: string | null
+          configuration_id?: string | null
+          configured_bound_satisfied?: boolean
+          cursor_or_stop_reason?: string | null
+          execution_path?: string
+          id?: string
+          lookback_bound?: string
+          manual_checklist_complete?: boolean
+          normalized_and_deduplicated?: boolean
+          pagination_bound?: number
+          parser_result?: Json | null
+          plan_id?: string
+          query_family_id?: string | null
+          query_fingerprint?: string
+          result_bound?: number
+          result_changing_error_code?: string | null
+          result_count?: number | null
+          source_authorization_id?: string | null
+          source_id?: string
+          started_at?: string | null
+          terminal_outcome?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_feasibility_coverage_cells_configuration_id_fkey"
+            columns: ["configuration_id"]
+            isOneToOne: false
+            referencedRelation: "ap_feasibility_source_configurations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_feasibility_coverage_cells_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "ap_feasibility_coverage_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_feasibility_coverage_cells_source_authorization_id_fkey"
+            columns: ["source_authorization_id"]
+            isOneToOne: false
+            referencedRelation: "ap_source_authorizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_feasibility_coverage_plans: {
+        Row: {
+          constraint_proof: Json | null
+          content_sha256: string
+          coverage_disposition: string
+          created_at: string
+          id: string
+          inventory_version_id: string
+          plan_version: string
+          snapshot_id: string
+          typed_inputs: Json
+        }
+        Insert: {
+          constraint_proof?: Json | null
+          content_sha256: string
+          coverage_disposition: string
+          created_at?: string
+          id?: string
+          inventory_version_id: string
+          plan_version: string
+          snapshot_id: string
+          typed_inputs: Json
+        }
+        Update: {
+          constraint_proof?: Json | null
+          content_sha256?: string
+          coverage_disposition?: string
+          created_at?: string
+          id?: string
+          inventory_version_id?: string
+          plan_version?: string
+          snapshot_id?: string
+          typed_inputs?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_feasibility_coverage_plans_inventory_version_id_fkey"
+            columns: ["inventory_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_inventory_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_feasibility_coverage_plans_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_feasibility_requests: {
+        Row: {
+          claimed_at: string | null
+          claimed_by: string | null
+          completed_assessment_id: string | null
+          created_at: string
+          draft_id: string
+          error_code: string | null
+          id: string
+          idempotency_key: string
+          request_version: string
+          snapshot_id: string
+          stale_reason: string | null
+          state: Database["public"]["Enums"]["ap_feasibility_request_state"]
+          updated_at: string
+        }
+        Insert: {
+          claimed_at?: string | null
+          claimed_by?: string | null
+          completed_assessment_id?: string | null
+          created_at?: string
+          draft_id: string
+          error_code?: string | null
+          id?: string
+          idempotency_key: string
+          request_version: string
+          snapshot_id: string
+          stale_reason?: string | null
+          state?: Database["public"]["Enums"]["ap_feasibility_request_state"]
+          updated_at?: string
+        }
+        Update: {
+          claimed_at?: string | null
+          claimed_by?: string | null
+          completed_assessment_id?: string | null
+          created_at?: string
+          draft_id?: string
+          error_code?: string | null
+          id?: string
+          idempotency_key?: string
+          request_version?: string
+          snapshot_id?: string
+          stale_reason?: string | null
+          state?: Database["public"]["Enums"]["ap_feasibility_request_state"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_feasibility_requests_completed_assessment_id_fkey"
+            columns: ["completed_assessment_id"]
+            isOneToOne: false
+            referencedRelation: "ap_feasibility_assessments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_feasibility_requests_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_feasibility_requests_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: true
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_feasibility_source_configurations: {
+        Row: {
+          approved_at: string
+          approved_by_role: string
+          config_version: string
+          content_sha256: string
+          created_at: string
+          cutoff_version: string
+          id: string
+          lookback_bound: string
+          pagination_bound: number
+          parser_version: string
+          release_verification_ttl: string
+          result_bound: number
+          source_authorization_id: string
+        }
+        Insert: {
+          approved_at: string
+          approved_by_role: string
+          config_version: string
+          content_sha256: string
+          created_at?: string
+          cutoff_version: string
+          id?: string
+          lookback_bound: string
+          pagination_bound: number
+          parser_version: string
+          release_verification_ttl: string
+          result_bound: number
+          source_authorization_id: string
+        }
+        Update: {
+          approved_at?: string
+          approved_by_role?: string
+          config_version?: string
+          content_sha256?: string
+          created_at?: string
+          cutoff_version?: string
+          id?: string
+          lookback_bound?: string
+          pagination_bound?: number
+          parser_version?: string
+          release_verification_ttl?: string
+          result_bound?: number
+          source_authorization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_feasibility_source_configuratio_source_authorization_id_fkey"
+            columns: ["source_authorization_id"]
+            isOneToOne: false
+            referencedRelation: "ap_source_authorizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_feature_flags: {
+        Row: {
+          approval_reference: string | null
+          enabled: boolean
+          flag: string
+          updated_at: string
+        }
+        Insert: {
+          approval_reference?: string | null
+          enabled?: boolean
+          flag: string
+          updated_at?: string
+        }
+        Update: {
+          approval_reference?: string | null
+          enabled?: boolean
+          flag?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ap_generated_artifacts: {
+        Row: {
+          artifact_type: Database["public"]["Enums"]["ap_artifact_type"]
+          claim_provenance: Json
+          created_at: string
+          current_file_version: number
+          customer_id: string
+          generator_version: string
+          id: string
+          job_snapshot_id: string | null
+          material_line_id: string | null
+          order_id: string
+          reference_permission_id: string | null
+          reference_regeneration_id: string | null
+          retention_due_at: string | null
+          retention_state: Database["public"]["Enums"]["ap_retention_state"]
+          source_line_revision_id: string | null
+          source_snapshot_id: string
+        }
+        Insert: {
+          artifact_type: Database["public"]["Enums"]["ap_artifact_type"]
+          claim_provenance: Json
+          created_at?: string
+          current_file_version?: number
+          customer_id: string
+          generator_version: string
+          id?: string
+          job_snapshot_id?: string | null
+          material_line_id?: string | null
+          order_id: string
+          reference_permission_id?: string | null
+          reference_regeneration_id?: string | null
+          retention_due_at?: string | null
+          retention_state?: Database["public"]["Enums"]["ap_retention_state"]
+          source_line_revision_id?: string | null
+          source_snapshot_id: string
+        }
+        Update: {
+          artifact_type?: Database["public"]["Enums"]["ap_artifact_type"]
+          claim_provenance?: Json
+          created_at?: string
+          current_file_version?: number
+          customer_id?: string
+          generator_version?: string
+          id?: string
+          job_snapshot_id?: string | null
+          material_line_id?: string | null
+          order_id?: string
+          reference_permission_id?: string | null
+          reference_regeneration_id?: string | null
+          retention_due_at?: string | null
+          retention_state?: Database["public"]["Enums"]["ap_retention_state"]
+          source_line_revision_id?: string | null
+          source_snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_generated_artifacts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_generated_artifacts_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_generated_artifacts_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_generated_artifacts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_generated_artifacts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_generated_artifacts_reference_permission_id_fkey"
+            columns: ["reference_permission_id"]
+            isOneToOne: false
+            referencedRelation: "ap_reference_permissions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_generated_artifacts_reference_regeneration_id_fkey"
+            columns: ["reference_regeneration_id"]
+            isOneToOne: false
+            referencedRelation: "ap_reference_regenerations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_generated_artifacts_source_line_revision_id_fkey"
+            columns: ["source_line_revision_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_line_revisions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_generated_artifacts_source_snapshot_id_fkey"
+            columns: ["source_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_generated_file_versions: {
+        Row: {
+          artifact_id: string
+          binding_sha256: string | null
+          checksum_sha256: string
+          created_at: string
+          downloads_revoked_at: string | null
+          human_content_approved_at: string | null
+          human_content_approved_by: string | null
+          human_visual_approved_at: string | null
+          human_visual_approved_by: string | null
+          id: string
+          mime_type: string
+          package_qa_sha256: string | null
+          safe_filename: string | null
+          size_bytes: number
+          storage_bucket: string
+          storage_path: string
+          superseded_at: string | null
+          version: number
+        }
+        Insert: {
+          artifact_id: string
+          binding_sha256?: string | null
+          checksum_sha256: string
+          created_at?: string
+          downloads_revoked_at?: string | null
+          human_content_approved_at?: string | null
+          human_content_approved_by?: string | null
+          human_visual_approved_at?: string | null
+          human_visual_approved_by?: string | null
+          id?: string
+          mime_type: string
+          package_qa_sha256?: string | null
+          safe_filename?: string | null
+          size_bytes: number
+          storage_bucket: string
+          storage_path: string
+          superseded_at?: string | null
+          version: number
+        }
+        Update: {
+          artifact_id?: string
+          binding_sha256?: string | null
+          checksum_sha256?: string
+          created_at?: string
+          downloads_revoked_at?: string | null
+          human_content_approved_at?: string | null
+          human_content_approved_by?: string | null
+          human_visual_approved_at?: string | null
+          human_visual_approved_by?: string | null
+          id?: string
+          mime_type?: string
+          package_qa_sha256?: string | null
+          safe_filename?: string | null
+          size_bytes?: number
+          storage_bucket?: string
+          storage_path?: string
+          superseded_at?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_generated_file_versions_artifact_id_fkey"
+            columns: ["artifact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_generated_artifacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_generated_file_versions_human_content_approved_by_fkey"
+            columns: ["human_content_approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_generated_file_versions_human_visual_approved_by_fkey"
+            columns: ["human_visual_approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_human_review_records: {
+        Row: {
+          autonomy: string | null
+          catalog_version: string
+          compared_tasks: Json | null
+          complexity: string | null
+          created_at: string
+          customer_id: string | null
+          decision: Json
+          domain_context: string | null
+          draft_id: string | null
+          duration_and_intensity: Json | null
+          essential_tools: Json | null
+          id: string
+          invalidated_at: string | null
+          job_snapshot_id: string | null
+          rationale: string
+          review_kind: string
+          review_subject_key: string
+          reviewer_id: string
+          scope: string | null
+          snapshot_id: string
+          supersedes_review_id: string | null
+          task_similarity: string | null
+        }
+        Insert: {
+          autonomy?: string | null
+          catalog_version: string
+          compared_tasks?: Json | null
+          complexity?: string | null
+          created_at?: string
+          customer_id?: string | null
+          decision: Json
+          domain_context?: string | null
+          draft_id?: string | null
+          duration_and_intensity?: Json | null
+          essential_tools?: Json | null
+          id?: string
+          invalidated_at?: string | null
+          job_snapshot_id?: string | null
+          rationale: string
+          review_kind: string
+          review_subject_key: string
+          reviewer_id: string
+          scope?: string | null
+          snapshot_id: string
+          supersedes_review_id?: string | null
+          task_similarity?: string | null
+        }
+        Update: {
+          autonomy?: string | null
+          catalog_version?: string
+          compared_tasks?: Json | null
+          complexity?: string | null
+          created_at?: string
+          customer_id?: string | null
+          decision?: Json
+          domain_context?: string | null
+          draft_id?: string | null
+          duration_and_intensity?: Json | null
+          essential_tools?: Json | null
+          id?: string
+          invalidated_at?: string | null
+          job_snapshot_id?: string | null
+          rationale?: string
+          review_kind?: string
+          review_subject_key?: string
+          reviewer_id?: string
+          scope?: string | null
+          snapshot_id?: string
+          supersedes_review_id?: string | null
+          task_similarity?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_human_review_records_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_human_review_records_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_human_review_records_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_human_review_records_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_human_review_records_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_human_review_records_supersedes_review_id_fkey"
+            columns: ["supersedes_review_id"]
+            isOneToOne: false
+            referencedRelation: "ap_human_review_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_independent_verification_sources: {
+        Row: {
+          content_sha256: string
+          created_at: string
+          customer_id: string
+          encrypted_payload_id: string
+          id: string
+          retention_due_at: string | null
+          retention_state: Database["public"]["Enums"]["ap_retention_state"]
+          reviewer_id: string
+          source_locator: string
+          source_type: string
+          verified_at: string
+        }
+        Insert: {
+          content_sha256: string
+          created_at?: string
+          customer_id: string
+          encrypted_payload_id: string
+          id?: string
+          retention_due_at?: string | null
+          retention_state?: Database["public"]["Enums"]["ap_retention_state"]
+          reviewer_id: string
+          source_locator: string
+          source_type: string
+          verified_at: string
+        }
+        Update: {
+          content_sha256?: string
+          created_at?: string
+          customer_id?: string
+          encrypted_payload_id?: string
+          id?: string
+          retention_due_at?: string | null
+          retention_state?: Database["public"]["Enums"]["ap_retention_state"]
+          reviewer_id?: string
+          source_locator?: string
+          source_type?: string
+          verified_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_independent_verification_sources_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_independent_verification_sources_encrypted_payload_id_fkey"
+            columns: ["encrypted_payload_id"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_independent_verification_sources_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_intake_event_counts: {
+        Row: {
+          count: number
+          event_day: string
+          event_name: string
+          step: number
+        }
+        Insert: {
+          count?: number
+          event_day: string
+          event_name: string
+          step: number
+        }
+        Update: {
+          count?: number
+          event_day?: string
+          event_name?: string
+          step?: number
+        }
+        Relationships: []
+      }
+      ap_intake_snapshots: {
+        Row: {
+          access_email_normalized: string
+          avoided_activities: Json
+          benefits: Json
+          blocked_industries: Json
+          canonicalization_version: string
+          confirmed_title_restriction: Json | null
+          content_sha256: string
+          created_at: string
+          currency: string
+          customer_id: string | null
+          dealbreakers: Json
+          desired_activities: Json
+          document_contact_email: string | null
+          draft_id: string | null
+          employer_unknown_policy: Json
+          employment_types: Json
+          finalized_at: string
+          guidance_requested: boolean
+          id: string
+          intake_id: string | null
+          optional_industries: Json
+          optional_titles: Json
+          parent_snapshot_id: string | null
+          payer_receipt_email: string | null
+          preferred_employment_type: string | null
+          preferred_work_mode: string | null
+          prior_cover_letter_use: string
+          salary_basis: string | null
+          salary_hard_minimum_cents: number | null
+          salary_minimum_flexible: boolean
+          salary_noncomparable_policy: string
+          salary_overlap_policy: string
+          salary_period: string | null
+          salary_target_cents: number | null
+          salary_unpublished_policy: string
+          salary_variable_pay_policy: string
+          schedules: Json
+          schema_version: string
+          search_breadth: string
+          sensitive_payload_id: string | null
+          snapshot_kind: string
+          targeted_authorization_answers: Json
+          travel: Json
+          us_state_or_dc: string | null
+          version: number
+          work_condition_preferences: Json
+          work_modes: Json
+        }
+        Insert: {
+          access_email_normalized: string
+          avoided_activities: Json
+          benefits: Json
+          blocked_industries: Json
+          canonicalization_version: string
+          confirmed_title_restriction?: Json | null
+          content_sha256: string
+          created_at?: string
+          currency?: string
+          customer_id?: string | null
+          dealbreakers: Json
+          desired_activities: Json
+          document_contact_email?: string | null
+          draft_id?: string | null
+          employer_unknown_policy: Json
+          employment_types: Json
+          finalized_at: string
+          guidance_requested: boolean
+          id?: string
+          intake_id?: string | null
+          optional_industries: Json
+          optional_titles: Json
+          parent_snapshot_id?: string | null
+          payer_receipt_email?: string | null
+          preferred_employment_type?: string | null
+          preferred_work_mode?: string | null
+          prior_cover_letter_use: string
+          salary_basis?: string | null
+          salary_hard_minimum_cents?: number | null
+          salary_minimum_flexible: boolean
+          salary_noncomparable_policy: string
+          salary_overlap_policy: string
+          salary_period?: string | null
+          salary_target_cents?: number | null
+          salary_unpublished_policy: string
+          salary_variable_pay_policy: string
+          schedules: Json
+          schema_version: string
+          search_breadth: string
+          sensitive_payload_id?: string | null
+          snapshot_kind: string
+          targeted_authorization_answers: Json
+          travel: Json
+          us_state_or_dc?: string | null
+          version: number
+          work_condition_preferences?: Json
+          work_modes: Json
+        }
+        Update: {
+          access_email_normalized?: string
+          avoided_activities?: Json
+          benefits?: Json
+          blocked_industries?: Json
+          canonicalization_version?: string
+          confirmed_title_restriction?: Json | null
+          content_sha256?: string
+          created_at?: string
+          currency?: string
+          customer_id?: string | null
+          dealbreakers?: Json
+          desired_activities?: Json
+          document_contact_email?: string | null
+          draft_id?: string | null
+          employer_unknown_policy?: Json
+          employment_types?: Json
+          finalized_at?: string
+          guidance_requested?: boolean
+          id?: string
+          intake_id?: string | null
+          optional_industries?: Json
+          optional_titles?: Json
+          parent_snapshot_id?: string | null
+          payer_receipt_email?: string | null
+          preferred_employment_type?: string | null
+          preferred_work_mode?: string | null
+          prior_cover_letter_use?: string
+          salary_basis?: string | null
+          salary_hard_minimum_cents?: number | null
+          salary_minimum_flexible?: boolean
+          salary_noncomparable_policy?: string
+          salary_overlap_policy?: string
+          salary_period?: string | null
+          salary_target_cents?: number | null
+          salary_unpublished_policy?: string
+          salary_variable_pay_policy?: string
+          schedules?: Json
+          schema_version?: string
+          search_breadth?: string
+          sensitive_payload_id?: string | null
+          snapshot_kind?: string
+          targeted_authorization_answers?: Json
+          travel?: Json
+          us_state_or_dc?: string | null
+          version?: number
+          work_condition_preferences?: Json
+          work_modes?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_intake_snapshots_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_snapshots_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_snapshots_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_snapshots_parent_snapshot_id_fkey"
+            columns: ["parent_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_snapshots_sensitive_payload_id_fkey"
+            columns: ["sensitive_payload_id"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_inventory_members: {
+        Row: {
+          created_at: string
+          exclusion_reason: string | null
+          id: string
+          inventory_version_id: string
+          job_snapshot_id: string
+          selected_by_deduplication: boolean
+          stable_normalized_job_id: string
+        }
+        Insert: {
+          created_at?: string
+          exclusion_reason?: string | null
+          id?: string
+          inventory_version_id: string
+          job_snapshot_id: string
+          selected_by_deduplication: boolean
+          stable_normalized_job_id: string
+        }
+        Update: {
+          created_at?: string
+          exclusion_reason?: string | null
+          id?: string
+          inventory_version_id?: string
+          job_snapshot_id?: string
+          selected_by_deduplication?: boolean
+          stable_normalized_job_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_inventory_members_inventory_version_id_fkey"
+            columns: ["inventory_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_inventory_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_inventory_members_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_inventory_versions: {
+        Row: {
+          content_sha256: string
+          created_at: string
+          cutoff_at: string
+          id: string
+          parser_version: string
+          query_version: string
+          source_registry_version: string
+        }
+        Insert: {
+          content_sha256: string
+          created_at?: string
+          cutoff_at: string
+          id?: string
+          parser_version: string
+          query_version: string
+          source_registry_version: string
+        }
+        Update: {
+          content_sha256?: string
+          created_at?: string
+          cutoff_at?: string
+          id?: string
+          parser_version?: string
+          query_version?: string
+          source_registry_version?: string
+        }
+        Relationships: []
+      }
+      ap_job_release_reviews: {
+        Row: {
+          bound_fact_ids: string[]
+          bound_job_snapshot_id: string
+          bound_snapshot_id: string
+          bound_version_bundle: Json
+          customer_id: string
+          decision: Database["public"]["Enums"]["ap_staff_review_decision"]
+          evaluation_id: string
+          id: string
+          invalidated_at: string | null
+          rationale: string
+          reviewed_at: string
+          reviewer_id: string
+          search_service_id: string
+        }
+        Insert: {
+          bound_fact_ids: string[]
+          bound_job_snapshot_id: string
+          bound_snapshot_id: string
+          bound_version_bundle: Json
+          customer_id: string
+          decision: Database["public"]["Enums"]["ap_staff_review_decision"]
+          evaluation_id: string
+          id?: string
+          invalidated_at?: string | null
+          rationale: string
+          reviewed_at?: string
+          reviewer_id: string
+          search_service_id: string
+        }
+        Update: {
+          bound_fact_ids?: string[]
+          bound_job_snapshot_id?: string
+          bound_snapshot_id?: string
+          bound_version_bundle?: Json
+          customer_id?: string
+          decision?: Database["public"]["Enums"]["ap_staff_review_decision"]
+          evaluation_id?: string
+          id?: string
+          invalidated_at?: string | null
+          rationale?: string
+          reviewed_at?: string
+          reviewer_id?: string
+          search_service_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_job_release_reviews_bound_job_snapshot_id_fkey"
+            columns: ["bound_job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_job_release_reviews_bound_snapshot_id_fkey"
+            columns: ["bound_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_job_release_reviews_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_job_release_reviews_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_match_evaluations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_job_release_reviews_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_job_release_reviews_search_service_id_fkey"
+            columns: ["search_service_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["corrected_search_service_id"]
+          },
+          {
+            foreignKeyName: "ap_job_release_reviews_search_service_id_fkey"
+            columns: ["search_service_id"]
+            isOneToOne: false
+            referencedRelation: "ap_search_services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_job_snapshots: {
+        Row: {
+          application_host_type: string
+          application_path_result: string | null
+          canonical_application_url: string
+          canonical_employer_domain: string | null
+          canonical_employer_listing_url: string | null
+          canonicalization_version: string | null
+          captured_listing: Json
+          company: string
+          compensation_completeness: number
+          compensation_source: string | null
+          compensation_text: string | null
+          content_sha256: string
+          correction_review_id: string | null
+          created_at: string
+          discovery_source: string
+          employer_identity_result: string | null
+          exact_title: string
+          external_job_id: string | null
+          first_seen_at: string | null
+          fraud_signals: string[]
+          id: string
+          legacy_compatibility: boolean
+          legacy_job_id: string | null
+          legitimacy_result: string | null
+          listing_activity_result: string | null
+          live_verified_at: string
+          location_and_work_mode: Json
+          material_restrictions: Json
+          material_source_qualities: number[]
+          normalized_fingerprint: string
+          origin: Database["public"]["Enums"]["ap_job_origin"]
+          parser_version: string
+          posted_date_unknown: boolean
+          posted_on: string | null
+          requirement_completeness: number
+          retrieved_at: string
+          source_authorization_id: string | null
+          source_url: string
+          supersedes_job_snapshot_id: string | null
+        }
+        Insert: {
+          application_host_type: string
+          application_path_result?: string | null
+          canonical_application_url: string
+          canonical_employer_domain?: string | null
+          canonical_employer_listing_url?: string | null
+          canonicalization_version?: string | null
+          captured_listing: Json
+          company: string
+          compensation_completeness?: number
+          compensation_source?: string | null
+          compensation_text?: string | null
+          content_sha256: string
+          correction_review_id?: string | null
+          created_at?: string
+          discovery_source: string
+          employer_identity_result?: string | null
+          exact_title: string
+          external_job_id?: string | null
+          first_seen_at?: string | null
+          fraud_signals?: string[]
+          id?: string
+          legacy_compatibility?: boolean
+          legacy_job_id?: string | null
+          legitimacy_result?: string | null
+          listing_activity_result?: string | null
+          live_verified_at: string
+          location_and_work_mode: Json
+          material_restrictions?: Json
+          material_source_qualities?: number[]
+          normalized_fingerprint: string
+          origin: Database["public"]["Enums"]["ap_job_origin"]
+          parser_version: string
+          posted_date_unknown: boolean
+          posted_on?: string | null
+          requirement_completeness?: number
+          retrieved_at: string
+          source_authorization_id?: string | null
+          source_url: string
+          supersedes_job_snapshot_id?: string | null
+        }
+        Update: {
+          application_host_type?: string
+          application_path_result?: string | null
+          canonical_application_url?: string
+          canonical_employer_domain?: string | null
+          canonical_employer_listing_url?: string | null
+          canonicalization_version?: string | null
+          captured_listing?: Json
+          company?: string
+          compensation_completeness?: number
+          compensation_source?: string | null
+          compensation_text?: string | null
+          content_sha256?: string
+          correction_review_id?: string | null
+          created_at?: string
+          discovery_source?: string
+          employer_identity_result?: string | null
+          exact_title?: string
+          external_job_id?: string | null
+          first_seen_at?: string | null
+          fraud_signals?: string[]
+          id?: string
+          legacy_compatibility?: boolean
+          legacy_job_id?: string | null
+          legitimacy_result?: string | null
+          listing_activity_result?: string | null
+          live_verified_at?: string
+          location_and_work_mode?: Json
+          material_restrictions?: Json
+          material_source_qualities?: number[]
+          normalized_fingerprint?: string
+          origin?: Database["public"]["Enums"]["ap_job_origin"]
+          parser_version?: string
+          posted_date_unknown?: boolean
+          posted_on?: string | null
+          requirement_completeness?: number
+          retrieved_at?: string
+          source_authorization_id?: string | null
+          source_url?: string
+          supersedes_job_snapshot_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_job_snapshots_correction_review_id_fkey"
+            columns: ["correction_review_id"]
+            isOneToOne: false
+            referencedRelation: "ap_human_review_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_job_snapshots_legacy_job_id_fkey"
+            columns: ["legacy_job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_job_snapshots_source_authorization_id_fkey"
+            columns: ["source_authorization_id"]
+            isOneToOne: false
+            referencedRelation: "ap_source_authorizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_job_snapshots_supersedes_job_snapshot_id_fkey"
+            columns: ["supersedes_job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_match_evaluations: {
+        Row: {
+          active_root_keys: string[] | null
+          application_readiness: Database["public"]["Enums"]["ap_application_readiness"]
+          base_rank: number | null
+          calculation_input_sha256: string | null
+          calculation_version: string | null
+          candidate_fact_ids: string[]
+          categorical_evidence_sufficient: boolean
+          confidence_components: Json
+          confidence_label: string | null
+          created_at: string
+          customer_id: string
+          eligibility: Database["public"]["Enums"]["ap_eligibility_disposition"]
+          evidence_confidence: number | null
+          explanation_evidence: Json
+          fit_components: Json
+          fit_score: number | null
+          human_review_id: string | null
+          id: string
+          invalidated_at: string | null
+          inventory_member_id: string | null
+          inventory_version_id: string | null
+          job_evidence: Json
+          job_snapshot_id: string
+          leaf_results: Json
+          legacy_compatibility: boolean
+          preference_alignment: number | null
+          presentation_risk: Database["public"]["Enums"]["ap_presentation_risk"]
+          presentation_risk_reasons: Json
+          rank_explanation: Json | null
+          resolution_issues: Database["public"]["Enums"]["ap_resolution_issue"][]
+          root_result: Database["public"]["Enums"]["ap_criterion_result"]
+          root_results: Json | null
+          salary_disposition: Database["public"]["Enums"]["ap_salary_gate_disposition"]
+          salary_status: Database["public"]["Enums"]["ap_salary_status"]
+          satisfaction_paths: Json
+          selected_rank: number | null
+          selector_explanation: Json | null
+          snapshot_id: string
+          soft_preferences: Json
+          unknown_treatments: Database["public"]["Enums"]["ap_unknown_treatment"][]
+          usefulness_result: string | null
+          version_bundle: Json
+          warnings: Json
+        }
+        Insert: {
+          active_root_keys?: string[] | null
+          application_readiness: Database["public"]["Enums"]["ap_application_readiness"]
+          base_rank?: number | null
+          calculation_input_sha256?: string | null
+          calculation_version?: string | null
+          candidate_fact_ids: string[]
+          categorical_evidence_sufficient: boolean
+          confidence_components: Json
+          confidence_label?: string | null
+          created_at?: string
+          customer_id: string
+          eligibility: Database["public"]["Enums"]["ap_eligibility_disposition"]
+          evidence_confidence?: number | null
+          explanation_evidence?: Json
+          fit_components: Json
+          fit_score?: number | null
+          human_review_id?: string | null
+          id?: string
+          invalidated_at?: string | null
+          inventory_member_id?: string | null
+          inventory_version_id?: string | null
+          job_evidence: Json
+          job_snapshot_id: string
+          leaf_results: Json
+          legacy_compatibility?: boolean
+          preference_alignment?: number | null
+          presentation_risk: Database["public"]["Enums"]["ap_presentation_risk"]
+          presentation_risk_reasons: Json
+          rank_explanation?: Json | null
+          resolution_issues: Database["public"]["Enums"]["ap_resolution_issue"][]
+          root_result: Database["public"]["Enums"]["ap_criterion_result"]
+          root_results?: Json | null
+          salary_disposition: Database["public"]["Enums"]["ap_salary_gate_disposition"]
+          salary_status: Database["public"]["Enums"]["ap_salary_status"]
+          satisfaction_paths: Json
+          selected_rank?: number | null
+          selector_explanation?: Json | null
+          snapshot_id: string
+          soft_preferences: Json
+          unknown_treatments: Database["public"]["Enums"]["ap_unknown_treatment"][]
+          usefulness_result?: string | null
+          version_bundle: Json
+          warnings: Json
+        }
+        Update: {
+          active_root_keys?: string[] | null
+          application_readiness?: Database["public"]["Enums"]["ap_application_readiness"]
+          base_rank?: number | null
+          calculation_input_sha256?: string | null
+          calculation_version?: string | null
+          candidate_fact_ids?: string[]
+          categorical_evidence_sufficient?: boolean
+          confidence_components?: Json
+          confidence_label?: string | null
+          created_at?: string
+          customer_id?: string
+          eligibility?: Database["public"]["Enums"]["ap_eligibility_disposition"]
+          evidence_confidence?: number | null
+          explanation_evidence?: Json
+          fit_components?: Json
+          fit_score?: number | null
+          human_review_id?: string | null
+          id?: string
+          invalidated_at?: string | null
+          inventory_member_id?: string | null
+          inventory_version_id?: string | null
+          job_evidence?: Json
+          job_snapshot_id?: string
+          leaf_results?: Json
+          legacy_compatibility?: boolean
+          preference_alignment?: number | null
+          presentation_risk?: Database["public"]["Enums"]["ap_presentation_risk"]
+          presentation_risk_reasons?: Json
+          rank_explanation?: Json | null
+          resolution_issues?: Database["public"]["Enums"]["ap_resolution_issue"][]
+          root_result?: Database["public"]["Enums"]["ap_criterion_result"]
+          root_results?: Json | null
+          salary_disposition?: Database["public"]["Enums"]["ap_salary_gate_disposition"]
+          salary_status?: Database["public"]["Enums"]["ap_salary_status"]
+          satisfaction_paths?: Json
+          selected_rank?: number | null
+          selector_explanation?: Json | null
+          snapshot_id?: string
+          soft_preferences?: Json
+          unknown_treatments?: Database["public"]["Enums"]["ap_unknown_treatment"][]
+          usefulness_result?: string | null
+          version_bundle?: Json
+          warnings?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_match_evaluations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_match_evaluations_human_review_id_fkey"
+            columns: ["human_review_id"]
+            isOneToOne: false
+            referencedRelation: "ap_human_review_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_match_evaluations_inventory_member_id_fkey"
+            columns: ["inventory_member_id"]
+            isOneToOne: false
+            referencedRelation: "ap_inventory_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_match_evaluations_inventory_version_id_fkey"
+            columns: ["inventory_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_inventory_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_match_evaluations_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_match_evaluations_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_match_selection_members: {
+        Row: {
+          base_rank: number
+          evaluation_id: string
+          rank_explanation: Json
+          selected_rank: number | null
+          selection_run_id: string
+          selector_explanation: Json
+        }
+        Insert: {
+          base_rank: number
+          evaluation_id: string
+          rank_explanation: Json
+          selected_rank?: number | null
+          selection_run_id: string
+          selector_explanation: Json
+        }
+        Update: {
+          base_rank?: number
+          evaluation_id?: string
+          rank_explanation?: Json
+          selected_rank?: number | null
+          selection_run_id?: string
+          selector_explanation?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_match_selection_members_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_match_evaluations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_match_selection_members_selection_run_id_fkey"
+            columns: ["selection_run_id"]
+            isOneToOne: false
+            referencedRelation: "ap_match_selection_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_match_selection_runs: {
+        Row: {
+          content_sha256: string
+          created_at: string
+          evaluation_set_sha256: string
+          id: string
+          purpose: string
+          requested_count: number
+          scope_key: string
+          selector_version: string
+          snapshot_id: string
+        }
+        Insert: {
+          content_sha256: string
+          created_at?: string
+          evaluation_set_sha256: string
+          id?: string
+          purpose: string
+          requested_count: number
+          scope_key: string
+          selector_version: string
+          snapshot_id: string
+        }
+        Update: {
+          content_sha256?: string
+          created_at?: string
+          evaluation_set_sha256?: string
+          id?: string
+          purpose?: string
+          requested_count?: number
+          scope_key?: string
+          selector_version?: string
+          snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_match_selection_runs_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_change_proposals: {
+        Row: {
+          acceptance_idempotency_key: string | null
+          accepted_at: string | null
+          accepted_revision_id: string | null
+          corrected_snapshot_id: string | null
+          created_at: string
+          created_by: string
+          decline_idempotency_key: string | null
+          declined_at: string | null
+          eligibility_passed: boolean | null
+          estimate_seconds: number
+          evidence_sufficient: boolean | null
+          fact_diff: Json | null
+          id: string
+          idempotency_key: string
+          kind: Database["public"]["Enums"]["ap_material_proposal_kind"]
+          material_line_id: string
+          parent_revision_id: string
+          proposal_expires_at: string
+          reason_code: string
+          state: Database["public"]["Enums"]["ap_material_proposal_state"]
+          target_delivered_match_id: string | null
+          target_job_snapshot_id: string | null
+          target_submission_rule_id: string | null
+        }
+        Insert: {
+          acceptance_idempotency_key?: string | null
+          accepted_at?: string | null
+          accepted_revision_id?: string | null
+          corrected_snapshot_id?: string | null
+          created_at?: string
+          created_by: string
+          decline_idempotency_key?: string | null
+          declined_at?: string | null
+          eligibility_passed?: boolean | null
+          estimate_seconds: number
+          evidence_sufficient?: boolean | null
+          fact_diff?: Json | null
+          id?: string
+          idempotency_key: string
+          kind: Database["public"]["Enums"]["ap_material_proposal_kind"]
+          material_line_id: string
+          parent_revision_id: string
+          proposal_expires_at: string
+          reason_code: string
+          state?: Database["public"]["Enums"]["ap_material_proposal_state"]
+          target_delivered_match_id?: string | null
+          target_job_snapshot_id?: string | null
+          target_submission_rule_id?: string | null
+        }
+        Update: {
+          acceptance_idempotency_key?: string | null
+          accepted_at?: string | null
+          accepted_revision_id?: string | null
+          corrected_snapshot_id?: string | null
+          created_at?: string
+          created_by?: string
+          decline_idempotency_key?: string | null
+          declined_at?: string | null
+          eligibility_passed?: boolean | null
+          estimate_seconds?: number
+          evidence_sufficient?: boolean | null
+          fact_diff?: Json | null
+          id?: string
+          idempotency_key?: string
+          kind?: Database["public"]["Enums"]["ap_material_proposal_kind"]
+          material_line_id?: string
+          parent_revision_id?: string
+          proposal_expires_at?: string
+          reason_code?: string
+          state?: Database["public"]["Enums"]["ap_material_proposal_state"]
+          target_delivered_match_id?: string | null
+          target_job_snapshot_id?: string | null
+          target_submission_rule_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_change_proposals_accepted_revision_id_fkey"
+            columns: ["accepted_revision_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_line_revisions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_change_proposals_corrected_snapshot_id_fkey"
+            columns: ["corrected_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_change_proposals_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_change_proposals_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_change_proposals_parent_revision_id_fkey"
+            columns: ["parent_revision_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_line_revisions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_change_proposals_target_delivered_match_id_fkey"
+            columns: ["target_delivered_match_id"]
+            isOneToOne: false
+            referencedRelation: "job_matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_change_proposals_target_job_snapshot_id_fkey"
+            columns: ["target_job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_change_proposals_target_submission_rule_id_fkey"
+            columns: ["target_submission_rule_id"]
+            isOneToOne: false
+            referencedRelation: "ap_employer_submission_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_checkout_intents: {
+        Row: {
+          amount_cents: number
+          board_admission_id: string | null
+          capacity_allocation_id: string | null
+          career_break_choice: string
+          career_break_custom_label: string | null
+          command_id: string
+          completed_at: string | null
+          contact_payload_id: string
+          cover_letter_break_consent: boolean
+          created_at: string
+          currency: string
+          customer_id: string
+          delivered_order_id: string
+          delivered_release_id: string | null
+          document_contact_confirmed: boolean
+          document_facts_confirmed: boolean
+          expires_at: string | null
+          failure_code: string | null
+          id: string
+          line_count: number
+          payment_attempt_id: string
+          pricing_version: string
+          promoted_at: string | null
+          provider_checkout_session_id: string | null
+          purchase_id: string
+          request_key: string
+          selection_sha256: string
+          source_kind: string
+          source_snapshot_id: string
+          state: Database["public"]["Enums"]["ap_material_checkout_state"]
+          tax_inclusive: boolean
+          tax_version: string
+          updated_at: string
+        }
+        Insert: {
+          amount_cents: number
+          board_admission_id?: string | null
+          capacity_allocation_id?: string | null
+          career_break_choice: string
+          career_break_custom_label?: string | null
+          command_id: string
+          completed_at?: string | null
+          contact_payload_id: string
+          cover_letter_break_consent?: boolean
+          created_at?: string
+          currency: string
+          customer_id: string
+          delivered_order_id: string
+          delivered_release_id?: string | null
+          document_contact_confirmed: boolean
+          document_facts_confirmed: boolean
+          expires_at?: string | null
+          failure_code?: string | null
+          id?: string
+          line_count: number
+          payment_attempt_id: string
+          pricing_version: string
+          promoted_at?: string | null
+          provider_checkout_session_id?: string | null
+          purchase_id: string
+          request_key: string
+          selection_sha256: string
+          source_kind?: string
+          source_snapshot_id: string
+          state?: Database["public"]["Enums"]["ap_material_checkout_state"]
+          tax_inclusive: boolean
+          tax_version: string
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number
+          board_admission_id?: string | null
+          capacity_allocation_id?: string | null
+          career_break_choice?: string
+          career_break_custom_label?: string | null
+          command_id?: string
+          completed_at?: string | null
+          contact_payload_id?: string
+          cover_letter_break_consent?: boolean
+          created_at?: string
+          currency?: string
+          customer_id?: string
+          delivered_order_id?: string
+          delivered_release_id?: string | null
+          document_contact_confirmed?: boolean
+          document_facts_confirmed?: boolean
+          expires_at?: string | null
+          failure_code?: string | null
+          id?: string
+          line_count?: number
+          payment_attempt_id?: string
+          pricing_version?: string
+          promoted_at?: string | null
+          provider_checkout_session_id?: string | null
+          purchase_id?: string
+          request_key?: string
+          selection_sha256?: string
+          source_kind?: string
+          source_snapshot_id?: string
+          state?: Database["public"]["Enums"]["ap_material_checkout_state"]
+          tax_inclusive?: boolean
+          tax_version?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_checkout_intents_board_admission_id_fkey"
+            columns: ["board_admission_id"]
+            isOneToOne: false
+            referencedRelation: "ap_board_admissions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_intents_capacity_allocation_id_fkey"
+            columns: ["capacity_allocation_id"]
+            isOneToOne: true
+            referencedRelation: "ap_capacity_allocations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_intents_command_id_fkey"
+            columns: ["command_id"]
+            isOneToOne: true
+            referencedRelation: "ap_external_commands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_intents_contact_payload_id_fkey"
+            columns: ["contact_payload_id"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_intents_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_intents_delivered_order_id_fkey"
+            columns: ["delivered_order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_intents_delivered_order_id_fkey"
+            columns: ["delivered_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_intents_delivered_release_id_fkey"
+            columns: ["delivered_release_id"]
+            isOneToOne: false
+            referencedRelation: "ap_releases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_intents_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["corrected_payment_attempt_id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_intents_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_payment_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_intents_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_payment_refund_aggregates"
+            referencedColumns: ["payment_attempt_id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_intents_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: true
+            referencedRelation: "ap_material_purchase_status"
+            referencedColumns: ["purchase_id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_intents_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: true
+            referencedRelation: "ap_material_purchases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_intents_source_snapshot_id_fkey"
+            columns: ["source_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_checkout_items: {
+        Row: {
+          checkout_intent_id: string
+          created_at: string
+          delivered_match_id: string
+          do_not_mention_note: string
+          emphasis_note: string
+          id: string
+          job_snapshot_id: string
+          material_line_id: string
+          originally_selected_reference_sheet: boolean
+          readiness: Database["public"]["Enums"]["ap_material_readiness"]
+          readiness_reasons: Json
+          selected_reference_sheet: boolean
+          submission_rule_id: string
+        }
+        Insert: {
+          checkout_intent_id: string
+          created_at?: string
+          delivered_match_id: string
+          do_not_mention_note?: string
+          emphasis_note?: string
+          id?: string
+          job_snapshot_id: string
+          material_line_id: string
+          originally_selected_reference_sheet?: boolean
+          readiness: Database["public"]["Enums"]["ap_material_readiness"]
+          readiness_reasons?: Json
+          selected_reference_sheet?: boolean
+          submission_rule_id: string
+        }
+        Update: {
+          checkout_intent_id?: string
+          created_at?: string
+          delivered_match_id?: string
+          do_not_mention_note?: string
+          emphasis_note?: string
+          id?: string
+          job_snapshot_id?: string
+          material_line_id?: string
+          originally_selected_reference_sheet?: boolean
+          readiness?: Database["public"]["Enums"]["ap_material_readiness"]
+          readiness_reasons?: Json
+          selected_reference_sheet?: boolean
+          submission_rule_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_checkout_items_checkout_intent_id_fkey"
+            columns: ["checkout_intent_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_checkout_intents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_items_delivered_match_id_fkey"
+            columns: ["delivered_match_id"]
+            isOneToOne: false
+            referencedRelation: "job_matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_items_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_items_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: true
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_items_submission_rule_id_fkey"
+            columns: ["submission_rule_id"]
+            isOneToOne: false
+            referencedRelation: "ap_employer_submission_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_checkout_references: {
+        Row: {
+          checkout_item_id: string
+          position: number
+          reference_permission_id: string
+        }
+        Insert: {
+          checkout_item_id: string
+          position: number
+          reference_permission_id: string
+        }
+        Update: {
+          checkout_item_id?: string
+          position?: number
+          reference_permission_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_checkout_references_checkout_item_id_fkey"
+            columns: ["checkout_item_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_checkout_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_checkout_references_reference_permission_id_fkey"
+            columns: ["reference_permission_id"]
+            isOneToOne: false
+            referencedRelation: "ap_reference_permissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_download_audits: {
+        Row: {
+          artifact_id: string
+          checksum_sha256: string
+          created_at: string
+          customer_id: string
+          expires_at: string
+          file_version_id: string
+          id: string
+          issued_at: string
+          outcome: string
+          reauthenticated_at: string
+        }
+        Insert: {
+          artifact_id: string
+          checksum_sha256: string
+          created_at?: string
+          customer_id: string
+          expires_at: string
+          file_version_id: string
+          id?: string
+          issued_at: string
+          outcome: string
+          reauthenticated_at: string
+        }
+        Update: {
+          artifact_id?: string
+          checksum_sha256?: string
+          created_at?: string
+          customer_id?: string
+          expires_at?: string
+          file_version_id?: string
+          id?: string
+          issued_at?: string
+          outcome?: string
+          reauthenticated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_download_audits_artifact_id_fkey"
+            columns: ["artifact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_generated_artifacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_download_audits_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_download_audits_file_version_id_fkey"
+            columns: ["file_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_generated_file_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_entitlement_claims: {
+        Row: {
+          claimed_at: string
+          delivered_match_id: string
+          delivered_order_id: string
+          entitlement_history_id: string
+          released_at: string | null
+        }
+        Insert: {
+          claimed_at?: string
+          delivered_match_id: string
+          delivered_order_id: string
+          entitlement_history_id: string
+          released_at?: string | null
+        }
+        Update: {
+          claimed_at?: string
+          delivered_match_id?: string
+          delivered_order_id?: string
+          entitlement_history_id?: string
+          released_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_entitlement_claims_delivered_match_id_fkey"
+            columns: ["delivered_match_id"]
+            isOneToOne: false
+            referencedRelation: "job_matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_entitlement_claims_delivered_order_id_fkey"
+            columns: ["delivered_order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_entitlement_claims_delivered_order_id_fkey"
+            columns: ["delivered_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_entitlement_claims_entitlement_history_id_fkey"
+            columns: ["entitlement_history_id"]
+            isOneToOne: true
+            referencedRelation: "ap_material_entitlement_history"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_entitlement_history: {
+        Row: {
+          created_at: string
+          delivered_match_id: string
+          delivered_order_id: string
+          id: string
+          line_id: string
+          revision_id: string | null
+          state: string
+          supersedes_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          delivered_match_id: string
+          delivered_order_id: string
+          id?: string
+          line_id: string
+          revision_id?: string | null
+          state: string
+          supersedes_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          delivered_match_id?: string
+          delivered_order_id?: string
+          id?: string
+          line_id?: string
+          revision_id?: string | null
+          state?: string
+          supersedes_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_entitlement_history_delivered_match_id_fkey"
+            columns: ["delivered_match_id"]
+            isOneToOne: false
+            referencedRelation: "job_matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_entitlement_history_delivered_order_id_fkey"
+            columns: ["delivered_order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_entitlement_history_delivered_order_id_fkey"
+            columns: ["delivered_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_entitlement_history_line_id_fkey"
+            columns: ["line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_entitlement_history_revision_id_fkey"
+            columns: ["revision_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_line_revisions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_entitlement_history_supersedes_id_fkey"
+            columns: ["supersedes_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_entitlement_history"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_line_revisions: {
+        Row: {
+          accepted_at: string | null
+          binding_sha256: string | null
+          capacity_allocation_id: string | null
+          created_at: string
+          due_at: string | null
+          employer_rule_snapshot_id: string | null
+          fact_diff: Json | null
+          id: string
+          job_snapshot_id: string | null
+          line_id: string
+          parent_revision_id: string | null
+          reference_scope: Json | null
+          revision_kind: string
+          source_snapshot_id: string | null
+          started_at: string | null
+          superseded_at: string | null
+          version: number
+        }
+        Insert: {
+          accepted_at?: string | null
+          binding_sha256?: string | null
+          capacity_allocation_id?: string | null
+          created_at?: string
+          due_at?: string | null
+          employer_rule_snapshot_id?: string | null
+          fact_diff?: Json | null
+          id?: string
+          job_snapshot_id?: string | null
+          line_id: string
+          parent_revision_id?: string | null
+          reference_scope?: Json | null
+          revision_kind: string
+          source_snapshot_id?: string | null
+          started_at?: string | null
+          superseded_at?: string | null
+          version: number
+        }
+        Update: {
+          accepted_at?: string | null
+          binding_sha256?: string | null
+          capacity_allocation_id?: string | null
+          created_at?: string
+          due_at?: string | null
+          employer_rule_snapshot_id?: string | null
+          fact_diff?: Json | null
+          id?: string
+          job_snapshot_id?: string | null
+          line_id?: string
+          parent_revision_id?: string | null
+          reference_scope?: Json | null
+          revision_kind?: string
+          source_snapshot_id?: string | null
+          started_at?: string | null
+          superseded_at?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_line_revisions_capacity_allocation_id_fkey"
+            columns: ["capacity_allocation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_capacity_allocations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_line_revisions_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_line_revisions_line_id_fkey"
+            columns: ["line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_line_revisions_parent_revision_id_fkey"
+            columns: ["parent_revision_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_line_revisions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_line_revisions_source_snapshot_id_fkey"
+            columns: ["source_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_lines: {
+        Row: {
+          active_revision: number
+          allocated_amount_cents: number
+          created_at: string
+          delivered_match_id: string
+          delivered_order_id: string
+          earned_revenue_at: string | null
+          fulfillment: Database["public"]["Enums"]["ap_material_fulfillment"]
+          id: string
+          materials_capacity_confirmed_at: string | null
+          materials_due_at: string | null
+          materials_payment_verified_at: string | null
+          materials_started_at: string | null
+          payment_allocation_key: string
+          payment_attempt_id: string
+          purchase_id: string
+          readiness: Database["public"]["Enums"]["ap_material_readiness"]
+          selected_reference_sheet: boolean
+          selection_confirmed_at: string | null
+          substitution: Database["public"]["Enums"]["ap_material_substitution"]
+        }
+        Insert: {
+          active_revision?: number
+          allocated_amount_cents: number
+          created_at?: string
+          delivered_match_id: string
+          delivered_order_id: string
+          earned_revenue_at?: string | null
+          fulfillment?: Database["public"]["Enums"]["ap_material_fulfillment"]
+          id?: string
+          materials_capacity_confirmed_at?: string | null
+          materials_due_at?: string | null
+          materials_payment_verified_at?: string | null
+          materials_started_at?: string | null
+          payment_allocation_key: string
+          payment_attempt_id: string
+          purchase_id: string
+          readiness?: Database["public"]["Enums"]["ap_material_readiness"]
+          selected_reference_sheet?: boolean
+          selection_confirmed_at?: string | null
+          substitution?: Database["public"]["Enums"]["ap_material_substitution"]
+        }
+        Update: {
+          active_revision?: number
+          allocated_amount_cents?: number
+          created_at?: string
+          delivered_match_id?: string
+          delivered_order_id?: string
+          earned_revenue_at?: string | null
+          fulfillment?: Database["public"]["Enums"]["ap_material_fulfillment"]
+          id?: string
+          materials_capacity_confirmed_at?: string | null
+          materials_due_at?: string | null
+          materials_payment_verified_at?: string | null
+          materials_started_at?: string | null
+          payment_allocation_key?: string
+          payment_attempt_id?: string
+          purchase_id?: string
+          readiness?: Database["public"]["Enums"]["ap_material_readiness"]
+          selected_reference_sheet?: boolean
+          selection_confirmed_at?: string | null
+          substitution?: Database["public"]["Enums"]["ap_material_substitution"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_lines_delivered_match_id_fkey"
+            columns: ["delivered_match_id"]
+            isOneToOne: false
+            referencedRelation: "job_matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_lines_delivered_order_id_fkey"
+            columns: ["delivered_order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_lines_delivered_order_id_fkey"
+            columns: ["delivered_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_lines_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["corrected_payment_attempt_id"]
+          },
+          {
+            foreignKeyName: "ap_material_lines_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: false
+            referencedRelation: "ap_payment_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_lines_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: false
+            referencedRelation: "ap_payment_refund_aggregates"
+            referencedColumns: ["payment_attempt_id"]
+          },
+          {
+            foreignKeyName: "ap_material_lines_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_purchase_status"
+            referencedColumns: ["purchase_id"]
+          },
+          {
+            foreignKeyName: "ap_material_lines_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_purchases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_listing_checks: {
+        Row: {
+          checked_at: string
+          checked_by: string
+          created_at: string
+          evidence_sha256: string
+          id: string
+          job_snapshot_id: string
+          line_revision_id: string
+          material_line_id: string
+          phase: string
+          result: string
+          submission_rule_id: string
+        }
+        Insert: {
+          checked_at: string
+          checked_by: string
+          created_at?: string
+          evidence_sha256: string
+          id?: string
+          job_snapshot_id: string
+          line_revision_id: string
+          material_line_id: string
+          phase: string
+          result: string
+          submission_rule_id: string
+        }
+        Update: {
+          checked_at?: string
+          checked_by?: string
+          created_at?: string
+          evidence_sha256?: string
+          id?: string
+          job_snapshot_id?: string
+          line_revision_id?: string
+          material_line_id?: string
+          phase?: string
+          result?: string
+          submission_rule_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_listing_checks_checked_by_fkey"
+            columns: ["checked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_listing_checks_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_listing_checks_line_revision_id_fkey"
+            columns: ["line_revision_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_line_revisions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_listing_checks_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_listing_checks_submission_rule_id_fkey"
+            columns: ["submission_rule_id"]
+            isOneToOne: false
+            referencedRelation: "ap_employer_submission_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_purchases: {
+        Row: {
+          amount_cents: number
+          checkout_intent_id: string | null
+          completed_at: string | null
+          created_at: string
+          currency: string
+          customer_id: string
+          id: string
+          legacy_cart_id: string | null
+          payment_attempt_id: string | null
+        }
+        Insert: {
+          amount_cents: number
+          checkout_intent_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          currency: string
+          customer_id: string
+          id?: string
+          legacy_cart_id?: string | null
+          payment_attempt_id?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          checkout_intent_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          currency?: string
+          customer_id?: string
+          id?: string
+          legacy_cart_id?: string | null
+          payment_attempt_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_purchase_checkout_intent_fk"
+            columns: ["checkout_intent_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_checkout_intents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_purchases_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_purchases_legacy_cart_id_fkey"
+            columns: ["legacy_cart_id"]
+            isOneToOne: true
+            referencedRelation: "apply_pack_carts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_purchases_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["corrected_payment_attempt_id"]
+          },
+          {
+            foreignKeyName: "ap_material_purchases_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: false
+            referencedRelation: "ap_payment_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_purchases_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: false
+            referencedRelation: "ap_payment_refund_aggregates"
+            referencedColumns: ["payment_attempt_id"]
+          },
+        ]
+      }
+      ap_material_support_cases: {
+        Row: {
+          artifact_id: string
+          case_kind: string
+          created_at: string
+          customer_id: string
+          id: string
+          material_line_id: string
+          non_sensitive_fact_diff: Json
+          opened_at: string
+          resolved_at: string | null
+          resolved_by: string | null
+          sensitive_payload_id: string
+          state: string
+        }
+        Insert: {
+          artifact_id: string
+          case_kind: string
+          created_at?: string
+          customer_id: string
+          id?: string
+          material_line_id: string
+          non_sensitive_fact_diff: Json
+          opened_at?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          sensitive_payload_id: string
+          state?: string
+        }
+        Update: {
+          artifact_id?: string
+          case_kind?: string
+          created_at?: string
+          customer_id?: string
+          id?: string
+          material_line_id?: string
+          non_sensitive_fact_diff?: Json
+          opened_at?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          sensitive_payload_id?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_support_cases_artifact_id_fkey"
+            columns: ["artifact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_generated_artifacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_support_cases_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_support_cases_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_support_cases_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_support_cases_sensitive_payload_id_fkey"
+            columns: ["sensitive_payload_id"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_migration_checkpoints: {
+        Row: {
+          checkpoint: string
+          completed_at: string | null
+          content_sha256: string | null
+          migration_id: string
+          rows_processed: number
+        }
+        Insert: {
+          checkpoint: string
+          completed_at?: string | null
+          content_sha256?: string | null
+          migration_id: string
+          rows_processed?: number
+        }
+        Update: {
+          checkpoint?: string
+          completed_at?: string | null
+          content_sha256?: string | null
+          migration_id?: string
+          rows_processed?: number
+        }
+        Relationships: []
+      }
+      ap_operational_alerts: {
+        Row: {
+          alert_key: string
+          category: string
+          id: string
+          non_sensitive_details: Json
+          opened_at: string
+          reference_id: string | null
+          resolved_at: string | null
+          severity: string
+          state: string
+        }
+        Insert: {
+          alert_key: string
+          category: string
+          id?: string
+          non_sensitive_details?: Json
+          opened_at?: string
+          reference_id?: string | null
+          resolved_at?: string | null
+          severity: string
+          state?: string
+        }
+        Update: {
+          alert_key?: string
+          category?: string
+          id?: string
+          non_sensitive_details?: Json
+          opened_at?: string
+          reference_id?: string | null
+          resolved_at?: string | null
+          severity?: string
+          state?: string
+        }
+        Relationships: []
+      }
+      ap_order_access_capabilities: {
+        Row: {
+          checkout_attempt_id: string
+          consumed_at: string | null
+          created_at: string
+          customer_id: string
+          expires_at: string
+          id: string
+          issued_at: string
+          kind: Database["public"]["Enums"]["ap_access_capability_kind"]
+          order_id: string
+          revoked_at: string | null
+          secret_hash: string
+          state: Database["public"]["Enums"]["ap_access_capability_state"]
+        }
+        Insert: {
+          checkout_attempt_id: string
+          consumed_at?: string | null
+          created_at?: string
+          customer_id: string
+          expires_at: string
+          id?: string
+          issued_at?: string
+          kind: Database["public"]["Enums"]["ap_access_capability_kind"]
+          order_id: string
+          revoked_at?: string | null
+          secret_hash: string
+          state?: Database["public"]["Enums"]["ap_access_capability_state"]
+        }
+        Update: {
+          checkout_attempt_id?: string
+          consumed_at?: string | null
+          created_at?: string
+          customer_id?: string
+          expires_at?: string
+          id?: string
+          issued_at?: string
+          kind?: Database["public"]["Enums"]["ap_access_capability_kind"]
+          order_id?: string
+          revoked_at?: string | null
+          secret_hash?: string
+          state?: Database["public"]["Enums"]["ap_access_capability_state"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_order_access_capabilities_checkout_attempt_id_fkey"
+            columns: ["checkout_attempt_id"]
+            isOneToOne: false
+            referencedRelation: "ap_checkout_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_order_access_capabilities_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_order_access_capabilities_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_order_access_capabilities_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_outbox_messages: {
+        Row: {
+          attempts: number
+          created_at: string
+          customer_id: string | null
+          dead_lettered_at: string | null
+          deduplication_key: string
+          first_submitted_at: string | null
+          id: string
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          message_kind: string
+          next_attempt_at: string | null
+          order_id: string | null
+          payload_ref: string | null
+          provider_idempotency_expires_at: string | null
+          provider_idempotency_key: string
+          provider_message_id: string | null
+          recipient_ref: string
+          reconciliation_state: string
+          state: Database["public"]["Enums"]["ap_outbox_state"]
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          customer_id?: string | null
+          dead_lettered_at?: string | null
+          deduplication_key: string
+          first_submitted_at?: string | null
+          id?: string
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          message_kind: string
+          next_attempt_at?: string | null
+          order_id?: string | null
+          payload_ref?: string | null
+          provider_idempotency_expires_at?: string | null
+          provider_idempotency_key: string
+          provider_message_id?: string | null
+          recipient_ref: string
+          reconciliation_state?: string
+          state?: Database["public"]["Enums"]["ap_outbox_state"]
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          customer_id?: string | null
+          dead_lettered_at?: string | null
+          deduplication_key?: string
+          first_submitted_at?: string | null
+          id?: string
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          message_kind?: string
+          next_attempt_at?: string | null
+          order_id?: string | null
+          payload_ref?: string | null
+          provider_idempotency_expires_at?: string | null
+          provider_idempotency_key?: string
+          provider_message_id?: string | null
+          recipient_ref?: string
+          reconciliation_state?: string
+          state?: Database["public"]["Enums"]["ap_outbox_state"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_outbox_messages_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_outbox_messages_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_outbox_messages_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_outbox_messages_payload_ref_fkey"
+            columns: ["payload_ref"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_payment_attempts: {
+        Row: {
+          amount_cents: number
+          checkout_attempt_id: string | null
+          created_at: string
+          currency: string
+          customer_id: string | null
+          dispute: Database["public"]["Enums"]["ap_payment_dispute"]
+          dispute_opened_at: string | null
+          dispute_resolved_at: string | null
+          draft_id: string | null
+          funds_reversed_at: string | null
+          funds_secured_at: string | null
+          id: string
+          immediate_charge_verified: boolean
+          legacy_payment_id: string | null
+          payer_receipt_email: string | null
+          payment_command_id: string | null
+          payment_method_type: string | null
+          payment_verified_at: string | null
+          provider: string
+          provider_checkout_session_id: string | null
+          provider_event_id: string | null
+          provider_payment_id: string | null
+          provider_payment_status: string | null
+          settlement: Database["public"]["Enums"]["ap_payment_settlement"]
+          updated_at: string
+        }
+        Insert: {
+          amount_cents: number
+          checkout_attempt_id?: string | null
+          created_at?: string
+          currency: string
+          customer_id?: string | null
+          dispute?: Database["public"]["Enums"]["ap_payment_dispute"]
+          dispute_opened_at?: string | null
+          dispute_resolved_at?: string | null
+          draft_id?: string | null
+          funds_reversed_at?: string | null
+          funds_secured_at?: string | null
+          id?: string
+          immediate_charge_verified?: boolean
+          legacy_payment_id?: string | null
+          payer_receipt_email?: string | null
+          payment_command_id?: string | null
+          payment_method_type?: string | null
+          payment_verified_at?: string | null
+          provider: string
+          provider_checkout_session_id?: string | null
+          provider_event_id?: string | null
+          provider_payment_id?: string | null
+          provider_payment_status?: string | null
+          settlement?: Database["public"]["Enums"]["ap_payment_settlement"]
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number
+          checkout_attempt_id?: string | null
+          created_at?: string
+          currency?: string
+          customer_id?: string | null
+          dispute?: Database["public"]["Enums"]["ap_payment_dispute"]
+          dispute_opened_at?: string | null
+          dispute_resolved_at?: string | null
+          draft_id?: string | null
+          funds_reversed_at?: string | null
+          funds_secured_at?: string | null
+          id?: string
+          immediate_charge_verified?: boolean
+          legacy_payment_id?: string | null
+          payer_receipt_email?: string | null
+          payment_command_id?: string | null
+          payment_method_type?: string | null
+          payment_verified_at?: string | null
+          provider?: string
+          provider_checkout_session_id?: string | null
+          provider_event_id?: string | null
+          provider_payment_id?: string | null
+          provider_payment_status?: string | null
+          settlement?: Database["public"]["Enums"]["ap_payment_settlement"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_payment_attempts_checkout_attempt_id_fkey"
+            columns: ["checkout_attempt_id"]
+            isOneToOne: false
+            referencedRelation: "ap_checkout_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_payment_attempts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_payment_attempts_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_payment_attempts_legacy_payment_id_fkey"
+            columns: ["legacy_payment_id"]
+            isOneToOne: true
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_payment_attempts_payment_command_id_fkey"
+            columns: ["payment_command_id"]
+            isOneToOne: true
+            referencedRelation: "ap_external_commands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_provider_events: {
+        Row: {
+          applied_at: string | null
+          event_type: string
+          failure_code: string | null
+          id: string
+          payload_sha256: string
+          provider: string
+          provider_event_id: string
+          received_at: string
+          result: Json
+          signature_verified_at: string
+        }
+        Insert: {
+          applied_at?: string | null
+          event_type: string
+          failure_code?: string | null
+          id?: string
+          payload_sha256: string
+          provider: string
+          provider_event_id: string
+          received_at?: string
+          result?: Json
+          signature_verified_at: string
+        }
+        Update: {
+          applied_at?: string | null
+          event_type?: string
+          failure_code?: string | null
+          id?: string
+          payload_sha256?: string
+          provider?: string
+          provider_event_id?: string
+          received_at?: string
+          result?: Json
+          signature_verified_at?: string
+        }
+        Relationships: []
+      }
+      ap_quotes: {
+        Row: {
+          capacity_allocation_id: string | null
+          content_sha256: string
+          created_at: string
+          currency: string
+          customer_id: string | null
+          draft_id: string | null
+          expires_at: string
+          feasibility_assessment_id: string
+          id: string
+          idempotency_key: string | null
+          invalidated_at: string | null
+          price_cents: number
+          pricing_version: string | null
+          privacy_version: string | null
+          snapshot_id: string
+          tax_inclusive: boolean
+          tax_version: string | null
+          terms_version: string | null
+        }
+        Insert: {
+          capacity_allocation_id?: string | null
+          content_sha256: string
+          created_at?: string
+          currency: string
+          customer_id?: string | null
+          draft_id?: string | null
+          expires_at: string
+          feasibility_assessment_id: string
+          id?: string
+          idempotency_key?: string | null
+          invalidated_at?: string | null
+          price_cents: number
+          pricing_version?: string | null
+          privacy_version?: string | null
+          snapshot_id: string
+          tax_inclusive: boolean
+          tax_version?: string | null
+          terms_version?: string | null
+        }
+        Update: {
+          capacity_allocation_id?: string | null
+          content_sha256?: string
+          created_at?: string
+          currency?: string
+          customer_id?: string | null
+          draft_id?: string | null
+          expires_at?: string
+          feasibility_assessment_id?: string
+          id?: string
+          idempotency_key?: string | null
+          invalidated_at?: string | null
+          price_cents?: number
+          pricing_version?: string | null
+          privacy_version?: string | null
+          snapshot_id?: string
+          tax_inclusive?: boolean
+          tax_version?: string | null
+          terms_version?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_quotes_capacity_allocation_id_fkey"
+            columns: ["capacity_allocation_id"]
+            isOneToOne: true
+            referencedRelation: "ap_capacity_allocations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_quotes_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_quotes_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_quotes_feasibility_assessment_id_fkey"
+            columns: ["feasibility_assessment_id"]
+            isOneToOne: false
+            referencedRelation: "ap_feasibility_assessments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_quotes_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_reference_isolation_reviews: {
+        Row: {
+          content_sha256: string
+          created_at: string
+          customer_id: string
+          detector_version: string
+          document_version_id: string
+          id: string
+          quarantined_payload_id: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+        }
+        Insert: {
+          content_sha256: string
+          created_at?: string
+          customer_id: string
+          detector_version: string
+          document_version_id: string
+          id?: string
+          quarantined_payload_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status: string
+        }
+        Update: {
+          content_sha256?: string
+          created_at?: string
+          customer_id?: string
+          detector_version?: string
+          document_version_id?: string
+          id?: string
+          quarantined_payload_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_reference_isolation_reviews_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_reference_isolation_reviews_document_version_id_fkey"
+            columns: ["document_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_document_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_reference_isolation_reviews_quarantined_payload_id_fkey"
+            columns: ["quarantined_payload_id"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_reference_isolation_reviews_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_reference_permissions: {
+        Row: {
+          attested_at: string
+          contact_version_changed_at: string | null
+          created_at: string
+          customer_id: string
+          delivered_release_id: string
+          employer_snapshot: string
+          exact_position_snapshot: string
+          id: string
+          job_snapshot_hash: string
+          job_snapshot_id: string
+          permission_text_version: string
+          reference_record_version_id: string
+          revoked_at: string | null
+        }
+        Insert: {
+          attested_at: string
+          contact_version_changed_at?: string | null
+          created_at?: string
+          customer_id: string
+          delivered_release_id: string
+          employer_snapshot: string
+          exact_position_snapshot: string
+          id?: string
+          job_snapshot_hash: string
+          job_snapshot_id: string
+          permission_text_version: string
+          reference_record_version_id: string
+          revoked_at?: string | null
+        }
+        Update: {
+          attested_at?: string
+          contact_version_changed_at?: string | null
+          created_at?: string
+          customer_id?: string
+          delivered_release_id?: string
+          employer_snapshot?: string
+          exact_position_snapshot?: string
+          id?: string
+          job_snapshot_hash?: string
+          job_snapshot_id?: string
+          permission_text_version?: string
+          reference_record_version_id?: string
+          revoked_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_reference_permissions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_reference_permissions_delivered_release_id_fkey"
+            columns: ["delivered_release_id"]
+            isOneToOne: false
+            referencedRelation: "ap_releases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_reference_permissions_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_reference_permissions_reference_record_version_id_fkey"
+            columns: ["reference_record_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_reference_record_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_reference_record_versions: {
+        Row: {
+          created_at: string
+          encrypted_payload_id: string
+          id: string
+          payload_schema_version: string
+          payload_sha256: string
+          permission_last_confirmed_at: string | null
+          permission_status: Database["public"]["Enums"]["ap_reference_permission"]
+          reference_record_id: string
+          superseded_at: string | null
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          encrypted_payload_id: string
+          id?: string
+          payload_schema_version: string
+          payload_sha256: string
+          permission_last_confirmed_at?: string | null
+          permission_status?: Database["public"]["Enums"]["ap_reference_permission"]
+          reference_record_id: string
+          superseded_at?: string | null
+          version: number
+        }
+        Update: {
+          created_at?: string
+          encrypted_payload_id?: string
+          id?: string
+          payload_schema_version?: string
+          payload_sha256?: string
+          permission_last_confirmed_at?: string | null
+          permission_status?: Database["public"]["Enums"]["ap_reference_permission"]
+          reference_record_id?: string
+          superseded_at?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_reference_record_versions_encrypted_payload_id_fkey"
+            columns: ["encrypted_payload_id"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_reference_record_versions_reference_record_id_fkey"
+            columns: ["reference_record_id"]
+            isOneToOne: false
+            referencedRelation: "ap_reference_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_reference_records: {
+        Row: {
+          created_at: string
+          current_version: number
+          customer_id: string
+          id: string
+          opaque_client_id: string
+          removed_at: string | null
+          retention_due_at: string | null
+          retention_state: Database["public"]["Enums"]["ap_retention_state"]
+        }
+        Insert: {
+          created_at?: string
+          current_version?: number
+          customer_id: string
+          id?: string
+          opaque_client_id?: string
+          removed_at?: string | null
+          retention_due_at?: string | null
+          retention_state?: Database["public"]["Enums"]["ap_retention_state"]
+        }
+        Update: {
+          created_at?: string
+          current_version?: number
+          customer_id?: string
+          id?: string
+          opaque_client_id?: string
+          removed_at?: string | null
+          retention_due_at?: string | null
+          retention_state?: Database["public"]["Enums"]["ap_retention_state"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_reference_records_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_reference_regenerations: {
+        Row: {
+          all_permissions_confirmed_at: string
+          attempt_number: number
+          capacity_allocation_id: string | null
+          capacity_confirmed_at: string | null
+          created_at: string
+          customer_id: string
+          delivered_release_id: string | null
+          due_at: string | null
+          failure_code: string | null
+          id: string
+          material_line_id: string
+          permission_ids: string[]
+          prior_artifact_id: string
+          request_key: string
+          requested_at: string
+          started_at: string | null
+          state: Database["public"]["Enums"]["ap_reference_regeneration_state"]
+        }
+        Insert: {
+          all_permissions_confirmed_at: string
+          attempt_number: number
+          capacity_allocation_id?: string | null
+          capacity_confirmed_at?: string | null
+          created_at?: string
+          customer_id: string
+          delivered_release_id?: string | null
+          due_at?: string | null
+          failure_code?: string | null
+          id?: string
+          material_line_id: string
+          permission_ids: string[]
+          prior_artifact_id: string
+          request_key: string
+          requested_at: string
+          started_at?: string | null
+          state?: Database["public"]["Enums"]["ap_reference_regeneration_state"]
+        }
+        Update: {
+          all_permissions_confirmed_at?: string
+          attempt_number?: number
+          capacity_allocation_id?: string | null
+          capacity_confirmed_at?: string | null
+          created_at?: string
+          customer_id?: string
+          delivered_release_id?: string | null
+          due_at?: string | null
+          failure_code?: string | null
+          id?: string
+          material_line_id?: string
+          permission_ids?: string[]
+          prior_artifact_id?: string
+          request_key?: string
+          requested_at?: string
+          started_at?: string | null
+          state?: Database["public"]["Enums"]["ap_reference_regeneration_state"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_reference_regenerations_capacity_allocation_id_fkey"
+            columns: ["capacity_allocation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_capacity_allocations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_reference_regenerations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_reference_regenerations_delivered_release_id_fkey"
+            columns: ["delivered_release_id"]
+            isOneToOne: false
+            referencedRelation: "ap_releases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_reference_regenerations_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_reference_regenerations_prior_artifact_id_fkey"
+            columns: ["prior_artifact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_generated_artifacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_reference_staff_access: {
+        Row: {
+          accessed_at: string
+          id: number
+          purpose: string
+          reference_record_id: string
+          staff_id: string
+        }
+        Insert: {
+          accessed_at?: string
+          id?: never
+          purpose: string
+          reference_record_id: string
+          staff_id: string
+        }
+        Update: {
+          accessed_at?: string
+          id?: never
+          purpose?: string
+          reference_record_id?: string
+          staff_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_reference_staff_access_reference_record_id_fkey"
+            columns: ["reference_record_id"]
+            isOneToOne: false
+            referencedRelation: "ap_reference_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_reference_staff_access_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_refund_operations: {
+        Row: {
+          amount_cents: number
+          completed_at: string | null
+          created_at: string
+          currency: string
+          customer_id: string
+          failed_at: string | null
+          id: string
+          idempotency_key: string
+          last_error_code: string | null
+          material_line_id: string | null
+          payment_attempt_id: string
+          provider_command_id: string | null
+          provider_event_id: string | null
+          provider_refund_id: string | null
+          reason_code: string | null
+          requested_at: string
+          required: boolean
+          retry_count: number
+          scope: Database["public"]["Enums"]["ap_refund_scope"]
+          state: Database["public"]["Enums"]["ap_refund_state"]
+          superseded_at: string | null
+        }
+        Insert: {
+          amount_cents: number
+          completed_at?: string | null
+          created_at?: string
+          currency: string
+          customer_id: string
+          failed_at?: string | null
+          id?: string
+          idempotency_key: string
+          last_error_code?: string | null
+          material_line_id?: string | null
+          payment_attempt_id: string
+          provider_command_id?: string | null
+          provider_event_id?: string | null
+          provider_refund_id?: string | null
+          reason_code?: string | null
+          requested_at?: string
+          required?: boolean
+          retry_count?: number
+          scope: Database["public"]["Enums"]["ap_refund_scope"]
+          state?: Database["public"]["Enums"]["ap_refund_state"]
+          superseded_at?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          completed_at?: string | null
+          created_at?: string
+          currency?: string
+          customer_id?: string
+          failed_at?: string | null
+          id?: string
+          idempotency_key?: string
+          last_error_code?: string | null
+          material_line_id?: string | null
+          payment_attempt_id?: string
+          provider_command_id?: string | null
+          provider_event_id?: string | null
+          provider_refund_id?: string | null
+          reason_code?: string | null
+          requested_at?: string
+          required?: boolean
+          retry_count?: number
+          scope?: Database["public"]["Enums"]["ap_refund_scope"]
+          state?: Database["public"]["Enums"]["ap_refund_state"]
+          superseded_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_refund_operations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_refund_operations_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_refund_operations_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["corrected_payment_attempt_id"]
+          },
+          {
+            foreignKeyName: "ap_refund_operations_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: false
+            referencedRelation: "ap_payment_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_refund_operations_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: false
+            referencedRelation: "ap_payment_refund_aggregates"
+            referencedColumns: ["payment_attempt_id"]
+          },
+          {
+            foreignKeyName: "ap_refund_operations_provider_command_id_fkey"
+            columns: ["provider_command_id"]
+            isOneToOne: true
+            referencedRelation: "ap_external_commands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_release_members: {
+        Row: {
+          created_at: string
+          id: string
+          member_id: string
+          member_type: string
+          position: number | null
+          release_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_id: string
+          member_type: string
+          position?: number | null
+          release_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_id?: string
+          member_type?: string
+          position?: number | null
+          release_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_release_members_release_id_fkey"
+            columns: ["release_id"]
+            isOneToOne: false
+            referencedRelation: "ap_releases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_releases: {
+        Row: {
+          active_due_at: string
+          committed_at: string
+          created_at: string
+          customer_id: string
+          human_approved_by: string
+          id: string
+          material_line_id: string | null
+          order_id: string
+          release_kind: string
+          version_bundle: Json
+        }
+        Insert: {
+          active_due_at: string
+          committed_at: string
+          created_at?: string
+          customer_id: string
+          human_approved_by: string
+          id?: string
+          material_line_id?: string | null
+          order_id: string
+          release_kind: string
+          version_bundle: Json
+        }
+        Update: {
+          active_due_at?: string
+          committed_at?: string
+          created_at?: string
+          customer_id?: string
+          human_approved_by?: string
+          id?: string
+          material_line_id?: string | null
+          order_id?: string
+          release_kind?: string
+          version_bundle?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_releases_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_releases_human_approved_by_fkey"
+            columns: ["human_approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_releases_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_releases_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_releases_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_requirement_nodes: {
+        Row: {
+          classification_method: string | null
+          created_at: string
+          criterion_type:
+            | Database["public"]["Enums"]["ap_criterion_type"]
+            | null
+          criterion_version: string | null
+          duration_basis: string | null
+          equivalent_review_id: string | null
+          human_correction_history: Json
+          id: string
+          importance: number | null
+          job_snapshot_id: string
+          node_kind: Database["public"]["Enums"]["ap_requirement_node_kind"]
+          parent_id: string | null
+          parser_certainty: number | null
+          position: number
+          requirement_strength: string | null
+          semantic_key: string | null
+          source_excerpt: string | null
+          source_locator: string | null
+          stable_criterion_id: string | null
+          typed_value: Json | null
+        }
+        Insert: {
+          classification_method?: string | null
+          created_at?: string
+          criterion_type?:
+            | Database["public"]["Enums"]["ap_criterion_type"]
+            | null
+          criterion_version?: string | null
+          duration_basis?: string | null
+          equivalent_review_id?: string | null
+          human_correction_history?: Json
+          id?: string
+          importance?: number | null
+          job_snapshot_id: string
+          node_kind: Database["public"]["Enums"]["ap_requirement_node_kind"]
+          parent_id?: string | null
+          parser_certainty?: number | null
+          position: number
+          requirement_strength?: string | null
+          semantic_key?: string | null
+          source_excerpt?: string | null
+          source_locator?: string | null
+          stable_criterion_id?: string | null
+          typed_value?: Json | null
+        }
+        Update: {
+          classification_method?: string | null
+          created_at?: string
+          criterion_type?:
+            | Database["public"]["Enums"]["ap_criterion_type"]
+            | null
+          criterion_version?: string | null
+          duration_basis?: string | null
+          equivalent_review_id?: string | null
+          human_correction_history?: Json
+          id?: string
+          importance?: number | null
+          job_snapshot_id?: string
+          node_kind?: Database["public"]["Enums"]["ap_requirement_node_kind"]
+          parent_id?: string | null
+          parser_certainty?: number | null
+          position?: number
+          requirement_strength?: string | null
+          semantic_key?: string | null
+          source_excerpt?: string | null
+          source_locator?: string | null
+          stable_criterion_id?: string | null
+          typed_value?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_requirement_nodes_equivalent_review_id_fkey"
+            columns: ["equivalent_review_id"]
+            isOneToOne: false
+            referencedRelation: "ap_human_review_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_requirement_nodes_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_requirement_nodes_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "ap_requirement_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_retention_configuration: {
+        Row: {
+          approved: boolean
+          cleanup_enabled: boolean | null
+          privacy_policy_approval_reference: string | null
+          singleton: boolean
+          unpaid_draft_seconds: number | null
+          unpaid_file_seconds: number | null
+          updated_at: string
+        }
+        Insert: {
+          approved?: boolean
+          cleanup_enabled?: boolean | null
+          privacy_policy_approval_reference?: string | null
+          singleton?: boolean
+          unpaid_draft_seconds?: number | null
+          unpaid_file_seconds?: number | null
+          updated_at?: string
+        }
+        Update: {
+          approved?: boolean
+          cleanup_enabled?: boolean | null
+          privacy_policy_approval_reference?: string | null
+          singleton?: boolean
+          unpaid_draft_seconds?: number | null
+          unpaid_file_seconds?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ap_scheduled_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          id: string
+          idempotency_key: string
+          job_kind: string
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          reference_id: string
+          run_at: string
+          state: Database["public"]["Enums"]["ap_scheduled_job_state"]
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          idempotency_key: string
+          job_kind: string
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          reference_id: string
+          run_at: string
+          state?: Database["public"]["Enums"]["ap_scheduled_job_state"]
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          idempotency_key?: string
+          job_kind?: string
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          reference_id?: string
+          run_at?: string
+          state?: Database["public"]["Enums"]["ap_scheduled_job_state"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ap_search_deadline_history: {
+        Row: {
+          capacity_allocation_id: string
+          created_at: string
+          criteria_snapshot_id: string
+          due_at: string
+          id: string
+          reason: string
+          revision: number
+          search_service_id: string
+          started_at: string
+        }
+        Insert: {
+          capacity_allocation_id: string
+          created_at?: string
+          criteria_snapshot_id: string
+          due_at: string
+          id?: string
+          reason: string
+          revision: number
+          search_service_id: string
+          started_at: string
+        }
+        Update: {
+          capacity_allocation_id?: string
+          created_at?: string
+          criteria_snapshot_id?: string
+          due_at?: string
+          id?: string
+          reason?: string
+          revision?: number
+          search_service_id?: string
+          started_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_search_deadline_history_capacity_allocation_id_fkey"
+            columns: ["capacity_allocation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_capacity_allocations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_deadline_history_criteria_snapshot_id_fkey"
+            columns: ["criteria_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_deadline_history_search_service_id_fkey"
+            columns: ["search_service_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["corrected_search_service_id"]
+          },
+          {
+            foreignKeyName: "ap_search_deadline_history_search_service_id_fkey"
+            columns: ["search_service_id"]
+            isOneToOne: false
+            referencedRelation: "ap_search_services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_search_package_reviews: {
+        Row: {
+          checklist: Json
+          customer_id: string
+          decision: Database["public"]["Enums"]["ap_staff_review_decision"]
+          evaluation_ids: string[]
+          id: string
+          invalidated_at: string | null
+          rationale: string
+          reviewed_at: string
+          reviewer_id: string
+          search_service_id: string
+          selection_run_id: string
+          version_bundle: Json
+        }
+        Insert: {
+          checklist: Json
+          customer_id: string
+          decision: Database["public"]["Enums"]["ap_staff_review_decision"]
+          evaluation_ids: string[]
+          id?: string
+          invalidated_at?: string | null
+          rationale: string
+          reviewed_at?: string
+          reviewer_id: string
+          search_service_id: string
+          selection_run_id: string
+          version_bundle: Json
+        }
+        Update: {
+          checklist?: Json
+          customer_id?: string
+          decision?: Database["public"]["Enums"]["ap_staff_review_decision"]
+          evaluation_ids?: string[]
+          id?: string
+          invalidated_at?: string | null
+          rationale?: string
+          reviewed_at?: string
+          reviewer_id?: string
+          search_service_id?: string
+          selection_run_id?: string
+          version_bundle?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_search_package_reviews_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_package_reviews_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_package_reviews_search_service_id_fkey"
+            columns: ["search_service_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["corrected_search_service_id"]
+          },
+          {
+            foreignKeyName: "ap_search_package_reviews_search_service_id_fkey"
+            columns: ["search_service_id"]
+            isOneToOne: false
+            referencedRelation: "ap_search_services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_package_reviews_selection_run_id_fkey"
+            columns: ["selection_run_id"]
+            isOneToOne: false
+            referencedRelation: "ap_match_selection_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_search_services: {
+        Row: {
+          active_deadline_revision: number
+          active_snapshot_id: string | null
+          adjustment: Database["public"]["Enums"]["ap_adjustment_state"]
+          canceled_at: string | null
+          capacity_allocation_id: string | null
+          capacity_confirmed_at: string | null
+          capacity_exception_at: string | null
+          capacity_exception_reason: string | null
+          created_at: string
+          customer_id: string
+          delivery_due_at: string | null
+          fulfillment: Database["public"]["Enums"]["ap_search_fulfillment"]
+          id: string
+          intake_completed_at: string | null
+          legacy_order_id: string
+          legacy_record: boolean
+          original_snapshot_id: string | null
+          quote_id: string | null
+          refund_started_at: string | null
+          revenue_earned_at: string | null
+          search_activated_at: string | null
+          service_started_at: string | null
+          updated_at: string
+          version_bundle: Json
+          winning_payment_attempt_id: string | null
+        }
+        Insert: {
+          active_deadline_revision?: number
+          active_snapshot_id?: string | null
+          adjustment?: Database["public"]["Enums"]["ap_adjustment_state"]
+          canceled_at?: string | null
+          capacity_allocation_id?: string | null
+          capacity_confirmed_at?: string | null
+          capacity_exception_at?: string | null
+          capacity_exception_reason?: string | null
+          created_at?: string
+          customer_id: string
+          delivery_due_at?: string | null
+          fulfillment?: Database["public"]["Enums"]["ap_search_fulfillment"]
+          id?: string
+          intake_completed_at?: string | null
+          legacy_order_id: string
+          legacy_record?: boolean
+          original_snapshot_id?: string | null
+          quote_id?: string | null
+          refund_started_at?: string | null
+          revenue_earned_at?: string | null
+          search_activated_at?: string | null
+          service_started_at?: string | null
+          updated_at?: string
+          version_bundle?: Json
+          winning_payment_attempt_id?: string | null
+        }
+        Update: {
+          active_deadline_revision?: number
+          active_snapshot_id?: string | null
+          adjustment?: Database["public"]["Enums"]["ap_adjustment_state"]
+          canceled_at?: string | null
+          capacity_allocation_id?: string | null
+          capacity_confirmed_at?: string | null
+          capacity_exception_at?: string | null
+          capacity_exception_reason?: string | null
+          created_at?: string
+          customer_id?: string
+          delivery_due_at?: string | null
+          fulfillment?: Database["public"]["Enums"]["ap_search_fulfillment"]
+          id?: string
+          intake_completed_at?: string | null
+          legacy_order_id?: string
+          legacy_record?: boolean
+          original_snapshot_id?: string | null
+          quote_id?: string | null
+          refund_started_at?: string | null
+          revenue_earned_at?: string | null
+          search_activated_at?: string | null
+          service_started_at?: string | null
+          updated_at?: string
+          version_bundle?: Json
+          winning_payment_attempt_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_search_services_active_snapshot_id_fkey"
+            columns: ["active_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_services_capacity_allocation_id_fkey"
+            columns: ["capacity_allocation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_capacity_allocations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_services_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_services_legacy_order_id_fkey"
+            columns: ["legacy_order_id"]
+            isOneToOne: true
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_services_legacy_order_id_fkey"
+            columns: ["legacy_order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_services_original_snapshot_id_fkey"
+            columns: ["original_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_services_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "ap_quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_services_winning_payment_attempt_id_fkey"
+            columns: ["winning_payment_attempt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["corrected_payment_attempt_id"]
+          },
+          {
+            foreignKeyName: "ap_search_services_winning_payment_attempt_id_fkey"
+            columns: ["winning_payment_attempt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_payment_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_services_winning_payment_attempt_id_fkey"
+            columns: ["winning_payment_attempt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_payment_refund_aggregates"
+            referencedColumns: ["payment_attempt_id"]
+          },
+        ]
+      }
+      ap_sensitive_payloads: {
+        Row: {
+          authentication_tag: string
+          ciphertext: string
+          content_sha256: string
+          created_at: string
+          customer_id: string | null
+          draft_id: string | null
+          encrypted_data_key: string
+          encryption_algorithm: string
+          encryption_context_hash: string
+          id: string
+          kms_key_identity: string
+          kms_key_version: string
+          nonce: string
+          retention_due_at: string | null
+          retention_state: Database["public"]["Enums"]["ap_retention_state"]
+        }
+        Insert: {
+          authentication_tag: string
+          ciphertext: string
+          content_sha256: string
+          created_at?: string
+          customer_id?: string | null
+          draft_id?: string | null
+          encrypted_data_key: string
+          encryption_algorithm: string
+          encryption_context_hash: string
+          id?: string
+          kms_key_identity: string
+          kms_key_version: string
+          nonce: string
+          retention_due_at?: string | null
+          retention_state?: Database["public"]["Enums"]["ap_retention_state"]
+        }
+        Update: {
+          authentication_tag?: string
+          ciphertext?: string
+          content_sha256?: string
+          created_at?: string
+          customer_id?: string | null
+          draft_id?: string | null
+          encrypted_data_key?: string
+          encryption_algorithm?: string
+          encryption_context_hash?: string
+          id?: string
+          kms_key_identity?: string
+          kms_key_version?: string
+          nonce?: string
+          retention_due_at?: string | null
+          retention_state?: Database["public"]["Enums"]["ap_retention_state"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_sensitive_payloads_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_sensitive_payloads_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_snapshot_legal_acceptances: {
+        Row: {
+          acceptance_sha256: string
+          accepted_at: string
+          draft_id: string
+          id: string
+          privacy_version: string
+          snapshot_id: string
+          terms_version: string
+        }
+        Insert: {
+          acceptance_sha256: string
+          accepted_at?: string
+          draft_id: string
+          id?: string
+          privacy_version: string
+          snapshot_id: string
+          terms_version: string
+        }
+        Update: {
+          acceptance_sha256?: string
+          accepted_at?: string
+          draft_id?: string
+          id?: string
+          privacy_version?: string
+          snapshot_id?: string
+          terms_version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_snapshot_legal_acceptances_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_snapshot_legal_acceptances_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: true
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_source_authorizations: {
+        Row: {
+          access_method: string
+          allowed_actions: string[]
+          allowed_hosts: string[]
+          authorization_version: string
+          content_sha256: string
+          created_at: string
+          evidence_reference: string | null
+          evidence_sha256: string | null
+          id: string
+          rate_and_result_bounds: Json
+          source_display_name: string
+          source_id: string
+          state: Database["public"]["Enums"]["ap_source_authorization_state"]
+          verified_at: string | null
+          verified_by_role: string | null
+        }
+        Insert: {
+          access_method: string
+          allowed_actions?: string[]
+          allowed_hosts?: string[]
+          authorization_version: string
+          content_sha256: string
+          created_at?: string
+          evidence_reference?: string | null
+          evidence_sha256?: string | null
+          id?: string
+          rate_and_result_bounds?: Json
+          source_display_name: string
+          source_id: string
+          state: Database["public"]["Enums"]["ap_source_authorization_state"]
+          verified_at?: string | null
+          verified_by_role?: string | null
+        }
+        Update: {
+          access_method?: string
+          allowed_actions?: string[]
+          allowed_hosts?: string[]
+          authorization_version?: string
+          content_sha256?: string
+          created_at?: string
+          evidence_reference?: string | null
+          evidence_sha256?: string | null
+          id?: string
+          rate_and_result_bounds?: Json
+          source_display_name?: string
+          source_id?: string
+          state?: Database["public"]["Enums"]["ap_source_authorization_state"]
+          verified_at?: string | null
+          verified_by_role?: string | null
+        }
+        Relationships: []
+      }
+      ap_targeted_intake_questions: {
+        Row: {
+          answer_sensitive_payload_id: string | null
+          answer_sha256: string | null
+          answered_at: string | null
+          created_at: string
+          draft_id: string
+          id: string
+          job_snapshot_id: string
+          prompt_version: string
+          question_kind: string
+          stable_criterion_id: string
+          state: string
+        }
+        Insert: {
+          answer_sensitive_payload_id?: string | null
+          answer_sha256?: string | null
+          answered_at?: string | null
+          created_at?: string
+          draft_id: string
+          id?: string
+          job_snapshot_id: string
+          prompt_version: string
+          question_kind: string
+          stable_criterion_id: string
+          state?: string
+        }
+        Update: {
+          answer_sensitive_payload_id?: string | null
+          answer_sha256?: string | null
+          answered_at?: string | null
+          created_at?: string
+          draft_id?: string
+          id?: string
+          job_snapshot_id?: string
+          prompt_version?: string
+          question_kind?: string
+          stable_criterion_id?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_targeted_intake_questions_answer_sensitive_payload_id_fkey"
+            columns: ["answer_sensitive_payload_id"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_targeted_intake_questions_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_targeted_intake_questions_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      api_rate_limits: {
+        Row: {
+          key_hash: string
+          request_count: number
+          scope: string
+          window_started_at: string
+        }
+        Insert: {
+          key_hash: string
+          request_count?: number
+          scope: string
+          window_started_at?: string
+        }
+        Update: {
+          key_hash?: string
+          request_count?: number
+          scope?: string
+          window_started_at?: string
+        }
+        Relationships: []
+      }
+      apply_pack_cart_items: {
+        Row: {
+          cart_id: string
+          created_at: string
+          do_not_mention_notes: string | null
+          emphasis_notes: string | null
+          id: string
+          job_match_id: string
+          unit_price_cents: number
+        }
+        Insert: {
+          cart_id: string
+          created_at?: string
+          do_not_mention_notes?: string | null
+          emphasis_notes?: string | null
+          id?: string
+          job_match_id: string
+          unit_price_cents?: number
+        }
+        Update: {
+          cart_id?: string
+          created_at?: string
+          do_not_mention_notes?: string | null
+          emphasis_notes?: string | null
+          id?: string
+          job_match_id?: string
+          unit_price_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "apply_pack_cart_items_cart_id_fkey"
+            columns: ["cart_id"]
+            isOneToOne: false
+            referencedRelation: "apply_pack_carts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "apply_pack_cart_items_job_match_id_fkey"
+            columns: ["job_match_id"]
+            isOneToOne: false
+            referencedRelation: "job_matches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      apply_pack_carts: {
+        Row: {
+          capacity_reservation_id: string | null
+          created_at: string
+          customer_id: string
+          customer_update_notes: string | null
+          delivery_deadline: string | null
+          expires_at: string | null
+          id: string
+          item_count: number
+          outcomes_acknowledged: boolean
+          paid_at: string | null
+          search_order_id: string
+          selection_confirmed: boolean
+          status: string
+          stripe_checkout_session_id: string | null
+          submission_boundary_acknowledged: boolean
+          total_cents: number
+          unit_price_cents: number
+          updated_at: string
+        }
+        Insert: {
+          capacity_reservation_id?: string | null
+          created_at?: string
+          customer_id: string
+          customer_update_notes?: string | null
+          delivery_deadline?: string | null
+          expires_at?: string | null
+          id?: string
+          item_count: number
+          outcomes_acknowledged: boolean
+          paid_at?: string | null
+          search_order_id: string
+          selection_confirmed: boolean
+          status?: string
+          stripe_checkout_session_id?: string | null
+          submission_boundary_acknowledged: boolean
+          total_cents: number
+          unit_price_cents?: number
+          updated_at?: string
+        }
+        Update: {
+          capacity_reservation_id?: string | null
+          created_at?: string
+          customer_id?: string
+          customer_update_notes?: string | null
+          delivery_deadline?: string | null
+          expires_at?: string | null
+          id?: string
+          item_count?: number
+          outcomes_acknowledged?: boolean
+          paid_at?: string | null
+          search_order_id?: string
+          selection_confirmed?: boolean
+          status?: string
+          stripe_checkout_session_id?: string | null
+          submission_boundary_acknowledged?: boolean
+          total_cents?: number
+          unit_price_cents?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "apply_pack_carts_capacity_reservation_id_fkey"
+            columns: ["capacity_reservation_id"]
+            isOneToOne: false
+            referencedRelation: "capacity_reservations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "apply_pack_carts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "apply_pack_carts_search_order_id_fkey"
+            columns: ["search_order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "apply_pack_carts_search_order_id_fkey"
+            columns: ["search_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      apply_pack_delivery_revisions: {
+        Row: {
+          apply_pack_item_id: string
+          correction_request_id: string | null
+          cover_letter_path: string
+          created_at: string
+          delivered_at: string
+          id: string
+          resume_path: string
+          review_note: string | null
+          reviewed_by: string | null
+          version: number
+        }
+        Insert: {
+          apply_pack_item_id: string
+          correction_request_id?: string | null
+          cover_letter_path: string
+          created_at?: string
+          delivered_at: string
+          id?: string
+          resume_path: string
+          review_note?: string | null
+          reviewed_by?: string | null
+          version: number
+        }
+        Update: {
+          apply_pack_item_id?: string
+          correction_request_id?: string | null
+          cover_letter_path?: string
+          created_at?: string
+          delivered_at?: string
+          id?: string
+          resume_path?: string
+          review_note?: string | null
+          reviewed_by?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "apply_pack_delivery_revisions_apply_pack_item_id_fkey"
+            columns: ["apply_pack_item_id"]
+            isOneToOne: false
+            referencedRelation: "apply_pack_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "apply_pack_delivery_revisions_correction_request_id_fkey"
+            columns: ["correction_request_id"]
+            isOneToOne: true
+            referencedRelation: "correction_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "apply_pack_delivery_revisions_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      apply_pack_items: {
+        Row: {
+          cover_letter_path: string | null
+          customer_update_notes: string | null
+          delivered_at: string | null
+          delivery_claimed_at: string | null
+          do_not_mention_notes: string | null
+          draft_cover_letter_path: string | null
+          draft_generated_at: string | null
+          draft_generator_version: string | null
+          draft_resume_path: string | null
+          emphasis_notes: string | null
+          human_review_checklist: Json
+          human_reviewed_at: string | null
+          human_reviewed_by: string | null
+          id: string
+          job_match_id: string
+          order_id: string
+          resume_path: string | null
+          status: string
+        }
+        Insert: {
+          cover_letter_path?: string | null
+          customer_update_notes?: string | null
+          delivered_at?: string | null
+          delivery_claimed_at?: string | null
+          do_not_mention_notes?: string | null
+          draft_cover_letter_path?: string | null
+          draft_generated_at?: string | null
+          draft_generator_version?: string | null
+          draft_resume_path?: string | null
+          emphasis_notes?: string | null
+          human_review_checklist?: Json
+          human_reviewed_at?: string | null
+          human_reviewed_by?: string | null
+          id?: string
+          job_match_id: string
+          order_id: string
+          resume_path?: string | null
+          status?: string
+        }
+        Update: {
+          cover_letter_path?: string | null
+          customer_update_notes?: string | null
+          delivered_at?: string | null
+          delivery_claimed_at?: string | null
+          do_not_mention_notes?: string | null
+          draft_cover_letter_path?: string | null
+          draft_generated_at?: string | null
+          draft_generator_version?: string | null
+          draft_resume_path?: string | null
+          emphasis_notes?: string | null
+          human_review_checklist?: Json
+          human_reviewed_at?: string | null
+          human_reviewed_by?: string | null
+          id?: string
+          job_match_id?: string
+          order_id?: string
+          resume_path?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "apply_pack_items_human_reviewed_by_fkey"
+            columns: ["human_reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "apply_pack_items_job_match_id_fkey"
+            columns: ["job_match_id"]
+            isOneToOne: true
+            referencedRelation: "job_matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "apply_pack_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "apply_pack_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit_logs: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          details: Json
+          entity_id: string
+          entity_type: string
+          id: number
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          details?: Json
+          entity_id: string
+          entity_type: string
+          id?: never
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          details?: Json
+          entity_id?: string
+          entity_type?: string
+          id?: never
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      capacity_limits: {
+        Row: {
+          enabled: boolean
+          kind: Database["public"]["Enums"]["product_kind"]
+          units_per_24h: number
+          updated_at: string
+        }
+        Insert: {
+          enabled?: boolean
+          kind: Database["public"]["Enums"]["product_kind"]
+          units_per_24h: number
+          updated_at?: string
+        }
+        Update: {
+          enabled?: boolean
+          kind?: Database["public"]["Enums"]["product_kind"]
+          units_per_24h?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      capacity_reservations: {
+        Row: {
+          confirmed_at: string | null
+          customer_id: string
+          expires_at: string
+          id: string
+          kind: Database["public"]["Enums"]["product_kind"]
+          request_key: string
+          reserved_at: string
+          status: Database["public"]["Enums"]["reservation_status"]
+          units: number
+        }
+        Insert: {
+          confirmed_at?: string | null
+          customer_id: string
+          expires_at: string
+          id?: string
+          kind: Database["public"]["Enums"]["product_kind"]
+          request_key: string
+          reserved_at?: string
+          status?: Database["public"]["Enums"]["reservation_status"]
+          units: number
+        }
+        Update: {
+          confirmed_at?: string | null
+          customer_id?: string
+          expires_at?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["product_kind"]
+          request_key?: string
+          reserved_at?: string
+          status?: Database["public"]["Enums"]["reservation_status"]
+          units?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "capacity_reservations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conflict_reviews: {
+        Row: {
+          created_at: string
+          criteria_version: number
+          customer_id: string
+          explanation: string
+          id: string
+          job_match_id: string
+          resolution: string | null
+          resolved_at: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          criteria_version: number
+          customer_id: string
+          explanation: string
+          id?: string
+          job_match_id: string
+          resolution?: string | null
+          resolved_at?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          criteria_version?: number
+          customer_id?: string
+          explanation?: string
+          id?: string
+          job_match_id?: string
+          resolution?: string | null
+          resolved_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conflict_reviews_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conflict_reviews_job_match_id_fkey"
+            columns: ["job_match_id"]
+            isOneToOne: false
+            referencedRelation: "job_matches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      correction_requests: {
+        Row: {
+          admin_notes: string | null
+          apply_pack_item_id: string
+          correction_text: string
+          created_at: string
+          customer_id: string
+          id: string
+          resolved_at: string | null
+          status: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          apply_pack_item_id: string
+          correction_text: string
+          created_at?: string
+          customer_id: string
+          id?: string
+          resolved_at?: string | null
+          status?: string
+        }
+        Update: {
+          admin_notes?: string | null
+          apply_pack_item_id?: string
+          correction_text?: string
+          created_at?: string
+          customer_id?: string
+          id?: string
+          resolved_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "correction_requests_apply_pack_item_id_fkey"
+            columns: ["apply_pack_item_id"]
+            isOneToOne: false
+            referencedRelation: "apply_pack_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "correction_requests_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      criteria_versions: {
+        Row: {
+          approved_at: string
+          approved_by: string
+          id: string
+          intake_id: string
+          snapshot: Json
+          version: number
+        }
+        Insert: {
+          approved_at?: string
+          approved_by: string
+          id?: string
+          intake_id: string
+          snapshot: Json
+          version: number
+        }
+        Update: {
+          approved_at?: string
+          approved_by?: string
+          id?: string
+          intake_id?: string
+          snapshot?: Json
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "criteria_versions_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "criteria_versions_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "intakes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_job_delivery_history: {
+        Row: {
+          canonical_employer_id: string | null
+          customer_id: string
+          deduplication_key: string | null
+          delivered_at: string
+          delivery_kind: string
+          external_job_id: string | null
+          id: string
+          job_id: string
+          job_match_id: string
+          normalized_source_url: string | null
+          official_application_url: string | null
+          recorded_at: string
+          search_order_id: string
+          source_job_url: string | null
+          source_url: string
+        }
+        Insert: {
+          canonical_employer_id?: string | null
+          customer_id: string
+          deduplication_key?: string | null
+          delivered_at: string
+          delivery_kind: string
+          external_job_id?: string | null
+          id?: string
+          job_id: string
+          job_match_id: string
+          normalized_source_url?: string | null
+          official_application_url?: string | null
+          recorded_at?: string
+          search_order_id: string
+          source_job_url?: string | null
+          source_url: string
+        }
+        Update: {
+          canonical_employer_id?: string | null
+          customer_id?: string
+          deduplication_key?: string | null
+          delivered_at?: string
+          delivery_kind?: string
+          external_job_id?: string | null
+          id?: string
+          job_id?: string
+          job_match_id?: string
+          normalized_source_url?: string | null
+          official_application_url?: string | null
+          recorded_at?: string
+          search_order_id?: string
+          source_job_url?: string | null
+          source_url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_job_delivery_history_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_job_delivery_history_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_job_delivery_history_job_match_id_fkey"
+            columns: ["job_match_id"]
+            isOneToOne: false
+            referencedRelation: "job_matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_job_delivery_history_search_order_id_fkey"
+            columns: ["search_order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_job_delivery_history_search_order_id_fkey"
+            columns: ["search_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_events: {
+        Row: {
+          apply_pack_cart_id: string | null
+          attempt_count: number
+          created_at: string
+          id: string
+          idempotency_key: string
+          last_attempt_at: string | null
+          last_error_code: string | null
+          order_id: string | null
+          provider_message_id: string | null
+          recipient: string
+          status: string
+          template: string
+          updated_at: string
+        }
+        Insert: {
+          apply_pack_cart_id?: string | null
+          attempt_count?: number
+          created_at?: string
+          id?: string
+          idempotency_key: string
+          last_attempt_at?: string | null
+          last_error_code?: string | null
+          order_id?: string | null
+          provider_message_id?: string | null
+          recipient: string
+          status: string
+          template: string
+          updated_at?: string
+        }
+        Update: {
+          apply_pack_cart_id?: string | null
+          attempt_count?: number
+          created_at?: string
+          id?: string
+          idempotency_key?: string
+          last_attempt_at?: string | null
+          last_error_code?: string | null
+          order_id?: string | null
+          provider_message_id?: string | null
+          recipient?: string
+          status?: string
+          template?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_events_apply_pack_cart_id_fkey"
+            columns: ["apply_pack_cart_id"]
+            isOneToOne: false
+            referencedRelation: "apply_pack_carts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employer_aliases: {
+        Row: {
+          alias_display_name: string
+          alias_normalized: string
+          canonical_employer_id: string
+          created_at: string
+          status: string
+        }
+        Insert: {
+          alias_display_name: string
+          alias_normalized: string
+          canonical_employer_id: string
+          created_at?: string
+          status?: string
+        }
+        Update: {
+          alias_display_name?: string
+          alias_normalized?: string
+          canonical_employer_id?: string
+          created_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employer_aliases_canonical_employer_id_fkey"
+            columns: ["canonical_employer_id"]
+            isOneToOne: false
+            referencedRelation: "employers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employers: {
+        Row: {
+          aliases: string[]
+          created_at: string
+          display_name: string
+          id: string
+          is_active: boolean
+          source_category: string
+          updated_at: string
+        }
+        Insert: {
+          aliases?: string[]
+          created_at?: string
+          display_name: string
+          id: string
+          is_active?: boolean
+          source_category: string
+          updated_at?: string
+        }
+        Update: {
+          aliases?: string[]
+          created_at?: string
+          display_name?: string
+          id?: string
+          is_active?: boolean
+          source_category?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      intake_answers: {
+        Row: {
+          answers: Json
+          created_at: string
+          customer_id: string
+          intake_id: string
+          updated_at: string
+        }
+        Insert: {
+          answers: Json
+          created_at?: string
+          customer_id: string
+          intake_id: string
+          updated_at?: string
+        }
+        Update: {
+          answers?: Json
+          created_at?: string
+          customer_id?: string
+          intake_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intake_answers_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intake_answers_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: true
+            referencedRelation: "intakes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intake_drafts: {
+        Row: {
+          answers: Json
+          cover_letter_document: Json | null
+          created_at: string
+          current_step: number
+          customer_id: string
+          email: string
+          expires_at: string
+          id: string
+          resume_document: Json | null
+          updated_at: string
+        }
+        Insert: {
+          answers?: Json
+          cover_letter_document?: Json | null
+          created_at?: string
+          current_step?: number
+          customer_id: string
+          email: string
+          expires_at?: string
+          id?: string
+          resume_document?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          answers?: Json
+          cover_letter_document?: Json | null
+          created_at?: string
+          current_step?: number
+          customer_id?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          resume_document?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intake_drafts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intakes: {
+        Row: {
+          cover_letter_path: string | null
+          created_at: string
+          criteria_approved_at: string | null
+          criteria_version: number
+          customer_id: string
+          dealbreakers: string
+          direction: string
+          email: string
+          experience_summary: string
+          id: string
+          location_preference: string
+          minimum_salary: string | null
+          notes: string | null
+          priorities: Json
+          resume_path: string
+          schedule_preference: string
+          source_deleted_at: string | null
+          source_retention_due_at: string | null
+          source_scan_provider_ref: string | null
+          source_scan_status: string
+          source_scanned_at: string | null
+          status: Database["public"]["Enums"]["intake_status"]
+          updated_at: string
+        }
+        Insert: {
+          cover_letter_path?: string | null
+          created_at?: string
+          criteria_approved_at?: string | null
+          criteria_version?: number
+          customer_id: string
+          dealbreakers: string
+          direction: string
+          email: string
+          experience_summary: string
+          id?: string
+          location_preference: string
+          minimum_salary?: string | null
+          notes?: string | null
+          priorities?: Json
+          resume_path: string
+          schedule_preference: string
+          source_deleted_at?: string | null
+          source_retention_due_at?: string | null
+          source_scan_provider_ref?: string | null
+          source_scan_status?: string
+          source_scanned_at?: string | null
+          status?: Database["public"]["Enums"]["intake_status"]
+          updated_at?: string
+        }
+        Update: {
+          cover_letter_path?: string | null
+          created_at?: string
+          criteria_approved_at?: string | null
+          criteria_version?: number
+          customer_id?: string
+          dealbreakers?: string
+          direction?: string
+          email?: string
+          experience_summary?: string
+          id?: string
+          location_preference?: string
+          minimum_salary?: string | null
+          notes?: string | null
+          priorities?: Json
+          resume_path?: string
+          schedule_preference?: string
+          source_deleted_at?: string | null
+          source_retention_due_at?: string | null
+          source_scan_provider_ref?: string | null
+          source_scan_status?: string
+          source_scanned_at?: string | null
+          status?: Database["public"]["Enums"]["intake_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intakes_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_deduplication_reviews: {
+        Row: {
+          candidate_payload: Json
+          created_at: string
+          existing_job_id: string
+          id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          similarity: number
+          status: string
+        }
+        Insert: {
+          candidate_payload: Json
+          created_at?: string
+          existing_job_id: string
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          similarity: number
+          status?: string
+        }
+        Update: {
+          candidate_payload?: Json
+          created_at?: string
+          existing_job_id?: string
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          similarity?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_deduplication_reviews_existing_job_id_fkey"
+            columns: ["existing_job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_deduplication_reviews_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_matches: {
+        Row: {
+          allowed_unknown_warnings: Json
+          apply_pack_cart_id: string | null
+          apply_pack_claim_expires_at: string | null
+          compensation_status: string | null
+          concerns: Json
+          core_responsibilities: Json
+          created_at: string
+          criteria_checks: Json
+          customer_decision: string | null
+          delivered_at: string | null
+          fit_summary: string
+          hidden_job_functions: Json
+          id: string
+          job_id: string
+          last_checked_at: string | null
+          match_kind: string
+          matching_experience: Json
+          position: number | null
+          posted_date_unknown: boolean
+          posted_on: string | null
+          primary_outcome: string | null
+          ranking_reason_codes: Json
+          ranking_score: number | null
+          release_evaluation_id: string | null
+          release_explanation: Json
+          requirements: Json
+          reviewed_at: string | null
+          reviewed_by: string | null
+          search_order_id: string
+          source_provenance: Json
+        }
+        Insert: {
+          allowed_unknown_warnings?: Json
+          apply_pack_cart_id?: string | null
+          apply_pack_claim_expires_at?: string | null
+          compensation_status?: string | null
+          concerns?: Json
+          core_responsibilities?: Json
+          created_at?: string
+          criteria_checks?: Json
+          customer_decision?: string | null
+          delivered_at?: string | null
+          fit_summary: string
+          hidden_job_functions?: Json
+          id?: string
+          job_id: string
+          last_checked_at?: string | null
+          match_kind?: string
+          matching_experience?: Json
+          position?: number | null
+          posted_date_unknown?: boolean
+          posted_on?: string | null
+          primary_outcome?: string | null
+          ranking_reason_codes?: Json
+          ranking_score?: number | null
+          release_evaluation_id?: string | null
+          release_explanation?: Json
+          requirements?: Json
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          search_order_id: string
+          source_provenance?: Json
+        }
+        Update: {
+          allowed_unknown_warnings?: Json
+          apply_pack_cart_id?: string | null
+          apply_pack_claim_expires_at?: string | null
+          compensation_status?: string | null
+          concerns?: Json
+          core_responsibilities?: Json
+          created_at?: string
+          criteria_checks?: Json
+          customer_decision?: string | null
+          delivered_at?: string | null
+          fit_summary?: string
+          hidden_job_functions?: Json
+          id?: string
+          job_id?: string
+          last_checked_at?: string | null
+          match_kind?: string
+          matching_experience?: Json
+          position?: number | null
+          posted_date_unknown?: boolean
+          posted_on?: string | null
+          primary_outcome?: string | null
+          ranking_reason_codes?: Json
+          ranking_score?: number | null
+          release_evaluation_id?: string | null
+          release_explanation?: Json
+          requirements?: Json
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          search_order_id?: string
+          source_provenance?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_matches_apply_pack_cart_id_fkey"
+            columns: ["apply_pack_cart_id"]
+            isOneToOne: false
+            referencedRelation: "apply_pack_carts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_matches_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_matches_release_evaluation_id_fkey"
+            columns: ["release_evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_match_evaluations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_matches_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_matches_search_order_id_fkey"
+            columns: ["search_order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_matches_search_order_id_fkey"
+            columns: ["search_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_source_exclusions: {
+        Row: {
+          created_at: string
+          exclusion_status: string
+          normalized_name: string
+          reason: string
+        }
+        Insert: {
+          created_at?: string
+          exclusion_status: string
+          normalized_name: string
+          reason: string
+        }
+        Update: {
+          created_at?: string
+          exclusion_status?: string
+          normalized_name?: string
+          reason?: string
+        }
+        Relationships: []
+      }
+      job_source_references: {
+        Row: {
+          external_job_id: string | null
+          first_seen_at: string
+          id: string
+          is_active: boolean
+          is_direct_employer: boolean
+          is_official: boolean
+          job_id: string
+          last_verified_at: string
+          normalized_source_url: string | null
+          official_application_url: string | null
+          source_id: string
+          source_job_url: string | null
+          source_name: string
+        }
+        Insert: {
+          external_job_id?: string | null
+          first_seen_at?: string
+          id?: string
+          is_active?: boolean
+          is_direct_employer?: boolean
+          is_official?: boolean
+          job_id: string
+          last_verified_at?: string
+          normalized_source_url?: string | null
+          official_application_url?: string | null
+          source_id: string
+          source_job_url?: string | null
+          source_name: string
+        }
+        Update: {
+          external_job_id?: string | null
+          first_seen_at?: string
+          id?: string
+          is_active?: boolean
+          is_direct_employer?: boolean
+          is_official?: boolean
+          job_id?: string
+          last_verified_at?: string
+          normalized_source_url?: string | null
+          official_application_url?: string | null
+          source_id?: string
+          source_job_url?: string | null
+          source_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_source_references_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_source_references_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "job_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_source_runs: {
+        Row: {
+          accepted_count: number
+          completed_at: string | null
+          error_code: string | null
+          error_message: string | null
+          fetched_count: number
+          id: string
+          rejected_count: number
+          source_id: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          accepted_count?: number
+          completed_at?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          fetched_count?: number
+          id?: string
+          rejected_count?: number
+          source_id: string
+          started_at?: string
+          status: string
+        }
+        Update: {
+          accepted_count?: number
+          completed_at?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          fetched_count?: number
+          id?: string
+          rejected_count?: number
+          source_id?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_source_runs_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "job_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_sources: {
+        Row: {
+          access_method: string | null
+          adapter_key: string | null
+          adapter_kind: string
+          alternate_official_urls: string[]
+          ats_platform: string | null
+          ats_tenant_identifier: string | null
+          automation_status: string
+          canonical_employer_id: string | null
+          created_at: string
+          default_benefits_status: string | null
+          default_employment_type: string | null
+          default_w2_or_contractor: string | null
+          health_status: string
+          id: string
+          ingestion_permission_status: string
+          is_active: boolean
+          is_direct_employer: boolean
+          is_official: boolean
+          last_health_checked_at: string | null
+          last_successful_sync_at: string | null
+          notes: string | null
+          official_url: string | null
+          paid_display_permission_status: string
+          permission_evidence_url: string | null
+          priority: number
+          refresh_schedule: string | null
+          schedule_enabled: boolean
+          source_category: string
+          source_name: string
+          updated_at: string
+        }
+        Insert: {
+          access_method?: string | null
+          adapter_key?: string | null
+          adapter_kind: string
+          alternate_official_urls?: string[]
+          ats_platform?: string | null
+          ats_tenant_identifier?: string | null
+          automation_status: string
+          canonical_employer_id?: string | null
+          created_at?: string
+          default_benefits_status?: string | null
+          default_employment_type?: string | null
+          default_w2_or_contractor?: string | null
+          health_status?: string
+          id: string
+          ingestion_permission_status?: string
+          is_active?: boolean
+          is_direct_employer: boolean
+          is_official: boolean
+          last_health_checked_at?: string | null
+          last_successful_sync_at?: string | null
+          notes?: string | null
+          official_url?: string | null
+          paid_display_permission_status?: string
+          permission_evidence_url?: string | null
+          priority?: number
+          refresh_schedule?: string | null
+          schedule_enabled?: boolean
+          source_category: string
+          source_name: string
+          updated_at?: string
+        }
+        Update: {
+          access_method?: string | null
+          adapter_key?: string | null
+          adapter_kind?: string
+          alternate_official_urls?: string[]
+          ats_platform?: string | null
+          ats_tenant_identifier?: string | null
+          automation_status?: string
+          canonical_employer_id?: string | null
+          created_at?: string
+          default_benefits_status?: string | null
+          default_employment_type?: string | null
+          default_w2_or_contractor?: string | null
+          health_status?: string
+          id?: string
+          ingestion_permission_status?: string
+          is_active?: boolean
+          is_direct_employer?: boolean
+          is_official?: boolean
+          last_health_checked_at?: string | null
+          last_successful_sync_at?: string | null
+          notes?: string | null
+          official_url?: string | null
+          paid_display_permission_status?: string
+          permission_evidence_url?: string | null
+          priority?: number
+          refresh_schedule?: string | null
+          schedule_enabled?: boolean
+          source_category?: string
+          source_name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_sources_canonical_employer_id_fkey"
+            columns: ["canonical_employer_id"]
+            isOneToOne: false
+            referencedRelation: "employers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      jobs: {
+        Row: {
+          applicant_cost: number | null
+          benefits_status: string
+          canonical_employer_id: string | null
+          checked_at: string
+          closing_at: string | null
+          commission_flag: boolean
+          company: string
+          content_hash: string | null
+          created_at: string
+          deduplication_key: string | null
+          degree_required: boolean | null
+          department: string | null
+          description: string | null
+          eligible_countries: string[] | null
+          eligible_states: string[] | null
+          employer_aliases: string[]
+          employer_display_name: string | null
+          employment_type: string
+          equipment_cost_responsibility: string
+          equipment_requirement: string | null
+          experience_level: string
+          external_job_id: string | null
+          first_seen_at: string
+          freshness_sort_at: string | null
+          high_volume_contact_center_flag: boolean
+          id: string
+          is_active: boolean
+          is_direct_employer_source: boolean
+          is_official_source: boolean
+          language_requirements: string[] | null
+          last_verified_at: string | null
+          listing_status: string
+          location_text: string | null
+          marketing_flag: boolean
+          normalized_source_url: string | null
+          normalized_title: string | null
+          official_application_url: string | null
+          pay_model: string
+          pay_period: string | null
+          phone_intensity: string
+          posted_at: string | null
+          raw_title: string | null
+          rejection_reason: string | null
+          remote_scope: string | null
+          review_status: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          salary_currency: string | null
+          salary_max: number | null
+          salary_min: number | null
+          salary_text: string | null
+          sales_flag: boolean
+          schedule_type: string | null
+          source_category: string | null
+          source_freshness_status: string
+          source_id: string | null
+          source_job_url: string | null
+          source_name: string | null
+          source_url: string
+          timezone_requirement: string | null
+          title: string
+          w2_or_contractor: string
+          work_mode: string
+        }
+        Insert: {
+          applicant_cost?: number | null
+          benefits_status?: string
+          canonical_employer_id?: string | null
+          checked_at: string
+          closing_at?: string | null
+          commission_flag?: boolean
+          company: string
+          content_hash?: string | null
+          created_at?: string
+          deduplication_key?: string | null
+          degree_required?: boolean | null
+          department?: string | null
+          description?: string | null
+          eligible_countries?: string[] | null
+          eligible_states?: string[] | null
+          employer_aliases?: string[]
+          employer_display_name?: string | null
+          employment_type?: string
+          equipment_cost_responsibility?: string
+          equipment_requirement?: string | null
+          experience_level?: string
+          external_job_id?: string | null
+          first_seen_at?: string
+          freshness_sort_at?: string | null
+          high_volume_contact_center_flag?: boolean
+          id?: string
+          is_active?: boolean
+          is_direct_employer_source?: boolean
+          is_official_source?: boolean
+          language_requirements?: string[] | null
+          last_verified_at?: string | null
+          listing_status?: string
+          location_text?: string | null
+          marketing_flag?: boolean
+          normalized_source_url?: string | null
+          normalized_title?: string | null
+          official_application_url?: string | null
+          pay_model?: string
+          pay_period?: string | null
+          phone_intensity?: string
+          posted_at?: string | null
+          raw_title?: string | null
+          rejection_reason?: string | null
+          remote_scope?: string | null
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          salary_currency?: string | null
+          salary_max?: number | null
+          salary_min?: number | null
+          salary_text?: string | null
+          sales_flag?: boolean
+          schedule_type?: string | null
+          source_category?: string | null
+          source_freshness_status?: string
+          source_id?: string | null
+          source_job_url?: string | null
+          source_name?: string | null
+          source_url: string
+          timezone_requirement?: string | null
+          title: string
+          w2_or_contractor?: string
+          work_mode?: string
+        }
+        Update: {
+          applicant_cost?: number | null
+          benefits_status?: string
+          canonical_employer_id?: string | null
+          checked_at?: string
+          closing_at?: string | null
+          commission_flag?: boolean
+          company?: string
+          content_hash?: string | null
+          created_at?: string
+          deduplication_key?: string | null
+          degree_required?: boolean | null
+          department?: string | null
+          description?: string | null
+          eligible_countries?: string[] | null
+          eligible_states?: string[] | null
+          employer_aliases?: string[]
+          employer_display_name?: string | null
+          employment_type?: string
+          equipment_cost_responsibility?: string
+          equipment_requirement?: string | null
+          experience_level?: string
+          external_job_id?: string | null
+          first_seen_at?: string
+          freshness_sort_at?: string | null
+          high_volume_contact_center_flag?: boolean
+          id?: string
+          is_active?: boolean
+          is_direct_employer_source?: boolean
+          is_official_source?: boolean
+          language_requirements?: string[] | null
+          last_verified_at?: string | null
+          listing_status?: string
+          location_text?: string | null
+          marketing_flag?: boolean
+          normalized_source_url?: string | null
+          normalized_title?: string | null
+          official_application_url?: string | null
+          pay_model?: string
+          pay_period?: string | null
+          phone_intensity?: string
+          posted_at?: string | null
+          raw_title?: string | null
+          rejection_reason?: string | null
+          remote_scope?: string | null
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          salary_currency?: string | null
+          salary_max?: number | null
+          salary_min?: number | null
+          salary_text?: string | null
+          sales_flag?: boolean
+          schedule_type?: string | null
+          source_category?: string | null
+          source_freshness_status?: string
+          source_id?: string | null
+          source_job_url?: string | null
+          source_name?: string | null
+          source_url?: string
+          timezone_requirement?: string | null
+          title?: string
+          w2_or_contractor?: string
+          work_mode?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jobs_canonical_employer_id_fkey"
+            columns: ["canonical_employer_id"]
+            isOneToOne: false
+            referencedRelation: "employers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jobs_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jobs_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "job_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      operational_heartbeats: {
+        Row: {
+          last_succeeded_at: string
+          summary: Json
+          task_name: string
+          updated_at: string
+        }
+        Insert: {
+          last_succeeded_at: string
+          summary?: Json
+          task_name: string
+          updated_at?: string
+        }
+        Update: {
+          last_succeeded_at?: string
+          summary?: Json
+          task_name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      orders: {
+        Row: {
+          amount_cents: number
+          capacity_reservation_id: string | null
+          checkout_expires_at: string | null
+          created_at: string
+          customer_id: string
+          delivered_at: string | null
+          delivery_deadline: string | null
+          human_review_checklist: Json
+          human_reviewed_at: string | null
+          human_reviewed_by: string | null
+          id: string
+          intake_id: string | null
+          paid_at: string | null
+          parent_order_id: string | null
+          processing_previous_status:
+            | Database["public"]["Enums"]["order_status"]
+            | null
+          processing_started_at: string | null
+          product_kind: Database["public"]["Enums"]["product_kind"]
+          source_cart_id: string | null
+          status: Database["public"]["Enums"]["order_status"]
+          stripe_checkout_session_id: string | null
+          stripe_payment_intent_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount_cents: number
+          capacity_reservation_id?: string | null
+          checkout_expires_at?: string | null
+          created_at?: string
+          customer_id: string
+          delivered_at?: string | null
+          delivery_deadline?: string | null
+          human_review_checklist?: Json
+          human_reviewed_at?: string | null
+          human_reviewed_by?: string | null
+          id?: string
+          intake_id?: string | null
+          paid_at?: string | null
+          parent_order_id?: string | null
+          processing_previous_status?:
+            | Database["public"]["Enums"]["order_status"]
+            | null
+          processing_started_at?: string | null
+          product_kind: Database["public"]["Enums"]["product_kind"]
+          source_cart_id?: string | null
+          status?: Database["public"]["Enums"]["order_status"]
+          stripe_checkout_session_id?: string | null
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number
+          capacity_reservation_id?: string | null
+          checkout_expires_at?: string | null
+          created_at?: string
+          customer_id?: string
+          delivered_at?: string | null
+          delivery_deadline?: string | null
+          human_review_checklist?: Json
+          human_reviewed_at?: string | null
+          human_reviewed_by?: string | null
+          id?: string
+          intake_id?: string | null
+          paid_at?: string | null
+          parent_order_id?: string | null
+          processing_previous_status?:
+            | Database["public"]["Enums"]["order_status"]
+            | null
+          processing_started_at?: string | null
+          product_kind?: Database["public"]["Enums"]["product_kind"]
+          source_cart_id?: string | null
+          status?: Database["public"]["Enums"]["order_status"]
+          stripe_checkout_session_id?: string | null
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_capacity_reservation_id_fkey"
+            columns: ["capacity_reservation_id"]
+            isOneToOne: false
+            referencedRelation: "capacity_reservations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_human_reviewed_by_fkey"
+            columns: ["human_reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_parent_order_id_fkey"
+            columns: ["parent_order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_parent_order_id_fkey"
+            columns: ["parent_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_source_cart_fk"
+            columns: ["source_cart_id"]
+            isOneToOne: false
+            referencedRelation: "apply_pack_carts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          amount_cents: number
+          apply_pack_cart_id: string | null
+          created_at: string
+          id: string
+          order_id: string | null
+          provider: string
+          provider_checkout_id: string
+          provider_payment_id: string
+          status: string
+        }
+        Insert: {
+          amount_cents: number
+          apply_pack_cart_id?: string | null
+          created_at?: string
+          id?: string
+          order_id?: string | null
+          provider: string
+          provider_checkout_id: string
+          provider_payment_id: string
+          status: string
+        }
+        Update: {
+          amount_cents?: number
+          apply_pack_cart_id?: string | null
+          created_at?: string
+          id?: string
+          order_id?: string | null
+          provider?: string
+          provider_checkout_id?: string
+          provider_payment_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_apply_pack_cart_id_fkey"
+            columns: ["apply_pack_cart_id"]
+            isOneToOne: false
+            referencedRelation: "apply_pack_carts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          email: string
+          id: string
+          role: Database["public"]["Enums"]["profile_role"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          email: string
+          id: string
+          role?: Database["public"]["Enums"]["profile_role"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          email?: string
+          id?: string
+          role?: Database["public"]["Enums"]["profile_role"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      refunds: {
+        Row: {
+          amount_cents: number
+          completed_at: string | null
+          created_at: string
+          customer_visible_reason: string
+          id: string
+          initiated_by: string
+          last_error_code: string | null
+          order_id: string
+          payment_id: string
+          previous_order_status:
+            | Database["public"]["Enums"]["order_status"]
+            | null
+          provider_refund_id: string | null
+          reason_code: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount_cents: number
+          completed_at?: string | null
+          created_at?: string
+          customer_visible_reason: string
+          id?: string
+          initiated_by: string
+          last_error_code?: string | null
+          order_id: string
+          payment_id: string
+          previous_order_status?:
+            | Database["public"]["Enums"]["order_status"]
+            | null
+          provider_refund_id?: string | null
+          reason_code: string
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number
+          completed_at?: string | null
+          created_at?: string
+          customer_visible_reason?: string
+          id?: string
+          initiated_by?: string
+          last_error_code?: string | null
+          order_id?: string
+          payment_id?: string
+          previous_order_status?:
+            | Database["public"]["Enums"]["order_status"]
+            | null
+          provider_refund_id?: string | null
+          reason_code?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "refunds_initiated_by_fkey"
+            columns: ["initiated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "refunds_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "refunds_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "refunds_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      search_candidates: {
+        Row: {
+          concerns: Json
+          created_at: string
+          evaluation_id: string | null
+          fit_summary: string
+          id: string
+          job_id: string
+          ranking_reason_codes: Json
+          ranking_score: number
+          requirements: Json
+          review_status: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          search_order_id: string
+        }
+        Insert: {
+          concerns?: Json
+          created_at?: string
+          evaluation_id?: string | null
+          fit_summary: string
+          id?: string
+          job_id: string
+          ranking_reason_codes?: Json
+          ranking_score: number
+          requirements?: Json
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          search_order_id: string
+        }
+        Update: {
+          concerns?: Json
+          created_at?: string
+          evaluation_id?: string | null
+          fit_summary?: string
+          id?: string
+          job_id?: string
+          ranking_reason_codes?: Json
+          ranking_score?: number
+          requirements?: Json
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          search_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "search_candidates_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_match_evaluations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "search_candidates_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "search_candidates_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "search_candidates_search_order_id_fkey"
+            columns: ["search_order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "search_candidates_search_order_id_fkey"
+            columns: ["search_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      source_documents: {
+        Row: {
+          claimed_mime_type: string
+          created_at: string
+          customer_id: string
+          deleted_at: string | null
+          document_kind: string
+          id: string
+          intake_id: string
+          scan_attempts: number
+          scan_claimed_at: string | null
+          scan_error_code: string | null
+          scan_provider: string | null
+          scan_provider_reference: string | null
+          scan_status: string
+          scanned_at: string | null
+          sha256: string
+          size_bytes: number
+          storage_path: string
+          updated_at: string
+          verified_mime_type: string
+        }
+        Insert: {
+          claimed_mime_type: string
+          created_at?: string
+          customer_id: string
+          deleted_at?: string | null
+          document_kind: string
+          id?: string
+          intake_id: string
+          scan_attempts?: number
+          scan_claimed_at?: string | null
+          scan_error_code?: string | null
+          scan_provider?: string | null
+          scan_provider_reference?: string | null
+          scan_status?: string
+          scanned_at?: string | null
+          sha256: string
+          size_bytes: number
+          storage_path: string
+          updated_at?: string
+          verified_mime_type: string
+        }
+        Update: {
+          claimed_mime_type?: string
+          created_at?: string
+          customer_id?: string
+          deleted_at?: string | null
+          document_kind?: string
+          id?: string
+          intake_id?: string
+          scan_attempts?: number
+          scan_claimed_at?: string | null
+          scan_error_code?: string | null
+          scan_provider?: string | null
+          scan_provider_reference?: string | null
+          scan_status?: string
+          scanned_at?: string | null
+          sha256?: string
+          size_bytes?: number
+          storage_path?: string
+          updated_at?: string
+          verified_mime_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "source_documents_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "source_documents_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "intakes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      storage_cleanup_queue: {
+        Row: {
+          attempts: number
+          bucket: string
+          created_at: string
+          id: string
+          last_attempt_at: string | null
+          last_error: string | null
+          reason: string
+          storage_path: string
+        }
+        Insert: {
+          attempts?: number
+          bucket: string
+          created_at?: string
+          id?: string
+          last_attempt_at?: string | null
+          last_error?: string | null
+          reason: string
+          storage_path: string
+        }
+        Update: {
+          attempts?: number
+          bucket?: string
+          created_at?: string
+          id?: string
+          last_attempt_at?: string | null
+          last_error?: string | null
+          reason?: string
+          storage_path?: string
+        }
+        Relationships: []
+      }
+      webhook_events: {
+        Row: {
+          attempt_count: number
+          claimed_at: string | null
+          error_message: string | null
+          event_type: string
+          id: string
+          last_error_code: string | null
+          processed_at: string | null
+          processing_status: string
+          provider: string
+          provider_event_id: string
+          received_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          claimed_at?: string | null
+          error_message?: string | null
+          event_type: string
+          id?: string
+          last_error_code?: string | null
+          processed_at?: string | null
+          processing_status?: string
+          provider: string
+          provider_event_id: string
+          received_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          claimed_at?: string | null
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          last_error_code?: string | null
+          processed_at?: string | null
+          processing_status?: string
+          provider?: string
+          provider_event_id?: string
+          received_at?: string
+        }
+        Relationships: []
+      }
+      workflow_tasks: {
+        Row: {
+          attempt_count: number
+          completed_at: string | null
+          created_at: string
+          id: string
+          last_error_code: string | null
+          locked_at: string | null
+          not_before: string
+          order_id: string
+          reference_id: string
+          status: string
+          summary: Json
+          task_kind: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          last_error_code?: string | null
+          locked_at?: string | null
+          not_before?: string
+          order_id: string
+          reference_id: string
+          status?: string
+          summary?: Json
+          task_kind: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          last_error_code?: string | null
+          locked_at?: string | null
+          not_before?: string
+          order_id?: string
+          reference_id?: string
+          status?: string
+          summary?: Json
+          task_kind?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_tasks_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workflow_tasks_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      ap_legacy_order_compatibility: {
+        Row: {
+          amount_cents: number | null
+          capacity_reservation_id: string | null
+          checkout_expires_at: string | null
+          corrected_fulfillment:
+            | Database["public"]["Enums"]["ap_search_fulfillment"]
+            | null
+          corrected_payment_attempt_id: string | null
+          corrected_search_service_id: string | null
+          corrected_settlement:
+            | Database["public"]["Enums"]["ap_payment_settlement"]
+            | null
+          created_at: string | null
+          customer_id: string | null
+          delivered_at: string | null
+          delivery_deadline: string | null
+          human_review_checklist: Json | null
+          human_reviewed_at: string | null
+          human_reviewed_by: string | null
+          id: string | null
+          intake_id: string | null
+          paid_at: string | null
+          parent_order_id: string | null
+          processing_previous_status:
+            | Database["public"]["Enums"]["order_status"]
+            | null
+          processing_started_at: string | null
+          product_kind: Database["public"]["Enums"]["product_kind"] | null
+          source_cart_id: string | null
+          status: Database["public"]["Enums"]["order_status"] | null
+          stripe_checkout_session_id: string | null
+          stripe_payment_intent_id: string | null
+          updated_at: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_capacity_reservation_id_fkey"
+            columns: ["capacity_reservation_id"]
+            isOneToOne: false
+            referencedRelation: "capacity_reservations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_human_reviewed_by_fkey"
+            columns: ["human_reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_parent_order_id_fkey"
+            columns: ["parent_order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_parent_order_id_fkey"
+            columns: ["parent_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_source_cart_fk"
+            columns: ["source_cart_id"]
+            isOneToOne: false
+            referencedRelation: "apply_pack_carts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_purchase_status: {
+        Row: {
+          amount_cents: number | null
+          complete: boolean | null
+          currency: string | null
+          customer_id: string | null
+          delivered_count: number | null
+          line_count: number | null
+          purchase_id: string | null
+          refunded_amount_cents: number | null
+          refunded_count: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_purchases_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_payment_refund_aggregates: {
+        Row: {
+          fully_refunded: boolean | null
+          payment_attempt_id: string | null
+          refund_aggregate: string | null
+          refunded_amount_cents: number | null
+        }
+        Relationships: []
+      }
+      ap_staff_queue: {
+        Row: {
+          customer_id: string | null
+          due_at: string | null
+          non_sensitive_metadata: Json | null
+          order_id: string | null
+          queue_kind: string | null
+          state: string | null
+          subject_id: string | null
+        }
+        Relationships: []
+      }
+    }
+    Functions: {
+      ap_accept_criteria_amendment: {
+        Args: { p_amendment_id: string; p_child_snapshot_id: string }
+        Returns: boolean
+      }
+      ap_accept_material_fact_correction: {
+        Args: {
+          p_acceptance_idempotency_key: string
+          p_capacity_request_key: string
+          p_customer_id: string
+          p_outbox_id: string
+          p_proposal_id: string
+        }
+        Returns: Json
+      }
+      ap_accept_material_substitution: {
+        Args: {
+          p_acceptance_idempotency_key: string
+          p_capacity_request_key: string
+          p_customer_id: string
+          p_include_reference_sheet: boolean
+          p_outbox_id: string
+          p_proposal_id: string
+          p_reference_permission_ids: string[]
+        }
+        Returns: Json
+      }
+      ap_accept_search_adjustment: {
+        Args: {
+          p_acceptance_idempotency_key: string
+          p_amendment_id: string
+          p_capacity_request_key: string
+          p_child_content_sha256: string
+          p_child_snapshot_id: string
+          p_customer_id: string
+          p_outbox_id: string
+        }
+        Returns: Json
+      }
+      ap_activate_material_line_revision: {
+        Args: { p_line_id: string; p_new_revision_id: string }
+        Returns: boolean
+      }
+      ap_align_access_capability_to_outbox: {
+        Args: { p_message_id: string; p_owner: string; p_secret_hash: string }
+        Returns: string
+      }
+      ap_amend_material_reference_scope: {
+        Args: {
+          p_customer_id: string
+          p_idempotency_key: string
+          p_include_reference_sheet: boolean
+          p_material_line_id: string
+          p_reference_permission_ids: string[]
+        }
+        Returns: Json
+      }
+      ap_append_material_entitlement_state: {
+        Args: { p_line_id: string; p_state: string }
+        Returns: string
+      }
+      ap_append_material_entitlement_state_v2: {
+        Args: {
+          p_line_id: string
+          p_match_id?: string
+          p_revision_id?: string
+          p_state: string
+        }
+        Returns: string
+      }
+      ap_apply_chunk5_local_job: {
+        Args: { p_job_id: string; p_owner: string }
+        Returns: Json
+      }
+      ap_apply_document_pipeline_result: {
+        Args: {
+          p_document_id: string
+          p_expected_version: number
+          p_failure_code: string
+          p_leak_status: string
+          p_malware_status: string
+          p_model_policy: string
+          p_parse_status: string
+          p_parser_identity: string
+          p_parser_limits: Json
+          p_reference_status: string
+          p_state: Database["public"]["Enums"]["ap_document_processing_state"]
+        }
+        Returns: boolean
+      }
+      ap_apply_local_scheduled_job: {
+        Args: { p_job_id: string; p_owner: string }
+        Returns: string
+      }
+      ap_apply_search_dispute: {
+        Args: {
+          p_dispute_state: string
+          p_outbox_id: string
+          p_payload_sha256: string
+          p_payment_intent_id: string
+          p_provider_event_id: string
+          p_signature_verified_at: string
+        }
+        Returns: Json
+      }
+      ap_apply_verified_material_payment: {
+        Args: {
+          p_amount_cents: number
+          p_checkout_intent_id: string
+          p_checkout_session_id: string
+          p_currency: string
+          p_event_type: string
+          p_outbox_id: string
+          p_payer_receipt_email: string
+          p_payload_sha256: string
+          p_payment_intent_id: string
+          p_payment_method_type: string
+          p_payment_status: string
+          p_payment_succeeded_at: string
+          p_provider_event_id: string
+          p_signature_verified_at: string
+        }
+        Returns: Json
+      }
+      ap_apply_verified_search_payment: {
+        Args: {
+          p_amount_cents: number
+          p_checkout_session_id: string
+          p_currency: string
+          p_customer_id: string
+          p_email_access_capability_id: string
+          p_event_type: string
+          p_exception_outbox_id: string
+          p_immediate_access_capability_id: string
+          p_intake_id: string
+          p_order_id: string
+          p_payer_receipt_email: string
+          p_payload_sha256: string
+          p_payment_command_id: string
+          p_payment_intent_id: string
+          p_payment_method_type: string
+          p_payment_status: string
+          p_payment_succeeded_at: string
+          p_provider_event_id: string
+          p_rotated_draft_secret_hash: string
+          p_search_service_id: string
+          p_signature_verified_at: string
+          p_started_outbox_id: string
+        }
+        Returns: Json
+      }
+      ap_authorize_material_download: {
+        Args: {
+          p_artifact_id: string
+          p_customer_id: string
+          p_file_version_id: string
+          p_reauthenticated_at: string
+        }
+        Returns: Json
+      }
+      ap_begin_board_material_checkout: {
+        Args: {
+          p_board_admission_id: string
+          p_career_break_choice: string
+          p_career_break_custom_label: string
+          p_contact_payload_id: string
+          p_cover_letter_break_consent: boolean
+          p_customer_id: string
+          p_do_not_mention_note: string
+          p_document_contact_confirmed: boolean
+          p_document_facts_confirmed: boolean
+          p_emphasis_note: string
+          p_request_key: string
+          p_selection_sha256: string
+          p_source_snapshot_id: string
+          p_submission_rule_id: string
+        }
+        Returns: Json
+      }
+      ap_begin_material_checkout: {
+        Args: {
+          p_career_break_choice: string
+          p_career_break_custom_label: string
+          p_contact_payload_id: string
+          p_cover_letter_break_consent: boolean
+          p_customer_id: string
+          p_delivered_order_id: string
+          p_delivered_release_id: string
+          p_document_contact_confirmed: boolean
+          p_document_facts_confirmed: boolean
+          p_request_key: string
+          p_selection_sha256: string
+          p_selections: Json
+          p_source_snapshot_id: string
+        }
+        Returns: Json
+      }
+      ap_begin_pre_activation_edit: {
+        Args: { p_draft_id: string; p_secret_hash: string }
+        Returns: number
+      }
+      ap_begin_search_checkout: {
+        Args: {
+          p_access_payload_id?: string
+          p_assessment_id: string
+          p_browser_secret_hash: string
+          p_checkout_attempt_id: string
+          p_command_id: string
+          p_draft_id: string
+          p_email_secret_hash: string
+          p_payment_attempt_id: string
+          p_provider_idempotency_key: string
+          p_quote_id: string
+          p_quote_sha256: string
+          p_request_key: string
+          p_secret_hash: string
+          p_snapshot_id: string
+        }
+        Returns: {
+          access_email: string
+          allocation_id: string
+          checkout_attempt_id: string
+          command_id: string
+          lease_expires_at: string
+          payment_attempt_id: string
+          provider_idempotency_key: string
+          quote_id: string
+          reservation_expires_at: string
+        }[]
+      }
+      ap_board_has_access: {
+        Args: { p_customer_id: string; p_now?: string }
+        Returns: boolean
+      }
+      ap_can_access_customer: {
+        Args: { p_customer_id: string }
+        Returns: boolean
+      }
+      ap_cancel_search_checkout: {
+        Args: { p_browser_secret_hash: string; p_checkout_attempt_id: string }
+        Returns: boolean
+      }
+      ap_capacity_available: { Args: { p_bucket_id: string }; Returns: number }
+      ap_chunk3_customer_criterion_node_matches: {
+        Args: { p_key: string; p_type: string; p_value: Json }
+        Returns: boolean
+      }
+      ap_chunk4_monitor_snapshot: { Args: never; Returns: Json }
+      ap_chunk5_monitor_snapshot: { Args: never; Returns: Json }
+      ap_claim_board_profile: {
+        Args: {
+          p_customer_id: string
+          p_draft_id: string
+          p_secret_hash: string
+          p_verified_email: string
+        }
+        Returns: string
+      }
+      ap_claim_board_recompute_jobs: {
+        Args: { p_limit?: number; p_owner: string }
+        Returns: {
+          attempts: number
+          available_at: string
+          completed_at: string | null
+          created_at: string
+          customer_id: string | null
+          id: string
+          idempotency_key: string
+          job_id: string | null
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          profile_snapshot_id: string | null
+          reason_code: string
+          scope: string
+          state: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "ap_board_recompute_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      ap_claim_feasibility_request: {
+        Args: { p_request_id: string; p_worker_id: string }
+        Returns: {
+          draft_id: string
+          request_id: string
+          snapshot_id: string
+        }[]
+      }
+      ap_claim_material_entitlement: {
+        Args: { p_entitlement_history_id: string }
+        Returns: boolean
+      }
+      ap_claim_outbox_messages: {
+        Args: { p_limit?: number; p_owner: string }
+        Returns: {
+          attempts: number
+          created_at: string
+          customer_id: string | null
+          dead_lettered_at: string | null
+          deduplication_key: string
+          first_submitted_at: string | null
+          id: string
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          message_kind: string
+          next_attempt_at: string | null
+          order_id: string | null
+          payload_ref: string | null
+          provider_idempotency_expires_at: string | null
+          provider_idempotency_key: string
+          provider_message_id: string | null
+          recipient_ref: string
+          reconciliation_state: string
+          state: Database["public"]["Enums"]["ap_outbox_state"]
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "ap_outbox_messages"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      ap_claim_retention_cleanup: {
+        Args: { p_limit?: number; p_owner: string }
+        Returns: {
+          attempts: number
+          created_at: string
+          id: string
+          idempotency_key: string
+          job_kind: string
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          reference_id: string
+          run_at: string
+          state: Database["public"]["Enums"]["ap_scheduled_job_state"]
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "ap_scheduled_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      ap_claim_scheduled_jobs: {
+        Args: { p_limit?: number; p_owner: string }
+        Returns: {
+          attempts: number
+          created_at: string
+          id: string
+          idempotency_key: string
+          job_kind: string
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          reference_id: string
+          run_at: string
+          state: Database["public"]["Enums"]["ap_scheduled_job_state"]
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "ap_scheduled_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      ap_commit_exact_ten_release: {
+        Args: {
+          p_members: Json
+          p_outbox_id: string
+          p_release_id: string
+          p_review_checklist: Json
+          p_reviewer_id: string
+          p_reviewer_rationale: string
+          p_search_service_id: string
+          p_selection_run_id: string
+        }
+        Returns: string
+      }
+      ap_commit_material_release_v2: {
+        Args: {
+          p_material_line_id: string
+          p_outbox_id: string
+          p_release_id: string
+          p_review_checklist: Json
+          p_reviewer_id: string
+          p_reviewer_rationale: string
+        }
+        Returns: string
+      }
+      ap_commit_reference_regeneration: {
+        Args: {
+          p_outbox_id: string
+          p_regeneration_id: string
+          p_release_id: string
+          p_reviewer_id: string
+        }
+        Returns: string
+      }
+      ap_commit_release: {
+        Args: {
+          p_active_due_at: string
+          p_committed_at: string
+          p_customer_id: string
+          p_human_approved_by: string
+          p_material_line_id: string
+          p_members: Json
+          p_order_id: string
+          p_release_id: string
+          p_release_kind: string
+          p_version_bundle: Json
+        }
+        Returns: string
+      }
+      ap_compensate_search_checkout: {
+        Args: {
+          p_checkout_attempt_id: string
+          p_failure_code: string
+          p_provider_session_id?: string
+        }
+        Returns: boolean
+      }
+      ap_complete_external_scheduled_job: {
+        Args: { p_job_id: string; p_owner: string }
+        Returns: boolean
+      }
+      ap_complete_feasibility_request: {
+        Args: {
+          p_assessment_id: string
+          p_request_id: string
+          p_worker_id: string
+        }
+        Returns: boolean
+      }
+      ap_complete_outbox_message: {
+        Args: {
+          p_message_id: string
+          p_owner: string
+          p_provider_message_id: string
+        }
+        Returns: boolean
+      }
+      ap_confirm_reference_version: {
+        Args: { p_customer_id: string; p_reference_version_id: string }
+        Returns: boolean
+      }
+      ap_consume_material_revision_capacity: {
+        Args: {
+          p_customer_id: string
+          p_material_line_id: string
+          p_request_key: string
+          p_revision_id: string
+        }
+        Returns: string
+      }
+      ap_consume_order_access: {
+        Args: { p_capability_id: string; p_secret_hash: string }
+        Returns: {
+          access_email: string
+          customer_id: string
+          order_id: string
+        }[]
+      }
+      ap_create_anonymous_draft: {
+        Args: {
+          p_draft_id: string
+          p_expires_at: string
+          p_secret_hash: string
+        }
+        Returns: {
+          expires_at: string
+          id: string
+          state: Database["public"]["Enums"]["ap_draft_state"]
+          version: number
+        }[]
+      }
+      ap_create_reference_record: {
+        Args: {
+          p_customer_id: string
+          p_encrypted_payload_id: string
+          p_payload_schema_version: string
+          p_payload_sha256: string
+        }
+        Returns: string
+      }
+      ap_decline_material_change: {
+        Args: {
+          p_customer_id: string
+          p_decline_idempotency_key: string
+          p_proposal_id: string
+        }
+        Returns: Json
+      }
+      ap_decline_search_adjustment: {
+        Args: {
+          p_amendment_id: string
+          p_customer_id: string
+          p_idempotency_key: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      ap_defer_feasibility_request: {
+        Args: { p_reason: string; p_request_id: string; p_worker_id: string }
+        Returns: boolean
+      }
+      ap_enqueue_board_job_recompute: {
+        Args: { p_change_key: string; p_job_id: string; p_reason_code: string }
+        Returns: string
+      }
+      ap_enqueue_board_profile_recompute: {
+        Args: {
+          p_customer_id: string
+          p_profile_snapshot_id: string
+          p_reason_code: string
+        }
+        Returns: string
+      }
+      ap_enqueue_chunk4_due_jobs: { Args: never; Returns: Json }
+      ap_enqueue_chunk5_due_jobs: { Args: never; Returns: Json }
+      ap_expire_material_change: {
+        Args: { p_proposal_id: string }
+        Returns: Json
+      }
+      ap_expire_material_checkout: {
+        Args: { p_checkout_intent_id: string; p_reason: string }
+        Returns: boolean
+      }
+      ap_expire_search_checkout: {
+        Args: { p_checkout_attempt_id: string; p_reason: string }
+        Returns: boolean
+      }
+      ap_fail_feasibility_request: {
+        Args: {
+          p_error_code: string
+          p_request_id: string
+          p_worker_id: string
+        }
+        Returns: boolean
+      }
+      ap_fail_outbox_message: {
+        Args: {
+          p_dead_letter: boolean
+          p_error_code: string
+          p_message_id: string
+          p_owner: string
+          p_retry_at: string
+        }
+        Returns: boolean
+      }
+      ap_fail_reference_regeneration: {
+        Args: {
+          p_outbox_id: string
+          p_reason_code: string
+          p_regeneration_id: string
+        }
+        Returns: boolean
+      }
+      ap_finalize_four_step_intake: {
+        Args: {
+          p_content_sha256: string
+          p_draft_id: string
+          p_expected_version: number
+          p_fact_reviews: Json
+          p_secret_hash: string
+          p_sensitive_payload_id: string
+          p_snapshot: Json
+          p_snapshot_id: string
+        }
+        Returns: {
+          draft_version: number
+          feasibility_request_id: string
+          snapshot_id: string
+        }[]
+      }
+      ap_find_customer_by_access_email: {
+        Args: { p_email: string }
+        Returns: string
+      }
+      ap_find_latest_access_order: {
+        Args: { p_email: string }
+        Returns: string
+      }
+      ap_finish_board_recompute_job: {
+        Args: {
+          p_error_code?: string
+          p_job_id: string
+          p_owner: string
+          p_success: boolean
+        }
+        Returns: boolean
+      }
+      ap_grant_reference_permission: {
+        Args: {
+          p_customer_id: string
+          p_delivered_release_id: string
+          p_employer_snapshot: string
+          p_exact_position_snapshot: string
+          p_job_snapshot_hash: string
+          p_job_snapshot_id: string
+          p_permission_text_version: string
+          p_reference_version_id: string
+        }
+        Returns: string
+      }
+      ap_increment_intake_event: {
+        Args: { p_event: string; p_step: number }
+        Returns: boolean
+      }
+      ap_invalidate_pre_activation_snapshot: {
+        Args: {
+          p_customer_id: string
+          p_new_snapshot_id: string
+          p_prior_snapshot_id: string
+          p_reason: string
+        }
+        Returns: boolean
+      }
+      ap_issue_order_access_capability: {
+        Args: {
+          p_capability_id: string
+          p_order_id: string
+          p_outbox_id: string
+          p_payload_id: string
+          p_secret_hash: string
+        }
+        Returns: string
+      }
+      ap_lock_anonymous_draft_to_checkout: {
+        Args: {
+          p_checkout_attempt_id: string
+          p_draft_id: string
+          p_secret_hash: string
+        }
+        Returns: boolean
+      }
+      ap_offer_material_substitution: {
+        Args: {
+          p_estimate_seconds: number
+          p_idempotency_key: string
+          p_material_line_id: string
+          p_proposal_expires_at: string
+          p_reason_code: string
+          p_reviewer_id: string
+          p_target_match_id: string
+          p_target_rule_id: string
+        }
+        Returns: string
+      }
+      ap_open_postdelivery_false_claim_case: {
+        Args: {
+          p_artifact_id: string
+          p_customer_id: string
+          p_material_line_id: string
+          p_non_sensitive_report: Json
+          p_sensitive_payload_id: string
+        }
+        Returns: string
+      }
+      ap_persist_derived_feasibility_assessment: {
+        Args: {
+          p_request_id: string
+          p_rules_version: string
+          p_worker_id: string
+        }
+        Returns: string
+      }
+      ap_persist_match_selection: {
+        Args: {
+          p_content_sha256: string
+          p_evaluation_set_sha256: string
+          p_members: Json
+          p_purpose: string
+          p_requested_count: number
+          p_scope_key: string
+          p_selector_version: string
+          p_snapshot_id: string
+        }
+        Returns: string
+      }
+      ap_persist_parsed_inventory_job: {
+        Args: {
+          p_criteria_snapshot_id: string
+          p_inventory_version_id: string
+          p_job_snapshot: Json
+          p_requirement_nodes: Json
+          p_stable_normalized_job_id: string
+        }
+        Returns: string
+      }
+      ap_promote_material_checkout: {
+        Args: {
+          p_checkout_intent_id: string
+          p_provider_session_expires_at: string
+          p_provider_session_id: string
+        }
+        Returns: boolean
+      }
+      ap_promote_search_checkout: {
+        Args: {
+          p_checkout_attempt_id: string
+          p_provider_session_expires_at: string
+          p_provider_session_id: string
+        }
+        Returns: boolean
+      }
+      ap_propose_material_fact_correction: {
+        Args: {
+          p_corrected_snapshot_id: string
+          p_eligibility_passed: boolean
+          p_estimate_seconds: number
+          p_evidence_sufficient: boolean
+          p_fact_diff: Json
+          p_idempotency_key: string
+          p_material_line_id: string
+          p_proposal_expires_at: string
+          p_reason_code: string
+          p_reviewer_id: string
+        }
+        Returns: string
+      }
+      ap_propose_search_adjustment: {
+        Args: {
+          p_blocking_constraints: Json
+          p_criteria_diff: Json
+          p_current_valid_count: number
+          p_estimated_revision_seconds: number
+          p_idempotency_key: string
+          p_outbox_id: string
+          p_proposal_expires_at: string
+          p_reason_codes: string[]
+          p_reviewer_id: string
+          p_search_service_id: string
+          p_snapshot_patch: Json
+        }
+        Returns: string
+      }
+      ap_queue_material_line_refund: {
+        Args: {
+          p_customer_id: string
+          p_material_line_id: string
+          p_payment_attempt_id: string
+          p_reason_code: string
+        }
+        Returns: string
+      }
+      ap_queue_search_refund: {
+        Args: {
+          p_customer_id: string
+          p_payment_attempt_id: string
+          p_reason_code: string
+          p_scope: Database["public"]["Enums"]["ap_refund_scope"]
+        }
+        Returns: string
+      }
+      ap_read_anonymous_draft: {
+        Args: { p_draft_id: string; p_secret_hash: string }
+        Returns: {
+          answers: Json
+          current_step: number
+          expires_at: string
+          id: string
+          state: Database["public"]["Enums"]["ap_draft_state"]
+          version: number
+        }[]
+      }
+      ap_read_checkout_status: {
+        Args: { p_browser_secret_hash: string; p_checkout_attempt_id: string }
+        Returns: Json
+      }
+      ap_read_current_feasibility: {
+        Args: { p_draft_id: string; p_secret_hash: string }
+        Returns: Json
+      }
+      ap_read_four_step_draft: {
+        Args: { p_draft_id: string; p_secret_hash: string }
+        Returns: {
+          answers: Json
+          current_step: number
+          expires_at: string
+          finalized_snapshot_id: string
+          id: string
+          state: Database["public"]["Enums"]["ap_draft_state"]
+          version: number
+        }[]
+      }
+      ap_record_fact_presentation: {
+        Args: {
+          p_control_id: string
+          p_draft_id: string
+          p_expected_version: number
+          p_fact_id: string
+          p_secret_hash: string
+        }
+        Returns: boolean
+      }
+      ap_record_job_release_review: {
+        Args: {
+          p_decision: Database["public"]["Enums"]["ap_staff_review_decision"]
+          p_evaluation_id: string
+          p_rationale: string
+          p_reviewer_id: string
+          p_search_service_id: string
+        }
+        Returns: string
+      }
+      ap_record_matching_review: {
+        Args: { p_correction?: Json; p_review: Json }
+        Returns: Json
+      }
+      ap_record_material_human_approval: {
+        Args: {
+          p_approval_kind: string
+          p_attestation: string
+          p_file_version_id: string
+          p_reviewer_id: string
+        }
+        Returns: Json
+      }
+      ap_record_material_listing_check: {
+        Args: {
+          p_evidence_sha256: string
+          p_material_line_id: string
+          p_phase: string
+          p_result: string
+          p_reviewer_id: string
+          p_submission_rule_id: string
+        }
+        Returns: string
+      }
+      ap_record_reference_isolation: {
+        Args: {
+          p_content_sha256: string
+          p_customer_id: string
+          p_detector_version: string
+          p_document_version_id: string
+          p_quarantined_payload_id: string
+          p_reviewer_id?: string
+          p_status: string
+        }
+        Returns: string
+      }
+      ap_record_reference_staff_access: {
+        Args: {
+          p_purpose: string
+          p_reference_record_id: string
+          p_staff_id: string
+        }
+        Returns: number
+      }
+      ap_record_search_refund_result: {
+        Args: {
+          p_error_code?: string
+          p_event_type?: string
+          p_payload_sha256?: string
+          p_provider_event_id?: string
+          p_provider_refund_id: string
+          p_provider_status: string
+          p_refund_id: string
+          p_signature_verified_at?: string
+        }
+        Returns: Json
+      }
+      ap_record_snapshot_legal_acceptance: {
+        Args: {
+          p_acceptance_sha256: string
+          p_draft_id: string
+          p_privacy_version: string
+          p_secret_hash: string
+          p_snapshot_id: string
+          p_terms_version: string
+        }
+        Returns: string
+      }
+      ap_register_anonymous_document: {
+        Args: {
+          p_claimed_mime: string
+          p_document_id: string
+          p_draft_id: string
+          p_expected_draft_version: number
+          p_kind: Database["public"]["Enums"]["ap_document_kind"]
+          p_name: string
+          p_path: string
+          p_secret_hash: string
+          p_sha256: string
+          p_size: number
+          p_verified_mime: string
+        }
+        Returns: {
+          document_id: string
+          document_version: number
+          draft_version: number
+        }[]
+      }
+      ap_register_material_artifact_version: {
+        Args: {
+          p_arial_font_sha256: string
+          p_arial_resolved: boolean
+          p_artifact_id: string
+          p_artifact_type: Database["public"]["Enums"]["ap_artifact_type"]
+          p_binding_sha256: string
+          p_checksum_sha256: string
+          p_claim_provenance: Json
+          p_extracted_text_sha256: string
+          p_file_version_id: string
+          p_generator_version: string
+          p_job_snapshot_id: string
+          p_malware_scanner_identity: string
+          p_material_line_id: string
+          p_mime_type: string
+          p_package_qa_sha256: string
+          p_provenance_checks: Json
+          p_reference_permission_ids: string[]
+          p_reference_regeneration_id: string
+          p_render_preview_bucket: string
+          p_render_preview_path: string
+          p_render_preview_sha256: string
+          p_rendered_page_count: number
+          p_rendered_page_sha256: string[]
+          p_renderer_identity: string
+          p_reviewer_id: string
+          p_safe_filename: string
+          p_size_bytes: number
+          p_source_line_revision_id: string
+          p_source_snapshot_id: string
+          p_storage_bucket: string
+          p_storage_path: string
+          p_structural_checks: Json
+        }
+        Returns: Json
+      }
+      ap_release_fully_refunded_entitlement: {
+        Args: { p_entitlement_history_id: string }
+        Returns: boolean
+      }
+      ap_release_unconsumed_capacity: {
+        Args: { p_allocation_id: string; p_reason: string }
+        Returns: boolean
+      }
+      ap_remove_anonymous_document: {
+        Args: {
+          p_draft_id: string
+          p_expected_draft_version: number
+          p_kind: Database["public"]["Enums"]["ap_document_kind"]
+          p_secret_hash: string
+        }
+        Returns: {
+          document_id: string
+          draft_version: number
+          storage_bucket: string
+          storage_path: string
+        }[]
+      }
+      ap_remove_reference: {
+        Args: {
+          p_customer_id: string
+          p_reason_code: string
+          p_reference_record_id: string
+        }
+        Returns: boolean
+      }
+      ap_renew_outbox_lease: {
+        Args: { p_message_id: string; p_owner: string }
+        Returns: string
+      }
+      ap_renew_scheduled_job_lease: {
+        Args: { p_job_id: string; p_owner: string }
+        Returns: string
+      }
+      ap_reopen_provisional_search_checkout: {
+        Args: { p_checkout_attempt_id: string }
+        Returns: boolean
+      }
+      ap_replace_reference: {
+        Args: {
+          p_customer_id: string
+          p_encrypted_payload_id: string
+          p_payload_schema_version: string
+          p_payload_sha256: string
+          p_reference_record_id: string
+        }
+        Returns: string
+      }
+      ap_request_reference_regeneration: {
+        Args: {
+          p_customer_id: string
+          p_material_line_id: string
+          p_outbox_id: string
+          p_permission_ids: string[]
+          p_prior_artifact_id: string
+          p_request_key: string
+        }
+        Returns: Json
+      }
+      ap_require_material_reviewer: {
+        Args: { p_reviewer_id: string }
+        Returns: boolean
+      }
+      ap_reserve_capacity: {
+        Args: {
+          p_customer_id: string
+          p_draft_id?: string
+          p_expires_at: string
+          p_members?: Json
+          p_request_key: string
+          p_resource: Database["public"]["Enums"]["ap_capacity_resource"]
+          p_units: number
+        }
+        Returns: string
+      }
+      ap_retry_anonymous_document: {
+        Args: {
+          p_draft_id: string
+          p_expected_draft_version: number
+          p_kind: Database["public"]["Enums"]["ap_document_kind"]
+          p_secret_hash: string
+        }
+        Returns: {
+          document_id: string
+          draft_version: number
+        }[]
+      }
+      ap_retry_scheduled_job: {
+        Args: {
+          p_dead_letter: boolean
+          p_error_code: string
+          p_job_id: string
+          p_owner: string
+          p_retry_at: string
+        }
+        Returns: boolean
+      }
+      ap_retry_search_refund: {
+        Args: { p_refund_id: string; p_requested_by: string }
+        Returns: Json
+      }
+      ap_return_anonymous_draft_after_checkout: {
+        Args: { p_draft_id: string; p_secret_hash: string }
+        Returns: boolean
+      }
+      ap_revoke_reference_permission: {
+        Args: {
+          p_customer_id: string
+          p_permission_id: string
+          p_reason_code: string
+        }
+        Returns: boolean
+      }
+      ap_rotate_anonymous_draft_capability: {
+        Args: {
+          p_customer_id: string
+          p_draft_id: string
+          p_intake_id: string
+          p_new_secret_hash: string
+          p_secret_hash: string
+        }
+        Returns: boolean
+      }
+      ap_save_anonymous_draft: {
+        Args: {
+          p_answers: Json
+          p_current_step: number
+          p_draft_id: string
+          p_expected_version: number
+          p_secret_hash: string
+        }
+        Returns: {
+          answers: Json
+          current_step: number
+          expires_at: string
+          id: string
+          state: Database["public"]["Enums"]["ap_draft_state"]
+          version: number
+        }[]
+      }
+      ap_save_four_step_draft: {
+        Args: {
+          p_answers: Json
+          p_current_step: number
+          p_draft_id: string
+          p_expected_version: number
+          p_secret_hash: string
+        }
+        Returns: {
+          answers: Json
+          current_step: number
+          expires_at: string
+          finalized_snapshot_id: string
+          id: string
+          state: Database["public"]["Enums"]["ap_draft_state"]
+          version: number
+        }[]
+      }
+      ap_stale_feasibility_request: {
+        Args: { p_reason: string; p_request_id: string; p_worker_id: string }
+        Returns: boolean
+      }
+      ap_start_material_line_refund: {
+        Args: {
+          p_customer_id: string
+          p_material_line_id: string
+          p_reason_code: string
+          p_require_overdue?: boolean
+        }
+        Returns: string
+      }
+      ap_start_search_service_refund: {
+        Args: {
+          p_reason_code: string
+          p_require_overdue?: boolean
+          p_search_service_id: string
+        }
+        Returns: string
+      }
+      ap_upsert_employer_submission_rules: {
+        Args: {
+          p_allowed_formats: string[]
+          p_application_questions: Json
+          p_checked_at: string
+          p_content_sha256: string
+          p_cover_letter_filename_instruction: string
+          p_cover_letter_page_limit: number
+          p_cover_letter_requirement: string
+          p_hard_block_reason: string
+          p_injection_scan_state: string
+          p_job_snapshot_id: string
+          p_parser_version: string
+          p_portfolio_instruction: string
+          p_reference_count: number
+          p_reference_filename_instruction: string
+          p_reference_timing: string
+          p_resume_filename_instruction: string
+          p_resume_page_limit: number
+          p_resume_requirement: string
+          p_reviewer_id: string
+          p_source_evidence_ids: string[]
+          p_submission_channel: string
+          p_work_sample_instruction: string
+        }
+        Returns: string
+      }
+      available_capacity: {
+        Args: { p_kind: Database["public"]["Enums"]["product_kind"] }
+        Returns: number
+      }
+      begin_order_refund: {
+        Args: {
+          p_actor_id: string
+          p_customer_visible_reason: string
+          p_order_id: string
+          p_reason_code: string
+        }
+        Returns: {
+          amount_cents: number
+          payment_id: string
+          provider_payment_id: string
+          refund_id: string
+        }[]
+      }
+      can_view_delivered_job: { Args: { p_job_id: string }; Returns: boolean }
+      can_view_delivered_job_match: {
+        Args: { p_match_id: string }
+        Returns: boolean
+      }
+      claim_order_delivery: {
+        Args: {
+          p_kind: Database["public"]["Enums"]["product_kind"]
+          p_order_id: string
+        }
+        Returns: boolean
+      }
+      claim_source_document_scans: {
+        Args: { p_limit?: number }
+        Returns: {
+          claimed_mime_type: string
+          created_at: string
+          customer_id: string
+          deleted_at: string | null
+          document_kind: string
+          id: string
+          intake_id: string
+          scan_attempts: number
+          scan_claimed_at: string | null
+          scan_error_code: string | null
+          scan_provider: string | null
+          scan_provider_reference: string | null
+          scan_status: string
+          scanned_at: string | null
+          sha256: string
+          size_bytes: number
+          storage_path: string
+          updated_at: string
+          verified_mime_type: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "source_documents"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      claim_stripe_webhook: {
+        Args: { p_provider_event_id: string }
+        Returns: boolean
+      }
+      claim_workflow_tasks: {
+        Args: { p_limit?: number }
+        Returns: {
+          attempt_count: number
+          completed_at: string | null
+          created_at: string
+          id: string
+          last_error_code: string | null
+          locked_at: string | null
+          not_before: string
+          order_id: string
+          reference_id: string
+          status: string
+          summary: Json
+          task_kind: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "workflow_tasks"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      complete_apply_pack_cart: {
+        Args: {
+          p_amount_cents: number
+          p_cart_id: string
+          p_checkout_id: string
+          p_deadline: string
+          p_paid_at: string
+          p_payment_id: string
+          p_reservation_id: string
+        }
+        Returns: Json
+      }
+      complete_apply_pack_item_delivery: {
+        Args: {
+          p_actor_id: string
+          p_cover_letter_path: string
+          p_delivered_at: string
+          p_item_id: string
+          p_resume_path: string
+          p_review_checklist: Json
+        }
+        Returns: boolean
+      }
+      complete_correction_delivery: {
+        Args: {
+          p_actor_id: string
+          p_cover_letter_path: string
+          p_request_id: string
+          p_resolution: string
+          p_resolved_at: string
+          p_resume_path: string
+        }
+        Returns: boolean
+      }
+      complete_order_delivery: {
+        Args: { p_delivered_at: string; p_order_id: string }
+        Returns: boolean
+      }
+      complete_paid_checkout: {
+        Args: {
+          p_amount_cents: number
+          p_checkout_id: string
+          p_deadline: string
+          p_order_id: string
+          p_paid_at: string
+          p_payment_id: string
+          p_reservation_id: string
+        }
+        Returns: Json
+      }
+      complete_search_delivery: {
+        Args: {
+          p_actor_id: string
+          p_delivered_at: string
+          p_matches: Json
+          p_order_id: string
+          p_retention_due_at: string
+          p_review_checklist: Json
+        }
+        Returns: boolean
+      }
+      consume_rate_limit: {
+        Args: {
+          p_key_hash: string
+          p_limit: number
+          p_scope: string
+          p_window_seconds: number
+        }
+        Returns: boolean
+      }
+      create_completed_intake: {
+        Args: {
+          p_answers: Json
+          p_customer_id: string
+          p_display_name: string
+          p_documents: Json
+          p_draft_id?: string
+          p_email: string
+          p_intake: Json
+          p_intake_id: string
+        }
+        Returns: string
+      }
+      customer_can_view_delivered_job: {
+        Args: { p_job_id: string }
+        Returns: boolean
+      }
+      customer_has_previously_received_job: {
+        Args: { p_customer_id: string; p_job_id: string }
+        Returns: boolean
+      }
+      expire_abandoned_checkout_state: {
+        Args: { p_now: string }
+        Returns: Json
+      }
+      finalize_intake_source_retention: {
+        Args: {
+          p_deleted_at: string
+          p_document_count: number
+          p_intake_id: string
+        }
+        Returns: boolean
+      }
+      finalize_order_refund: {
+        Args: {
+          p_error_code?: string
+          p_provider_refund_id: string
+          p_provider_status: string
+          p_refund_id: string
+        }
+        Returns: string
+      }
+      finalize_order_refund_by_provider: {
+        Args: {
+          p_error_code?: string
+          p_provider_refund_id: string
+          p_provider_status: string
+        }
+        Returns: string
+      }
+      find_previously_delivered_jobs: {
+        Args: { p_customer_id: string; p_job_ids: string[] }
+        Returns: {
+          job_id: string
+        }[]
+      }
+      is_admin: { Args: never; Returns: boolean }
+      mark_stale_jobs_inactive: {
+        Args: { p_stale_hours?: number }
+        Returns: number
+      }
+      normalize_job_delivery_url: { Args: { p_url: string }; Returns: string }
+      prepare_apply_pack_checkout: {
+        Args: {
+          p_customer_id: string
+          p_customer_update_notes: string
+          p_item_notes: Json
+          p_job_match_ids: string[]
+          p_search_order_id: string
+        }
+        Returns: {
+          cart_id: string
+          created: boolean
+          reservation_id: string
+        }[]
+      }
+      prepare_search_checkout: {
+        Args: { p_customer_id: string; p_intake_id: string }
+        Returns: {
+          created: boolean
+          order_id: string
+          reservation_id: string
+        }[]
+      }
+      refresh_intake_scan_status: {
+        Args: { p_intake_id: string }
+        Returns: string
+      }
+      release_order_delivery: { Args: { p_order_id: string }; Returns: boolean }
+      reserve_capacity: {
+        Args: {
+          p_customer_id: string
+          p_kind: Database["public"]["Enums"]["product_kind"]
+          p_request_key: string
+          p_units: number
+        }
+        Returns: string
+      }
+      resolve_conflict_review: {
+        Args: {
+          p_actor_id: string
+          p_replacement?: Json
+          p_replacement_job_id?: string
+          p_resolution: string
+          p_resolved_at?: string
+          p_review_id: string
+          p_status: string
+        }
+        Returns: boolean
+      }
+    }
+    Enums: {
+      ap_access_capability_kind: "IMMEDIATE_ORDER" | "EMAIL_ACCESS"
+      ap_access_capability_state: "ISSUED" | "CONSUMED" | "EXPIRED" | "REVOKED"
+      ap_adjustment_state:
+        | "NONE"
+        | "PROPOSED"
+        | "ACCEPTED"
+        | "DECLINED"
+        | "EXPIRED"
+      ap_application_readiness: "READY" | "NEEDS_CUSTOMER_ACTION" | "BLOCKED"
+      ap_artifact_type: "RESUME" | "COVER_LETTER" | "REFERENCE_SHEET"
+      ap_candidate_fact_source:
+        | "DOCUMENT"
+        | "CUSTOMER_ASSERTION"
+        | "HUMAN_VERIFICATION"
+      ap_capacity_debit: "NONE" | "HELD" | "SPENT" | "RETURNED"
+      ap_capacity_lifecycle:
+        | "NONE"
+        | "RESERVED"
+        | "CONSUMED"
+        | "COMPLETED"
+        | "SUPERSEDED"
+        | "RELEASED"
+        | "EXPIRED"
+      ap_capacity_resource: "SEARCH" | "MATERIALS" | "REFERENCE_REGENERATION"
+      ap_checkout_state:
+        | "NONE"
+        | "OPEN"
+        | "CANCELED"
+        | "EXPIRED"
+        | "COMPLETED"
+        | "FAILED"
+      ap_command_state:
+        | "CREATING"
+        | "CREATED"
+        | "APPLYING"
+        | "APPLIED"
+        | "COMPENSATING"
+        | "COMPENSATED"
+        | "FAILED"
+      ap_criterion_result: "PASS" | "FAIL" | "UNKNOWN"
+      ap_criterion_type:
+        | "WORK_MODE"
+        | "GEOGRAPHY"
+        | "COMMUTE"
+        | "EMPLOYMENT_TYPE"
+        | "COMPENSATION"
+        | "SCHEDULE"
+        | "TRAVEL_PHYSICAL"
+        | "DUTY_EXCLUSION"
+        | "AUTHORIZATION_SPONSORSHIP"
+        | "EDUCATION"
+        | "CERTIFICATION_LICENSE"
+        | "EXPERIENCE"
+        | "RESPONSIBILITY"
+        | "TOOL_CAPABILITY"
+        | "BENEFIT"
+        | "INDUSTRY_DOMAIN"
+        | "CUSTOMER_TITLE_RESTRICTION"
+        | "CUSTOM_EXCLUSION"
+        | "LISTING_APPLICATION_PATH"
+      ap_document_kind: "RESUME" | "PRIOR_COVER_LETTER"
+      ap_document_processing_state:
+        | "UPLOADED"
+        | "QUARANTINED"
+        | "SCANNING"
+        | "EXTRACTING"
+        | "READY"
+        | "FAILED"
+        | "SUPERSEDED"
+      ap_draft_state:
+        | "IN_PROGRESS"
+        | "COMPLETE"
+        | "LOCKED_TO_CHECKOUT"
+        | "CONVERTED"
+        | "EXPIRED"
+      ap_eligibility_disposition:
+        | "ELIGIBLE"
+        | "ELIGIBLE_WITH_ALLOWED_UNKNOWNS"
+        | "INELIGIBLE"
+        | "NEEDS_CANDIDATE_INPUT"
+        | "NEEDS_HUMAN_REVIEW"
+        | "INVALID"
+      ap_evidence_verification:
+        | "EXTRACTED_UNCONFIRMED"
+        | "CUSTOMER_CONFIRMED"
+        | "HUMAN_VERIFIED"
+        | "CUSTOMER_REJECTED"
+        | "DISPUTED"
+      ap_experience_kind:
+        | "PAID_EMPLOYMENT"
+        | "SELF_EMPLOYMENT_BUSINESS"
+        | "CONTRACT_FREELANCE"
+        | "VOLUNTEER"
+        | "PROJECT"
+        | "EDUCATION"
+        | "CAREER_BREAK"
+        | "CAREGIVING"
+        | "OTHER_RELEVANT_LIFE_CONTEXT"
+      ap_fact_review_decision: "CONFIRM" | "REJECT" | "SKIP" | "CORRECT"
+      ap_fact_tier: "SEARCH_CRITICAL" | "MATCH_ENHANCING" | "DOCUMENT_ONLY"
+      ap_feasibility_outcome: "LIKELY" | "LIMITED" | "INFEASIBLE"
+      ap_feasibility_reason:
+        | "INVENTORY_SHORTAGE"
+        | "QUALIFICATION_GAP"
+        | "EVIDENCE_GAP"
+        | "CONSTRAINT_COLLISION"
+        | "COMPENSATION_BELOW_MINIMUM"
+        | "COMPENSATION_UNCONFIRMED"
+      ap_feasibility_request_state:
+        | "PENDING"
+        | "CLAIMED"
+        | "COMPLETED"
+        | "STALE"
+        | "ERROR"
+      ap_feasibility_run_state:
+        | "NOT_RUN"
+        | "PENDING"
+        | "COMPLETE"
+        | "STALE"
+        | "ERROR"
+      ap_job_origin: "APPLYPACK_FOUND" | "CUSTOMER_SUPPLIED"
+      ap_material_checkout_state:
+        | "PREFLIGHT"
+        | "BLOCKED"
+        | "READY"
+        | "OPEN"
+        | "EXPIRED"
+        | "COMPLETED"
+        | "FAILED"
+      ap_material_fulfillment:
+        | "NOT_PURCHASED"
+        | "PAID"
+        | "GENERATING"
+        | "HUMAN_REVIEW"
+        | "READY_TO_RELEASE"
+        | "DELIVERED"
+        | "CANCELED"
+      ap_material_proposal_kind: "SUBSTITUTION" | "FACT_CORRECTION"
+      ap_material_proposal_state:
+        | "PROPOSED"
+        | "ACCEPTED"
+        | "DECLINED"
+        | "EXPIRED"
+      ap_material_readiness:
+        | "PENDING"
+        | "BLOCKED_ON_CUSTOMER_INPUT"
+        | "CHECKOUT_ELIGIBLE"
+      ap_material_substitution:
+        | "NONE"
+        | "REQUIRED"
+        | "OFFERED"
+        | "ACCEPTED"
+        | "DECLINED"
+        | "EXPIRED"
+      ap_outbox_state: "QUEUED" | "SENDING" | "SENT" | "RETRY" | "DEAD_LETTER"
+      ap_payment_dispute: "NONE" | "OPEN" | "WON" | "LOST"
+      ap_payment_settlement: "UNPAID" | "PROCESSING" | "PAID" | "FAILED"
+      ap_presentation_risk: "LOW" | "MEDIUM" | "HIGH" | "NOT_ASSESSED"
+      ap_reference_permission: "UNCONFIRMED" | "CONFIRMED" | "REVOKED"
+      ap_reference_regeneration_state:
+        | "REQUESTED"
+        | "ACTIVE"
+        | "HUMAN_REVIEW"
+        | "DELIVERED"
+        | "FAILED"
+      ap_refund_scope:
+        | "FULL_SEARCH"
+        | "DUPLICATE_ATTEMPT"
+        | "STALE_ATTEMPT"
+        | "MATERIAL_LINE"
+      ap_refund_state: "PENDING" | "SUCCEEDED" | "FAILED"
+      ap_requirement_node_kind: "ALL_OF" | "ANY_OF" | "CRITERION"
+      ap_resolution_blocker:
+        | "NONE"
+        | "NEEDS_CANDIDATE_INPUT"
+        | "NEEDS_HUMAN_REVIEW"
+      ap_resolution_issue:
+        | "NONE"
+        | "CANDIDATE_MISSING"
+        | "EMPLOYER_OMITTED"
+        | "PARSER_UNCERTAIN"
+        | "EVIDENCE_CONFLICT"
+      ap_retention_state:
+        | "ACTIVE"
+        | "EXPIRY_PENDING"
+        | "DELETE_PENDING"
+        | "DELETED"
+        | "CRYPTO_SHREDDED"
+        | "LEGAL_HOLD"
+      ap_salary_gate_disposition:
+        | "PASS"
+        | "FAIL"
+        | "ALLOWED_WITH_WARNING"
+        | "NEEDS_HUMAN_REVIEW"
+        | "NOT_APPLICABLE"
+      ap_salary_status:
+        | "PUBLISHED_MEETS_MINIMUM"
+        | "PUBLISHED_OVERLAPS_MINIMUM"
+        | "PUBLISHED_BELOW_MINIMUM"
+        | "PUBLISHED_NONCOMPARABLE"
+        | "UNPUBLISHED"
+        | "ESTIMATE_ONLY"
+      ap_scheduled_job_state:
+        | "QUEUED"
+        | "LEASED"
+        | "RETRY"
+        | "COMPLETED"
+        | "DEAD_LETTER"
+      ap_search_fulfillment:
+        | "QUEUED"
+        | "RESEARCHING"
+        | "HUMAN_REVIEW"
+        | "ADJUSTMENT_REQUIRED"
+        | "READY_TO_RELEASE"
+        | "DELIVERED"
+        | "CANCELED"
+      ap_source_authorization_state:
+        | "AUTHORIZED_AUTOMATED"
+        | "AUTHORIZED_MANUAL_ONLY"
+        | "UNVERIFIED_DISABLED"
+        | "BLOCKED"
+      ap_staff_review_decision:
+        | "APPROVED"
+        | "REJECTED"
+        | "EVIDENCE_REQUIRED"
+        | "CUSTOMER_INPUT_REQUIRED"
+      ap_unknown_treatment:
+        | "BLOCK"
+        | "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING"
+        | "IMMATERIAL_ALTERNATIVE"
+      intake_status:
+        | "draft"
+        | "ready_for_payment"
+        | "paid"
+        | "in_review"
+        | "approved"
+        | "cancelled"
+      order_status:
+        | "pending_payment"
+        | "paid"
+        | "in_fulfillment"
+        | "delivered"
+        | "payment_expired"
+        | "cancelled"
+        | "refunded"
+        | "delivery_processing"
+        | "refund_pending"
+        | "delivered_refunded"
+      product_kind: "job_search" | "apply_pack"
+      profile_role: "customer" | "operator" | "admin"
+      reservation_status: "reserved" | "confirmed" | "released" | "expired"
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
+  public: {
+    Enums: {
+      ap_access_capability_kind: ["IMMEDIATE_ORDER", "EMAIL_ACCESS"],
+      ap_access_capability_state: ["ISSUED", "CONSUMED", "EXPIRED", "REVOKED"],
+      ap_adjustment_state: [
+        "NONE",
+        "PROPOSED",
+        "ACCEPTED",
+        "DECLINED",
+        "EXPIRED",
+      ],
+      ap_application_readiness: ["READY", "NEEDS_CUSTOMER_ACTION", "BLOCKED"],
+      ap_artifact_type: ["RESUME", "COVER_LETTER", "REFERENCE_SHEET"],
+      ap_candidate_fact_source: [
+        "DOCUMENT",
+        "CUSTOMER_ASSERTION",
+        "HUMAN_VERIFICATION",
+      ],
+      ap_capacity_debit: ["NONE", "HELD", "SPENT", "RETURNED"],
+      ap_capacity_lifecycle: [
+        "NONE",
+        "RESERVED",
+        "CONSUMED",
+        "COMPLETED",
+        "SUPERSEDED",
+        "RELEASED",
+        "EXPIRED",
+      ],
+      ap_capacity_resource: ["SEARCH", "MATERIALS", "REFERENCE_REGENERATION"],
+      ap_checkout_state: [
+        "NONE",
+        "OPEN",
+        "CANCELED",
+        "EXPIRED",
+        "COMPLETED",
+        "FAILED",
+      ],
+      ap_command_state: [
+        "CREATING",
+        "CREATED",
+        "APPLYING",
+        "APPLIED",
+        "COMPENSATING",
+        "COMPENSATED",
+        "FAILED",
+      ],
+      ap_criterion_result: ["PASS", "FAIL", "UNKNOWN"],
+      ap_criterion_type: [
+        "WORK_MODE",
+        "GEOGRAPHY",
+        "COMMUTE",
+        "EMPLOYMENT_TYPE",
+        "COMPENSATION",
+        "SCHEDULE",
+        "TRAVEL_PHYSICAL",
+        "DUTY_EXCLUSION",
+        "AUTHORIZATION_SPONSORSHIP",
+        "EDUCATION",
+        "CERTIFICATION_LICENSE",
+        "EXPERIENCE",
+        "RESPONSIBILITY",
+        "TOOL_CAPABILITY",
+        "BENEFIT",
+        "INDUSTRY_DOMAIN",
+        "CUSTOMER_TITLE_RESTRICTION",
+        "CUSTOM_EXCLUSION",
+        "LISTING_APPLICATION_PATH",
+      ],
+      ap_document_kind: ["RESUME", "PRIOR_COVER_LETTER"],
+      ap_document_processing_state: [
+        "UPLOADED",
+        "QUARANTINED",
+        "SCANNING",
+        "EXTRACTING",
+        "READY",
+        "FAILED",
+        "SUPERSEDED",
+      ],
+      ap_draft_state: [
+        "IN_PROGRESS",
+        "COMPLETE",
+        "LOCKED_TO_CHECKOUT",
+        "CONVERTED",
+        "EXPIRED",
+      ],
+      ap_eligibility_disposition: [
+        "ELIGIBLE",
+        "ELIGIBLE_WITH_ALLOWED_UNKNOWNS",
+        "INELIGIBLE",
+        "NEEDS_CANDIDATE_INPUT",
+        "NEEDS_HUMAN_REVIEW",
+        "INVALID",
+      ],
+      ap_evidence_verification: [
+        "EXTRACTED_UNCONFIRMED",
+        "CUSTOMER_CONFIRMED",
+        "HUMAN_VERIFIED",
+        "CUSTOMER_REJECTED",
+        "DISPUTED",
+      ],
+      ap_experience_kind: [
+        "PAID_EMPLOYMENT",
+        "SELF_EMPLOYMENT_BUSINESS",
+        "CONTRACT_FREELANCE",
+        "VOLUNTEER",
+        "PROJECT",
+        "EDUCATION",
+        "CAREER_BREAK",
+        "CAREGIVING",
+        "OTHER_RELEVANT_LIFE_CONTEXT",
+      ],
+      ap_fact_review_decision: ["CONFIRM", "REJECT", "SKIP", "CORRECT"],
+      ap_fact_tier: ["SEARCH_CRITICAL", "MATCH_ENHANCING", "DOCUMENT_ONLY"],
+      ap_feasibility_outcome: ["LIKELY", "LIMITED", "INFEASIBLE"],
+      ap_feasibility_reason: [
+        "INVENTORY_SHORTAGE",
+        "QUALIFICATION_GAP",
+        "EVIDENCE_GAP",
+        "CONSTRAINT_COLLISION",
+        "COMPENSATION_BELOW_MINIMUM",
+        "COMPENSATION_UNCONFIRMED",
+      ],
+      ap_feasibility_request_state: [
+        "PENDING",
+        "CLAIMED",
+        "COMPLETED",
+        "STALE",
+        "ERROR",
+      ],
+      ap_feasibility_run_state: [
+        "NOT_RUN",
+        "PENDING",
+        "COMPLETE",
+        "STALE",
+        "ERROR",
+      ],
+      ap_job_origin: ["APPLYPACK_FOUND", "CUSTOMER_SUPPLIED"],
+      ap_material_checkout_state: [
+        "PREFLIGHT",
+        "BLOCKED",
+        "READY",
+        "OPEN",
+        "EXPIRED",
+        "COMPLETED",
+        "FAILED",
+      ],
+      ap_material_fulfillment: [
+        "NOT_PURCHASED",
+        "PAID",
+        "GENERATING",
+        "HUMAN_REVIEW",
+        "READY_TO_RELEASE",
+        "DELIVERED",
+        "CANCELED",
+      ],
+      ap_material_proposal_kind: ["SUBSTITUTION", "FACT_CORRECTION"],
+      ap_material_proposal_state: [
+        "PROPOSED",
+        "ACCEPTED",
+        "DECLINED",
+        "EXPIRED",
+      ],
+      ap_material_readiness: [
+        "PENDING",
+        "BLOCKED_ON_CUSTOMER_INPUT",
+        "CHECKOUT_ELIGIBLE",
+      ],
+      ap_material_substitution: [
+        "NONE",
+        "REQUIRED",
+        "OFFERED",
+        "ACCEPTED",
+        "DECLINED",
+        "EXPIRED",
+      ],
+      ap_outbox_state: ["QUEUED", "SENDING", "SENT", "RETRY", "DEAD_LETTER"],
+      ap_payment_dispute: ["NONE", "OPEN", "WON", "LOST"],
+      ap_payment_settlement: ["UNPAID", "PROCESSING", "PAID", "FAILED"],
+      ap_presentation_risk: ["LOW", "MEDIUM", "HIGH", "NOT_ASSESSED"],
+      ap_reference_permission: ["UNCONFIRMED", "CONFIRMED", "REVOKED"],
+      ap_reference_regeneration_state: [
+        "REQUESTED",
+        "ACTIVE",
+        "HUMAN_REVIEW",
+        "DELIVERED",
+        "FAILED",
+      ],
+      ap_refund_scope: [
+        "FULL_SEARCH",
+        "DUPLICATE_ATTEMPT",
+        "STALE_ATTEMPT",
+        "MATERIAL_LINE",
+      ],
+      ap_refund_state: ["PENDING", "SUCCEEDED", "FAILED"],
+      ap_requirement_node_kind: ["ALL_OF", "ANY_OF", "CRITERION"],
+      ap_resolution_blocker: [
+        "NONE",
+        "NEEDS_CANDIDATE_INPUT",
+        "NEEDS_HUMAN_REVIEW",
+      ],
+      ap_resolution_issue: [
+        "NONE",
+        "CANDIDATE_MISSING",
+        "EMPLOYER_OMITTED",
+        "PARSER_UNCERTAIN",
+        "EVIDENCE_CONFLICT",
+      ],
+      ap_retention_state: [
+        "ACTIVE",
+        "EXPIRY_PENDING",
+        "DELETE_PENDING",
+        "DELETED",
+        "CRYPTO_SHREDDED",
+        "LEGAL_HOLD",
+      ],
+      ap_salary_gate_disposition: [
+        "PASS",
+        "FAIL",
+        "ALLOWED_WITH_WARNING",
+        "NEEDS_HUMAN_REVIEW",
+        "NOT_APPLICABLE",
+      ],
+      ap_salary_status: [
+        "PUBLISHED_MEETS_MINIMUM",
+        "PUBLISHED_OVERLAPS_MINIMUM",
+        "PUBLISHED_BELOW_MINIMUM",
+        "PUBLISHED_NONCOMPARABLE",
+        "UNPUBLISHED",
+        "ESTIMATE_ONLY",
+      ],
+      ap_scheduled_job_state: [
+        "QUEUED",
+        "LEASED",
+        "RETRY",
+        "COMPLETED",
+        "DEAD_LETTER",
+      ],
+      ap_search_fulfillment: [
+        "QUEUED",
+        "RESEARCHING",
+        "HUMAN_REVIEW",
+        "ADJUSTMENT_REQUIRED",
+        "READY_TO_RELEASE",
+        "DELIVERED",
+        "CANCELED",
+      ],
+      ap_source_authorization_state: [
+        "AUTHORIZED_AUTOMATED",
+        "AUTHORIZED_MANUAL_ONLY",
+        "UNVERIFIED_DISABLED",
+        "BLOCKED",
+      ],
+      ap_staff_review_decision: [
+        "APPROVED",
+        "REJECTED",
+        "EVIDENCE_REQUIRED",
+        "CUSTOMER_INPUT_REQUIRED",
+      ],
+      ap_unknown_treatment: [
+        "BLOCK",
+        "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING",
+        "IMMATERIAL_ALTERNATIVE",
+      ],
+      intake_status: [
+        "draft",
+        "ready_for_payment",
+        "paid",
+        "in_review",
+        "approved",
+        "cancelled",
+      ],
+      order_status: [
+        "pending_payment",
+        "paid",
+        "in_fulfillment",
+        "delivered",
+        "payment_expired",
+        "cancelled",
+        "refunded",
+        "delivery_processing",
+        "refund_pending",
+        "delivered_refunded",
+      ],
+      product_kind: ["job_search", "apply_pack"],
+      profile_role: ["customer", "operator", "admin"],
+      reservation_status: ["reserved", "confirmed", "released", "expired"],
+    },
+  },
+} as const

@@ -99,7 +99,7 @@ export default function WhyApplyPackPage() {
           <article className="founder-story__chapter founder-story__chapter--gold">
             <h2>I Needed More Than a Search</h2>
             <p>
-              Looking for a job felt like a full-time job. I did not need another job board giving me hundreds of listings to sort through. I also did not need expensive career coaching, another subscription, or a package that made me pay for services I might not use.
+              Looking for a job felt like a full-time job. I did not need another endless job board giving me hundreds of unfiltered listings to sort through. I also did not need expensive career coaching or a package that made me pay for services I might not use.
             </p>
             <p>
               I needed something that could examine my complete experience, search beyond the titles I already knew, read the actual job descriptions, research the companies, and apply my requirements for salary, benefits, travel, location, and flexibility.
