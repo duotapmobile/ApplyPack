@@ -90,7 +90,7 @@ jobs:
       - name: Render actual DOCX files and verify PDF outputs
         env:
           APP_RENDERER_RUNTIME_DISCOVERY: 'true'
-          APPLYPACK_RENDER_EVIDENCE_DIR: evidence/ci-document-render
+          APPLYPACK_RENDER_EVIDENCE_DIR: ${{ runner.temp }}/applypack-chunk5-render-ci
         run: >-
           node --input-type=module -e
           "import {configureRendererRuntime} from './scripts/configure-renderer-runtime.mjs';
@@ -102,5 +102,5 @@ jobs:
         if: always()
         with:
           name: document-render-evidence
-          path: evidence/ci-document-render
+          path: ${{ runner.temp }}/applypack-chunk5-render-ci
           if-no-files-found: warn
