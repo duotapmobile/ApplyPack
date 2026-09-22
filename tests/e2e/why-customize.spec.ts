@@ -61,8 +61,9 @@ test("why-customize is discoverable and its internal destinations resolve", asyn
   await expect(page.locator(".brief-tailoring-link")).toHaveAttribute("href", "/why-customize");
 });
 
-test("comparison drag, buttons, keyboard, and page scrolling share one stable state", async ({ page }) => {
+test("comparison drag, buttons, keyboard, and page scrolling share one stable state", async ({ page, browserName }, testInfo) => {
   await page.goto("/why-customize#comparison");
+  await waitForHydration(page);
   const slider = page.getByRole("slider", { name: "Before and After ApplyPack résumé comparison" });
   const canvas = page.getByTestId("resume-comparison-canvas");
   await expect(slider).toHaveAttribute("aria-valuenow", "50");
@@ -97,9 +98,19 @@ test("comparison drag, buttons, keyboard, and page scrolling share one stable st
   expect(await canvas.evaluate((element) => getComputedStyle(element).touchAction)).toBe("pan-y");
 
   await canvas.scrollIntoViewIfNeeded();
-  const beforeScroll = await page.evaluate(() => window.scrollY);
+  let beforeScroll = await page.evaluate(() => window.scrollY);
   await page.mouse.move(initialBox.x + initialBox.width / 2, Math.min(initialBox.y + 40, 700));
-  await page.mouse.wheel(0, 500);
+  if (browserName === "webkit" && testInfo.project.use.isMobile) {
+    // Playwright does not implement mouse.wheel for mobile WebKit. Exercise real
+    // keyboard page scrolling here; physical touch scrolling is a separate check.
+    const before = page.getByRole("button", { name: "Before", exact: true });
+    await before.focus();
+    await expect(before).toBeFocused();
+    beforeScroll = await page.evaluate(() => window.scrollY);
+    await page.keyboard.press("PageDown");
+  } else {
+    await page.mouse.wheel(0, 500);
+  }
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(beforeScroll);
 });
 

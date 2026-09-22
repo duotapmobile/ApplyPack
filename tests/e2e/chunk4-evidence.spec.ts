@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { waitForHydration } from "./helpers/hydration";
 
 const resume = { name: "synthetic-resume.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7\n%%EOF") };
 
@@ -27,6 +28,7 @@ async function completeFeasibility(page: Page, state: string) {
 async function capture(page: Page, path: string) {
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path, fullPage: true, animations: "disabled", scale: "css" });
+  await waitForHydration(page);
   const accessibility = await new AxeBuilder({ page }).exclude("script").analyze();
   expect(accessibility.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
 }

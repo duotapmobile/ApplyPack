@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const dependencies = vi.hoisted(() => Object.fromEntries([
   "adminClient", "collectOperationsSummary", "recordMaintenanceDiagnosis", "recordMaintenanceFailure", "recordMaintenanceOutcome",
-  "processPendingFileScans", "processPendingDocumentExtractions", "processPendingFeasibilityRequests", "processWorkflowTasks",
+  "processUnpaidSourceRetention", "processPendingFileScans", "processPendingDocumentExtractions", "processPendingFeasibilityRequests", "processWorkflowTasks",
   "retryFailedEmails", "processChunk4Workers", "reconcileBoardSubscriptions", "processBoardRecomputeJobs", "stripeClient", "sendTransactionalEmail",
 ].map(name => [name, vi.fn()])) as Record<string, ReturnType<typeof vi.fn>>);
 vi.mock("@/lib/supabase/admin", () => ({ createSupabaseAdminClient: dependencies.adminClient }));
@@ -11,6 +11,7 @@ vi.mock("@/lib/operations/maintenance-observability", () => ({
   recordMaintenanceDiagnosis: dependencies.recordMaintenanceDiagnosis, recordMaintenanceFailure: dependencies.recordMaintenanceFailure,
   recordMaintenanceOutcome: dependencies.recordMaintenanceOutcome,
 }));
+vi.mock("@/lib/files/unpaid-retention", () => ({ processUnpaidSourceRetention: dependencies.processUnpaidSourceRetention }));
 vi.mock("@/lib/files/process-scans", () => ({ processPendingFileScans: dependencies.processPendingFileScans }));
 vi.mock("@/lib/files/isolated-extraction", () => ({ processPendingDocumentExtractions: dependencies.processPendingDocumentExtractions }));
 vi.mock("@/lib/matching/supabase-feasibility-store", () => ({ processPendingFeasibilityRequests: dependencies.processPendingFeasibilityRequests }));
@@ -43,6 +44,7 @@ describe("maintenance authorization and independent queues", () => {
     dependencies.recordMaintenanceOutcome.mockImplementation(async (_admin, _before, _after, actions) => ({
       unresolvedCodes: actions.filter((action: {status: string}) => action.status === "FAILED").map((action: {code: string}) => action.code + "_FAILED"),
     }));
+    dependencies.processUnpaidSourceRetention.mockResolvedValue({ processed: 0, deleted: 0, failed: 0, skipped: 0 });
     dependencies.processPendingDocumentExtractions.mockResolvedValue({ processed: 0, succeeded: 0 });
     dependencies.processPendingFileScans.mockResolvedValue({ processed: 0 });
     dependencies.processPendingFeasibilityRequests.mockResolvedValue({ processed: 0 });
@@ -58,6 +60,7 @@ describe("maintenance authorization and independent queues", () => {
   it("rejects an unauthenticated call before accessing the database", async () => {
     expect((await POST(new Request("https://example.test/api/cron/maintenance", { method: "POST" }))).status).toBe(401);
     expect(dependencies.adminClient).not.toHaveBeenCalled();
+    expect(dependencies.processUnpaidSourceRetention).not.toHaveBeenCalled();
   });
   it.each(["DATABASE_NOT_READY", "CRITICAL_SECURITY_OR_INTEGRITY_ALERT_OPEN"])("stops every processor for %s", async code => {
     dependencies.recordMaintenanceDiagnosis.mockResolvedValue({ codes: [code], failClosedCodes: [code], repairableCodes: [] });
@@ -101,6 +104,21 @@ describe("maintenance authorization and independent queues", () => {
     expect(dependencies.processPendingDocumentExtractions).toHaveBeenCalledOnce();
     expect(dependencies.reconcileBoardSubscriptions).toHaveBeenCalledOnce();
     expect(dependencies.recordMaintenanceOutcome).toHaveBeenCalledOnce();
+  });
+  it("retains unpaid cleanup during an encryption hold without parsing documents", async () => {
+    dependencies.recordMaintenanceDiagnosis.mockResolvedValue({ codes: ["ENCRYPTION_NOT_READY"], failClosedCodes: ["ENCRYPTION_NOT_READY"], repairableCodes: [] });
+    expect((await POST(request())).status).toBe(503);
+    expect(dependencies.processPendingDocumentExtractions).not.toHaveBeenCalled();
+    expect(dependencies.processUnpaidSourceRetention).toHaveBeenCalledWith(expect.anything(), 10);
+    expect(dependencies.reconcileBoardSubscriptions).toHaveBeenCalledOnce();
+  });
+  it("records unpaid storage cleanup failure while unrelated queues continue", async () => {
+    dependencies.processUnpaidSourceRetention.mockResolvedValue({ processed: 1, deleted: 0, failed: 1, skipped: 0 });
+    const response = await POST(request());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ queueStages: { unpaidSourceRetention: "FAILED" } });
+    expect(dependencies.processWorkflowTasks).toHaveBeenCalledOnce();
+    expect(dependencies.reconcileBoardSubscriptions).toHaveBeenCalledOnce();
   });
   it("records a diagnosis failure without invoking processors", async () => {
     dependencies.collectOperationsSummary.mockRejectedValue(new Error("provider secret"));

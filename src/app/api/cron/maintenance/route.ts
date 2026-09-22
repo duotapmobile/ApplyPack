@@ -242,7 +242,7 @@ export async function POST(request: Request) {
   const sourcesReady = !blocked.has("SOURCE_PERMISSION_COVERAGE_MISSING");
   const emailReady = !blocked.has("EMAIL_NOT_READY");
   let documentExtractions;
-  if (fileReady) {
+  if (fileReady && encryptionReady) {
     try {
       documentExtractions = await processPendingDocumentExtractions(admin, 2);
       actions.push({ code: "DOCUMENT_PROCESSING", status: documentExtractions.succeeded === documentExtractions.processed ? "SUCCEEDED" : "FAILED" });

@@ -659,6 +659,19 @@ end;
 $$;
 
 select pg_temp.assert_true((select count(*)=1 from public.ap_search_services where original_snapshot_id='54000000-0000-4000-8000-000000000001'), 'verified webhook duplicated search');
+-- Contract-level replay pressure only: these assertions do not prove Stripe transport or email delivery.
+select pg_temp.assert_true((select count(*)=1 and sum(amount_cents)=2000 and bool_and(settlement='PAID')
+  from public.ap_payment_attempts where draft_id='34000000-0000-4000-8000-000000000001'),
+  'fifty provider replays duplicated or changed the payment total');
+select pg_temp.assert_true((select count(*)=1 and bool_and(applied_at is not null)
+  from public.ap_provider_events where provider_event_id='evt_chunk4_success'),
+  'fifty provider replays duplicated or failed to apply the event');
+select pg_temp.assert_true((select count(*)=1 and sum(units)=1 and bool_and(lifecycle='CONSUMED')
+  from public.ap_capacity_allocations where draft_id='34000000-0000-4000-8000-000000000001' and debit_disposition='SPENT'),
+  'fifty provider replays consumed more than one capacity unit');
+select pg_temp.assert_true((select count(*)=1 and bool_and(message_kind='PAYMENT_VERIFIED_SEARCH_STARTED' and state='QUEUED')
+  from public.ap_outbox_messages where order_id='94000000-0000-4000-8000-000000000001'),
+  'fifty provider replays queued more than one started notification');
 select pg_temp.assert_true((select settlement='PAID' and immediate_charge_verified and payment_method_type='card' and amount_cents=2000 and currency='USD' and payer_receipt_email='payer@example.invalid' from public.ap_payment_attempts where id='a4500000-0000-4000-8000-000000000001'), 'verified payment facts were not persisted');
 select pg_temp.assert_true((select paid_at<>search_activated_at from public.orders join public.ap_search_services on legacy_order_id=orders.id where orders.id='94000000-0000-4000-8000-000000000001'), 'provider payment time was replaced by activation time');
 select pg_temp.assert_true((select delivery_due_at=service_started_at+interval '24 hours' and service_started_at>=intake_completed_at and service_started_at>=capacity_confirmed_at from public.ap_search_services where id='a4600000-0000-4000-8000-000000000001'), 'exact activation deadline clock is invalid');

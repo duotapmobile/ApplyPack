@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { waitForHydration } from "./helpers/hydration";
 
 const routes = [
   "/", "/why-apply-pack", "/how-it-works", "/job-search-help", "/experience-connections",
@@ -21,6 +22,7 @@ for (const route of routes) {
 test("homepage has no serious automated accessibility violations", async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto("/");
+  await waitForHydration(page);
   const results = await new AxeBuilder({ page }).exclude("script").analyze();
   expect(results.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
 });
@@ -63,6 +65,7 @@ test("the anonymous four-step intake is accessible and starts no checkout", asyn
   await page.getByRole("button", { name: "Finish intake" }).click();
   await expect(page.getByText(/Feasibility review is pending. No payment was started/)).toBeVisible();
   expect(await findOverflow(page)).toEqual([]);
+  await waitForHydration(page);
   const axe = await new AxeBuilder({ page }).exclude("script").analyze();
   expect(axe.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
 });
