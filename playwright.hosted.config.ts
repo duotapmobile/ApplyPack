@@ -9,7 +9,7 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   outputDir: "evidence/soft-opening/browser-artifacts",
   reporter: [["list"], ["html", { outputFolder: "evidence/soft-opening/browser-report", open: "never" }]],
-  use: { baseURL, trace: "retain-on-failure", screenshot: "only-on-failure", video: "retain-on-failure" },
+  use: { baseURL, storageState: process.env.APPLYPACK_HOSTED_STORAGE_STATE, trace: "retain-on-failure", screenshot: "only-on-failure", video: "retain-on-failure" },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     { name: "firefox", use: { ...devices["Desktop Firefox"] } },

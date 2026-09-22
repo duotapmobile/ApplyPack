@@ -1420,7 +1420,9 @@ a {
 }
 .choice-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .6rem; }
 .choice { position: relative; }
-.choice input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+/* Keep the native control's hit area inside its visible card. An unanchored
+   one-pixel absolute input can land under the fieldset legend in Firefox. */
+.choice input { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .choice span {
   display: flex;
   gap: .5rem;

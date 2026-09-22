@@ -6,13 +6,26 @@ import { pipelineConfiguration, runSecureDocumentPipeline, type ParserLimits } f
 import { validateDocumentBytes } from "./document-safety";
 
 let activeExtractions = 0;
+type IsolationFailureCode = "unsupported_platform" | "source_unavailable" | "executable_unavailable" | "namespace_or_permission_denied" | "timeout" | "malformed_output" | "process_exit" | "processing_busy" | "probe_failed";
+class IsolationFailure extends Error {
+  constructor(readonly reason: IsolationFailureCode) { super("isolated_document_processing_failed"); }
+}
+function processFailureReason(stderr: Buffer, errorCode?: string): IsolationFailureCode {
+  if (errorCode === "ENOENT") return "executable_unavailable";
+  if (errorCode === "EACCES" || errorCode === "EPERM") return "namespace_or_permission_denied";
+  // Only classify known launcher diagnostics. Never retain or expose their text.
+  const diagnostic = stderr.toString("utf8");
+  if (/^(?:bwrap|prlimit):[^\r\n]*(?:Operation not permitted|Permission denied|No permissions to create new namespace|Creating new namespace failed)/im.test(diagnostic)) return "namespace_or_permission_denied";
+  if (/^(?:bwrap|prlimit):[^\r\n]*(?:exec|execute)[^\r\n]*No such file or directory/im.test(diagnostic)) return "executable_unavailable";
+  return "process_exit";
+}
 export const STRUCTURAL_POLICY = "isolated-structural-v1";
 export async function extractIsolatedDocument(bytes: Buffer, mimeType: string, limits?: ParserLimits) {
   if (bytes.length > 10 * 1024 * 1024 || !validateDocumentBytes(bytes, mimeType).safe) throw new Error("document_structure_rejected");
-  if (process.platform !== "linux") throw new Error("document_isolation_unavailable");
+  if (process.platform !== "linux") throw new IsolationFailure("unsupported_platform");
   // Only the interpreter/system libraries are exposed. No application files, keys,
   // home directory, sockets or network namespace are inherited.
-  const script = await readFile(join(process.cwd(), "src/lib/files/isolated-extract.py"), "utf8");
+  const script = await readFile(join(process.cwd(), "src/lib/files/isolated-extract.py"), "utf8").catch(() => { throw new IsolationFailure("source_unavailable"); });
   const memory = Math.min(limits?.maxMemoryBytes || 536870912, 536870912);
   const milliseconds = Math.min(limits?.maxMilliseconds || 30000, 30000);
   const maxExpandedBytes = Math.min(limits?.maxExpandedBytes ?? 52428800, 52428800);
@@ -22,24 +35,26 @@ export async function extractIsolatedDocument(bytes: Buffer, mimeType: string, l
     "--unshare-all", "--die-with-parent", "--new-session", "--clearenv", "--setenv", "PATH", "/usr/bin",
     "--ro-bind", "/usr", "/usr", "--ro-bind", "/lib", "/lib", "--ro-bind-try", "/lib64", "/lib64",
     "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--chdir", "/tmp", "/usr/bin/python3", "-I", "-c", script, JSON.stringify({ maxExpandedBytes, maxPages })];
-  if (activeExtractions >= 2) throw new Error("document_processing_busy");
+  if (activeExtractions >= 2) throw new IsolationFailure("processing_busy");
   activeExtractions++;
   return new Promise<{ text: string; pageCount: number | null; paginationStatus: "MEASURED" | "UNKNOWN"; reference: string }>((resolve, reject) => {
-    const child = spawn("/usr/bin/prlimit", args, { stdio: ["pipe", "pipe", "ignore"], env: { NODE_ENV: "production" }, detached: true });
+    const child = spawn("/usr/bin/prlimit", args, { stdio: ["pipe", "pipe", "pipe"], env: { NODE_ENV: "production" }, detached: true });
     const chunks: Buffer[] = []; let count = 0; let failed = false;
-    const fail = () => { if (failed) return; failed = true; try { if (child.pid) process.kill(-child.pid, "SIGKILL"); } catch {} reject(new Error("isolated_document_processing_failed")); };
-    const timeout = setTimeout(fail, milliseconds);
-    child.on("error", () => { clearTimeout(timeout); fail(); });
-    child.stdin.on("error", fail);
-    child.stdout.on("data", (chunk: Buffer) => { count += chunk.length; if (count > 3 * 1024 * 1024) fail(); else chunks.push(chunk); });
-    child.on("close", (code) => { clearTimeout(timeout); if (failed) return; if (code !== 0) return fail();
+    let stderr = Buffer.alloc(0);
+    const fail = (reason: IsolationFailureCode) => { if (failed) return; failed = true; try { if (child.pid) process.kill(-child.pid, "SIGKILL"); } catch {} reject(new IsolationFailure(reason)); };
+    const timeout = setTimeout(() => fail("timeout"), milliseconds);
+    child.on("error", (error: NodeJS.ErrnoException) => { clearTimeout(timeout); fail(processFailureReason(stderr, error.code)); });
+    child.stdin.on("error", () => { /* Wait for close/error/timeout to classify the launcher failure. */ });
+    child.stderr.on("data", (chunk: Buffer) => { if (stderr.length < 4096) stderr = Buffer.concat([stderr, chunk.subarray(0, 4096 - stderr.length)]); });
+    child.stdout.on("data", (chunk: Buffer) => { count += chunk.length; if (count > 3 * 1024 * 1024) fail("malformed_output"); else chunks.push(chunk); });
+    child.on("close", (code) => { clearTimeout(timeout); if (failed) return; if (code !== 0) return fail(processFailureReason(stderr));
       try { const result = JSON.parse(Buffer.concat(chunks).toString("utf8"));
         const validPages = mimeType === "application/pdf"
           ? Number.isInteger(result.pageCount) && result.pageCount >= 1 && result.pageCount <= maxPages && result.paginationStatus === "MEASURED"
           : result.pageCount === null && result.paginationStatus === "UNKNOWN";
-        if (typeof result.text !== "string" || Buffer.byteLength(result.text) > Math.min(maxExpandedBytes, 2097152) || !validPages || result.reference !== "isolated-extractor-v1") return fail();
+        if (typeof result.text !== "string" || Buffer.byteLength(result.text) > Math.min(maxExpandedBytes, 2097152) || !validPages || result.reference !== "isolated-extractor-v1") return fail("malformed_output");
         resolve(result);
-      } catch { fail(); }
+      } catch { fail("malformed_output"); }
     });
     child.stdin.end(bytes);
   }).finally(() => { activeExtractions--; });
@@ -78,6 +93,7 @@ export async function probeDocumentIsolation(): Promise<boolean> {
 async function runIsolationProbe(): Promise<boolean> {
   if (isolationProbe && Date.now() - isolationProbe.at < 60_000) return isolationProbe.ready;
   let ready = false;
+  let reason: IsolationFailureCode = "probe_failed";
   try {
     const JSZip = (await import("jszip")).default;
     const zip = new JSZip();
@@ -88,7 +104,9 @@ async function runIsolationProbe(): Promise<boolean> {
       maxMilliseconds: 5000, maxExpandedBytes: 2097152, maxPages: 40, maxMemoryBytes: 536870912,
     });
     ready = result.text.trim() === "Isolation probe";
-  } catch { ready = false; }
+    if (!ready) reason = "malformed_output";
+  } catch (error) { ready = false; if (error instanceof IsolationFailure) reason = error.reason; }
+  if (!ready) console.warn("document_isolation_probe_failed", { reason });
   isolationProbe = { at: Date.now(), ready }; return ready;
 }
 
