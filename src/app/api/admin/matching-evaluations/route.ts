@@ -45,7 +45,7 @@ export async function POST(request: Request) {
   ]);
   const jobSnapshot = one(inventoryMember?.job_snapshot ?? null);
   const sourceAuthorization = jobSnapshot ? one(jobSnapshot.source_authorization) : null;
-  if (!snapshot?.customer_id || !inventoryMember?.selected_by_deduplication || inventoryMember.job_snapshot_id !== input.jobSnapshotId || !jobSnapshot || !sourceAuthorization || successorError || successor) {
+  if (!snapshot || (!snapshot.customer_id && !snapshot.draft_id) || !inventoryMember?.selected_by_deduplication || inventoryMember.job_snapshot_id !== input.jobSnapshotId || !jobSnapshot || !sourceAuthorization || successorError || successor) {
     return NextResponse.json({ error: "The immutable snapshot, selected inventory member, or source authorization is unavailable." }, { status: 409 });
   }
   const reviewById = new Map((currentReviews || []).map((review) => [review.id, review]));
@@ -119,6 +119,7 @@ export async function POST(request: Request) {
     const rootResult = derived.gates.some((gate) => gate.result === "FAIL") ? "FAIL" : derived.gates.some((gate) => gate.result === "UNKNOWN") ? "UNKNOWN" : "PASS";
     const { data, error } = await auth.admin.from("ap_match_evaluations").insert({
       customer_id: snapshot.customer_id,
+      ...({ draft_id: snapshot.draft_id } as Record<string, unknown>),
       snapshot_id: input.snapshotId,
       job_snapshot_id: input.jobSnapshotId,
       inventory_member_id: input.inventoryMemberId,

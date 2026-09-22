@@ -45,3 +45,9 @@ yarn-error.log*
 next-env.d.ts
 
 !.env.example
+
+# Private run artifacts, provider evidence and ephemeral browser sessions
+/evidence/
+
+# Python helper caches
+__pycache__/

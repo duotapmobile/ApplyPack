@@ -84,3 +84,23 @@ export function prepareMaterialDraft(input: {
     rules: { outputFormat: "DOCX", resumePageLimit: 1 } }, facts, input.requirements);
   return draft;
 }
+
+/** Generation uses the same persisted review decisions as preparation; client labels are not authority. */
+export function assertCurrentRequirementMappings(mappings: RequirementMapping[], requirements: Requirement[], reviews: Review[]) {
+  if (mappings.length !== requirements.length || new Set(mappings.map((m) => m.jobEvidenceId)).size !== requirements.length) throw new Error("requirement_mapping_coverage_invalid");
+  for (const node of requirements) {
+    const mapping = mappings.find((m) => m.jobEvidenceId === node.id);
+    if (!mapping) throw new Error("requirement_mapping_missing");
+    const decisions = reviews.map((r) => record(r.decision)).filter((r) => r.stableCriterionId === node.stable_criterion_id);
+    if (decisions.length > 1) throw new Error("requirement_review_ambiguous");
+    const review = decisions[0];
+    const expected = review?.disposition === "RESOLVED_PASS" && texts(review.sourceEvidenceNodeIds).includes(node.id)
+      ? review.evidenceRelation === "DIRECT" ? "DIRECT_EVIDENCE"
+        : review.evidenceRelation === "ADJACENT" && review.adjacentEquivalenceReviewId ? "TRANSFERABLE_EVIDENCE" : "UNKNOWN"
+      : "UNKNOWN";
+    if (mapping.classification !== expected
+      || JSON.stringify([...new Set(mapping.candidateFactIds)].sort()) !== JSON.stringify(expected === "UNKNOWN" ? [] : [...new Set(texts(review.candidateFactVersionIds))].sort())) {
+      throw new Error("requirement_mapping_differs_from_current_review");
+    }
+  }
+}

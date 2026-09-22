@@ -22,6 +22,7 @@ export async function POST(request: Request) {
   const privateState = await fourStepPrivateState(context.admin, context.capability.draftId).catch(() => null);
   if (!privateState) return NextResponse.json({ error: "The intake cannot be reviewed right now." }, { status: 503 });
   const resume = privateState.documents.find((item: import("@/lib/intake/four-step").IntakeDocument) => item.kind === "RESUME") ?? null;
+  if (!resume || !["READY", "REVIEW_READY"].includes(resume.processingState)) return NextResponse.json({ error: "Your resume must finish safe extraction and be ready for factual review before finalizing." }, { status: 409, headers: { "Cache-Control": "private, no-store" } });
   const errors = [0, 1, 2, 3].flatMap((step) => validateFourStep(step as 0 | 1 | 2 | 3, answers, {
     resume, facts: privateState.facts, presentedFactIds: new Set(privateState.presentedFactIds),
   }));

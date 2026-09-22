@@ -4,7 +4,7 @@ import type Stripe from "stripe";
 import { z } from "zod";
 import { canonicalApplicationOrigin, deterministicUuid, postgresBytea } from "@/lib/commerce/server";
 import { documentRendererConfiguration } from "@/lib/documents/renderer";
-import { fileScanConfiguration } from "@/lib/files/scanner";
+
 import { careerBreakPresentation, MATERIAL_LINE_PRICE_CENTS, materialTotalCents } from "@/lib/materials/contract";
 import { materialCheckoutRequestKey, materialSelectionSha256 } from "@/lib/materials/server";
 import { isSameOriginRequest } from "@/lib/security/origin";
@@ -81,8 +81,8 @@ type CommerceConfiguration = {
   materials_generation_approval_reference: string | null;
   material_output_formats: string[];
   document_renderer_identity: string | null;
-  arial_font_sha256: string | null;
-  malware_scanner_identity: string | null;
+  document_font_sha256: string | null;
+  document_safety_policy: string | null;
 };
 
 export async function POST(request: Request) {
@@ -132,11 +132,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "The canonical secure site URL is not configured." }, { status: 503 });
   }
   const { data: configuration, error: configurationError } = await admin.from("ap_commerce_configuration")
-    .select("canonical_site_url,tax_configuration_approved,tax_approval_reference,tax_treatment,material_line_price_cents,currency,tax_inclusive,pricing_version,tax_version,materials_rule_ttl_seconds,immediate_payment_methods,checkout_enabled,materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,arial_font_sha256,malware_scanner_identity")
+    .select("canonical_site_url,tax_configuration_approved,tax_approval_reference,tax_treatment,material_line_price_cents,currency,tax_inclusive,pricing_version,tax_version,materials_rule_ttl_seconds,immediate_payment_methods,checkout_enabled,materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_sha256,document_safety_policy")
     .eq("singleton", true).maybeSingle();
   const commerce = configuration as CommerceConfiguration | null;
   const renderer = documentRendererConfiguration();
-  const scanner = fileScanConfiguration();
+
   if (configurationError || !commerce || !commerce.checkout_enabled
     || commerce.canonical_site_url !== applicationOrigin
     || !commerce.tax_configuration_approved || !commerce.tax_approval_reference
@@ -149,9 +149,8 @@ export async function POST(request: Request) {
     || !commerce.materials_generation_approved || !commerce.materials_generation_approval_reference
     || !commerce.material_output_formats.length
     || !renderer.ready || renderer.identity !== commerce.document_renderer_identity
-    || renderer.arialFont.sha256 !== commerce.arial_font_sha256
-    || !scanner.ready || scanner.identity !== commerce.malware_scanner_identity
-    || (process.env.APP_PAYMENT_MODE === "live" && !scanner.liveReady)) {
+    || renderer.documentFont.sha256 !== commerce.document_font_sha256
+    || commerce.document_safety_policy !== "generated-structural-v1") {
     return NextResponse.json({
       error: "Checkout is disabled until the approved tax-inclusive price and production commerce controls are configured.",
     }, { status: 503 });

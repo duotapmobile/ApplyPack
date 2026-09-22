@@ -22,11 +22,16 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - run: node --test scripts/test-maintenance-runner.test.mjs scripts/test-renderer-runtime.test.mjs
       - run: npm run build
 
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [desktop, firefox, webkit, mobile-webkit, mobile]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,8 +39,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm run test:e2e -- --project=${{ matrix.project }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-${{ matrix.project }}
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: warn
 
   database:
     runs-on: ubuntu-latest
@@ -61,3 +74,33 @@ jobs:
           cat tests/integration/historical-preservation-fixture.sql | docker exec -i supabase_db_applypack psql -U postgres -d postgres -v ON_ERROR_STOP=1
           supabase migration up --local
           cat tests/integration/historical-preservation-assertions.sql | docker exec -i supabase_db_applypack psql -U postgres -d postgres -v ON_ERROR_STOP=1
+
+  document-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y libreoffice-writer fonts-liberation fontconfig poppler-utils
+      - run: npm ci
+      - run: node --test scripts/test-renderer-runtime.test.mjs
+      - name: Render actual DOCX files and verify PDF outputs
+        env:
+          APP_RENDERER_RUNTIME_DISCOVERY: 'true'
+          APPLYPACK_RENDER_EVIDENCE_DIR: ${{ runner.temp }}/applypack-chunk5-render-ci
+        run: >-
+          node --input-type=module -e
+          "import {configureRendererRuntime} from './scripts/configure-renderer-runtime.mjs';
+          import {spawnSync} from 'node:child_process';
+          configureRendererRuntime();
+          const result=spawnSync(process.execPath,['node_modules/vitest/vitest.mjs','run','--config','vitest.render.config.mts'],{stdio:'inherit',env:process.env});
+          process.exit(result.status ?? 1);"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: document-render-evidence
+          path: ${{ runner.temp }}/applypack-chunk5-render-ci
+          if-no-files-found: warn

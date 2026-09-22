@@ -7,6 +7,7 @@ vi.mock("server-only", () => ({}));
 
 import {
   approvedRealSourceIds,
+  currentSourceReadiness,
   commerceSnapshot,
   collectOperationsSummary,
   containsSensitiveOperationsData,
@@ -56,6 +57,14 @@ function summary(change: Partial<OperationsSummary> = {}): OperationsSummary {
 }
 
 describe("aggregate operations safety", () => {
+  it("requires a complete consistent current source ledger and distinguishes manual readiness", () => {
+    expect(currentSourceReadiness({ jobSourcesRegistered: true, authorizedSourceInventory: true, manualReady: true, automatedReady: false }))
+      .toEqual({ valid: true, manualReady: true, automatedReady: false, currentVerifiedInventory: true });
+    expect(currentSourceReadiness({ jobSourcesRegistered: true, authorizedSourceInventory: true }).valid).toBe(false);
+    expect(currentSourceReadiness({ jobSourcesRegistered: true, authorizedSourceInventory: true, manualReady: false, automatedReady: false }).currentVerifiedInventory).toBe(false);
+    expect(currentSourceReadiness(null).valid).toBe(false);
+  });
+
   it("normalizes environment, release identity, queue age and maintenance freshness", () => {
     expect(deploymentEnvironment({ APP_DEPLOYMENT_ENV: "production" })).toBe("production");
     expect(deploymentEnvironment({ APP_DEPLOYMENT_ENV: " staging " })).toBe("staging");
@@ -255,6 +264,7 @@ describe("maintenance policy", () => {
     expect(outcome.actionCodes).toEqual([
       "EXPIRATION_CLEANUP",
       "EXPIRED_LEASE_RECOVERY",
+      "DOCUMENT_PROCESSING",
       "BOUNDED_QUEUE_PROCESSING",
       "STRIPE_RECONCILIATION",
       "BOARD_RECOMPUTATION",
@@ -349,9 +359,9 @@ describe("operations route contract", () => {
   });
 
   it("invokes each bounded processor only once in the repair phase", () => {
-    expect(cron.match(/await processPendingFileScans\(/g)).toHaveLength(1);
-    expect(cron.match(/await processWorkflowTasks\(/g)).toHaveLength(1);
-    expect(cron.match(/await processChunk4Workers\(/g)).toHaveLength(1);
+    expect(cron.match(/processPendingFileScans\(/g)).toHaveLength(1);
+    expect(cron.match(/processWorkflowTasks\(/g)).toHaveLength(1);
+    expect(cron.match(/processChunk4Workers\(/g)).toHaveLength(1);
     expect(cron.match(/await reconcileBoardSubscriptions\(/g)).toHaveLength(1);
     expect(cron.match(/await processBoardRecomputeJobs\(/g)).toHaveLength(1);
   });

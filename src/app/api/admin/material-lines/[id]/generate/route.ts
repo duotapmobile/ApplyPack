@@ -1,3 +1,4 @@
+import { assertCurrentRequirementMappings } from "@/lib/documents/draft-preparation";
 import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -13,7 +14,6 @@ import {
 } from "@/lib/documents/generate";
 import { documentRendererConfiguration, renderDocumentLocallyForQa } from "@/lib/documents/renderer";
 import { validateMaterialClaims } from "@/lib/documents/claim-validation";
-import { fileScanConfiguration, scanBuffer } from "@/lib/files/scanner";
 import { materialFilename } from "@/lib/materials/contract";
 import { readReferencePayload, type StoredReferenceEnvelope } from "@/lib/materials/references";
 import { readMaterialContact, type StoredMaterialContactEnvelope } from "@/lib/materials/server";
@@ -98,6 +98,8 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
     || !revision.source_snapshot_id || !revision.employer_rule_snapshot_id || !revision.binding_sha256) {
     return response({ error: "The current immutable line binding is incomplete." }, 409);
   }
+  const ownership = await auth.admin.rpc("ap_customer_owns_snapshot", { p_customer_id: purchase.customer_id, p_snapshot_id: revision.source_snapshot_id });
+  if (ownership.error || ownership.data !== true) return response({ error: "Current source ownership could not be verified." }, 409);
   const [{ data: intent }, { data: job }, { data: rule }, { data: generationConfiguration }] = await Promise.all([
     auth.admin.from("ap_material_checkout_intents").select("contact_payload_id,career_break_choice,career_break_custom_label,cover_letter_break_consent")
       .eq("id", purchase.checkout_intent_id).eq("customer_id", purchase.customer_id).maybeSingle(),
@@ -107,25 +109,23 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
       .select("id,content_sha256,allowed_formats,resume_page_limit,resume_filename_instruction,cover_letter_filename_instruction,reference_filename_instruction,reference_timing,reference_count,hard_block_reason,injection_scan_state,is_current,checked_at")
       .eq("id", revision.employer_rule_snapshot_id).eq("job_snapshot_id", revision.job_snapshot_id).maybeSingle(),
     auth.admin.from("ap_commerce_configuration")
-      .select("materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,arial_font_sha256,malware_scanner_identity")
+      .select("materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_sha256,document_safety_policy")
       .eq("singleton", true).maybeSingle(),
   ]);
   if (!intent || !job || !rule || !rule.is_current || rule.hard_block_reason || rule.injection_scan_state !== "CLEAR") {
     return response({ error: "Current employer instructions are not generation-ready." }, 409);
   }
   const rendererConfiguration = documentRendererConfiguration();
-  const scannerConfiguration = fileScanConfiguration();
+
   if (!generationConfiguration?.materials_generation_approved
     || !generationConfiguration.materials_generation_approval_reference
     || !Array.isArray(generationConfiguration.material_output_formats)
     || !generationConfiguration.material_output_formats.length
     || !rendererConfiguration.ready
     || rendererConfiguration.identity !== generationConfiguration.document_renderer_identity
-    || rendererConfiguration.arialFont.sha256 !== generationConfiguration.arial_font_sha256
-    || !scannerConfiguration.ready
-    || scannerConfiguration.identity !== generationConfiguration.malware_scanner_identity
-    || (process.env.APP_PAYMENT_MODE === "live" && !scannerConfiguration.liveReady)) {
-    return response({ error: "Approved document rendering, Arial, and malware-scanning configuration is required." }, 503);
+    || rendererConfiguration.documentFont.sha256 !== generationConfiguration.document_font_sha256
+    || generationConfiguration.document_safety_policy !== "generated-structural-v1") {
+    return response({ error: "Approved Liberation Sans rendering and structural document policy are required." }, 503);
   }
   const now = new Date();
   const dueAt = line.materials_due_at ? new Date(line.materials_due_at) : null;
@@ -259,6 +259,7 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
       ...(input.data.careerBreakDates?.candidateFactIds || []),
     ]);
     const jobEvidenceIds = unique([
+      ...input.data.requirementMappings.map((mapping) => mapping.jobEvidenceId),
       ...sentenceFactIds(input.data.professionalSummary, "jobEvidenceIds"),
       ...input.data.coreSkills.flatMap((value) => sentenceFactIds(value, "jobEvidenceIds")),
       ...input.data.experiences.flatMap((value) => [
@@ -276,13 +277,21 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
     }
     const [{ data: facts }, { data: evidence }] = await Promise.all([
       auth.admin.from("ap_candidate_facts").select("id,typed_value,capability_status").in("id", candidateFactIds)
-        .eq("customer_id", purchase.customer_id).eq("snapshot_id", revision.source_snapshot_id)
+        .or(`customer_id.is.null,customer_id.eq.${purchase.customer_id}`).eq("snapshot_id", revision.source_snapshot_id)
         .in("verification", ["CUSTOMER_CONFIRMED", "HUMAN_VERIFIED"]).is("superseded_at", null),
       auth.admin.from("ap_requirement_nodes").select("id,source_excerpt").in("id", jobEvidenceIds).eq("job_snapshot_id", job.id),
     ]);
     if ((facts || []).length !== candidateFactIds.length || (evidence || []).length !== jobEvidenceIds.length) {
       return response({ error: "One or more factual provenance bindings are stale or outside the current line." }, 409);
     }
+    const [currentNodes, currentReviews] = await Promise.all([
+      auth.admin.from("ap_requirement_nodes").select("id,stable_criterion_id,source_excerpt").eq("job_snapshot_id", job.id).eq("node_kind", "CRITERION"),
+      auth.admin.from("ap_human_review_records").select("id,decision").or(`customer_id.is.null,customer_id.eq.${purchase.customer_id}`)
+        .eq("snapshot_id", revision.source_snapshot_id).eq("job_snapshot_id", job.id).eq("review_kind", "MATCH_EVIDENCE").is("invalidated_at", null),
+    ]);
+    if (currentNodes.error || currentReviews.error) return response({ error: "Current matching evidence is unavailable." }, 503);
+    try { assertCurrentRequirementMappings(input.data.requirementMappings, currentNodes.data || [], currentReviews.data || []); }
+    catch { return response({ error: "Requirement mappings must match current verified matching reviews." }, 409); }
     const generationInput: EvidenceBoundMaterialInput = {
       ...common,
       documentLanguage: input.data.documentLanguage,
@@ -321,8 +330,10 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
     } catch {
       return response({ error: "Document wording must be supported by its cited verified facts. Review unsupported claims before generation." }, 409);
     }
-    const generated = await generateEvidenceBoundMaterials(generationInput).catch(() => null);
+    const generated = await generateEvidenceBoundMaterials(generationInput, { facts: facts || [], jobEvidence: evidence || [] }).catch(() => null);
     if (!generated) return response({ error: "Generation stopped because content, provenance, layout, or truthfulness checks failed." }, 409);
+    generated.resume.provenance.matchingReviewIds = (currentReviews.data || []).map((review) => review.id);
+    generated.coverLetter.provenance.matchingReviewIds = (currentReviews.data || []).map((review) => review.id);
     artifacts = [
       { type: "RESUME", artifact: generated.resume },
       { type: "COVER_LETTER", artifact: generated.coverLetter },
@@ -442,8 +453,9 @@ async function validateUploadAndRegister(input: {
     employerInstruction: input.employerFilenameInstruction,
     collisionLocation: input.location,
   });
-  const scan = await scanBuffer(bytes, { structureValidated: true });
-  if (scan.status !== "clean" || !scan.provider || scan.sha256 !== hash(bytes)) throw new Error("artifact_malware_scan_failed");
+  // Canonical generated bytes have passed package inspection and actual rendering.
+  // This policy does not make a malware-scanning claim.
+  const scan = { sha256: hash(bytes), status: "NOT_SCANNED" as const };
   const identitySuffix = input.regenerationId || input.revisionId;
   const artifactId = deterministicUuid(`chunk5-artifact:${input.lineId}:${identitySuffix}:${input.artifactType}`);
   const fileVersionId = randomUUID();
@@ -532,13 +544,13 @@ async function validateUploadAndRegister(input: {
     p_extracted_text_sha256: inspection.extractedTextSha256,
     p_rendered_page_count: render.pageCount,
     p_renderer_identity: render.rendererIdentity,
-    p_arial_font_sha256: render.arialFontSha256,
-    p_malware_scanner_identity: fileScanConfiguration().identity,
+    p_arial_font_sha256: render.documentFontSha256,
+    p_malware_scanner_identity: "NOT_SCANNED:generated-structural-v1",
     p_render_preview_bucket: "operator-render-previews",
     p_render_preview_path: previewPath,
     p_render_preview_sha256: render.searchablePdfSha256,
     p_rendered_page_sha256: render.pageImages.map((page) => page.sha256),
-    p_arial_resolved: render.arialResolved,
+    p_arial_resolved: render.documentFontResolved,
   });
   if (registered.error || !registered.data) {
     await Promise.all([

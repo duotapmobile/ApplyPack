@@ -15,7 +15,7 @@ export function parseStoredFourStepDraft(value: unknown): FourStepDraft {
 export async function fourStepPrivateState(admin: AdminClient, draftId: string) {
   const [documentsResult, factsResult, presentationsResult] = await Promise.all([
     admin.from("ap_document_versions")
-      .select("id,version,kind,safe_display_name,size_bytes,verified_mime_type,processing_state,failure_code")
+      .select("id,version,kind,safe_display_name,size_bytes,verified_mime_type,processing_state,failure_code,structural_review_ready_at,structural_policy,malware_deferred,parse_status")
       .eq("draft_id", draftId).eq("is_current", true),
     admin.from("ap_candidate_facts")
       .select("id,semantic_key,fact_tier,verification,document_version_id,source_locator,customer_display_label,customer_display_value")
@@ -26,7 +26,8 @@ export async function fourStepPrivateState(admin: AdminClient, draftId: string) 
   const documents = (documentsResult.data || []).map((row: Record<string, unknown>): IntakeDocument => ({
     id: String(row.id), version: Number(row.version), kind: row.kind as IntakeDocument["kind"],
     name: String(row.safe_display_name), size: Number(row.size_bytes), mimeType: String(row.verified_mime_type),
-    processingState: row.processing_state as IntakeDocument["processingState"], failureCode: row.failure_code ? String(row.failure_code) : null,
+    processingState: row.structural_review_ready_at && row.structural_policy === "isolated-structural-v1" && row.malware_deferred === true && row.parse_status === "SUCCEEDED" && !row.failure_code
+      ? "REVIEW_READY" : row.processing_state as IntakeDocument["processingState"], failureCode: row.failure_code ? String(row.failure_code) : null,
   }));
   const facts = (factsResult.data || []).flatMap((row: Record<string, unknown>): FactSuggestion[] => {
     if (!row.customer_display_label || !row.customer_display_value || !row.document_version_id) return [];

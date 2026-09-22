@@ -14,6 +14,7 @@ type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 export const MAINTENANCE_ACTION_CODES = [
   "EXPIRATION_CLEANUP",
   "EXPIRED_LEASE_RECOVERY",
+  "DOCUMENT_PROCESSING",
   "BOUNDED_QUEUE_PROCESSING",
   "STRIPE_RECONCILIATION",
   "BOARD_RECOMPUTATION",
@@ -31,6 +32,8 @@ export type DiagnosticCode =
   | "PAYMENT_INTEGRITY_NOT_READY"
   | "EMAIL_NOT_READY"
   | "FILE_SAFETY_NOT_READY"
+  | "ENCRYPTION_NOT_READY"
+  | "DOCUMENT_RENDERING_NOT_READY"
   | "SOURCE_PERMISSION_COVERAGE_MISSING"
   | "CRITICAL_SECURITY_OR_INTEGRITY_ALERT_OPEN"
   | "RECOMPUTE_QUEUE_STALE"
@@ -40,6 +43,7 @@ export type DiagnosticCode =
   | "MAINTENANCE_DIAGNOSIS_FAILED"
   | "EXPIRED_LEASE_RECOVERY_FAILED"
   | "EXPIRATION_CLEANUP_FAILED"
+  | "DOCUMENT_PROCESSING_FAILED"
   | "BOUNDED_QUEUE_PROCESSING_FAILED"
   | "STRIPE_RECONCILIATION_FAILED"
   | "BOARD_RECOMPUTATION_FAILED"
@@ -49,6 +53,8 @@ const FAIL_CLOSED_CODES: readonly DiagnosticCode[] = [
   "DATABASE_NOT_READY",
   "PAYMENT_INTEGRITY_NOT_READY",
   "FILE_SAFETY_NOT_READY",
+  "ENCRYPTION_NOT_READY",
+  "DOCUMENT_RENDERING_NOT_READY",
   "SOURCE_PERMISSION_COVERAGE_MISSING",
   "CRITICAL_SECURITY_OR_INTEGRITY_ALERT_OPEN",
 ];
@@ -58,6 +64,8 @@ const MANAGED_ALERT_CODES: readonly DiagnosticCode[] = [
   "PAYMENT_INTEGRITY_NOT_READY",
   "EMAIL_NOT_READY",
   "FILE_SAFETY_NOT_READY",
+  "ENCRYPTION_NOT_READY",
+  "DOCUMENT_RENDERING_NOT_READY",
   "SOURCE_PERMISSION_COVERAGE_MISSING",
   "CRITICAL_SECURITY_OR_INTEGRITY_ALERT_OPEN",
   "RECOMPUTE_QUEUE_STALE",
@@ -67,6 +75,7 @@ const MANAGED_ALERT_CODES: readonly DiagnosticCode[] = [
   "MAINTENANCE_DIAGNOSIS_FAILED",
   "EXPIRED_LEASE_RECOVERY_FAILED",
   "EXPIRATION_CLEANUP_FAILED",
+  "DOCUMENT_PROCESSING_FAILED",
   "BOUNDED_QUEUE_PROCESSING_FAILED",
   "STRIPE_RECONCILIATION_FAILED",
   "BOARD_RECOMPUTATION_FAILED",
@@ -76,6 +85,7 @@ const MANAGED_ALERT_CODES: readonly DiagnosticCode[] = [
 const ACTION_FAILURE_CODE_BY_ACTION: Readonly<Partial<Record<DiagnosticCode, MaintenanceActionCode>>> = {
   EXPIRED_LEASE_RECOVERY_FAILED: "EXPIRED_LEASE_RECOVERY",
   EXPIRATION_CLEANUP_FAILED: "EXPIRATION_CLEANUP",
+  DOCUMENT_PROCESSING_FAILED: "DOCUMENT_PROCESSING",
   BOUNDED_QUEUE_PROCESSING_FAILED: "BOUNDED_QUEUE_PROCESSING",
   STRIPE_RECONCILIATION_FAILED: "STRIPE_RECONCILIATION",
   BOARD_RECOMPUTATION_FAILED: "BOARD_RECOMPUTATION",
@@ -98,10 +108,12 @@ export function diagnoseOperations(summary: OperationsSummary) {
   if (!summary.readiness.payments) codes.push("PAYMENT_INTEGRITY_NOT_READY");
   if (!summary.readiness.email) codes.push("EMAIL_NOT_READY");
   if (!summary.readiness.fileSafety) codes.push("FILE_SAFETY_NOT_READY");
+  if (summary.readiness.encryption === false) codes.push("ENCRYPTION_NOT_READY");
+  if (summary.readiness.documentRendering === false) codes.push("DOCUMENT_RENDERING_NOT_READY");
   if (summary.inventory.unauthorizedScheduledAutomatedRealSources > 0) {
     codes.push("SOURCE_PERMISSION_COVERAGE_MISSING");
   }
-  if (summary.alerts.openCritical > 0) codes.push("CRITICAL_SECURITY_OR_INTEGRITY_ALERT_OPEN");
+  if ((summary.alerts.blockingCritical ?? summary.alerts.openCritical) > 0) codes.push("CRITICAL_SECURITY_OR_INTEGRITY_ALERT_OPEN");
   if (summary.queues.recompute.stale) codes.push("RECOMPUTE_QUEUE_STALE");
   if (summary.queues.workflow.stale) codes.push("WORKFLOW_QUEUE_STALE");
   if (summary.queues.outbox.stale) codes.push("OUTBOX_QUEUE_STALE");
@@ -126,7 +138,9 @@ export function maintenanceOutcome(
   const beforeCodes = diagnoseOperations(before).codes;
   const afterDiagnostic = diagnoseOperations(after);
   const failedActionCodes = actions.filter((action) => action.status === "FAILED").map((action) => action.code);
-  const unresolvedCodes = uniqueCodes([...afterDiagnostic.codes, ...additionalCodes]);
+  const actionFailureCodes = Object.entries(ACTION_FAILURE_CODE_BY_ACTION)
+    .filter(([, action]) => failedActionCodes.includes(action!)).map(([code]) => code as DiagnosticCode);
+  const unresolvedCodes = uniqueCodes([...afterDiagnostic.codes, ...additionalCodes, ...actionFailureCodes]);
   return {
     beforeCodes,
     actions: actions.map((action) => ({ code: action.code, status: action.status })),
@@ -271,7 +285,7 @@ export async function recordMaintenanceOutcome(
 
   // Alert reconciliation must succeed before a success heartbeat can be refreshed.
   await reconcileMaintenanceAlerts(admin, outcome.unresolvedCodes, after.environment, after.releaseSha, nowIso);
-  if (outcome.unresolvedCodes.length || outcome.failedActionCodes.length) {
+  if (outcome.unresolvedCodes.length || actions.some((action) => action.status !== "SUCCEEDED")) {
     await updateFailureEvidence(admin, { schemaVersion: 2, phase: "FAILED", ...outcome }, nowIso);
     return { ...outcome, recoveryEmail: "not_needed" as const };
   }

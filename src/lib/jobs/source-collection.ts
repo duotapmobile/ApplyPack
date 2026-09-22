@@ -3,11 +3,12 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { createSourceAdapter } from "./adapters";
+import { createSourceAdapter, resumableAdapterVersion } from "./adapters";
 import type { JobEnumerationResult, RuntimeSourceAuthorization } from "./adapters";
 import { normalizeJob } from "./normalize";
 import { getSource } from "./source-registry";
 import type { RawJobPosting, SourceDefinition } from "./types";
+import { resumeSourceCheckpoint } from "./source-checkpoint";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
@@ -85,6 +86,14 @@ export async function runScheduledSourceCollection(
   if (replay.data) return { runId: replay.data.id, replayed: true, observed: 0 };
 
   const context = await loadSourceContext(admin, job);
+  const previous = await admin.from("job_source_runs")
+    .select("checkpoint_end,scope_sha256,adapter_version,response_classification,enumeration_status")
+    .eq("scheduled_job_id", job.id).order("started_at", { ascending: false }).limit(1).maybeSingle();
+  if (previous.error) throw previous.error;
+  // Only bounded successful pages may resume. Errors restart rather than trusting
+  // a cursor whose final page may not have been completely recorded.
+  const checkpoint = resumeSourceCheckpoint(previous.data, context.schedule.scope_sha256,
+    resumableAdapterVersion(context.source.adapterKind));
   const { data: run, error: runError } = await admin.from("job_source_runs").insert({
     source_id: context.source.id,
     status: "started",
@@ -99,13 +108,14 @@ export async function runScheduledSourceCollection(
     closure_minimum_complete_misses: context.schedule.minimum_complete_misses,
     closure_visibility_window_seconds: context.schedule.visibility_window_seconds,
     projection_status: "observation_only",
-    checkpoint_start: null,
+    checkpoint_start: checkpoint ? { cursor: checkpoint, closureEligible: false } : null,
   }).select("id").single();
   if (runError || !run) throw runError || new Error("job_source_run_not_recorded");
 
   const adapter = createSourceAdapter(context.source.id, context.authorization);
   const collectionDeadlineMs = Date.now() + context.schedule.duration_ms_bound;
   const result = await adapter.enumerateJobs({
+    checkpoint,
     resultBound: context.schedule.result_bound,
     pageBound: context.schedule.page_bound,
     requestBound: context.schedule.request_bound,
@@ -123,12 +133,21 @@ export async function runScheduledSourceCollection(
     },
   });
 
+  await assertSourceContextCurrent(admin, job, context, owner);
+  const evidenceRpc = admin.rpc.bind(admin) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;
+  const archived = await evidenceRpc("ap_archive_source_attempt", { p_run_id: run.id,
+    p_adapter_version: result.adapterVersion, p_postings: result.jobs.map(serializablePosting) });
+  if (archived.error) throw archived.error;
+
   if (result.completion !== "complete") {
+    await assertSourceContextCurrent(admin, job, context, owner);
+    await preservePartialObservations(admin, run.id, result);
     await recordTerminalFailure(admin, run.id, result);
     throw new SourceCollectionError(
       result.errors[0]?.code || "source_enumeration_partial",
       result.errors[0]?.retryAfterSeconds || null,
-      result.errors[0]?.retryable || false,
+      result.responseClassification === "bounded_partial" && Boolean(result.checkpoint.cursor)
+        || result.errors[0]?.retryable || false,
     );
   }
 
@@ -215,6 +234,26 @@ export async function runScheduledSourceCollection(
     updated_at: completedAt,
   }).eq("id", context.source.id);
   return { runId: run.id, replayed: false, observed: observations.length };
+}
+
+async function preservePartialObservations(admin: AdminClient, runId: string, result: JobEnumerationResult) {
+  const observations = new Map<string, Record<string, unknown>>();
+  for (const posting of result.jobs) {
+    if (!validRawSourceEvidence(posting.rawSourceEvidence, result.adapterVersion)) continue;
+    const normalized = normalizeJob(posting);
+    const key = sourceListingKey(normalized.externalJobId, normalized.normalizedSourceUrl);
+    if (!key) continue;
+    // Repeated IDs never establish authoritative complete enumeration.
+    if (observations.has(key)) continue;
+    observations.set(key, { run_id: runId, listing_key: key, job_id: null,
+      source_reference_id: null, job_snapshot_id: null,
+      captured_listing: serializablePosting(posting), content_sha256: normalized.contentHash,
+      observed_at: normalized.lastVerifiedAt });
+  }
+  if (observations.size) {
+    const inserted = await admin.from("job_source_run_listings").insert([...observations.values()]);
+    if (inserted.error) throw inserted.error;
+  }
 }
 
 async function recordTerminalFailure(admin: AdminClient, runId: string, result: JobEnumerationResult) {

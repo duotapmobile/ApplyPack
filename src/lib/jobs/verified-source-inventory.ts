@@ -8,6 +8,8 @@ import { normalizeJob, normalizeUrl } from "./normalize";
 import { getEmployerSource } from "./source-registry";
 import { validRawSourceEvidence } from "./raw-source-evidence";
 import type { RawJobPosting } from "./types";
+import { sourceCompensation, sourceFieldEvidence } from "./field-evidence";
+import { toJobDatabaseRow } from "./persistence";
 
 export const sourceVerificationSchema = z.object({
   projectionId: z.string().uuid(), snapshotId: z.string().uuid(),
@@ -16,13 +18,20 @@ export const sourceVerificationSchema = z.object({
   evidenceNotes: z.string().trim().min(20).max(3000),
   employerIdentityConfirmed: z.literal(true), applicationPathConfirmed: z.literal(true),
   listingActiveConfirmed: z.literal(true), legitimacyConfirmed: z.literal(true),
+  lifecycleAction: z.enum(["UNCHANGED", "CHANGED", "REOPENED"]).optional(),
+  transitionReason: z.string().trim().min(20).max(3000).optional(),
 }).strict();
 export type SourceVerificationInput = z.infer<typeof sourceVerificationSchema>;
+export const independentSourceVerificationSchema = sourceVerificationSchema.omit({ snapshotId: true });
+export type IndependentSourceVerificationInput = z.infer<typeof independentSourceVerificationSchema>;
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
-export function buildVerifiedSourceInventory(input: SourceVerificationInput, posting: RawJobPosting,
+export function buildVerifiedSourceInventory(input: IndependentSourceVerificationInput, posting: RawJobPosting,
   binding: { jobId: string; observedAt: string; observedHash: string; adapterVersion: string }, now = new Date()) {
   if (!validRawSourceEvidence(posting.rawSourceEvidence, binding.adapterVersion)) throw new Error("source_verification_raw_evidence_invalid");
+  if (input.lifecycleAction && input.lifecycleAction !== "UNCHANGED" && !input.transitionReason) {
+    throw new Error("source_transition_reason_required");
+  }
   const job = normalizeJob(posting, now);
   const checked = Date.parse(input.checkedAt);
   if (!Number.isFinite(checked) || checked > now.getTime() || checked < now.getTime() - 15 * 60_000
@@ -42,10 +51,12 @@ export function buildVerifiedSourceInventory(input: SourceVerificationInput, pos
   const jobSnapshotId = randomUUID();
   const parser = parseListingRequirements({ jobSnapshotId, listingText: input.capturedText });
   if (parser.status !== "COMPLETE" || !parser.criteria.length) throw new Error("source_verification_parser_review_required");
-  const capturedListing = { text: input.capturedText, parserIssues: parser.issues, rawSourceEvidence: posting.rawSourceEvidence };
+  const compensation = sourceCompensation(posting);
+  const capturedListing = { text: input.capturedText, parserIssues: parser.issues, rawSourceEvidence: posting.rawSourceEvidence,
+    fieldEvidence: sourceFieldEvidence(posting) };
   const review = { ...input, method: "HUMAN_DIRECT_OFFICIAL_REVIEW",
     captureSha256: createHash("sha256").update(input.capturedText, "utf8").digest("hex") };
-  return { review, stableJobId: stableNormalizedJobId(job), requirementNodes: requirementPersistenceRows(parser, input.capturedText),
+  return { review, normalized: toJobDatabaseRow(job, compensation.text), stableJobId: stableNormalizedJobId(job), requirementNodes: requirementPersistenceRows(parser, input.capturedText),
     snapshot: { id: jobSnapshotId, legacy_job_id: binding.jobId, origin: "APPLYPACK_FOUND",
       discovery_source: job.sourceId, external_job_id: job.externalJobId,
       canonical_application_url: job.officialApplicationUrl, application_host_type: atsHost ? "APPROVED_THIRD_PARTY" : "EMPLOYER_HOSTED",
@@ -53,12 +64,37 @@ export function buildVerifiedSourceInventory(input: SourceVerificationInput, pos
       company: job.employerDisplayName, exact_title: job.rawTitle, normalized_fingerprint: job.contentHash,
       captured_listing: capturedListing, retrieved_at: binding.observedAt, posted_on: job.postedAt?.slice(0, 10) ?? null,
       posted_date_unknown: !job.postedAt, live_verified_at: input.checkedAt,
-      compensation_text: null, compensation_source: null,
+      compensation_text: compensation.text, compensation_source: compensation.source,
       location_and_work_mode: { location: job.locationText, workMode: job.workMode },
       parser_version: LISTING_PARSER_VERSION, content_sha256: canonicalSha256(capturedListing),
       first_seen_at: binding.observedAt, canonical_employer_domain: employerHost,
-      requirement_completeness: 100, compensation_completeness: 0,
+      requirement_completeness: 100, compensation_completeness: compensation.completeness,
       canonicalization_version: "verified-source-inventory-v1", legacy_compatibility: false } };
+}
+
+export async function verifyIndependentSourceInventory(admin: AdminClient, actorId: string, input: IndependentSourceVerificationInput) {
+  const { data: projection, error } = await admin.from("job_source_listing_projections")
+    .select("id,run_id,listing_key,job_id").eq("id", input.projectionId).maybeSingle();
+  if (error || !projection) throw new Error("source_projection_unavailable");
+  const [observation, run] = await Promise.all([
+    admin.from("job_source_run_listings").select("captured_listing,content_sha256,observed_at")
+      .eq("run_id", projection.run_id).eq("listing_key", projection.listing_key).maybeSingle(),
+    admin.from("job_source_runs").select("adapter_version,status,enumeration_status").eq("id", projection.run_id).maybeSingle(),
+  ]);
+  if (observation.error || run.error || !observation.data || !run.data?.adapter_version
+    || run.data.status !== "succeeded" || run.data.enumeration_status !== "complete") {
+    throw new Error("source_verification_run_unavailable");
+  }
+  const built = buildVerifiedSourceInventory(input, observation.data.captured_listing as unknown as RawJobPosting,
+    { jobId: projection.job_id, observedAt: observation.data.observed_at,
+      observedHash: observation.data.content_sha256, adapterVersion: run.data.adapter_version });
+  const rpc = admin.rpc.bind(admin) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ data: string | null; error: unknown }>;
+  const result = await rpc("ap_verify_source_observation", { p_projection_id: input.projectionId, p_actor_id: actorId,
+    p_review: built.review, p_stable_job_id: built.stableJobId, p_job_snapshot: built.snapshot,
+    p_requirement_nodes: built.requirementNodes, p_normalized: built.normalized });
+  if (result.error || !result.data) throw new Error("source_independent_verification_rejected");
+  return { jobSnapshotId: result.data, stableNormalizedJobId: built.stableJobId, runId: projection.run_id,
+    customerVisible: false, nextStep: "ADMIT_SNAPSHOT_SEPARATELY_AND_RECONCILE_ONLY_AFTER_COMPLETE_RUN_REVIEW" };
 }
 
 export async function promoteVerifiedSourceInventory(admin: AdminClient, actorId: string, input: SourceVerificationInput) {

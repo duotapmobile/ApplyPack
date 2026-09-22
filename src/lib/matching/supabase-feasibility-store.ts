@@ -1,6 +1,7 @@
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { runFeasibilityWorker, type FeasibilityWorkerStore } from "@/lib/matching/feasibility-worker";
 import type { FeasibilityReason, PersistedInventoryEvaluation } from "@/lib/matching/feasibility";
+import { assertCurrentCoverageAuthority } from "./coverage-authority";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
@@ -57,16 +58,39 @@ export function createSupabaseFeasibilityStore(admin: AdminClient): FeasibilityW
       ]);
       if (snapshotError || planError || !snapshot || !plan) throw snapshotError || planError || new Error("persisted_feasibility_plan_required");
       const [{ data: cells, error: cellsError }, { data: inventoryVersion, error: inventoryError }, { data: members, error: membersError }] = await Promise.all([
-        admin.from("ap_feasibility_coverage_cells").select("id,source_id,query_family_id,source_authorization_id,authorization_mode,query_fingerprint,pagination_bound,lookback_bound,result_bound,execution_path,terminal_outcome,result_count,configured_bound_satisfied,normalized_and_deduplicated,manual_checklist_complete,parser_result,cursor_or_stop_reason,authorization:ap_source_authorizations(state)").eq("plan_id", plan.id),
+        admin.from("ap_feasibility_coverage_cells").select("id,source_id,query_family_id,source_authorization_id,configuration_id,authorization_mode,query_fingerprint,pagination_bound,lookback_bound,result_bound,execution_path,terminal_outcome,result_count,configured_bound_satisfied,normalized_and_deduplicated,manual_checklist_complete,parser_result,cursor_or_stop_reason,authorization:ap_source_authorizations(state)").eq("plan_id", plan.id).limit(2001),
         admin.from("ap_inventory_versions").select("source_registry_version,query_version,parser_version,content_sha256,cutoff_at").eq("id", plan.inventory_version_id).maybeSingle(),
-        admin.from("ap_inventory_members").select("id,inventory_version_id,job_snapshot_id").eq("inventory_version_id", plan.inventory_version_id).eq("selected_by_deduplication", true),
+        admin.from("ap_inventory_members").select("id,inventory_version_id,job_snapshot_id").eq("inventory_version_id", plan.inventory_version_id).eq("selected_by_deduplication", true).limit(5001),
       ]);
       if (cellsError || inventoryError || membersError || !inventoryVersion) throw cellsError || inventoryError || membersError || new Error("persisted_inventory_required");
+      if((cells?.length||0)>2000||(members?.length||0)>5000)throw new Error("feasibility_inventory_bound_exceeded");
+      const from=admin.from.bind(admin) as unknown as (table:string)=>ReturnType<typeof admin.from>;
+      const cellIds=(cells||[]).map(c=>c.id);
+      const sourceIds=[...new Set((cells||[]).map(c=>c.source_id))];
+      const configurationIds=[...new Set((cells||[]).map(c=>c.configuration_id).filter((id):id is string=>Boolean(id)))];
+      const [heads,configurations,manualReviews,automatedReviews]=cellIds.length?await Promise.all([
+        from("ap_source_authorization_heads").select("source_id,current_authorization_id,revision").in("source_id",sourceIds).limit(2001),
+        admin.from("ap_feasibility_source_configurations").select("id,source_authorization_id,pagination_bound,lookback_bound,result_bound").in("id",configurationIds).limit(2001),
+        from("ap_manual_research_reviews").select("cell_id,source_authorization_id,authorization_head_revision,reviewed_at").in("cell_id",cellIds).limit(2001),
+        from("ap_research_cell_reviews").select("cell_id,source_run_id").in("cell_id",cellIds).limit(2001),
+      ]):[{data:[],error:null},{data:[],error:null},{data:[],error:null},{data:[],error:null}];
+      if([heads,configurations,manualReviews,automatedReviews].some(r=>r.error||(r.data?.length||0)>2000))throw new Error("feasibility_source_evidence_unavailable");
+      const runIds=(automatedReviews.data||[]).map(r=>String((r as Record<string,unknown>).source_run_id));
+      const runs=runIds.length?await admin.from("job_source_runs").select("id,source_id,source_authorization_id,authorization_head_revision,status,enumeration_status,checkpoint_start,completed_at").in("id",runIds).limit(2001):{data:[],error:null};
+      if(runs.error||(runs.data?.length||0)>2000)throw new Error("feasibility_source_runs_unavailable");
+      assertCurrentCoverageAuthority({cells:cells||[],heads:(heads.data||[]) as Record<string,unknown>[],configurations:configurations.data||[],manualReviews:(manualReviews.data||[]) as Record<string,unknown>[],automatedReviews:(automatedReviews.data||[]) as Record<string,unknown>[],runs:runs.data||[]});
       const memberIds = (members || []).map((member) => member.id);
-      const { data: evaluations, error: evaluationsError } = memberIds.length ? await admin.from("ap_match_evaluations").select("id,snapshot_id,job_snapshot_id,inventory_member_id,inventory_version_id,eligibility,categorical_evidence_sufficient,usefulness_result,salary_status,salary_disposition,application_readiness,job_snapshot:ap_job_snapshots!inner(legitimacy_result,listing_activity_result,application_path_result)").eq("snapshot_id", claim.snapshotId).eq("legacy_compatibility", false).is("invalidated_at", null).in("inventory_member_id", memberIds) : { data: [], error: null };
+      const { data: evaluations, error: evaluationsError } = memberIds.length ? await admin.from("ap_match_evaluations").select("id,snapshot_id,job_snapshot_id,inventory_member_id,inventory_version_id,eligibility,categorical_evidence_sufficient,usefulness_result,salary_status,salary_disposition,application_readiness,job_snapshot:ap_job_snapshots!inner(legacy_job_id,legitimacy_result,listing_activity_result,application_path_result)").eq("snapshot_id", claim.snapshotId).eq("legacy_compatibility", false).is("invalidated_at", null).in("inventory_member_id", memberIds).limit(5001) : { data: [], error: null };
       if (evaluationsError) throw evaluationsError;
+      if((evaluations?.length||0)>5000)throw new Error("feasibility_evaluation_bound_exceeded");
+      const jobIds=[...new Set((evaluations||[]).map(e=>first(e.job_snapshot)?.legacy_job_id).filter((id):id is string=>Boolean(id)))];
+      const rpc=admin.rpc.bind(admin) as unknown as (name:string,args:Record<string,unknown>)=>Promise<{data:Array<{id:string}>|null;error:unknown}>;
+      const current=jobIds.length?await rpc("ap_current_verified_job_snapshots",{p_job_ids:jobIds}):{data:[],error:null};
+      if(current.error)throw new Error("feasibility_current_inventory_unavailable");
+      const currentIds=new Set((current.data||[]).map(j=>j.id));
+      if((evaluations||[]).some(e=>!currentIds.has(e.job_snapshot_id)))throw new Error("feasibility_inventory_verification_stale");
       const byMember = new Map((evaluations || []).map((evaluation) => [evaluation.inventory_member_id, evaluation as unknown as Record<string, unknown>]));
-      if (byMember.size !== memberIds.length) throw new Error("persisted_evaluation_coverage_incomplete");
+      if (byMember.size !== memberIds.length || (evaluations?.length || 0) !== memberIds.length) throw new Error("persisted_evaluation_coverage_incomplete");
       const inventory = (members || []).map((member) => {
         const evaluation = byMember.get(member.id);
         if (!evaluation || evaluation.job_snapshot_id !== member.job_snapshot_id || evaluation.inventory_version_id !== member.inventory_version_id) throw new Error("persisted_evaluation_inventory_mismatch");

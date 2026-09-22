@@ -4,7 +4,7 @@ import type Stripe from "stripe";
 import { z } from "zod";
 import { canonicalApplicationOrigin, deterministicUuid, postgresBytea } from "@/lib/commerce/server";
 import { documentRendererConfiguration } from "@/lib/documents/renderer";
-import { fileScanConfiguration } from "@/lib/files/scanner";
+
 import { requireBoardAccess } from "@/lib/job-board/access";
 import { careerBreakPresentation, MATERIAL_LINE_PRICE_CENTS } from "@/lib/materials/contract";
 import { isSameOriginRequest } from "@/lib/security/origin";
@@ -35,7 +35,7 @@ type CommerceConfiguration = {
   pricing_version: string | null; tax_version: string | null; materials_rule_ttl_seconds: number | null;
   immediate_payment_methods: string[]; checkout_enabled: boolean; materials_generation_approved: boolean;
   materials_generation_approval_reference: string | null; material_output_formats: string[];
-  document_renderer_identity: string | null; arial_font_sha256: string | null; malware_scanner_identity: string | null;
+  document_renderer_identity: string | null; document_font_sha256: string | null; document_safety_policy: string | null;
 };
 
 const response = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "cache-control": "private, no-store, max-age=0" } });
@@ -69,11 +69,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   let origin: string;
   try { origin = canonicalApplicationOrigin(); } catch { return response({ error: "The canonical secure site URL is not configured." }, 503); }
   const configResult = await access.admin.from("ap_commerce_configuration")
-    .select("canonical_site_url,tax_configuration_approved,tax_approval_reference,tax_treatment,material_line_price_cents,currency,tax_inclusive,pricing_version,tax_version,materials_rule_ttl_seconds,immediate_payment_methods,checkout_enabled,materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,arial_font_sha256,malware_scanner_identity")
+    .select("canonical_site_url,tax_configuration_approved,tax_approval_reference,tax_treatment,material_line_price_cents,currency,tax_inclusive,pricing_version,tax_version,materials_rule_ttl_seconds,immediate_payment_methods,checkout_enabled,materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_sha256,document_safety_policy")
     .eq("singleton", true).maybeSingle();
   const commerce = configResult.data as CommerceConfiguration | null;
   const renderer = documentRendererConfiguration();
-  const scanner = fileScanConfiguration();
+
   if (configResult.error || !commerce || !commerce.checkout_enabled || commerce.canonical_site_url !== origin
     || !commerce.tax_configuration_approved || !commerce.tax_approval_reference
     || commerce.tax_treatment !== "TAX_INCLUSIVE_NO_ADDED_AMOUNT"
@@ -82,9 +82,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     || commerce.immediate_payment_methods.length !== 1 || commerce.immediate_payment_methods[0] !== "card"
     || !commerce.materials_generation_approved || !commerce.materials_generation_approval_reference
     || !commerce.material_output_formats.length || !renderer.ready || renderer.identity !== commerce.document_renderer_identity
-    || renderer.arialFont.sha256 !== commerce.arial_font_sha256 || !scanner.ready
-    || scanner.identity !== commerce.malware_scanner_identity || (process.env.APP_PAYMENT_MODE === "live" && !scanner.liveReady)) {
-    return response({ error: "Materials checkout is disabled until approved rendering, scanning, tax, and fulfillment controls are configured." }, 503);
+    || renderer.documentFont.sha256 !== commerce.document_font_sha256
+    || commerce.document_safety_policy !== "generated-structural-v1") {
+    return response({ error: "Materials checkout is disabled until approved document validation, tax, and fulfillment controls are configured." }, 503);
   }
   const priceId = process.env.STRIPE_APPLY_PACK_PRICE_ID;
   if (!priceId) return response({ error: "Materials pricing is not configured." }, 503);

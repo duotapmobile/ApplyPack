@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { CandidateQuestions } from "@/components/intake/candidate-questions";
 import Link from "next/link";
 import { DeliveryActions } from "@/components/portal/delivery-actions";
 import { SignOutButton } from "@/components/auth/sign-out-button";
@@ -119,6 +120,7 @@ export default async function PortalPage() {
           ) : <div className="empty-state"><h3>No orders yet.</h3><p>Complete the intake to start your first search.</p><Link href="/get-started">Get started</Link></div>}
         </section>
         <SearchOrderProgress searches={searchProgress} />
+        <div className="portal-section"><CandidateQuestions signedIn /></div>
         {portalDataUnavailable ? <section className="portal-section"><div className="match-warning"><strong>Private materials data is temporarily unavailable.</strong> No purchase or download action is enabled until the exact release records can be verified.</div></section> : null}
         {releasePortal.groups.map((group) => <ApplyPackSelector
           key={group.deliveredReleaseId}

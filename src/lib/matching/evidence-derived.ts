@@ -796,3 +796,23 @@ export function deriveEvaluationFromPersistedEvidence(input: {
     calculationInputSha256: canonicalSha256(calculationInput),
   };
 }
+
+/** Neutral board hard requirements use the same typed tree and fact rules, never ranking/usefulness. */
+export function deriveBoardRequirementGate(snapshot: PersistedIntakeForMatching, nodes: PersistedRequirementRow[], facts: PersistedCandidateFact[]) {
+  const current = facts.filter(fact => currentFact(fact, snapshot.id));
+  const decisions = new Map<string, LeafDecision>();
+  for (const row of nodes.filter(row => row.node_kind === "CRITERION" && row.requirement_strength === "REQUIRED")) {
+    const criterion = typedCriterionSchema.parse(row.typed_value);
+    const automatic = automaticLeafDecision(criterion, snapshot, row);
+    if (automatic) { decisions.set(row.id, automatic); continue; }
+    const relevant = current.filter(fact => factRelevantToCriterion(fact, criterion));
+    // Semantic similarity alone does not certify direct occupational equivalence.
+    const exact = relevant.filter(fact => criterion.kind !== "RESPONSIBILITY" && criterion.kind !== "EXPERIENCE"
+      || semanticComparisonKey(fact.semantic_key) === semanticComparisonKey(row.semantic_key || ""));
+    const result = deterministicallyEvaluateCandidateCriterion(criterion, exact, "DIRECT");
+    decisions.set(row.id, { result, resolutionIssue: result === "UNKNOWN" ? "CANDIDATE_MISSING" : "NONE", unknownTreatment: "BLOCK",
+      importance: importance(row), evidenceConfidence: result === "UNKNOWN" ? 0 : 1,
+      candidateFactIds: exact.map(f=>f.id), jobEvidenceIds: [row.id], relation: result === "UNKNOWN" ? "UNSUPPORTED" : "DIRECT" });
+  }
+  return evaluateRequirementTree(reconstructPersistedRequirementTree(nodes), decisions);
+}

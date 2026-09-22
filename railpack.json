@@ -7,7 +7,11 @@
       "fontconfig",
       "fonts-liberation",
       "libreoffice-writer",
-      "poppler-utils"
+      "poppler-utils",
+      "bubblewrap",
+      "util-linux",
+      "python3",
+      "qpdf"
     ],
     "variables": {
       "LANG": "en_US.UTF-8",

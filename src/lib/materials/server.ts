@@ -128,17 +128,22 @@ export function immediateMaterialPayment(input: {
   };
 }
 
-export function authenticationIssuedAt(accessToken: string | null | undefined) {
-  if (!accessToken) return null;
-  try {
-    const payload = accessToken.split(".")[1];
-    if (!payload) return null;
-    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { iat?: unknown };
-    return typeof parsed.iat === "number" && Number.isFinite(parsed.iat)
-      ? new Date(parsed.iat * 1_000).toISOString() : null;
-  } catch {
-    return null;
+// Call only with claims verified by the auth server/JWT verifier, never decoded cookie data.
+export function verifiedAuthenticationAt(claims: unknown, customerId: string) {
+  if (!claims || typeof claims !== "object" || Array.isArray(claims)) return null;
+  const value = claims as Record<string, unknown>;
+  if (value.sub !== customerId || !Array.isArray(value.amr) || !value.amr.length) return null;
+  const timestamps: number[] = [];
+  for (const item of value.amr) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const entry = item as Record<string, unknown>;
+    if (typeof entry.method !== "string" || !Number.isSafeInteger(entry.timestamp)
+      || (entry.timestamp as number) <= 0 || (entry.timestamp as number) > 8_640_000_000_000) return null;
+    if (entry.method === "token_refresh") continue;
+    if (!["otp", "magiclink", "password", "totp"].includes(entry.method)) return null;
+    timestamps.push(entry.timestamp as number);
   }
+  return timestamps.length ? new Date(Math.max(...timestamps) * 1_000).toISOString() : null;
 }
 
 export function isFreshAuthentication(issuedAt: string | null, now = new Date()) {

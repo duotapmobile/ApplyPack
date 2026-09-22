@@ -13,9 +13,19 @@ do $$ begin
 exception when serialization_failure then if sqlerrm<>'draft_version_conflict' then raise; end if; end $$;
 
 select * from public.ap_register_anonymous_document('31000000-0000-4000-8000-000000000001',repeat('a',64),2,'41000000-0000-4000-8000-000000000001','RESUME','resume.pdf','anonymous/31000000-0000-4000-8000-000000000001/resume/v1.pdf',128,'application/pdf','application/pdf',repeat('1',64));
+select pg_temp.assert_true((select count(*)=1 from public.ap_document_processing_jobs),'upload did not durably enqueue extraction');
+select pg_temp.assert_true((select count(*)=1 from public.ap_claim_document_processing(2)),'worker did not claim current document');
+select pg_temp.assert_true((select count(*)=0 from public.ap_claim_document_processing(2)),'second worker claimed active extraction lease');
+select public.ap_complete_document_processing(document_id,lease_token,false) from public.ap_document_processing_jobs where state='CLAIMED';
+select pg_temp.assert_true((select state='PENDING' and attempts=1 and next_attempt_at>now() from public.ap_document_processing_jobs),'failure did not retain bounded retry');
 select public.ap_apply_document_pipeline_result('41000000-0000-4000-8000-000000000001',1,'FAILED','ERROR','ERROR','ERROR','ERROR','fixture','{}','none','SCANNER_UNAVAILABLE');
 select * from public.ap_retry_anonymous_document('31000000-0000-4000-8000-000000000001',repeat('a',64),3,'RESUME');
 select pg_temp.assert_true((select processing_state='QUARANTINED' and failure_code is null from public.ap_document_versions where id='41000000-0000-4000-8000-000000000001'),'failed upload retry did not return to quarantine');
+
+select public.ap_record_isolated_document_review('31000000-0000-4000-8000-000000000001','41000000-0000-4000-8000-000000000001',repeat('1',64),'isolated-extractor-v1','["Maintained records."]');
+select pg_temp.assert_true((select structural_review_ready_at is not null and malware_status='PENDING' and malware_deferred and model_ready_at is null from public.ap_document_versions where id='41000000-0000-4000-8000-000000000001'),'structural review mislabeled malware or model readiness');
+select public.ap_record_isolated_document_review('31000000-0000-4000-8000-000000000001','41000000-0000-4000-8000-000000000001',repeat('1',64),'isolated-extractor-v1','["Maintained records."]');
+select pg_temp.assert_true((select count(*)=1 from public.ap_candidate_facts where value_kind='VERBATIM_DOCUMENT_EXCERPT'),'extraction replay duplicated facts');
 
 insert into public.ap_candidate_facts(id,draft_id,semantic_key,value_kind,typed_value,source_kind,document_version_id,source_locator,extraction_confidence,verification,catalog_version,schema_version,fact_tier,customer_display_label,customer_display_value)
 values('61000000-0000-4000-8000-000000000001','31000000-0000-4000-8000-000000000001','latest-role','ROLE','{"summary":"Operations coordinator"}','DOCUMENT','41000000-0000-4000-8000-000000000001','page 1, role heading',.9,'EXTRACTED_UNCONFIRMED','catalog-v1','schema-v1','SEARCH_CRITICAL','Most recent role','{"summary":"Operations coordinator"}');

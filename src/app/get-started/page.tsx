@@ -1,3 +1,4 @@
+import { CandidateQuestions } from "@/components/intake/candidate-questions";
 import type { Metadata } from "next";
 import "./chunk2.css";
 import { IntakeWizard } from "./wizard-v3";
@@ -9,5 +10,5 @@ export const metadata: Metadata = {
 };
 
 export default function GetStartedPage() {
-  return <IntakeWizard fixtureMode={process.env.NODE_ENV !== "production" && process.env.APP_E2E_FIXTURE_MODE === "true"} />;
+  return <><IntakeWizard fixtureMode={process.env.NODE_ENV !== "production" && process.env.APP_E2E_FIXTURE_MODE === "true"} /><CandidateQuestions /></>;
 }

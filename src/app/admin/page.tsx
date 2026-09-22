@@ -1,3 +1,4 @@
+import { MatchingWorkbench } from "@/components/admin/matching-workbench";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AdminMfa } from "@/components/admin/admin-mfa";
@@ -215,7 +216,8 @@ export default async function AdminPage() {
         <StagingBoardMaterialReview initialJobs={stagingBoardReviewJobs} />
         <Chunk5MaterialStaffQueue lines={materialStaffLines} />
         <AdminOperations searchOrders={searchOrders} applyItems={applyItems} conflicts={conflicts} corrections={corrections} capacityLimits={capacityLimits || []} />
-        <PendingIntakes requests={pendingRequests || []} snapshots={pendingSnapshots || []} />
+        <MatchingWorkbench />
+      <PendingIntakes requests={pendingRequests || []} snapshots={pendingSnapshots || []} />
         <section className="admin-table-wrap">
           <h2>Orders due</h2>
           {orders?.length ? <div className="admin-table-scroll"><table className="admin-table">

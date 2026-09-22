@@ -7,9 +7,9 @@
  * used to reject output created under an older contract.
  */
 export const DOCUMENT_VERSIONS = Object.freeze({
-  content: "applypack-content-2026-09-20.2",
-  template: "applypack-template-2026-09-20.1",
-  exporter: "libreoffice-tagged-pdf-2026-09-13.1",
+  content: "applypack-content-2026-09-22.1",
+  template: "applypack-template-2026-09-22.1",
+  exporter: "libreoffice-tagged-pdf-2026-09-22.1",
 });
 
 export const DOCUMENT_GENERATOR_VERSION = [
@@ -21,7 +21,7 @@ export const DOCUMENT_GENERATOR_VERSION = [
 
 export const DOCUMENT_REQUIREMENTS = Object.freeze({
   language: "en-US",
-  font: "Arial",
+  font: "Liberation Sans",
   page: {
     widthTwips: 12_240,
     heightTwips: 15_840,

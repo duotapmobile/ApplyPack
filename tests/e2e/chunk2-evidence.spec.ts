@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { waitForHydration } from "./helpers/hydration";
 
 test("capture Chunk 2 four-step and adaptive/error evidence", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "One Chromium evidence set is sufficient.");
@@ -31,6 +32,7 @@ test("capture Chunk 2 four-step and adaptive/error evidence", async ({ page }, t
     await page.getByRole("button", { name: /save and continue/i }).click();
     await expect(page.getByText("STEP 4 OF 4")).toBeVisible();
     await page.screenshot({ path: resolve(output, `${width}-step-4.png`), fullPage: true });
+    await waitForHydration(page);
     const axe = await new AxeBuilder({ page }).exclude("script").analyze();
     expect(axe.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
   }

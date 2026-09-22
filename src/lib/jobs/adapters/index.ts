@@ -8,6 +8,10 @@ import { TeamtailorAdapter } from "./teamtailor";
 import { OfficialLinkAdapter } from "./official-link";
 import type { RuntimeSourceAuthorization } from "./types";
 
+export function resumableAdapterVersion(kind: string): string | null {
+  return kind === "lever" ? LeverAdapter.version : kind === "teamtailor" ? TeamtailorAdapter.version : null;
+}
+
 export function createSourceAdapter(sourceId: string, runtimeAuthorization?: RuntimeSourceAuthorization): JobSourceAdapter {
   const registeredSource = getSource(sourceId);
   if (!registeredSource || !registeredSource.isActive) throw new Error("Unknown or inactive job source.");

@@ -1,4 +1,5 @@
 "use client";
+import { SourceAnnotation } from "@/components/intake/source-annotation";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -306,6 +307,12 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
 
       {step === 2 && <Step headingRef={headingRef} title="Confirm experience and skills" help="Resume text is a suggestion, not a verified claim. Confirm only what is accurate; skip and reject are different.">
         {facts.length === 0 ? <div className="processing-card"><strong>{resume?.processingState === "FAILED" ? "Extraction needs attention." : "Resume extraction is not ready yet."}</strong><p>We will not invent facts or send reference details to a model. You can add truthful structured experience below and return later.</p></div> : factTiers.map((tier) => <FactGroup key={tier} tier={tier} facts={facts} draft={draft} update={update} errors={errors} />)}
+        <SourceAnnotation facts={facts} onSaved={async () => {
+          const response = await fetch("/api/intake/anonymous-draft", { cache: "no-store" });
+          const result = await response.json();
+          if (!response.ok || !result.draft) throw new Error("Refresh the page to see the saved fact.");
+          setServerDraft(current => current ? { ...current, facts: result.draft.facts, documents: result.draft.documents } : current);
+        }} />
         <ExperienceEditor value={draft.experienceAdditions} errors={errors} onChange={(value) => update("experienceAdditions", value)} />
         {(toolFamilies.excel || toolFamilies.systems) && <div className="adaptive-skills"><h3>Task-based tool check</h3><p>Choose what you can actually do. Using a CRM never implies SQL or administration.</p>{toolFamilies.excel && <CapabilityGroup legend="Excel and spreadsheet tasks" options={excelTasks} values={draft.capabilities} onChange={(key, value) => update("capabilities", { ...draft.capabilities, [key]: value })} />}{toolFamilies.systems && <CapabilityGroup legend="Business-system tasks" options={businessSystemTasks} values={draft.capabilities} onChange={(key, value) => update("capabilities", { ...draft.capabilities, [key]: value })} />}</div>}
       </Step>}

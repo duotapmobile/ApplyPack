@@ -1,6 +1,8 @@
 import "server-only";
 
-import { checkFileScannerHealth, fileScanConfiguration } from "@/lib/files/scanner";
+import { checkDocumentRendererReadiness } from "./renderer-readiness";
+import { checkRuntimeFileSafety } from "./runtime-readiness";
+import { checkSensitivePayloadHealth } from "@/lib/security/kms-health";
 import { checkoutConfiguration } from "@/lib/stripe/mode";
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -21,9 +23,15 @@ export type OperationsSummary = {
     payments: boolean;
     email: boolean;
     fileSafety: boolean;
+    encryption?: boolean;
+    documentRendering?: boolean;
     maintenance: boolean;
   };
   inventory: {
+    manualReady?: boolean;
+    automatedReady?: boolean;
+    currentVerifiedInventory?: boolean;
+    sourceCollectionEnabled?: boolean;
     registeredSources: number;
     scheduledSources: number;
     scheduledAutomatedRealSources: number;
@@ -47,6 +55,7 @@ export type OperationsSummary = {
   alerts: {
     openWarnings: number;
     openCritical: number;
+    blockingCritical?: number;
   };
 };
 
@@ -199,6 +208,14 @@ export function scheduledSourceCoverage(
   };
 }
 
+export function currentSourceReadiness(value: unknown) {
+  const row = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const valid = ["jobSourcesRegistered", "authorizedSourceInventory", "manualReady", "automatedReady"].every((key) => typeof row[key] === "boolean")
+    && row.authorizedSourceInventory === (row.manualReady || row.automatedReady);
+  return { valid, manualReady: valid && row.manualReady === true, automatedReady: valid && row.automatedReady === true,
+    currentVerifiedInventory: valid && row.authorizedSourceInventory === true };
+}
+
 export function commerceSnapshot(value: unknown) {
   const record = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
   return {
@@ -218,12 +235,13 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
   const nowIso = now.toISOString();
   const expiredWorkflowLeaseCutoff = new Date(now.getTime() - 15 * 60_000).toISOString();
 
-  const [registeredSources, schedules, sourceRows, heads, authorizations] = await Promise.all([
+  const [registeredSources, schedules, sourceRows, heads, authorizations, sourceReadiness] = await Promise.all([
     count("job_sources"),
     admin.from("job_source_schedules").select("source_id,source_authorization_id,authorization_head_revision,enabled,paused_reason,result_bound,page_bound,request_bound,response_byte_bound,duration_ms_bound,host_concurrency_bound,quota_unit_bound", { count: "exact" }).eq("enabled", true),
     admin.from("job_sources").select("id,is_active", { count: "exact" }),
     admin.from("ap_source_authorization_heads").select("source_id,current_authorization_id,revision", { count: "exact" }),
     admin.from("ap_source_authorizations").select("id,source_id,state,access_method,allowed_actions,allowed_hosts,rate_and_result_bounds", { count: "exact" }),
+    admin.rpc("ap_current_source_readiness"),
   ]);
   // Missing schema and truncated result sets must never become healthy zeroes.
   const authorityResults = [schedules, sourceRows, heads, authorizations];
@@ -239,7 +257,7 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
     oldestRecomputeDue, oldestRecomputeExpiredLease,
     oldestWorkflowDue, oldestWorkflowExpiredLease,
     oldestOutboxScheduled, oldestOutboxImmediate, oldestOutboxSending,
-    heartbeat, warnings, critical, commerce,
+    heartbeat, warnings, critical, blockingCritical, commerce,
   ] = await Promise.all([
     count("job_source_runs").eq("source_id", SYNTHETIC_SOURCE_ID),
     count("job_source_runs").neq("source_id", SYNTHETIC_SOURCE_ID),
@@ -275,6 +293,8 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
     admin.from("operational_heartbeats").select("last_succeeded_at").eq("task_name", "maintenance").maybeSingle(),
     count("ap_operational_alerts").eq("state", "OPEN").eq("severity", "WARNING"),
     count("ap_operational_alerts").eq("state", "OPEN").eq("severity", "CRITICAL"),
+    // Dependency alerts stay visible without latching a global stop after recovery.
+    count("ap_operational_alerts").eq("state", "OPEN").eq("severity", "CRITICAL").not("alert_key", "like", "maintenance/%"),
     admin.rpc("ap_chunk4_monitor_snapshot"),
   ]);
 
@@ -283,16 +303,18 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
     recomputePending, recomputeProcessing, recomputeRetry, recomputeDead, workflowQueued, workflowProcessing, workflowReview,
     workflowBlocked, workflowFailed, outboxQueued, outboxSending, outboxRetry, outboxDead,
     oldestRecomputeDue, oldestRecomputeExpiredLease, oldestWorkflowDue, oldestWorkflowExpiredLease,
-    oldestOutboxScheduled, oldestOutboxImmediate, oldestOutboxSending, heartbeat, warnings, critical, commerce];
-  const database = authorityComplete && results.every((result) => !result.error);
+    oldestOutboxScheduled, oldestOutboxImmediate, oldestOutboxSending, heartbeat, warnings, critical, blockingCritical, commerce];
+  const currentSources = currentSourceReadiness(sourceReadiness.error ? null : sourceReadiness.data);
+  const database = authorityComplete && currentSources.valid && results.every((result) => !result.error);
   const heartbeatAt = !heartbeat.error && heartbeat.data && typeof heartbeat.data.last_succeeded_at === "string"
     ? heartbeat.data.last_succeeded_at
     : null;
   const heartbeatAgeSeconds = ageSeconds(heartbeatAt, now);
   const maintenanceStale = !maintenanceHeartbeatIsFresh(heartbeatAt, now);
   const payment = checkoutConfiguration();
-  const fileScan = fileScanConfiguration();
-  const fileSafety = fileScan.liveReady ? await checkFileScannerHealth() : false;
+  const encryption = await checkSensitivePayloadHealth();
+  const fileSafety = await checkRuntimeFileSafety();
+  const documentRendering = await checkDocumentRendererReadiness(admin).catch(() => false);
   const commerceCounts = commerceSnapshot(commerce.error ? null : commerce.data);
   const oldestRecomputeActionable = earliestTimestamp(
     firstTimestamp(oldestRecomputeDue, "available_at"),
@@ -317,9 +339,14 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
       payments: payment.ready && payment.searchReady && payment.boardReady,
       email: recentEmailVerification(process.env, now),
       fileSafety,
+      encryption,
+      documentRendering,
       maintenance: Boolean(process.env.CRON_SECRET) && !maintenanceStale,
     },
     inventory: {
+      manualReady: currentSources.manualReady, automatedReady: currentSources.automatedReady,
+      currentVerifiedInventory: currentSources.currentVerifiedInventory,
+      sourceCollectionEnabled: process.env.APP_JOB_SOURCE_SYNC_ENABLED === "true",
       registeredSources: countOf(registeredSources),
       ...permissionCoverage,
       syntheticRuns: countOf(syntheticRuns),
@@ -341,7 +368,7 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
       },
     },
     maintenance: { heartbeatAgeSeconds, stale: maintenanceStale },
-    alerts: { openWarnings: countOf(warnings), openCritical: countOf(critical) },
+    alerts: { openWarnings: countOf(warnings), openCritical: countOf(critical), blockingCritical: countOf(blockingCritical) },
   };
 }
 
@@ -357,7 +384,7 @@ export function containsSensitiveOperationsData(value: unknown): boolean {
     return Object.entries(item).some(([key, nested]) => {
       const nextPath = path ? `${path}.${key}` : key;
       const tokens = key.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase().split("_");
-      const allowedBooleanEmail = nextPath === "readiness.email" && typeof nested === "boolean";
+      const allowedBooleanEmail = ["readiness.email", "readiness.documentRendering"].includes(nextPath) && typeof nested === "boolean";
       return (!allowedBooleanEmail && tokens.some((token) => forbiddenTokens.has(token))) || visit(nested, nextPath);
     });
   };

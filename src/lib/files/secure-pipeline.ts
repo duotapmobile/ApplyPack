@@ -9,6 +9,7 @@ export const pipelineStages = [
   "REFERENCE_ISOLATION",
   "LEAK_SCAN",
   "MODEL_READY",
+  "OPERATOR_REVIEW",
 ] as const;
 
 export type PipelineStage = (typeof pipelineStages)[number];
@@ -22,17 +23,18 @@ export type ParserLimits = {
 
 export type PipelineConfiguration = {
   enabled: boolean;
+  safetyPolicy?: "isolated-structural-v1";
   malwareScannerIdentity: string | null;
   permittedModelPolicy: string | null;
   parserIdentity: string | null;
   parserLimits: ParserLimits | null;
 };
 
-export type MalwareVerdict = "CLEAN" | "BLOCKED" | "UNKNOWN";
+export type MalwareVerdict = "CLEAN" | "BLOCKED" | "UNKNOWN" | "NOT_SCANNED";
 
 export type SecurePipelineAdapters = {
   malwareScan(bytes: Uint8Array): Promise<{ verdict: MalwareVerdict; reference: string | null }>;
-  parseLocally(bytes: Uint8Array, options: ParserLimits & { externalEntities: false; externalReferences: false; network: false }): Promise<{ text: string; pageCount: number; reference: string }>;
+  parseLocally(bytes: Uint8Array, options: ParserLimits & { externalEntities: false; externalReferences: false; network: false }): Promise<{ text: string; pageCount: number | null; paginationStatus?: "MEASURED" | "UNKNOWN"; reference: string }>;
 };
 
 export type ReferenceIsolation = {
@@ -42,6 +44,8 @@ export type ReferenceIsolation = {
 };
 
 export type PipelineResult = {
+  pageCount?: number | null;
+  paginationStatus?: "MEASURED" | "UNKNOWN";
   errorCode: string | null;
   modelInput: string | null;
   parserReference: string | null;
@@ -76,7 +80,7 @@ export function pipelineConfiguration(environment: Partial<NodeJS.ProcessEnv> = 
 
 export function pipelineReady(configuration: PipelineConfiguration) {
   return configuration.enabled
-    && Boolean(configuration.malwareScannerIdentity)
+    && (configuration.safetyPolicy === "isolated-structural-v1" || Boolean(configuration.malwareScannerIdentity))
     && Boolean(configuration.parserIdentity)
     && Boolean(configuration.permittedModelPolicy)
     && configuration.parserLimits !== null;
@@ -92,7 +96,7 @@ export function isolateReferenceBlocks(text: string): ReferenceIsolation {
   for (let index = 0; index < lines.length; index += 1) {
     if (referenceHeading.test(lines[index])) {
       disposition = "DETECTED";
-      for (let cursor = index; cursor < Math.min(lines.length, index + 8); cursor += 1) withheld.add(cursor);
+      for (let cursor = index; cursor < lines.length; cursor += 1) withheld.add(cursor);
     } else if (possibleReference.test(lines[index])) {
       if (disposition !== "DETECTED") disposition = "UNCERTAIN";
       withheld.add(index);
@@ -138,7 +142,7 @@ export async function runSecureDocumentPipeline(
   let malware: Awaited<ReturnType<SecurePipelineAdapters["malwareScan"]>>;
   try { malware = await adapters.malwareScan(bytes); }
   catch { return fail("MALWARE_SCAN", "malware_scanner_unavailable"); }
-  if (malware.verdict !== "CLEAN") return fail("MALWARE_SCAN", malware.verdict === "BLOCKED" ? "malware_detected" : "malware_verdict_unknown");
+  if (malware.verdict !== "CLEAN" && !(malware.verdict === "NOT_SCANNED" && configuration.safetyPolicy === "isolated-structural-v1")) return fail("MALWARE_SCAN", malware.verdict === "BLOCKED" ? "malware_detected" : "malware_verdict_unknown");
 
   history.push("SANDBOXED_PARSE");
   let parsed: Awaited<ReturnType<SecurePipelineAdapters["parseLocally"]>>;
@@ -148,7 +152,7 @@ export async function runSecureDocumentPipeline(
     return fail("SANDBOXED_PARSE", "sandboxed_parse_failed");
   }
   if (!parsed.text.trim()) return fail("SANDBOXED_PARSE", "document_has_no_readable_text", parsed.reference);
-  if (parsed.pageCount < 1 || parsed.pageCount > configuration.parserLimits!.maxPages) return fail("SANDBOXED_PARSE", "document_page_limit", parsed.reference);
+  if (parsed.pageCount === null ? parsed.paginationStatus !== "UNKNOWN" || configuration.safetyPolicy !== "isolated-structural-v1" : !Number.isInteger(parsed.pageCount) || parsed.pageCount < 1 || parsed.pageCount > configuration.parserLimits!.maxPages) return fail("SANDBOXED_PARSE", "document_page_limit", parsed.reference);
   if (Buffer.byteLength(parsed.text, "utf8") > configuration.parserLimits!.maxExpandedBytes) return fail("SANDBOXED_PARSE", "document_expansion_limit", parsed.reference);
 
   history.push("REFERENCE_ISOLATION");
@@ -160,14 +164,17 @@ export async function runSecureDocumentPipeline(
     return fail("LEAK_SCAN", "reference_pii_leak_detected", parsed.reference, isolated.quarantinedBlocks);
   }
 
-  history.push("MODEL_READY");
+  const finalStage = malware.verdict === "NOT_SCANNED" || parsed.pageCount === null ? "OPERATOR_REVIEW" : "MODEL_READY";
+  history.push(finalStage);
   return {
     errorCode: null,
+    pageCount: parsed.pageCount,
+    paginationStatus: parsed.pageCount === null ? "UNKNOWN" : "MEASURED",
     modelInput: isolated.cleanText,
     parserReference: parsed.reference,
     quarantinedReferenceBlocks: isolated.quarantinedBlocks,
     sha256,
-    stage: "MODEL_READY",
+    stage: finalStage,
     stageHistory: history,
   };
 }

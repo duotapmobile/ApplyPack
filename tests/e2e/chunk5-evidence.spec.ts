@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { waitForHydration } from "./helpers/hydration";
 
 const widths = [360, 390, 430, 768, 1024, 1440] as const;
 const output = resolve("evidence/chunk-5/screenshots");
@@ -44,6 +45,7 @@ async function installSyntheticApis(page: Page) {
 }
 
 async function assertAxe(page: Page) {
+  await waitForHydration(page);
   const results = await new AxeBuilder({ page }).exclude("script").analyze();
   expect(results.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
 }

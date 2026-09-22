@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { prepareMaterialDraft } from "@/lib/documents/draft-preparation";
+import { prepareMaterialDraft, assertCurrentRequirementMappings } from "@/lib/documents/draft-preparation";
 import { validateMaterialClaims, type VerifiedClaimFact } from "@/lib/documents/claim-validation";
 import { generateEvidenceBoundMaterials, inspectDocxPackage } from "@/lib/documents/generate";
 import { documentFixture } from "../fixtures/document";
@@ -29,7 +29,7 @@ describe("verified material draft preparation", () => {
     expect(prepareMaterialDraft({ ...input, facts: [...input.facts].reverse() })).toEqual(draft);
     const canonical = { ...input.original, ...draft, careerBreak: { choice: "OMIT_ENTRY" as const, mentionInCoverLetter: false, candidateFactIds: [] } };
     validateMaterialClaims(canonical, input.facts, input.requirements);
-    const generated = await generateEvidenceBoundMaterials(canonical);
+    const generated = await generateEvidenceBoundMaterials(canonical, { facts: input.facts, jobEvidence: input.requirements });
     expect((await inspectDocxPackage(generated.resume.buffer, "RESUME")).extractedText).toContain(input.original.experiences[0].employer);
     expect(generated.resume.provenance.claims.length).toBeGreaterThan(0);
     expect(generated.coverLetter.provenance.claims.length).toBeGreaterThan(0);
@@ -54,4 +54,14 @@ describe("verified material draft preparation", () => {
     (input.facts[0].typed_value as Record<string, unknown>).skills = ["No Excel experience"];
     expect(() => validateMaterialClaims(canonical, input.facts, input.requirements)).toThrow("document_claim_not_supported_by_cited_facts");
   });
+  it("rejects editing a draft to assert an unsupported current match relationship", () => {
+    const input = preparationFixture();
+    const draft = prepareMaterialDraft(input);
+    expect(() => assertCurrentRequirementMappings(draft.requirementMappings, input.requirements, input.reviews)).not.toThrow();
+    expect(() => assertCurrentRequirementMappings(draft.requirementMappings, input.requirements, [])).toThrow("differs_from_current_review");
+    const altered = structuredClone(input.reviews);
+    altered[0].decision.candidateFactVersionIds = [input.facts[1].id];
+    expect(() => assertCurrentRequirementMappings(draft.requirementMappings, input.requirements, altered)).toThrow("differs_from_current_review");
+  });
+
 });

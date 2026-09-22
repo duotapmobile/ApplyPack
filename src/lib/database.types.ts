@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -155,19 +160,24 @@ export type Database = {
       }
       ap_artifact_quality_reviews: {
         Row: {
-          arial_font_sha256: string
-          arial_resolved: boolean
+          arial_font_sha256: string | null
+          arial_resolved: boolean | null
           automated_passed_at: string | null
           binding_sha256: string
           content_approved_at: string | null
           content_approved_by: string | null
           content_attestation: string | null
           created_at: string
+          document_font_family: string | null
+          document_font_resolved: boolean | null
+          document_font_sha256: string | null
+          document_safety_policy: string | null
           extracted_text_sha256: string
           file_version_id: string
           id: string
           invalidated_at: string | null
-          malware_scanner_identity: string
+          malware_scanner_identity: string | null
+          malware_verdict: string | null
           provenance_checks: Json
           render_preview_bucket: string
           render_preview_path: string
@@ -181,19 +191,24 @@ export type Database = {
           visual_attestation: string | null
         }
         Insert: {
-          arial_font_sha256: string
-          arial_resolved: boolean
+          arial_font_sha256?: string | null
+          arial_resolved?: boolean | null
           automated_passed_at?: string | null
           binding_sha256: string
           content_approved_at?: string | null
           content_approved_by?: string | null
           content_attestation?: string | null
           created_at?: string
+          document_font_family?: string | null
+          document_font_resolved?: boolean | null
+          document_font_sha256?: string | null
+          document_safety_policy?: string | null
           extracted_text_sha256: string
           file_version_id: string
           id?: string
           invalidated_at?: string | null
-          malware_scanner_identity: string
+          malware_scanner_identity?: string | null
+          malware_verdict?: string | null
           provenance_checks: Json
           render_preview_bucket: string
           render_preview_path: string
@@ -207,19 +222,24 @@ export type Database = {
           visual_attestation?: string | null
         }
         Update: {
-          arial_font_sha256?: string
-          arial_resolved?: boolean
+          arial_font_sha256?: string | null
+          arial_resolved?: boolean | null
           automated_passed_at?: string | null
           binding_sha256?: string
           content_approved_at?: string | null
           content_approved_by?: string | null
           content_attestation?: string | null
           created_at?: string
+          document_font_family?: string | null
+          document_font_resolved?: boolean | null
+          document_font_sha256?: string | null
+          document_safety_policy?: string | null
           extracted_text_sha256?: string
           file_version_id?: string
           id?: string
           invalidated_at?: string | null
-          malware_scanner_identity?: string
+          malware_scanner_identity?: string | null
+          malware_verdict?: string | null
           provenance_checks?: Json
           render_preview_bucket?: string
           render_preview_path?: string
@@ -709,6 +729,42 @@ export type Database = {
           },
         ]
       }
+      ap_candidate_answers: {
+        Row: {
+          answer: string
+          answered_at: string
+          fact_id: string
+          question_id: string
+        }
+        Insert: {
+          answer: string
+          answered_at?: string
+          fact_id: string
+          question_id: string
+        }
+        Update: {
+          answer?: string
+          answered_at?: string
+          fact_id?: string
+          question_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_candidate_answers_fact_id_fkey"
+            columns: ["fact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_candidate_facts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_candidate_answers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: true
+            referencedRelation: "ap_candidate_questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_candidate_fact_conflicts: {
         Row: {
           conflicting_fact_id: string
@@ -913,6 +969,65 @@ export type Database = {
             columns: ["supplied_source_id"]
             isOneToOne: false
             referencedRelation: "ap_independent_verification_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_candidate_questions: {
+        Row: {
+          created_at: string
+          id: string
+          issued_by: string
+          job_snapshot_id: string
+          prompt: string
+          requirement_node_id: string
+          snapshot_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          issued_by: string
+          job_snapshot_id: string
+          prompt: string
+          requirement_node_id: string
+          snapshot_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          issued_by?: string
+          job_snapshot_id?: string
+          prompt?: string
+          requirement_node_id?: string
+          snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_candidate_questions_issued_by_fkey"
+            columns: ["issued_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_candidate_questions_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_candidate_questions_requirement_node_id_fkey"
+            columns: ["requirement_node_id"]
+            isOneToOne: false
+            referencedRelation: "ap_requirement_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_candidate_questions_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
             referencedColumns: ["id"]
           },
         ]
@@ -1373,7 +1488,10 @@ export type Database = {
           canonical_site_url: string | null
           checkout_enabled: boolean | null
           currency: string
+          document_font_family: string | null
+          document_font_sha256: string | null
           document_renderer_identity: string | null
+          document_safety_policy: string | null
           download_ttl_seconds: number | null
           immediate_payment_methods: string[]
           malware_scanner_identity: string | null
@@ -1406,7 +1524,10 @@ export type Database = {
           canonical_site_url?: string | null
           checkout_enabled?: boolean | null
           currency?: string
+          document_font_family?: string | null
+          document_font_sha256?: string | null
           document_renderer_identity?: string | null
+          document_safety_policy?: string | null
           download_ttl_seconds?: number | null
           immediate_payment_methods?: string[]
           malware_scanner_identity?: string | null
@@ -1439,7 +1560,10 @@ export type Database = {
           canonical_site_url?: string | null
           checkout_enabled?: boolean | null
           currency?: string
+          document_font_family?: string | null
+          document_font_sha256?: string | null
           document_renderer_identity?: string | null
+          document_safety_policy?: string | null
           download_ttl_seconds?: number | null
           immediate_payment_methods?: string[]
           malware_scanner_identity?: string | null
@@ -1647,6 +1771,50 @@ export type Database = {
           },
         ]
       }
+      ap_document_processing_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          document_id: string
+          last_error_code: string | null
+          lease_token: string | null
+          leased_until: string | null
+          next_attempt_at: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          document_id: string
+          last_error_code?: string | null
+          lease_token?: string | null
+          leased_until?: string | null
+          next_attempt_at?: string
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          document_id?: string
+          last_error_code?: string | null
+          lease_token?: string | null
+          leased_until?: string | null
+          next_attempt_at?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_document_processing_jobs_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: true
+            referencedRelation: "ap_document_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_document_versions: {
         Row: {
           claimed_mime_type: string
@@ -1659,6 +1827,7 @@ export type Database = {
           is_current: boolean
           kind: Database["public"]["Enums"]["ap_document_kind"]
           leak_scan_status: string
+          malware_deferred: boolean
           malware_provider_ref: string | null
           malware_status: string
           model_ready_at: string | null
@@ -1675,6 +1844,8 @@ export type Database = {
           size_bytes: number
           storage_bucket: string
           storage_path: string
+          structural_policy: string | null
+          structural_review_ready_at: string | null
           supersedes_id: string | null
           updated_at: string
           verified_mime_type: string
@@ -1691,6 +1862,7 @@ export type Database = {
           is_current?: boolean
           kind: Database["public"]["Enums"]["ap_document_kind"]
           leak_scan_status?: string
+          malware_deferred?: boolean
           malware_provider_ref?: string | null
           malware_status?: string
           model_ready_at?: string | null
@@ -1707,6 +1879,8 @@ export type Database = {
           size_bytes: number
           storage_bucket: string
           storage_path: string
+          structural_policy?: string | null
+          structural_review_ready_at?: string | null
           supersedes_id?: string | null
           updated_at?: string
           verified_mime_type: string
@@ -1723,6 +1897,7 @@ export type Database = {
           is_current?: boolean
           kind?: Database["public"]["Enums"]["ap_document_kind"]
           leak_scan_status?: string
+          malware_deferred?: boolean
           malware_provider_ref?: string | null
           malware_status?: string
           model_ready_at?: string | null
@@ -1739,6 +1914,8 @@ export type Database = {
           size_bytes?: number
           storage_bucket?: string
           storage_path?: string
+          structural_policy?: string | null
+          structural_review_ready_at?: string | null
           supersedes_id?: string | null
           updated_at?: string
           verified_mime_type?: string
@@ -3261,6 +3438,48 @@ export type Database = {
           },
         ]
       }
+      ap_job_snapshot_invalidations: {
+        Row: {
+          invalidated_at: string
+          job_snapshot_id: string
+          legacy_job_id: string
+          previous_content_sha256: string | null
+          reason: string
+          replacement_content_sha256: string | null
+        }
+        Insert: {
+          invalidated_at?: string
+          job_snapshot_id: string
+          legacy_job_id: string
+          previous_content_sha256?: string | null
+          reason: string
+          replacement_content_sha256?: string | null
+        }
+        Update: {
+          invalidated_at?: string
+          job_snapshot_id?: string
+          legacy_job_id?: string
+          previous_content_sha256?: string | null
+          reason?: string
+          replacement_content_sha256?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_job_snapshot_invalidations_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: true
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_job_snapshot_invalidations_legacy_job_id_fkey"
+            columns: ["legacy_job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_job_snapshots: {
         Row: {
           application_host_type: string
@@ -3284,6 +3503,7 @@ export type Database = {
           first_seen_at: string | null
           fraud_signals: string[]
           id: string
+          job_source_reference_id: string | null
           legacy_compatibility: boolean
           legacy_job_id: string | null
           legitimacy_result: string | null
@@ -3297,9 +3517,12 @@ export type Database = {
           parser_version: string
           posted_date_unknown: boolean
           posted_on: string | null
+          projection_input_sha256: string | null
           requirement_completeness: number
           retrieved_at: string
           source_authorization_id: string | null
+          source_lifecycle_review_id: string | null
+          source_run_id: string | null
           source_url: string
           supersedes_job_snapshot_id: string | null
         }
@@ -3325,6 +3548,7 @@ export type Database = {
           first_seen_at?: string | null
           fraud_signals?: string[]
           id?: string
+          job_source_reference_id?: string | null
           legacy_compatibility?: boolean
           legacy_job_id?: string | null
           legitimacy_result?: string | null
@@ -3338,9 +3562,12 @@ export type Database = {
           parser_version: string
           posted_date_unknown: boolean
           posted_on?: string | null
+          projection_input_sha256?: string | null
           requirement_completeness?: number
           retrieved_at: string
           source_authorization_id?: string | null
+          source_lifecycle_review_id?: string | null
+          source_run_id?: string | null
           source_url: string
           supersedes_job_snapshot_id?: string | null
         }
@@ -3366,6 +3593,7 @@ export type Database = {
           first_seen_at?: string | null
           fraud_signals?: string[]
           id?: string
+          job_source_reference_id?: string | null
           legacy_compatibility?: boolean
           legacy_job_id?: string | null
           legitimacy_result?: string | null
@@ -3379,9 +3607,12 @@ export type Database = {
           parser_version?: string
           posted_date_unknown?: boolean
           posted_on?: string | null
+          projection_input_sha256?: string | null
           requirement_completeness?: number
           retrieved_at?: string
           source_authorization_id?: string | null
+          source_lifecycle_review_id?: string | null
+          source_run_id?: string | null
           source_url?: string
           supersedes_job_snapshot_id?: string | null
         }
@@ -3391,6 +3622,13 @@ export type Database = {
             columns: ["correction_review_id"]
             isOneToOne: false
             referencedRelation: "ap_human_review_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_job_snapshots_job_source_reference_id_fkey"
+            columns: ["job_source_reference_id"]
+            isOneToOne: false
+            referencedRelation: "job_source_references"
             referencedColumns: ["id"]
           },
           {
@@ -3408,10 +3646,149 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "ap_job_snapshots_source_lifecycle_review_id_fkey"
+            columns: ["source_lifecycle_review_id"]
+            isOneToOne: false
+            referencedRelation: "ap_source_lifecycle_reviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_job_snapshots_source_run_id_fkey"
+            columns: ["source_run_id"]
+            isOneToOne: false
+            referencedRelation: "job_source_runs"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "ap_job_snapshots_supersedes_job_snapshot_id_fkey"
             columns: ["supersedes_job_snapshot_id"]
             isOneToOne: false
             referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_manual_research_reviews: {
+        Row: {
+          authorization_head_revision: number
+          cell_id: string
+          checklist: Json
+          evidence_notes: string
+          evidence_urls: Json
+          job_snapshot_ids: string[]
+          recorded_at: string
+          reviewed_at: string
+          reviewer_id: string
+          source_authorization_id: string
+        }
+        Insert: {
+          authorization_head_revision: number
+          cell_id: string
+          checklist: Json
+          evidence_notes: string
+          evidence_urls: Json
+          job_snapshot_ids: string[]
+          recorded_at?: string
+          reviewed_at: string
+          reviewer_id: string
+          source_authorization_id: string
+        }
+        Update: {
+          authorization_head_revision?: number
+          cell_id?: string
+          checklist?: Json
+          evidence_notes?: string
+          evidence_urls?: Json
+          job_snapshot_ids?: string[]
+          recorded_at?: string
+          reviewed_at?: string
+          reviewer_id?: string
+          source_authorization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_manual_research_reviews_cell_id_fkey"
+            columns: ["cell_id"]
+            isOneToOne: true
+            referencedRelation: "ap_feasibility_coverage_cells"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_manual_research_reviews_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_manual_research_reviews_source_authorization_id_fkey"
+            columns: ["source_authorization_id"]
+            isOneToOne: false
+            referencedRelation: "ap_source_authorizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_manual_source_observations: {
+        Row: {
+          authorization_head_revision: number
+          captured_posting: Json
+          content_sha256: string
+          created_at: string
+          id: string
+          input_sha256: string
+          observed_at: string
+          review_reason: string
+          reviewer_id: string
+          source_authorization_id: string
+          source_id: string
+        }
+        Insert: {
+          authorization_head_revision: number
+          captured_posting: Json
+          content_sha256: string
+          created_at?: string
+          id: string
+          input_sha256: string
+          observed_at: string
+          review_reason: string
+          reviewer_id: string
+          source_authorization_id: string
+          source_id: string
+        }
+        Update: {
+          authorization_head_revision?: number
+          captured_posting?: Json
+          content_sha256?: string
+          created_at?: string
+          id?: string
+          input_sha256?: string
+          observed_at?: string
+          review_reason?: string
+          reviewer_id?: string
+          source_authorization_id?: string
+          source_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_manual_source_observations_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_manual_source_observations_source_authorization_id_fkey"
+            columns: ["source_authorization_id"]
+            isOneToOne: false
+            referencedRelation: "ap_source_authorizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_manual_source_observations_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "job_sources"
             referencedColumns: ["id"]
           },
         ]
@@ -3428,7 +3805,8 @@ export type Database = {
           confidence_components: Json
           confidence_label: string | null
           created_at: string
-          customer_id: string
+          customer_id: string | null
+          draft_id: string | null
           eligibility: Database["public"]["Enums"]["ap_eligibility_disposition"]
           evidence_confidence: number | null
           explanation_evidence: Json
@@ -3473,7 +3851,8 @@ export type Database = {
           confidence_components: Json
           confidence_label?: string | null
           created_at?: string
-          customer_id: string
+          customer_id?: string | null
+          draft_id?: string | null
           eligibility: Database["public"]["Enums"]["ap_eligibility_disposition"]
           evidence_confidence?: number | null
           explanation_evidence?: Json
@@ -3518,7 +3897,8 @@ export type Database = {
           confidence_components?: Json
           confidence_label?: string | null
           created_at?: string
-          customer_id?: string
+          customer_id?: string | null
+          draft_id?: string | null
           eligibility?: Database["public"]["Enums"]["ap_eligibility_disposition"]
           evidence_confidence?: number | null
           explanation_evidence?: Json
@@ -3558,6 +3938,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_match_evaluations_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
             referencedColumns: ["id"]
           },
           {
@@ -5979,6 +6366,104 @@ export type Database = {
           },
         ]
       }
+      ap_research_cell_reviews: {
+        Row: {
+          cell_id: string
+          evidence_notes: string
+          reviewed_at: string
+          reviewer_id: string
+          source_run_id: string | null
+        }
+        Insert: {
+          cell_id: string
+          evidence_notes: string
+          reviewed_at?: string
+          reviewer_id: string
+          source_run_id?: string | null
+        }
+        Update: {
+          cell_id?: string
+          evidence_notes?: string
+          reviewed_at?: string
+          reviewer_id?: string
+          source_run_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_research_cell_reviews_cell_id_fkey"
+            columns: ["cell_id"]
+            isOneToOne: true
+            referencedRelation: "ap_feasibility_coverage_cells"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_research_cell_reviews_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_research_cell_reviews_source_run_id_fkey"
+            columns: ["source_run_id"]
+            isOneToOne: false
+            referencedRelation: "job_source_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_research_rounds: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          plan_id: string
+          request_sha256: string
+          round: number
+          snapshot_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          plan_id: string
+          request_sha256: string
+          round: number
+          snapshot_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          plan_id?: string
+          request_sha256?: string
+          round?: number
+          snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_research_rounds_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_research_rounds_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "ap_feasibility_coverage_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_research_rounds_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_retention_configuration: {
         Row: {
           approved: boolean
@@ -6017,12 +6502,15 @@ export type Database = {
           idempotency_key: string
           job_kind: string
           last_error_code: string | null
+          lease_epoch: number
           lease_expires_at: string | null
           lease_owner: string | null
           reference_id: string
           run_at: string
+          source_generation: number | null
           state: Database["public"]["Enums"]["ap_scheduled_job_state"]
           updated_at: string
+          worker_pool: string
         }
         Insert: {
           attempts?: number
@@ -6031,12 +6519,15 @@ export type Database = {
           idempotency_key: string
           job_kind: string
           last_error_code?: string | null
+          lease_epoch?: number
           lease_expires_at?: string | null
           lease_owner?: string | null
           reference_id: string
           run_at: string
+          source_generation?: number | null
           state?: Database["public"]["Enums"]["ap_scheduled_job_state"]
           updated_at?: string
+          worker_pool?: string
         }
         Update: {
           attempts?: number
@@ -6045,12 +6536,15 @@ export type Database = {
           idempotency_key?: string
           job_kind?: string
           last_error_code?: string | null
+          lease_epoch?: number
           lease_expires_at?: string | null
           lease_owner?: string | null
           reference_id?: string
           run_at?: string
+          source_generation?: number | null
           state?: Database["public"]["Enums"]["ap_scheduled_job_state"]
           updated_at?: string
+          worker_pool?: string
         }
         Relationships: []
       }
@@ -6469,6 +6963,77 @@ export type Database = {
           },
         ]
       }
+      ap_source_attempt_payloads: {
+        Row: {
+          adapter_version: string
+          content_sha256: string
+          created_at: string
+          postings: Json
+          run_id: string
+        }
+        Insert: {
+          adapter_version: string
+          content_sha256: string
+          created_at?: string
+          postings: Json
+          run_id: string
+        }
+        Update: {
+          adapter_version?: string
+          content_sha256?: string
+          created_at?: string
+          postings?: Json
+          run_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_source_attempt_payloads_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: true
+            referencedRelation: "job_source_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_source_authorization_heads: {
+        Row: {
+          current_authorization_id: string
+          revision: number
+          source_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          current_authorization_id: string
+          revision?: number
+          source_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          current_authorization_id?: string
+          revision?: number
+          source_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_source_authorization_heads_current_authorization_id_fkey"
+            columns: ["current_authorization_id"]
+            isOneToOne: true
+            referencedRelation: "ap_source_authorizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_authorization_heads_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_source_authorizations: {
         Row: {
           access_method: string
@@ -6522,6 +7087,325 @@ export type Database = {
           verified_by_role?: string | null
         }
         Relationships: []
+      }
+      ap_source_closure_reconciliations: {
+        Row: {
+          created_at: string
+          generation: number
+          reviewer_id: string
+          run_id: string
+          source_id: string
+        }
+        Insert: {
+          created_at?: string
+          generation: number
+          reviewer_id: string
+          run_id: string
+          source_id: string
+        }
+        Update: {
+          created_at?: string
+          generation?: number
+          reviewer_id?: string
+          run_id?: string
+          source_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_source_closure_reconciliations_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_closure_reconciliations_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: true
+            referencedRelation: "job_source_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_closure_reconciliations_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "job_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_source_inventory_verifications: {
+        Row: {
+          authorization_head_revision: number
+          created_at: string
+          criteria_snapshot_id: string
+          direct_capture_sha256: string
+          id: string
+          inventory_member_id: string
+          inventory_version_id: string
+          job_snapshot_id: string
+          observed_content_sha256: string
+          projection_id: string
+          reviewer_id: string
+          source_authorization_id: string
+          source_reference_id: string
+          verification_evidence: Json
+          verified_at: string
+        }
+        Insert: {
+          authorization_head_revision: number
+          created_at?: string
+          criteria_snapshot_id: string
+          direct_capture_sha256: string
+          id?: string
+          inventory_member_id: string
+          inventory_version_id: string
+          job_snapshot_id: string
+          observed_content_sha256: string
+          projection_id: string
+          reviewer_id: string
+          source_authorization_id: string
+          source_reference_id: string
+          verification_evidence: Json
+          verified_at: string
+        }
+        Update: {
+          authorization_head_revision?: number
+          created_at?: string
+          criteria_snapshot_id?: string
+          direct_capture_sha256?: string
+          id?: string
+          inventory_member_id?: string
+          inventory_version_id?: string
+          job_snapshot_id?: string
+          observed_content_sha256?: string
+          projection_id?: string
+          reviewer_id?: string
+          source_authorization_id?: string
+          source_reference_id?: string
+          verification_evidence?: Json
+          verified_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_source_inventory_verifications_criteria_snapshot_id_fkey"
+            columns: ["criteria_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_inventory_verifications_inventory_member_id_fkey"
+            columns: ["inventory_member_id"]
+            isOneToOne: false
+            referencedRelation: "ap_inventory_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_inventory_verifications_inventory_version_id_fkey"
+            columns: ["inventory_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_inventory_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_inventory_verifications_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_inventory_verifications_projection_id_fkey"
+            columns: ["projection_id"]
+            isOneToOne: false
+            referencedRelation: "job_source_listing_projections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_inventory_verifications_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_inventory_verifications_source_authorization_id_fkey"
+            columns: ["source_authorization_id"]
+            isOneToOne: false
+            referencedRelation: "ap_source_authorizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_inventory_verifications_source_reference_id_fkey"
+            columns: ["source_reference_id"]
+            isOneToOne: false
+            referencedRelation: "job_source_references"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_source_lifecycle_reviews: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          job_id: string
+          manual_observation_id: string | null
+          observed_content_sha256: string
+          previous_content_sha256: string
+          projection_id: string | null
+          reason: string
+          reviewer_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          job_id: string
+          manual_observation_id?: string | null
+          observed_content_sha256: string
+          previous_content_sha256: string
+          projection_id?: string | null
+          reason: string
+          reviewer_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          job_id?: string
+          manual_observation_id?: string | null
+          observed_content_sha256?: string
+          previous_content_sha256?: string
+          projection_id?: string | null
+          reason?: string
+          reviewer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_source_lifecycle_reviews_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_lifecycle_reviews_manual_observation_id_fkey"
+            columns: ["manual_observation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_manual_source_observations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_lifecycle_reviews_projection_id_fkey"
+            columns: ["projection_id"]
+            isOneToOne: false
+            referencedRelation: "job_source_listing_projections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_lifecycle_reviews_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_source_verifications: {
+        Row: {
+          authorization_head_revision: number
+          created_at: string
+          direct_capture_sha256: string
+          id: string
+          job_snapshot_id: string
+          manual_observation_id: string | null
+          observed_content_sha256: string
+          projection_id: string | null
+          reviewer_id: string
+          source_authorization_id: string
+          source_reference_id: string
+          stable_normalized_job_id: string
+          verification_evidence: Json
+          verified_at: string
+        }
+        Insert: {
+          authorization_head_revision: number
+          created_at?: string
+          direct_capture_sha256: string
+          id?: string
+          job_snapshot_id: string
+          manual_observation_id?: string | null
+          observed_content_sha256: string
+          projection_id?: string | null
+          reviewer_id: string
+          source_authorization_id: string
+          source_reference_id: string
+          stable_normalized_job_id: string
+          verification_evidence: Json
+          verified_at: string
+        }
+        Update: {
+          authorization_head_revision?: number
+          created_at?: string
+          direct_capture_sha256?: string
+          id?: string
+          job_snapshot_id?: string
+          manual_observation_id?: string | null
+          observed_content_sha256?: string
+          projection_id?: string | null
+          reviewer_id?: string
+          source_authorization_id?: string
+          source_reference_id?: string
+          stable_normalized_job_id?: string
+          verification_evidence?: Json
+          verified_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_source_verifications_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: true
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_verifications_manual_observation_id_fkey"
+            columns: ["manual_observation_id"]
+            isOneToOne: true
+            referencedRelation: "ap_manual_source_observations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_verifications_projection_id_fkey"
+            columns: ["projection_id"]
+            isOneToOne: true
+            referencedRelation: "job_source_listing_projections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_verifications_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_verifications_source_authorization_id_fkey"
+            columns: ["source_authorization_id"]
+            isOneToOne: false
+            referencedRelation: "ap_source_authorizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_source_verifications_source_reference_id_fkey"
+            columns: ["source_reference_id"]
+            isOneToOne: false
+            referencedRelation: "job_source_references"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ap_targeted_intake_questions: {
         Row: {
@@ -6583,6 +7467,47 @@ export type Database = {
             columns: ["job_snapshot_id"]
             isOneToOne: false
             referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_unpaid_source_cleanup: {
+        Row: {
+          attempts: number
+          deleted_at: string | null
+          deletion_authorized_at: string | null
+          document_id: string
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_token: string | null
+          state: string
+        }
+        Insert: {
+          attempts?: number
+          deleted_at?: string | null
+          deletion_authorized_at?: string | null
+          document_id: string
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          state?: string
+        }
+        Update: {
+          attempts?: number
+          deleted_at?: string | null
+          deletion_authorized_at?: string | null
+          document_id?: string
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_unpaid_source_cleanup_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: true
+            referencedRelation: "ap_document_versions"
             referencedColumns: ["id"]
           },
         ]
@@ -7726,6 +8651,163 @@ export type Database = {
           },
         ]
       }
+      job_source_candidates: {
+        Row: {
+          admitted_source_id: string | null
+          ats_platform: string | null
+          ats_tenant_identifier: string | null
+          candidate_payload: Json
+          career_url: string
+          created_at: string
+          discovery_snapshot_id: string
+          employer_name: string | null
+          external_candidate_id: string | null
+          id: string
+          normalized_host: string
+          quarantine_reason: string | null
+          status: string
+          updated_at: string
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          admitted_source_id?: string | null
+          ats_platform?: string | null
+          ats_tenant_identifier?: string | null
+          candidate_payload?: Json
+          career_url: string
+          created_at?: string
+          discovery_snapshot_id: string
+          employer_name?: string | null
+          external_candidate_id?: string | null
+          id?: string
+          normalized_host: string
+          quarantine_reason?: string | null
+          status?: string
+          updated_at?: string
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          admitted_source_id?: string | null
+          ats_platform?: string | null
+          ats_tenant_identifier?: string | null
+          candidate_payload?: Json
+          career_url?: string
+          created_at?: string
+          discovery_snapshot_id?: string
+          employer_name?: string | null
+          external_candidate_id?: string | null
+          id?: string
+          normalized_host?: string
+          quarantine_reason?: string | null
+          status?: string
+          updated_at?: string
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_source_candidates_admitted_source_id_fkey"
+            columns: ["admitted_source_id"]
+            isOneToOne: false
+            referencedRelation: "job_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_source_candidates_discovery_snapshot_id_fkey"
+            columns: ["discovery_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "job_source_discovery_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_source_candidates_verified_by_fkey"
+            columns: ["verified_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_source_discovery_snapshots: {
+        Row: {
+          attribution_text: string
+          authorization_head_revision: number
+          content_sha256: string
+          dataset_name: string
+          dataset_version: string
+          id: string
+          imported_at: string
+          imported_by: string | null
+          imported_count: number
+          importer_version: string
+          license_evidence_sha256: string
+          license_identifier: string
+          notes: string | null
+          provider: string
+          quarantined_count: number
+          row_count: number
+          source_authorization_id: string
+          source_url: string
+        }
+        Insert: {
+          attribution_text: string
+          authorization_head_revision: number
+          content_sha256: string
+          dataset_name: string
+          dataset_version: string
+          id?: string
+          imported_at?: string
+          imported_by?: string | null
+          imported_count?: number
+          importer_version: string
+          license_evidence_sha256: string
+          license_identifier: string
+          notes?: string | null
+          provider: string
+          quarantined_count?: number
+          row_count: number
+          source_authorization_id: string
+          source_url: string
+        }
+        Update: {
+          attribution_text?: string
+          authorization_head_revision?: number
+          content_sha256?: string
+          dataset_name?: string
+          dataset_version?: string
+          id?: string
+          imported_at?: string
+          imported_by?: string | null
+          imported_count?: number
+          importer_version?: string
+          license_evidence_sha256?: string
+          license_identifier?: string
+          notes?: string | null
+          provider?: string
+          quarantined_count?: number
+          row_count?: number
+          source_authorization_id?: string
+          source_url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_source_discovery_snapshots_imported_by_fkey"
+            columns: ["imported_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_source_discovery_snapshots_source_authorization_id_fkey"
+            columns: ["source_authorization_id"]
+            isOneToOne: false
+            referencedRelation: "ap_source_authorizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_source_exclusions: {
         Row: {
           created_at: string
@@ -7747,8 +8829,76 @@ export type Database = {
         }
         Relationships: []
       }
+      job_source_listing_projections: {
+        Row: {
+          authorization_head_revision: number
+          created_at: string
+          id: string
+          job_id: string
+          listing_key: string
+          observation_content_sha256: string
+          outcome: string
+          projection_input_sha256: string
+          projector_version: string
+          run_id: string
+          source_authorization_id: string
+        }
+        Insert: {
+          authorization_head_revision: number
+          created_at?: string
+          id?: string
+          job_id: string
+          listing_key: string
+          observation_content_sha256: string
+          outcome: string
+          projection_input_sha256: string
+          projector_version: string
+          run_id: string
+          source_authorization_id: string
+        }
+        Update: {
+          authorization_head_revision?: number
+          created_at?: string
+          id?: string
+          job_id?: string
+          listing_key?: string
+          observation_content_sha256?: string
+          outcome?: string
+          projection_input_sha256?: string
+          projector_version?: string
+          run_id?: string
+          source_authorization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_source_listing_projections_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_source_listing_projections_run_id_listing_key_fkey"
+            columns: ["run_id", "listing_key"]
+            isOneToOne: false
+            referencedRelation: "job_source_run_listings"
+            referencedColumns: ["run_id", "listing_key"]
+          },
+          {
+            foreignKeyName: "job_source_listing_projections_source_authorization_id_fkey"
+            columns: ["source_authorization_id"]
+            isOneToOne: false
+            referencedRelation: "ap_source_authorizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_source_references: {
         Row: {
+          closed_at: string | null
+          closed_by_run_id: string | null
+          closure_reason: string | null
+          consecutive_complete_misses: number
           external_job_id: string | null
           first_seen_at: string
           id: string
@@ -7756,6 +8906,7 @@ export type Database = {
           is_direct_employer: boolean
           is_official: boolean
           job_id: string
+          last_complete_miss_at: string | null
           last_verified_at: string
           normalized_source_url: string | null
           official_application_url: string | null
@@ -7764,6 +8915,10 @@ export type Database = {
           source_name: string
         }
         Insert: {
+          closed_at?: string | null
+          closed_by_run_id?: string | null
+          closure_reason?: string | null
+          consecutive_complete_misses?: number
           external_job_id?: string | null
           first_seen_at?: string
           id?: string
@@ -7771,6 +8926,7 @@ export type Database = {
           is_direct_employer?: boolean
           is_official?: boolean
           job_id: string
+          last_complete_miss_at?: string | null
           last_verified_at?: string
           normalized_source_url?: string | null
           official_application_url?: string | null
@@ -7779,6 +8935,10 @@ export type Database = {
           source_name: string
         }
         Update: {
+          closed_at?: string | null
+          closed_by_run_id?: string | null
+          closure_reason?: string | null
+          consecutive_complete_misses?: number
           external_job_id?: string | null
           first_seen_at?: string
           id?: string
@@ -7786,6 +8946,7 @@ export type Database = {
           is_direct_employer?: boolean
           is_official?: boolean
           job_id?: string
+          last_complete_miss_at?: string | null
           last_verified_at?: string
           normalized_source_url?: string | null
           official_application_url?: string | null
@@ -7794,6 +8955,13 @@ export type Database = {
           source_name?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "job_source_references_closed_by_run_id_fkey"
+            columns: ["closed_by_run_id"]
+            isOneToOne: false
+            referencedRelation: "job_source_runs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "job_source_references_job_id_fkey"
             columns: ["job_id"]
@@ -7810,50 +8978,326 @@ export type Database = {
           },
         ]
       }
+      job_source_run_listings: {
+        Row: {
+          captured_listing: Json
+          content_sha256: string
+          job_id: string | null
+          job_snapshot_id: string | null
+          listing_key: string
+          observed_at: string
+          run_id: string
+          source_reference_id: string | null
+        }
+        Insert: {
+          captured_listing: Json
+          content_sha256: string
+          job_id?: string | null
+          job_snapshot_id?: string | null
+          listing_key: string
+          observed_at: string
+          run_id: string
+          source_reference_id?: string | null
+        }
+        Update: {
+          captured_listing?: Json
+          content_sha256?: string
+          job_id?: string | null
+          job_snapshot_id?: string | null
+          listing_key?: string
+          observed_at?: string
+          run_id?: string
+          source_reference_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_source_run_listings_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_source_run_listings_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_source_run_listings_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "job_source_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_source_run_listings_source_reference_id_fkey"
+            columns: ["source_reference_id"]
+            isOneToOne: false
+            referencedRelation: "job_source_references"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_source_runs: {
         Row: {
           accepted_count: number
+          adapter_version: string | null
+          attempt_number: number | null
+          authorization_head_revision: number | null
+          checkpoint_end: Json | null
+          checkpoint_start: Json | null
+          closure_minimum_complete_misses: number | null
+          closure_reconciled_at: string | null
+          closure_visibility_window_seconds: number | null
           completed_at: string | null
+          enumeration_status: string | null
           error_code: string | null
           error_message: string | null
+          error_metadata: Json
           fetched_count: number
           id: string
+          pages_completed: number
+          pages_requested: number
+          parsed_count: number
+          persisted_count: number
+          projection_status: string
+          quota_units: number
           rejected_count: number
+          response_classification: string | null
+          retry_after_seconds: number | null
+          schedule_generation: number | null
+          schedule_id: string | null
+          scheduled_job_id: string | null
+          scope_sha256: string | null
+          source_authorization_id: string | null
           source_id: string
           started_at: string
           status: string
+          trigger_kind: string
+          verified_count: number
         }
         Insert: {
           accepted_count?: number
+          adapter_version?: string | null
+          attempt_number?: number | null
+          authorization_head_revision?: number | null
+          checkpoint_end?: Json | null
+          checkpoint_start?: Json | null
+          closure_minimum_complete_misses?: number | null
+          closure_reconciled_at?: string | null
+          closure_visibility_window_seconds?: number | null
           completed_at?: string | null
+          enumeration_status?: string | null
           error_code?: string | null
           error_message?: string | null
+          error_metadata?: Json
           fetched_count?: number
           id?: string
+          pages_completed?: number
+          pages_requested?: number
+          parsed_count?: number
+          persisted_count?: number
+          projection_status?: string
+          quota_units?: number
           rejected_count?: number
+          response_classification?: string | null
+          retry_after_seconds?: number | null
+          schedule_generation?: number | null
+          schedule_id?: string | null
+          scheduled_job_id?: string | null
+          scope_sha256?: string | null
+          source_authorization_id?: string | null
           source_id: string
           started_at?: string
           status: string
+          trigger_kind?: string
+          verified_count?: number
         }
         Update: {
           accepted_count?: number
+          adapter_version?: string | null
+          attempt_number?: number | null
+          authorization_head_revision?: number | null
+          checkpoint_end?: Json | null
+          checkpoint_start?: Json | null
+          closure_minimum_complete_misses?: number | null
+          closure_reconciled_at?: string | null
+          closure_visibility_window_seconds?: number | null
           completed_at?: string | null
+          enumeration_status?: string | null
           error_code?: string | null
           error_message?: string | null
+          error_metadata?: Json
           fetched_count?: number
           id?: string
+          pages_completed?: number
+          pages_requested?: number
+          parsed_count?: number
+          persisted_count?: number
+          projection_status?: string
+          quota_units?: number
           rejected_count?: number
+          response_classification?: string | null
+          retry_after_seconds?: number | null
+          schedule_generation?: number | null
+          schedule_id?: string | null
+          scheduled_job_id?: string | null
+          scope_sha256?: string | null
+          source_authorization_id?: string | null
           source_id?: string
           started_at?: string
           status?: string
+          trigger_kind?: string
+          verified_count?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "job_source_runs_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "job_source_schedules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_source_runs_scheduled_job_id_fkey"
+            columns: ["scheduled_job_id"]
+            isOneToOne: false
+            referencedRelation: "ap_scheduled_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_source_runs_source_authorization_id_fkey"
+            columns: ["source_authorization_id"]
+            isOneToOne: false
+            referencedRelation: "ap_source_authorizations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "job_source_runs_source_id_fkey"
             columns: ["source_id"]
             isOneToOne: false
             referencedRelation: "job_sources"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_source_schedules: {
+        Row: {
+          authorization_head_revision: number
+          cadence_seconds: number
+          consecutive_failures: number
+          created_at: string
+          duration_ms_bound: number
+          enabled: boolean
+          host_concurrency_bound: number
+          id: string
+          jitter_seconds: number
+          last_completed_at: string | null
+          last_enqueued_at: string | null
+          last_reconciled_generation: number
+          last_started_at: string | null
+          minimum_complete_misses: number
+          next_run_at: string
+          page_bound: number
+          paused_reason: string | null
+          quota_unit_bound: number
+          request_bound: number
+          response_byte_bound: number
+          result_bound: number
+          schedule_generation: number
+          schedule_tier: string
+          scope_sha256: string
+          source_authorization_id: string
+          source_id: string
+          state_revision: number
+          updated_at: string
+          visibility_window_seconds: number
+        }
+        Insert: {
+          authorization_head_revision: number
+          cadence_seconds: number
+          consecutive_failures?: number
+          created_at?: string
+          duration_ms_bound?: number
+          enabled?: boolean
+          host_concurrency_bound?: number
+          id?: string
+          jitter_seconds?: number
+          last_completed_at?: string | null
+          last_enqueued_at?: string | null
+          last_reconciled_generation?: number
+          last_started_at?: string | null
+          minimum_complete_misses?: number
+          next_run_at: string
+          page_bound?: number
+          paused_reason?: string | null
+          quota_unit_bound?: number
+          request_bound?: number
+          response_byte_bound?: number
+          result_bound: number
+          schedule_generation?: number
+          schedule_tier: string
+          scope_sha256: string
+          source_authorization_id: string
+          source_id: string
+          state_revision?: number
+          updated_at?: string
+          visibility_window_seconds?: number
+        }
+        Update: {
+          authorization_head_revision?: number
+          cadence_seconds?: number
+          consecutive_failures?: number
+          created_at?: string
+          duration_ms_bound?: number
+          enabled?: boolean
+          host_concurrency_bound?: number
+          id?: string
+          jitter_seconds?: number
+          last_completed_at?: string | null
+          last_enqueued_at?: string | null
+          last_reconciled_generation?: number
+          last_started_at?: string | null
+          minimum_complete_misses?: number
+          next_run_at?: string
+          page_bound?: number
+          paused_reason?: string | null
+          quota_unit_bound?: number
+          request_bound?: number
+          response_byte_bound?: number
+          result_bound?: number
+          schedule_generation?: number
+          schedule_tier?: string
+          scope_sha256?: string
+          source_authorization_id?: string
+          source_id?: string
+          state_revision?: number
+          updated_at?: string
+          visibility_window_seconds?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_source_schedules_source_authorization_id_fkey"
+            columns: ["source_authorization_id"]
+            isOneToOne: false
+            referencedRelation: "ap_source_authorizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_source_schedules_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: true
+            referencedRelation: "job_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_source_schedules_source_id_fkey1"
+            columns: ["source_id"]
+            isOneToOne: true
+            referencedRelation: "ap_source_authorization_heads"
+            referencedColumns: ["source_id"]
           },
         ]
       }
@@ -7967,6 +9411,7 @@ export type Database = {
       jobs: {
         Row: {
           applicant_cost: number | null
+          application_path_status: string
           benefits_status: string
           canonical_employer_id: string | null
           checked_at: string
@@ -7974,6 +9419,7 @@ export type Database = {
           commission_flag: boolean
           company: string
           content_hash: string | null
+          content_revision: number
           created_at: string
           deduplication_key: string | null
           degree_required: boolean | null
@@ -7996,7 +9442,10 @@ export type Database = {
           is_direct_employer_source: boolean
           is_official_source: boolean
           language_requirements: string[] | null
+          last_observed_at: string | null
+          last_successfully_verified_at: string | null
           last_verified_at: string | null
+          lifecycle_state: string
           listing_status: string
           location_text: string | null
           marketing_flag: boolean
@@ -8008,6 +9457,7 @@ export type Database = {
           phone_intensity: string
           posted_at: string | null
           raw_title: string | null
+          recoverable_merge_evidence: Json
           rejection_reason: string | null
           remote_scope: string | null
           review_status: string
@@ -8032,6 +9482,7 @@ export type Database = {
         }
         Insert: {
           applicant_cost?: number | null
+          application_path_status?: string
           benefits_status?: string
           canonical_employer_id?: string | null
           checked_at: string
@@ -8039,6 +9490,7 @@ export type Database = {
           commission_flag?: boolean
           company: string
           content_hash?: string | null
+          content_revision?: number
           created_at?: string
           deduplication_key?: string | null
           degree_required?: boolean | null
@@ -8061,7 +9513,10 @@ export type Database = {
           is_direct_employer_source?: boolean
           is_official_source?: boolean
           language_requirements?: string[] | null
+          last_observed_at?: string | null
+          last_successfully_verified_at?: string | null
           last_verified_at?: string | null
+          lifecycle_state?: string
           listing_status?: string
           location_text?: string | null
           marketing_flag?: boolean
@@ -8073,6 +9528,7 @@ export type Database = {
           phone_intensity?: string
           posted_at?: string | null
           raw_title?: string | null
+          recoverable_merge_evidence?: Json
           rejection_reason?: string | null
           remote_scope?: string | null
           review_status?: string
@@ -8097,6 +9553,7 @@ export type Database = {
         }
         Update: {
           applicant_cost?: number | null
+          application_path_status?: string
           benefits_status?: string
           canonical_employer_id?: string | null
           checked_at?: string
@@ -8104,6 +9561,7 @@ export type Database = {
           commission_flag?: boolean
           company?: string
           content_hash?: string | null
+          content_revision?: number
           created_at?: string
           deduplication_key?: string | null
           degree_required?: boolean | null
@@ -8126,7 +9584,10 @@ export type Database = {
           is_direct_employer_source?: boolean
           is_official_source?: boolean
           language_requirements?: string[] | null
+          last_observed_at?: string | null
+          last_successfully_verified_at?: string | null
           last_verified_at?: string | null
+          lifecycle_state?: string
           listing_status?: string
           location_text?: string | null
           marketing_flag?: boolean
@@ -8138,6 +9599,7 @@ export type Database = {
           phone_intensity?: string
           posted_at?: string | null
           raw_title?: string | null
+          recoverable_merge_evidence?: Json
           rejection_reason?: string | null
           remote_scope?: string | null
           review_status?: string
@@ -8986,6 +10448,15 @@ export type Database = {
         Args: { p_line_id: string; p_new_revision_id: string }
         Returns: boolean
       }
+      ap_admit_verified_inventory_snapshot: {
+        Args: {
+          p_inventory_version_id: string
+          p_job_snapshot_id: string
+          p_snapshot_id: string
+          p_stable_job_id: string
+        }
+        Returns: string
+      }
       ap_align_access_capability_to_outbox: {
         Args: { p_message_id: string; p_owner: string; p_secret_hash: string }
         Returns: string
@@ -8999,6 +10470,29 @@ export type Database = {
           p_reference_permission_ids: string[]
         }
         Returns: Json
+      }
+      ap_annotate_document_facts: {
+        Args: {
+          p_annotation: Json
+          p_display: string
+          p_draft_id: string
+          p_secret_hash: string
+          p_source_fact_ids: string[]
+        }
+        Returns: string
+      }
+      ap_answer_candidate_question: {
+        Args: {
+          p_answer: string
+          p_draft_id: string
+          p_question_id: string
+          p_secret_hash: string
+        }
+        Returns: string
+      }
+      ap_answer_customer_question: {
+        Args: { p_answer: string; p_customer_id: string; p_question_id: string }
+        Returns: string
       }
       ap_append_material_entitlement_state: {
         Args: { p_line_id: string; p_state: string }
@@ -9094,6 +10588,14 @@ export type Database = {
         }
         Returns: Json
       }
+      ap_archive_source_attempt: {
+        Args: { p_adapter_version: string; p_postings: Json; p_run_id: string }
+        Returns: undefined
+      }
+      ap_assert_current_artifact_facts: {
+        Args: { p_artifact_id: string }
+        Returns: undefined
+      }
       ap_authorize_material_download: {
         Args: {
           p_artifact_id: string
@@ -9101,6 +10603,10 @@ export type Database = {
           p_file_version_id: string
           p_reauthenticated_at: string
         }
+        Returns: Json
+      }
+      ap_authorize_unpaid_source_delete: {
+        Args: { p_document_id: string; p_lease_token: string }
         Returns: Json
       }
       ap_begin_board_material_checkout: {
@@ -9144,6 +10650,17 @@ export type Database = {
         Args: { p_draft_id: string; p_secret_hash: string }
         Returns: number
       }
+      ap_begin_research_round: {
+        Args: {
+          p_actor_id: string
+          p_configuration_ids: string[]
+          p_families: Json
+          p_request_sha256: string
+          p_round: number
+          p_snapshot_id: string
+        }
+        Returns: string
+      }
       ap_begin_search_checkout: {
         Args: {
           p_access_payload_id?: string
@@ -9173,12 +10690,20 @@ export type Database = {
           reservation_expires_at: string
         }[]
       }
+      ap_bind_confirmed_document_facts: {
+        Args: { p_snapshot_id: string }
+        Returns: undefined
+      }
       ap_board_has_access: {
         Args: { p_customer_id: string; p_now?: string }
         Returns: boolean
       }
       ap_can_access_customer: {
         Args: { p_customer_id: string }
+        Returns: boolean
+      }
+      ap_can_read_claimed_snapshot: {
+        Args: { p_snapshot_id: string }
         Returns: boolean
       }
       ap_cancel_search_checkout: {
@@ -9227,6 +10752,16 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      ap_claim_document_processing: {
+        Args: { p_limit: number }
+        Returns: {
+          document_id: string
+          draft_id: string
+          lease_token: string
+          storage_path: string
+          verified_mime_type: string
+        }[]
+      }
       ap_claim_feasibility_request: {
         Args: { p_request_id: string; p_worker_id: string }
         Returns: {
@@ -9234,6 +10769,32 @@ export type Database = {
           request_id: string
           snapshot_id: string
         }[]
+      }
+      ap_claim_job_source_syncs: {
+        Args: { p_limit?: number; p_owner: string }
+        Returns: {
+          attempts: number
+          created_at: string
+          id: string
+          idempotency_key: string
+          job_kind: string
+          last_error_code: string | null
+          lease_epoch: number
+          lease_expires_at: string | null
+          lease_owner: string | null
+          reference_id: string
+          run_at: string
+          source_generation: number | null
+          state: Database["public"]["Enums"]["ap_scheduled_job_state"]
+          updated_at: string
+          worker_pool: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "ap_scheduled_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       ap_claim_material_entitlement: {
         Args: { p_entitlement_history_id: string }
@@ -9280,12 +10841,15 @@ export type Database = {
           idempotency_key: string
           job_kind: string
           last_error_code: string | null
+          lease_epoch: number
           lease_expires_at: string | null
           lease_owner: string | null
           reference_id: string
           run_at: string
+          source_generation: number | null
           state: Database["public"]["Enums"]["ap_scheduled_job_state"]
           updated_at: string
+          worker_pool: string
         }[]
         SetofOptions: {
           from: "*"
@@ -9303,12 +10867,15 @@ export type Database = {
           idempotency_key: string
           job_kind: string
           last_error_code: string | null
+          lease_epoch: number
           lease_expires_at: string | null
           lease_owner: string | null
           reference_id: string
           run_at: string
+          source_generation: number | null
           state: Database["public"]["Enums"]["ap_scheduled_job_state"]
           updated_at: string
+          worker_pool: string
         }[]
         SetofOptions: {
           from: "*"
@@ -9316,6 +10883,13 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      ap_claim_unpaid_source_cleanup: {
+        Args: { p_limit?: number }
+        Returns: {
+          document_id: string
+          lease_token: string
+        }[]
       }
       ap_commit_exact_ten_release: {
         Args: {
@@ -9373,6 +10947,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_complete_document_processing: {
+        Args: {
+          p_document_id: string
+          p_lease_token: string
+          p_succeeded: boolean
+        }
+        Returns: undefined
+      }
       ap_complete_external_scheduled_job: {
         Args: { p_job_id: string; p_owner: string }
         Returns: boolean
@@ -9385,6 +10967,22 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_complete_job_source_sync: {
+        Args: { p_job_id: string; p_lease_epoch: number; p_owner: string }
+        Returns: boolean
+      }
+      ap_complete_manual_research_cell: {
+        Args: {
+          p_actor_id: string
+          p_cell_id: string
+          p_checklist: Json
+          p_evidence_urls: Json
+          p_job_snapshot_ids: string[]
+          p_notes: string
+          p_reviewed_at: string
+        }
+        Returns: undefined
+      }
       ap_complete_outbox_message: {
         Args: {
           p_message_id: string
@@ -9392,6 +10990,15 @@ export type Database = {
           p_provider_message_id: string
         }
         Returns: boolean
+      }
+      ap_complete_research_cell: {
+        Args: {
+          p_actor_id: string
+          p_cell_id: string
+          p_notes: string
+          p_run_id: string
+        }
+        Returns: undefined
       }
       ap_confirm_reference_version: {
         Args: { p_customer_id: string; p_reference_version_id: string }
@@ -9436,6 +11043,57 @@ export type Database = {
         }
         Returns: string
       }
+      ap_current_customer_question: {
+        Args: { p_customer_id: string; p_question_id: string }
+        Returns: boolean
+      }
+      ap_current_source_readiness: { Args: never; Returns: Json }
+      ap_current_source_verifications: {
+        Args: { p_snapshot_id: string }
+        Returns: {
+          authorization_head_revision: number
+          created_at: string
+          direct_capture_sha256: string
+          id: string
+          job_snapshot_id: string
+          manual_observation_id: string | null
+          observed_content_sha256: string
+          projection_id: string | null
+          reviewer_id: string
+          source_authorization_id: string
+          source_reference_id: string
+          stable_normalized_job_id: string
+          verification_evidence: Json
+          verified_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "ap_source_verifications"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      ap_current_verified_job_snapshots: {
+        Args: { p_job_ids: string[] }
+        Returns: {
+          id: string
+          legacy_job_id: string
+          live_verified_at: string
+          requirement_completeness: number
+        }[]
+      }
+      ap_customer_candidate_questions: {
+        Args: { p_customer_id: string }
+        Returns: {
+          answered: boolean
+          id: string
+          prompt: string
+        }[]
+      }
+      ap_customer_owns_snapshot: {
+        Args: { p_customer_id: string; p_snapshot_id: string }
+        Returns: boolean
+      }
       ap_decline_material_change: {
         Args: {
           p_customer_id: string
@@ -9471,6 +11129,14 @@ export type Database = {
       }
       ap_enqueue_chunk4_due_jobs: { Args: never; Returns: Json }
       ap_enqueue_chunk5_due_jobs: { Args: never; Returns: Json }
+      ap_enqueue_due_job_source_syncs: {
+        Args: { p_limit?: number }
+        Returns: number
+      }
+      ap_enqueue_job_source_sync: {
+        Args: { p_request_key: string; p_schedule_id: string }
+        Returns: string
+      }
       ap_expire_material_change: {
         Args: { p_proposal_id: string }
         Returns: Json
@@ -9526,6 +11192,10 @@ export type Database = {
           snapshot_id: string
         }[]
       }
+      ap_finalize_job_source_run: {
+        Args: { p_lease_epoch: number; p_owner: string; p_run_id: string }
+        Returns: Json
+      }
       ap_find_customer_by_access_email: {
         Args: { p_email: string }
         Returns: string
@@ -9540,6 +11210,14 @@ export type Database = {
           p_job_id: string
           p_owner: string
           p_success: boolean
+        }
+        Returns: boolean
+      }
+      ap_finish_unpaid_source_delete: {
+        Args: {
+          p_document_id: string
+          p_lease_token: string
+          p_succeeded: boolean
         }
         Returns: boolean
       }
@@ -9568,6 +11246,16 @@ export type Database = {
           p_reason: string
         }
         Returns: boolean
+      }
+      ap_issue_candidate_question: {
+        Args: {
+          p_actor_id: string
+          p_job_snapshot_id: string
+          p_node_id: string
+          p_prompt: string
+          p_snapshot_id: string
+        }
+        Returns: string
       }
       ap_issue_order_access_capability: {
         Args: {
@@ -9641,6 +11329,16 @@ export type Database = {
         }
         Returns: string
       }
+      ap_project_source_observation: {
+        Args: {
+          p_content_sha256: string
+          p_listing_key: string
+          p_normalized: Json
+          p_projector_version: string
+          p_run_id: string
+        }
+        Returns: string
+      }
       ap_promote_material_checkout: {
         Args: {
           p_checkout_intent_id: string
@@ -9656,6 +11354,19 @@ export type Database = {
           p_provider_session_id: string
         }
         Returns: boolean
+      }
+      ap_promote_verified_source_inventory: {
+        Args: {
+          p_actor_id: string
+          p_criteria_snapshot_id: string
+          p_inventory_version_id: string
+          p_job_snapshot: Json
+          p_projection_id: string
+          p_requirement_nodes: Json
+          p_review: Json
+          p_stable_job_id: string
+        }
+        Returns: string
       }
       ap_propose_material_fact_correction: {
         Args: {
@@ -9737,6 +11448,10 @@ export type Database = {
           version: number
         }[]
       }
+      ap_reconcile_verified_source_run: {
+        Args: { p_actor_id: string; p_run_id: string }
+        Returns: Json
+      }
       ap_record_fact_presentation: {
         Args: {
           p_control_id: string
@@ -9746,6 +11461,16 @@ export type Database = {
           p_secret_hash: string
         }
         Returns: boolean
+      }
+      ap_record_isolated_document_review: {
+        Args: {
+          p_document_id: string
+          p_draft_id: string
+          p_lines: Json
+          p_parser_identity: string
+          p_sha256: string
+        }
+        Returns: undefined
       }
       ap_record_job_release_review: {
         Args: {
@@ -9912,6 +11637,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_renew_job_source_sync_lease: {
+        Args: { p_job_id: string; p_lease_epoch: number; p_owner: string }
+        Returns: string
+      }
       ap_renew_outbox_lease: {
         Args: { p_message_id: string; p_owner: string }
         Returns: string
@@ -9972,6 +11701,21 @@ export type Database = {
           document_id: string
           draft_version: number
         }[]
+      }
+      ap_retry_document_processing: {
+        Args: { p_document_id: string; p_draft_id: string }
+        Returns: undefined
+      }
+      ap_retry_job_source_sync: {
+        Args: {
+          p_dead_letter: boolean
+          p_error_code: string
+          p_job_id: string
+          p_lease_epoch: number
+          p_owner: string
+          p_retry_at: string
+        }
+        Returns: boolean
       }
       ap_retry_scheduled_job: {
         Args: {
@@ -10044,6 +11788,26 @@ export type Database = {
           version: number
         }[]
       }
+      ap_set_job_source_schedule_state: {
+        Args: {
+          p_actor_id: string
+          p_enabled: boolean
+          p_expected_state_revision: number
+          p_reason_code: string
+          p_schedule_id: string
+        }
+        Returns: number
+      }
+      ap_set_source_authorization_head: {
+        Args: {
+          p_actor_id: string
+          p_authorization_id: string
+          p_expected_revision: number
+          p_source_id: string
+        }
+        Returns: number
+      }
+      ap_source_projection_url: { Args: { value: string }; Returns: string }
       ap_stale_feasibility_request: {
         Args: { p_reason: string; p_request_id: string; p_worker_id: string }
         Returns: boolean
@@ -10064,6 +11828,10 @@ export type Database = {
           p_search_service_id: string
         }
         Returns: string
+      }
+      ap_unpaid_source_retention_eligible: {
+        Args: { p_document_id: string }
+        Returns: boolean
       }
       ap_upsert_employer_submission_rules: {
         Args: {
@@ -10089,6 +11857,32 @@ export type Database = {
           p_source_evidence_ids: string[]
           p_submission_channel: string
           p_work_sample_instruction: string
+        }
+        Returns: string
+      }
+      ap_verify_manual_source_observation: {
+        Args: {
+          p_actor_id: string
+          p_job_snapshot: Json
+          p_normalized: Json
+          p_observation_id: string
+          p_posting: Json
+          p_requirement_nodes: Json
+          p_review: Json
+          p_source_id: string
+          p_stable_job_id: string
+        }
+        Returns: string
+      }
+      ap_verify_source_observation: {
+        Args: {
+          p_actor_id: string
+          p_job_snapshot: Json
+          p_normalized: Json
+          p_projection_id: string
+          p_requirement_nodes: Json
+          p_review: Json
+          p_stable_job_id: string
         }
         Returns: string
       }
@@ -10628,12 +12422,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -10657,11 +12451,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -10682,11 +12476,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -10707,11 +12501,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -10724,11 +12518,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

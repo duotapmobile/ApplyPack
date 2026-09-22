@@ -1,4 +1,6 @@
 .site-header--focused { background: white; border-bottom: 1px solid var(--border); }
+/* Step/error focus must finish scrolling before the next form interaction. */
+html:has(.wizard-page) { scroll-behavior: auto; }
 .site-header--focused .header-inner { min-height: 72px; }
 .focused-nav { display: flex; margin-left: auto; gap: 1.5rem; align-items: center; }
 .focused-nav a { min-height: 44px; display: inline-flex; align-items: center; color: var(--logo-navy); font-weight: 800; }

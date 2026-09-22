@@ -245,24 +245,24 @@ select pg_temp.assert_true(
   and not has_function_privilege('anon','public.ap_current_source_readiness()','EXECUTE'),
   'source readiness RPC exposed to customers'
 );
-select pg_temp.assert_true(public.ap_current_source_readiness()='{"jobSourcesRegistered":false,"authorizedSourceInventory":false}'::jsonb,
+select pg_temp.assert_true(public.ap_current_source_readiness()='{"jobSourcesRegistered":false,"authorizedSourceInventory":false,"manualReady":false,"automatedReady":false}'::jsonb,
   'paused source became ready');
 update public.job_sources set paid_display_permission_status='documented_paid_display_authorized',schedule_enabled=false
 where id='vipdesk-connect';
 select public.ap_set_job_source_schedule_state('37000000-0000-4000-8000-000000000001',true,3,'RESUME_AFTER_REVIEW','17000000-0000-4000-8000-000000000001');
-select pg_temp.assert_true(public.ap_current_source_readiness()='{"jobSourcesRegistered":true,"authorizedSourceInventory":false}'::jsonb,
+select pg_temp.assert_true(public.ap_current_source_readiness()='{"jobSourcesRegistered":true,"authorizedSourceInventory":false,"manualReady":false,"automatedReady":false}'::jsonb,
   'current complete collection did not register or hidden projection became ready');
 update public.jobs set is_active=true,listing_status='open',source_freshness_status='fresh',
   application_path_status='verified_actionable',last_successfully_verified_at=now(),closing_at=now()+interval '1 day'
 where id=(select job_id from public.job_source_listing_projections where listing_key='projection-a');
-select pg_temp.assert_true((public.ap_current_source_readiness()->>'authorizedSourceInventory')::boolean,
-  'current authorized verified inventory was not ready');
+select pg_temp.assert_true(not (public.ap_current_source_readiness()->>'authorizedSourceInventory')::boolean,
+  'mutable verified job flags manufactured current immutable inventory');
 update public.jobs set last_successfully_verified_at=now()+interval '1 hour'
 where id=(select job_id from public.job_source_listing_projections where listing_key='projection-a');
 select pg_temp.assert_true(not (public.ap_current_source_readiness()->>'authorizedSourceInventory')::boolean,
   'future verification manufactured readiness');
 update public.job_source_schedules set authorization_head_revision=99 where source_id='vipdesk-connect';
-select pg_temp.assert_true(public.ap_current_source_readiness()='{"jobSourcesRegistered":false,"authorizedSourceInventory":false}'::jsonb,
+select pg_temp.assert_true(public.ap_current_source_readiness()='{"jobSourcesRegistered":false,"authorizedSourceInventory":false,"manualReady":false,"automatedReady":false}'::jsonb,
   'superseded schedule authority stayed ready');
 -- Restore fixture authority for later transaction-scoped service scenarios.
 update public.job_source_schedules set authorization_head_revision=1 where source_id='vipdesk-connect';
@@ -329,6 +329,26 @@ insert into public.ap_intake_snapshots select (jsonb_populate_record(null::publi
 perform public.ap_promote_verified_source_inventory(projection_id,actor,criteria,inventory,review,'bridge-stable',snap,nodes);
 raise exception 'superseded_criteria_accepted';
 exception when raise_exception then if sqlerrm<>'source_promotion_coverage_snapshot_mismatch' then raise; end if; end;
+-- Independent direct verification creates a snapshot without customer admission.
+declare
+ independent_id uuid; independently_replayed uuid; prior_members bigint;
+ independent_snapshot jsonb:=snap||jsonb_build_object('id','73000000-0000-4000-8000-000000000044');
+ independent_nodes jsonb:=jsonb_build_array((nodes->0)||jsonb_build_object('id','85000000-0000-4000-8000-000000000044'));
+begin
+ select count(*) into prior_members from public.ap_inventory_members;
+ independent_id:=public.ap_verify_source_observation(projection_id,actor,review,'bridge-stable',independent_snapshot,independent_nodes,payload);
+ independently_replayed:=public.ap_verify_source_observation(projection_id,actor,review,'bridge-stable',independent_snapshot,independent_nodes,payload);
+ perform pg_temp.assert_true((public.ap_current_source_readiness()->>'automatedReady')::boolean,'verified automated capture not ready');
+ perform pg_temp.assert_true(independent_id=independently_replayed,'independent verification replay duplicated snapshot');
+ perform pg_temp.assert_true((select count(*)=prior_members from public.ap_inventory_members),'source-only verification admitted customer inventory');
+ perform pg_temp.assert_true(exists(select 1 from public.ap_source_verifications v where v.job_snapshot_id=independent_id),'independent verification lineage missing');
+ begin
+  perform public.ap_reconcile_verified_source_run('47000000-0000-4000-8000-000000000003',actor);
+  raise exception 'unverified_complete_run_reconciled';
+ exception when raise_exception then
+  if sqlerrm<>'complete_current_directly_verified_snapshot_required' then raise; end if;
+ end;
+end;
 member_id:=public.ap_promote_verified_source_inventory(projection_id,actor,criteria,inventory,review,'bridge-stable',snap,nodes);
 replay_id:=public.ap_promote_verified_source_inventory(projection_id,actor,criteria,inventory,review,'bridge-stable',snap,nodes);
 perform pg_temp.assert_true(member_id=replay_id,'verified projection replay duplicated member');
@@ -337,5 +357,174 @@ perform pg_temp.assert_true(exists(select 1 from public.ap_inventory_members m j
 perform pg_temp.assert_true((select is_active and application_path_status='verified_actionable' and last_successfully_verified_at is not null from public.jobs where id=job_id),'verified job not persisted');
 end $$;
 select pg_temp.assert_true(not has_table_privilege('authenticated','public.ap_source_inventory_verifications','INSERT') and not has_table_privilege('service_role','public.ap_source_inventory_verifications','INSERT,UPDATE,DELETE,TRUNCATE') and not has_function_privilege('authenticated','public.ap_promote_verified_source_inventory(uuid,uuid,uuid,uuid,jsonb,text,jsonb,jsonb)','EXECUTE'),'verification bridge bypasses privileged evidence path');
+
+-- Changed and reopened identities require a new observation and attributable direct review.
+do $$
+declare action text; target uuid; projection_uuid uuid; run_uuid uuid; snapshot_uuid uuid;
+ criteria_id uuid; inventory_id uuid; prior_snapshot_id uuid;
+ payload jsonb; review jsonb; snap jsonb; nodes jsonb; description_text text; observed_hash text;
+ actor constant uuid:='17000000-0000-4000-8000-000000000001';
+begin
+ select job_id into target from public.job_source_listing_projections where listing_key='bridge';
+ select plan.snapshot_id,plan.inventory_version_id,member.job_snapshot_id into criteria_id,inventory_id,prior_snapshot_id
+ from public.ap_feasibility_coverage_plans plan join public.ap_inventory_members member on member.inventory_version_id=plan.inventory_version_id
+ join public.ap_job_snapshots snapshot on snapshot.id=member.job_snapshot_id where snapshot.legacy_job_id=target limit 1;
+ perform pg_temp.assert_true(criteria_id is not null,'stale admission fixture needs actual current criteria plan');
+ prior_snapshot_id:='73000000-0000-4000-8000-000000000044';
+ perform pg_temp.assert_true(exists(select 1 from public.ap_current_source_verifications(prior_snapshot_id)),
+   'stale admission fixture must start with current independently verified evidence');
+ foreach action in array array['CHANGED','REOPENED'] loop
+  run_uuid:=gen_random_uuid(); snapshot_uuid:=gen_random_uuid();
+  description_text:='Responsibilities: coordinate service recovery. '||action;
+  observed_hash:=encode(extensions.digest(convert_to(description_text,'UTF8'),'sha256'),'hex');
+  if action='REOPENED' then
+   update public.job_source_references set is_active=false,closed_at=clock_timestamp()-interval '1 minute',
+    closed_by_run_id='47000000-0000-4000-8000-000000000003',closure_reason='REPEATED_COMPLETE_ENUMERATION_ABSENCE'
+   where job_id=target;
+   update public.jobs set is_active=false,listing_status='inactive',lifecycle_state='closed' where id=target;
+  end if;
+  insert into public.job_source_runs
+  select (jsonb_populate_record(null::public.job_source_runs,to_jsonb(r)||jsonb_build_object(
+   'id',run_uuid,'status','started','enumeration_status',null,'completed_at',null,'closure_reconciled_at',null,
+   'attempt_number',case when action='CHANGED' then 4 else 5 end,
+   'started_at',clock_timestamp(),'trigger_kind','scheduled','checkpoint_start',
+   case when action='CHANGED' then jsonb_build_object('cursor','100') else null end))).*
+  from public.job_source_runs r where id='47000000-0000-4000-8000-000000000003';
+  insert into public.job_source_run_listings(run_id,listing_key,captured_listing,content_sha256,observed_at)
+  values(run_uuid,'bridge',(select jsonb_build_object('title',raw_title,'externalJobId',external_job_id,
+    'sourceJobUrl',source_job_url,'description',description_text) from public.jobs where id=target),observed_hash,clock_timestamp());
+  update public.job_source_runs set status='succeeded',enumeration_status='complete',completed_at=clock_timestamp()
+  where id=run_uuid;
+  select to_jsonb(j)||jsonb_build_object('description',description_text,'content_hash',observed_hash,'is_active',true,
+   'eligible_states',jsonb_build_array(case when action='CHANGED' then 'VA' else 'NC' end),'eligible_countries',jsonb_build_array('US'),
+   'timezone_requirement',case when action='CHANGED' then 'Eastern' else null end,'salary_min',case when action='CHANGED' then 25 else null end,
+   'lifecycle_state','observed_open','listing_status','inactive','application_path_status','unverified') into payload
+  from public.jobs j where j.id=target;
+  perform public.ap_project_source_observation(run_uuid,'bridge',observed_hash,'pending-source-projection-v1',payload);
+  select id into projection_uuid from public.job_source_listing_projections where run_id=run_uuid;
+  perform pg_temp.assert_true(not (public.ap_current_source_readiness()->>'authorizedSourceInventory')::boolean,
+    'pending CHANGED or closed observation reused old verified flags as readiness');
+  perform pg_temp.assert_true(not exists(select 1 from public.ap_current_verified_job_snapshots(array[target])),
+    'pending changed observation remained available for matching or admission');
+  begin
+   perform public.ap_admit_verified_inventory_snapshot(criteria_id,inventory_id,prior_snapshot_id,'bridge-stable');
+   raise exception 'pending_source_change_admitted';
+  exception when raise_exception then
+   if sqlerrm<>'inventory_source_verification_lineage_required' then raise; end if;
+  end;
+  review:=jsonb_build_object('method','HUMAN_DIRECT_OFFICIAL_REVIEW','checkedAt',clock_timestamp(),
+   'officialListingUrl',payload->>'source_job_url','officialApplicationUrl',payload->>'official_application_url',
+   'capturedText',description_text,'captureSha256',observed_hash,'evidenceNotes','Independent synthetic live review evidence.',
+   'employerIdentityConfirmed',true,'applicationPathConfirmed',true,'listingActiveConfirmed',true,'legitimacyConfirmed',true);
+  select to_jsonb(js)||jsonb_build_object('id',snapshot_uuid,'exact_title',payload->>'raw_title',
+   'captured_listing',jsonb_build_object('text',description_text),'content_sha256',observed_hash,
+   'normalized_fingerprint',observed_hash) into snap
+  from public.ap_job_snapshots js where id='73000000-0000-4000-8000-000000000044';
+  select jsonb_build_array(to_jsonb(n)||jsonb_build_object('id',gen_random_uuid(),'source_excerpt',description_text)) into nodes
+  from public.ap_requirement_nodes n where job_snapshot_id='73000000-0000-4000-8000-000000000044' limit 1;
+  begin
+   perform public.ap_verify_source_observation(projection_uuid,actor,review,'bridge-stable',snap,nodes,payload);
+   raise exception 'transition_without_explicit_review_accepted';
+  exception when raise_exception then
+   if sqlerrm not in ('source_changed_content_requires_review','source_reopen_requires_new_direct_review') then raise; end if;
+  end;
+  review:=review||jsonb_build_object('lifecycleAction',action,'transitionReason','Operator confirmed this new official observation and application path.');
+  perform public.ap_verify_source_observation(projection_uuid,actor,review,'bridge-stable',snap,nodes,payload);
+  perform public.ap_verify_source_observation(projection_uuid,actor,review,'bridge-stable',snap,nodes,payload);
+  perform pg_temp.assert_true((select count(*)=1 from public.ap_source_lifecycle_reviews where projection_id=projection_uuid),'transition audit replay duplicated');
+  perform pg_temp.assert_true((select is_active and content_hash=observed_hash from public.jobs where id=target),'reviewed transition not activated');
+  perform pg_temp.assert_true((select to_jsonb(eligible_states)=payload->'eligible_states'
+    and to_jsonb(eligible_countries)=payload->'eligible_countries'
+    and timezone_requirement is not distinct from payload->>'timezone_requirement'
+    and salary_min is not distinct from (payload->>'salary_min')::numeric
+    from public.jobs where id=target),'normalized eligibility/pay fields stale under new content hash');
+  perform pg_temp.assert_true((select predecessor.legacy_job_id=target and review.projection_id=projection_uuid
+    from public.ap_job_snapshots successor join public.ap_job_snapshots predecessor
+      on predecessor.id=successor.supersedes_job_snapshot_id
+    join public.ap_source_lifecycle_reviews review on review.id=successor.source_lifecycle_review_id
+    where successor.id=snapshot_uuid),'source successor missing exact job and audited lifecycle lineage');
+  perform pg_temp.assert_true((select official_application_url=payload->>'official_application_url'
+    from public.job_source_references where job_id=target and source_id=payload->>'source_id' limit 1),
+    'source reference application path stale');
+  if action='CHANGED' then
+   begin
+    perform public.ap_reconcile_verified_source_run(run_uuid,actor);
+    raise exception 'resumed_run_closed_missing_jobs';
+   exception when raise_exception then
+    if sqlerrm<>'complete_current_directly_verified_snapshot_required' then raise; end if;
+   end;
+  end if;
+ end loop;
+ perform pg_temp.assert_true((public.ap_reconcile_verified_source_run(run_uuid,actor)->>'closureEligible')::boolean,'complete verified run did not reconcile');
+ perform pg_temp.assert_true((public.ap_reconcile_verified_source_run(run_uuid,actor)->>'replayed')::boolean,'closure reconciliation not idempotent');
+end $$;
+
+-- Explicit manual capture creates verified inventory without pretending enumeration.
+do $$
+declare actor uuid:='17000000-0000-4000-8000-000000000001'; observation_id uuid:='94000000-0000-4000-8000-000000000049';
+ payload jsonb; posting jsonb; review jsonb; snap jsonb; nodes jsonb; result uuid; canonical_job uuid;
+ body text:='Required: 3 years of customer operations experience. Responsibilities: coordinate service recovery.';
+ url text:='https://api.lever.co/postings/vipdesk?job=manual-49'; run_count integer; member_count integer; revision bigint;
+begin
+ select to_jsonb(j)||jsonb_build_object('external_job_id','manual-49','source_job_url',url,'source_url',url,
+  'normalized_source_url',url,'official_application_url',url,'description',body,'content_hash',repeat('9',64),
+  'deduplication_key',repeat('8',64),'closing_at',null,'rejection_reason',null) into payload
+ from public.jobs j where external_job_id='bridge' and source_id='vipdesk-connect' limit 1;
+ posting:=jsonb_build_object('title',payload->>'raw_title','externalJobId','manual-49','sourceJobUrl',url,'description',body);
+ -- The current-inventory SQL uses the transaction's now(); avoid manufacturing
+ -- a future timestamp relative to this enclosing synthetic fixture transaction.
+ review:=jsonb_build_object('method','HUMAN_DIRECT_OFFICIAL_REVIEW','checkedAt',transaction_timestamp(),
+  'officialListingUrl',url,'officialApplicationUrl',url,'capturedText',body,
+  'captureSha256',encode(extensions.digest(convert_to(body,'UTF8'),'sha256'),'hex'),
+  'evidenceNotes','Synthetic operator inspected the official listing and application destination.',
+  'transitionReason','Synthetic direct manual source review for independent inventory evidence.',
+  'employerIdentityConfirmed',true,'applicationPathConfirmed',true,'listingActiveConfirmed',true,'legitimacyConfirmed',true);
+ select to_jsonb(js)||jsonb_build_object('id','73000000-0000-4000-8000-000000000049',
+  'external_job_id','manual-49','source_url',url,'canonical_application_url',url,'canonical_employer_listing_url',url,
+  'captured_listing',jsonb_build_object('text',body),'content_sha256',repeat('9',64),'normalized_fingerprint',repeat('9',64)) into snap
+ from public.ap_job_snapshots js where id='73000000-0000-4000-8000-000000000044';
+ select jsonb_build_array(to_jsonb(n)||jsonb_build_object('id',gen_random_uuid(),'source_excerpt',body)) into nodes
+ from public.ap_requirement_nodes n where job_snapshot_id='73000000-0000-4000-8000-000000000044' limit 1;
+ begin
+  perform public.ap_verify_manual_source_observation(observation_id,actor,'vipdesk-connect',posting,review,'requisition|'||(payload->>'canonical_employer_id')||'|manual-49',snap,nodes,payload);
+  raise exception 'automated_permission_used_as_manual_permission';
+ exception when raise_exception then if sqlerrm<>'manual_source_current_authority_or_identity_required' then raise; end if; end;
+ insert into public.ap_source_authorizations
+ select (jsonb_populate_record(null::public.ap_source_authorizations,to_jsonb(a)||jsonb_build_object(
+  'id','27000000-0000-4000-8000-000000000049','state','AUTHORIZED_MANUAL_ONLY','access_method','MANUAL',
+  'allowed_actions',jsonb_build_array('MANUAL_REVIEW'),'authorization_version','manual-49',
+  'verified_at',clock_timestamp()))).*
+ from public.ap_source_authorizations a where id='27000000-0000-4000-8000-000000000001';
+ select h.revision into revision from public.ap_source_authorization_heads h where source_id='vipdesk-connect';
+ perform public.ap_set_source_authorization_head('vipdesk-connect','27000000-0000-4000-8000-000000000049',revision,actor);
+ select count(*) into run_count from public.job_source_runs;
+ select count(*) into member_count from public.ap_inventory_members;
+ begin
+  perform public.ap_verify_manual_source_observation(observation_id,'17000000-0000-4000-8000-000000000099','vipdesk-connect',posting,review,'requisition|'||(payload->>'canonical_employer_id')||'|manual-49',snap,nodes,payload);
+  raise exception 'manual_source_non_operator_accepted';
+ exception when raise_exception then if sqlerrm<>'manual_source_operator_required' then raise; end if; end;
+ begin
+  perform public.ap_verify_manual_source_observation(observation_id,actor,'vipdesk-connect',posting,review,'requisition|'||(payload->>'canonical_employer_id')||'|manual-49',snap,nodes,payload||'{"official_application_url":"https://unrelated.invalid/apply"}');
+  raise exception 'manual_source_unpermitted_host_accepted';
+ exception when raise_exception then if sqlerrm<>'manual_source_current_authority_or_identity_required' then raise; end if; end;
+ begin
+  perform public.ap_verify_manual_source_observation(observation_id,actor,'vipdesk-connect',posting,review||'{"listingActiveConfirmed":false}','requisition|'||(payload->>'canonical_employer_id')||'|manual-49',snap,nodes,payload);
+  raise exception 'manual_source_unverified_activity_accepted';
+ exception when raise_exception then if sqlerrm<>'source_promotion_direct_evidence_required' then raise; end if; end;
+ result:=public.ap_verify_manual_source_observation(observation_id,actor,'vipdesk-connect',posting,review,'requisition|'||(payload->>'canonical_employer_id')||'|manual-49',snap,nodes,payload);
+ perform pg_temp.assert_true(result=public.ap_verify_manual_source_observation(observation_id,actor,'vipdesk-connect',posting,review,'requisition|'||(payload->>'canonical_employer_id')||'|manual-49',snap,nodes,payload),'manual source replay not idempotent');
+ select legacy_job_id into canonical_job from public.ap_job_snapshots where id=result;
+ perform pg_temp.assert_true(exists(select 1 from public.ap_current_verified_job_snapshots(array[canonical_job]) where id=result),'manual source current inventory missing');
+ perform pg_temp.assert_true((public.ap_current_source_readiness()->>'manualReady')::boolean
+   and not (public.ap_current_source_readiness()->>'automatedReady')::boolean,'manual inventory mislabeled or blocked by automated schedule');
+ perform pg_temp.assert_true((select count(*)=run_count from public.job_source_runs),'manual capture manufactured enumeration');
+ perform pg_temp.assert_true((select count(*)=member_count from public.ap_inventory_members),'manual capture bypassed customer admission');
+ perform pg_temp.assert_true((select count(*)=1 from public.ap_manual_source_observations where id=observation_id),'manual evidence replay duplicated');
+ perform pg_temp.assert_true((select projection_id is null and manual_observation_id=observation_id from public.ap_source_verifications where job_snapshot_id=result),'manual source origin mislabeled');
+ begin
+  perform public.ap_verify_manual_source_observation(observation_id,actor,'vipdesk-connect',posting,review||'{"evidenceNotes":"Changed evidence must not overwrite an immutable manual receipt."}','requisition|'||(payload->>'canonical_employer_id')||'|manual-49',snap,nodes,payload);
+  raise exception 'manual_replay_changed_evidence_accepted';
+ exception when raise_exception then if sqlerrm<>'manual_source_replay_conflict' then raise; end if; end;
+end $$;
 
 rollback;

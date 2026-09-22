@@ -51,7 +51,9 @@ const nextConfig: NextConfig = {
                 : "connect-src 'self' https://*.supabase.co https://api.stripe.com https://api.resend.com http://127.0.0.1:54321 http://localhost:54321 ws://127.0.0.1:54321 ws://localhost:54321",
               "frame-src https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com",
               "object-src 'none'",
-              "upgrade-insecure-requests",
+              // WebKit upgrades local HTTP assets too; the development server
+              // does not serve TLS. Keep the directive on every deployed build.
+              ...(process.env.NODE_ENV === "production" ? ["upgrade-insecure-requests"] : []),
             ].join("; "),
           },
         ],
