@@ -54,7 +54,7 @@ alter default privileges for role postgres in schema public grant all on functio
 $bootstrapPath = Join-Path $inputPath 'bootstrap.sql'
 Set-Content -LiteralPath $bootstrapPath -Value $bootstrap -Encoding utf8
 $migrationFiles = @(Get-ChildItem (Join-Path $repoRoot 'supabase/migrations') -Filter '*.sql' | Sort-Object Name)
-$fixtures = @('chunk1-foundation.sql', 'chunk2-four-step.sql', 'chunk3-matching-engine.sql', 'chunk4-commerce-release.sql', 'chunk5-materials-delivery.sql', 'chunk6-final-integration.sql', 'employer-first-aggregation.sql', 'matching-fulfillment.sql')
+$fixtures = @('chunk1-foundation.sql', 'chunk2-four-step.sql', 'chunk3-matching-engine.sql', 'chunk4-commerce-release.sql', 'chunk5-materials-delivery.sql', 'chunk6-final-integration.sql', 'employer-first-aggregation.sql', 'matching-fulfillment.sql', 'unpaid-source-retention.sql')
 if ($LegacyBackfill) { $fixtures = @('chunk1-legacy-fixture.sql', 'chunk1-legacy-verify.sql') }
 $inputs = @([pscustomobject]@{Kind='bootstrap'; Name='bootstrap.sql'; Path=$bootstrapPath})
 foreach ($migration in $migrationFiles) {
@@ -123,7 +123,7 @@ if ($CapacityPressure) {
 $previousOptions = $env:PGOPTIONS
 try {
   Invoke-Native 'psql.exe' @('--version')
-  Invoke-Native 'initdb.exe' @('-D', $dataPath, '-U', 'postgres', '--auth=trust', '--encoding=UTF8', '--locale=C')
+  Invoke-Native 'initdb.exe' @('-D', $dataPath, '-U', 'postgres', '--auth=trust', '--encoding=UTF8', '--locale=C') 180
   Invoke-Native 'pg_ctl.exe' @('-D', $dataPath, '-l', $serverLog, '-o', "-h 127.0.0.1 -p $port", '-w', '-t', '30', 'start')
   $env:PGOPTIONS = '-c statement_timeout=60000 -c lock_timeout=10000'
   $batchPath = Join-Path $inputPath 'run-all.sql'

@@ -7,6 +7,7 @@ import { processWorkflowTasks } from "@/lib/workflow/process";
 import { processPendingFileScans } from "@/lib/files/process-scans";
 import { fileScanConfiguration } from "@/lib/files/scanner";
 import { processPendingDocumentExtractions } from "@/lib/files/isolated-extraction";
+import { processUnpaidSourceRetention } from "@/lib/files/unpaid-retention";
 import { processPendingFeasibilityRequests } from "@/lib/matching/supabase-feasibility-store";
 import { processChunk4Workers } from "@/lib/commerce/workers";
 import { reconcileBoardSubscriptions } from "@/lib/job-board/stripe-events";
@@ -260,6 +261,8 @@ export async function POST(request: Request) {
     if (fileScans && fileScans.errors > 0) queueStages.malware = "FAILED";
   } else fileScans = { status: "DEFERRED_V2", malwareVerdict: "NOT_SCANNED", processed: 0 };
   const feasibility = await processQueue("feasibility", encryptionReady && sourcesReady, () => processPendingFeasibilityRequests(admin, 5));
+  const unpaidSourceRetention = await processQueue("unpaidSourceRetention", true, () => processUnpaidSourceRetention(admin, 10));
+  if (unpaidSourceRetention && unpaidSourceRetention.failed > 0) queueStages.unpaidSourceRetention = "FAILED";
   const workflow = await processQueue("workflow", encryptionReady && sourcesReady, () => processWorkflowTasks(admin, 2));
   const emailRetries = await processQueue("email", encryptionReady && emailReady, () => retryFailedEmails(admin, 10));
   const chunk4 = await processQueue("commerce", encryptionReady, () => processChunk4Workers(admin, 20));
@@ -307,6 +310,7 @@ export async function POST(request: Request) {
     fileScans,
     documentExtractions,
     queueStages,
+    unpaidSourceRetention,
     emailRetries,
     chunk4,
     boardSubscriptionsReconciled,

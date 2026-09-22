@@ -25,10 +25,14 @@ export function SiteHeader() {
       if (event.key === "Escape") setOpen(false);
       if (event.key === "Tab" && menuRef.current) {
         const focusable = Array.from(menuRef.current.querySelectorAll<HTMLElement>("a[href], button:not([disabled])"));
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        if (focusable.length === 0) return;
+        // Safari can omit links from native Tab traversal. Cycle the whole dialog
+        // explicitly so every navigation link remains keyboard reachable.
+        const current = focusable.findIndex((element) => element === document.activeElement);
+        const next = current < 0 ? (event.shiftKey ? focusable.length - 1 : 0)
+          : (current + (event.shiftKey ? -1 : 1) + focusable.length) % focusable.length;
+        event.preventDefault();
+        focusable[next]?.focus();
       }
     };
     window.addEventListener("keydown", handleKey);

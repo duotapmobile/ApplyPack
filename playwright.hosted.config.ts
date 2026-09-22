@@ -5,7 +5,8 @@ if (new URL(baseURL).origin !== "https://applypack-staging-staging.up.railway.ap
   throw new Error("Hosted rehearsal is restricted to the verified ApplyPack staging service.");
 }
 export default defineConfig({
-  testDir: "./tests/hosted", fullyParallel: false, workers: 1, retries: 0, timeout: 90_000,
+  testDir: "./tests",
+  testMatch: ["hosted/**/*.spec.ts", "e2e/public-controls.spec.ts"], fullyParallel: false, workers: 1, retries: 0, timeout: 90_000,
   forbidOnly: Boolean(process.env.CI),
   outputDir: "evidence/soft-opening/browser-artifacts",
   reporter: [["list"], ["html", { outputFolder: "evidence/soft-opening/browser-report", open: "never" }]],

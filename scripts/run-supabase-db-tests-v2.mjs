@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const fixtures = [
+  "../tests/integration/unpaid-source-retention.sql",
   "../tests/integration/chunk1-foundation.sql",
   "../tests/integration/chunk2-four-step.sql",
   "../tests/integration/chunk3-matching-engine.sql",

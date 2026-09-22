@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { waitForHydration } from "./helpers/hydration";
 
 async function findOverflow(page: Page) {
   return page.evaluate(() => {
@@ -156,6 +157,7 @@ for (const viewport of [
 test("why-customize passes focused accessibility and reduced-motion checks", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/why-customize");
+  await waitForHydration(page);
   const results = await new AxeBuilder({ page }).exclude("script").analyze();
   expect(results.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
   const questionControl = page.locator("details summary span").first();

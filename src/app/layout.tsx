@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
+import { HydrationStatus } from "@/components/layout/hydration-status";
 import { siteConfig } from "@/config/site";
 import "./globals.css";
 import "./brief.css";
@@ -23,5 +24,5 @@ export const viewport: Viewport = { themeColor: "#021185", colorScheme: "light" 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const organizationData = { "@context": "https://schema.org", "@type": "Organization", name: siteConfig.name, legalName: siteConfig.legalEntity, url: siteConfig.url, email: siteConfig.email.support };
   const serviceData = { "@context": "https://schema.org", "@type": "Service", name: "ApplyPack Job Search and Application Help", provider: { "@type": "Organization", name: siteConfig.legalEntity }, areaServed: "US", offers: [{ "@type": "Offer", name: "10 Researched Job Matches", price: "20.00", priceCurrency: "USD" }, { "@type": "Offer", name: "Tailored Resume + Cover Letter", price: "8.00", priceCurrency: "USD" }] };
-  return <html lang="en-US" data-scroll-behavior="smooth"><body><a className="skip-link" href="#main-content">Skip to main content</a><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationData).replace(/</g, "\u003c") }} /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(serviceData).replace(/</g, "\u003c") }} /><SiteHeader />{children}<SiteFooter /></body></html>;
+  return <html lang="en-US" data-scroll-behavior="smooth"><body><a className="skip-link" href="#main-content">Skip to main content</a><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationData).replace(/</g, "\u003c") }} /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(serviceData).replace(/</g, "\u003c") }} /><SiteHeader />{children}<SiteFooter /><HydrationStatus /></body></html>;
 }

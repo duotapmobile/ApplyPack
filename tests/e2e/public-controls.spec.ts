@@ -1,8 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { waitForHydration } from "./helpers/hydration";
 
 test("mobile navigation traps keyboard focus, restores it on Escape, and follows links", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  await waitForHydration(page);
   const trigger = page.getByRole("button", { name: "Open navigation" });
   await trigger.focus();
   await page.keyboard.press("Enter");
@@ -25,6 +27,8 @@ test("mobile navigation traps keyboard focus, restores it on Escape, and follows
   expect(await page.locator("body").evaluate((body) => body.style.overflow)).not.toBe("hidden");
   await page.keyboard.press("Enter");
   await dialog.getByRole("link", { name: "Contact", exact: true }).click();
+  // The destination may need its first development compilation on this worker.
+  await page.waitForURL(/\/contact$/, { timeout: 30_000 });
   await expect(page).toHaveURL(/\/contact$/);
   await expect(dialog).toHaveCount(0);
   await expect(page.locator("main h1")).toBeVisible();
@@ -32,6 +36,7 @@ test("mobile navigation traps keyboard focus, restores it on Escape, and follows
 
 test("illustrative match tabs expose one panel and support arrow, Home, and End keys", async ({ page }) => {
   await page.goto("/");
+  await waitForHydration(page);
   const tabs = page.getByRole("tablist", { name: "Reasons this illustrative job made the list" });
   const experience = tabs.getByRole("tab", { name: "Experience fit" });
   const life = tabs.getByRole("tab", { name: "Life fit" });
@@ -58,6 +63,7 @@ test("illustrative match tabs expose one panel and support arrow, Home, and End 
 
 test("homepage example, process, and FAQ controls respond to keyboard activation", async ({ page }) => {
   await page.goto("/");
+  await waitForHydration(page);
   const example = page.getByRole("button", { name: "Small business", exact: true });
   await example.focus();
   await page.keyboard.press("Space");

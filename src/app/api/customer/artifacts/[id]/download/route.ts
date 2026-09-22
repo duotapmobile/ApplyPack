@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isCurrentDocumentGeneratorVersion } from "@/lib/documents/requirements";
 import { MATERIAL_DOWNLOAD_SECONDS } from "@/lib/materials/contract";
-import { authenticationIssuedAt, isFreshAuthentication } from "@/lib/materials/server";
+import { verifiedAuthenticationAt, isFreshAuthentication } from "@/lib/materials/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -24,7 +24,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     supabase.auth.getSession(),
   ]);
   if (!authData.user) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-  const issuedAt = authenticationIssuedAt(sessionData.session?.access_token);
+  const token = sessionData.session?.access_token;
+  const verified = token ? await supabase.auth.getClaims(token).catch(() => null) : null;
+  const issuedAt = verified && !verified.error ? verifiedAuthenticationAt(verified.data?.claims, authData.user.id) : null;
   if (!isFreshAuthentication(issuedAt)) {
     return NextResponse.json({
       error: "Sign in again before requesting a new 15-minute download.",

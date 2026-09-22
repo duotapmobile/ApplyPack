@@ -7471,6 +7471,47 @@ export type Database = {
           },
         ]
       }
+      ap_unpaid_source_cleanup: {
+        Row: {
+          attempts: number
+          deleted_at: string | null
+          deletion_authorized_at: string | null
+          document_id: string
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_token: string | null
+          state: string
+        }
+        Insert: {
+          attempts?: number
+          deleted_at?: string | null
+          deletion_authorized_at?: string | null
+          document_id: string
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          state?: string
+        }
+        Update: {
+          attempts?: number
+          deleted_at?: string | null
+          deletion_authorized_at?: string | null
+          document_id?: string
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_unpaid_source_cleanup_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: true
+            referencedRelation: "ap_document_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       api_rate_limits: {
         Row: {
           key_hash: string
@@ -10564,6 +10605,10 @@ export type Database = {
         }
         Returns: Json
       }
+      ap_authorize_unpaid_source_delete: {
+        Args: { p_document_id: string; p_lease_token: string }
+        Returns: Json
+      }
       ap_begin_board_material_checkout: {
         Args: {
           p_board_admission_id: string
@@ -10838,6 +10883,13 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      ap_claim_unpaid_source_cleanup: {
+        Args: { p_limit?: number }
+        Returns: {
+          document_id: string
+          lease_token: string
+        }[]
       }
       ap_commit_exact_ten_release: {
         Args: {
@@ -11158,6 +11210,14 @@ export type Database = {
           p_job_id: string
           p_owner: string
           p_success: boolean
+        }
+        Returns: boolean
+      }
+      ap_finish_unpaid_source_delete: {
+        Args: {
+          p_document_id: string
+          p_lease_token: string
+          p_succeeded: boolean
         }
         Returns: boolean
       }
@@ -11768,6 +11828,10 @@ export type Database = {
           p_search_service_id: string
         }
         Returns: string
+      }
+      ap_unpaid_source_retention_eligible: {
+        Args: { p_document_id: string }
+        Returns: boolean
       }
       ap_upsert_employer_submission_rules: {
         Args: {
