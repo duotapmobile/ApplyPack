@@ -1,30 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const dependencies = vi.hoisted(() => ({
-  adminClient: vi.fn(),
-  collectOperationsSummary: vi.fn(),
-  recordMaintenanceDiagnosis: vi.fn(),
-  recordMaintenanceFailure: vi.fn(),
-  recordMaintenanceOutcome: vi.fn(),
-  processPendingFileScans: vi.fn(),
-  processPendingFeasibilityRequests: vi.fn(),
-  processWorkflowTasks: vi.fn(),
-  retryFailedEmails: vi.fn(),
-  processChunk4Workers: vi.fn(),
-  reconcileBoardSubscriptions: vi.fn(),
-  processBoardRecomputeJobs: vi.fn(),
-  stripeClient: vi.fn(),
-  sendTransactionalEmail: vi.fn(),
-}));
-
+const dependencies = vi.hoisted(() => Object.fromEntries([
+  "adminClient", "collectOperationsSummary", "recordMaintenanceDiagnosis", "recordMaintenanceFailure", "recordMaintenanceOutcome",
+  "processPendingFileScans", "processPendingDocumentExtractions", "processPendingFeasibilityRequests", "processWorkflowTasks",
+  "retryFailedEmails", "processChunk4Workers", "reconcileBoardSubscriptions", "processBoardRecomputeJobs", "stripeClient", "sendTransactionalEmail",
+].map(name => [name, vi.fn()])) as Record<string, ReturnType<typeof vi.fn>>);
 vi.mock("@/lib/supabase/admin", () => ({ createSupabaseAdminClient: dependencies.adminClient }));
 vi.mock("@/lib/operations/summary", () => ({ collectOperationsSummary: dependencies.collectOperationsSummary }));
 vi.mock("@/lib/operations/maintenance-observability", () => ({
-  recordMaintenanceDiagnosis: dependencies.recordMaintenanceDiagnosis,
-  recordMaintenanceFailure: dependencies.recordMaintenanceFailure,
+  recordMaintenanceDiagnosis: dependencies.recordMaintenanceDiagnosis, recordMaintenanceFailure: dependencies.recordMaintenanceFailure,
   recordMaintenanceOutcome: dependencies.recordMaintenanceOutcome,
 }));
 vi.mock("@/lib/files/process-scans", () => ({ processPendingFileScans: dependencies.processPendingFileScans }));
+vi.mock("@/lib/files/isolated-extraction", () => ({ processPendingDocumentExtractions: dependencies.processPendingDocumentExtractions }));
 vi.mock("@/lib/matching/supabase-feasibility-store", () => ({ processPendingFeasibilityRequests: dependencies.processPendingFeasibilityRequests }));
 vi.mock("@/lib/workflow/process", () => ({ processWorkflowTasks: dependencies.processWorkflowTasks }));
 vi.mock("@/lib/email/retry", () => ({ retryFailedEmails: dependencies.retryFailedEmails }));
@@ -35,32 +23,27 @@ vi.mock("@/lib/stripe/server", () => ({ createStripeOperationalClient: dependenc
 vi.mock("@/lib/email/send", () => ({ sendTransactionalEmail: dependencies.sendTransactionalEmail }));
 
 import { POST } from "@/app/api/cron/maintenance/route";
-
-function fluentQuery(result: Record<string, unknown> = { data: [], error: null, count: 0 }) {
+function query() {
   const chain: Record<string, unknown> = {};
-  for (const method of ["select", "update", "delete", "eq", "not", "is", "lt", "lte", "in", "order", "limit"]) {
-    chain[method] = vi.fn(() => chain);
-  }
-  chain.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve(result).then(resolve, reject);
+  for (const method of ["select", "update", "delete", "eq", "not", "is", "lt", "lte", "in", "order", "limit"]) chain[method] = vi.fn(() => chain);
+  chain.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ data: [], error: null, count: 0 }).then(resolve);
   return chain;
 }
-
-function successfulAdmin() {
-  return {
-    from: vi.fn(() => fluentQuery()),
-    rpc: vi.fn((name: string) => Promise.resolve({ data: name === "mark_stale_jobs_inactive" ? 0 : true, error: null })),
-    storage: { from: vi.fn(() => ({ remove: vi.fn().mockResolvedValue({ error: null }) })) },
-  };
-}
-
-describe("maintenance route security boundary", () => {
+const request = () => new Request("https://example.test/api/cron/maintenance", { method: "POST", headers: { authorization: "Bearer maintenance-test-secret" } });
+describe("maintenance authorization and independent queues", () => {
   beforeEach(() => {
-    process.env.CRON_SECRET = "maintenance-test-secret";
-    Object.values(dependencies).forEach((mock) => mock.mockReset());
-    dependencies.adminClient.mockReturnValue({ from: vi.fn(), rpc: vi.fn(), storage: { from: vi.fn() } });
+    vi.stubEnv("CRON_SECRET", "maintenance-test-secret");
+    vi.stubEnv("APP_ADMIN_ALERT_EMAIL", "");
+    Object.values(dependencies).forEach(mock => mock.mockReset());
+    dependencies.adminClient.mockReturnValue({ from: vi.fn(query), rpc: vi.fn().mockResolvedValue({ data: 0, error: null }),
+      storage: { from: vi.fn(() => ({ remove: vi.fn().mockResolvedValue({ error: null }) })) } });
     dependencies.collectOperationsSummary.mockResolvedValue({ environment: "staging", releaseSha: "76e42f6" });
-    dependencies.recordMaintenanceFailure.mockResolvedValue({ unresolvedCodes: [] });
     dependencies.recordMaintenanceDiagnosis.mockResolvedValue({ codes: [], failClosedCodes: [], repairableCodes: [] });
+    dependencies.recordMaintenanceFailure.mockResolvedValue({ unresolvedCodes: [] });
+    dependencies.recordMaintenanceOutcome.mockImplementation(async (_admin, _before, _after, actions) => ({
+      unresolvedCodes: actions.filter((action: {status: string}) => action.status === "FAILED").map((action: {code: string}) => action.code + "_FAILED"),
+    }));
+    dependencies.processPendingDocumentExtractions.mockResolvedValue({ processed: 0, succeeded: 0 });
     dependencies.processPendingFileScans.mockResolvedValue({ processed: 0 });
     dependencies.processPendingFeasibilityRequests.mockResolvedValue({ processed: 0 });
     dependencies.processWorkflowTasks.mockResolvedValue({ processed: 0 });
@@ -68,98 +51,63 @@ describe("maintenance route security boundary", () => {
     dependencies.processChunk4Workers.mockResolvedValue({ status: "enabled", processed: 0 });
     dependencies.stripeClient.mockReturnValue({});
     dependencies.reconcileBoardSubscriptions.mockResolvedValue(0);
-    dependencies.processBoardRecomputeJobs.mockResolvedValue({ status: "enabled", processed: 0, decisions: 0 });
+    dependencies.processBoardRecomputeJobs.mockResolvedValue({ status: "enabled", processed: 0 });
   });
+  afterEach(() => vi.unstubAllEnvs());
 
-  afterEach(() => {
-    delete process.env.CRON_SECRET;
+  it("rejects an unauthenticated call before accessing the database", async () => {
+    expect((await POST(new Request("https://example.test/api/cron/maintenance", { method: "POST" }))).status).toBe(401);
+    expect(dependencies.adminClient).not.toHaveBeenCalled();
   });
-
-  it("persists diagnosis and invokes zero repair processors when a fail-closed condition is present", async () => {
-    dependencies.recordMaintenanceDiagnosis.mockResolvedValue({
-      codes: ["PAYMENT_INTEGRITY_NOT_READY"],
-      failClosedCodes: ["PAYMENT_INTEGRITY_NOT_READY"],
-      repairableCodes: [],
-    });
-    const response = await POST(new Request("https://example.test/api/cron/maintenance", {
-      method: "POST",
-      headers: { authorization: "Bearer maintenance-test-secret" },
-    }));
+  it.each(["DATABASE_NOT_READY", "CRITICAL_SECURITY_OR_INTEGRITY_ALERT_OPEN"])("stops every processor for %s", async code => {
+    dependencies.recordMaintenanceDiagnosis.mockResolvedValue({ codes: [code], failClosedCodes: [code], repairableCodes: [] });
+    const response = await POST(request());
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({
-      error: "Maintenance stopped by a fail-closed condition.",
-      codes: ["PAYMENT_INTEGRITY_NOT_READY"],
-    });
-    expect(dependencies.recordMaintenanceDiagnosis).toHaveBeenCalledTimes(1);
-    expect(dependencies.processPendingFileScans).not.toHaveBeenCalled();
-    expect(dependencies.processPendingFeasibilityRequests).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({ codes: [code] });
+    expect(dependencies.processPendingDocumentExtractions).not.toHaveBeenCalled();
     expect(dependencies.processWorkflowTasks).not.toHaveBeenCalled();
+    expect(dependencies.reconcileBoardSubscriptions).not.toHaveBeenCalled();
+  });
+  it("keeps parsing and paid-obligation reconciliation available while purchasing is disabled", async () => {
+    dependencies.recordMaintenanceDiagnosis.mockResolvedValue({ codes: ["PAYMENT_INTEGRITY_NOT_READY"], failClosedCodes: ["PAYMENT_INTEGRITY_NOT_READY"], repairableCodes: [] });
+    dependencies.recordMaintenanceOutcome.mockResolvedValue({ unresolvedCodes: ["PAYMENT_INTEGRITY_NOT_READY"] });
+    const response = await POST(request());
+    expect(response.status).toBe(503);
+    expect(dependencies.processPendingDocumentExtractions).toHaveBeenCalledWith(expect.anything(), 2);
+    expect(dependencies.reconcileBoardSubscriptions).toHaveBeenCalledOnce();
+    expect(dependencies.processWorkflowTasks).toHaveBeenCalledOnce();
+  });
+  it("skips unsafe parsing and encrypted payload work but still reconciles subscriptions", async () => {
+    dependencies.recordMaintenanceDiagnosis.mockResolvedValue({ codes: ["FILE_SAFETY_NOT_READY", "ENCRYPTION_NOT_READY"], failClosedCodes: ["FILE_SAFETY_NOT_READY", "ENCRYPTION_NOT_READY"], repairableCodes: [] });
+    expect((await POST(request())).status).toBe(503);
+    expect(dependencies.processPendingDocumentExtractions).not.toHaveBeenCalled();
     expect(dependencies.processChunk4Workers).not.toHaveBeenCalled();
-    expect(dependencies.reconcileBoardSubscriptions).not.toHaveBeenCalled();
-    expect(dependencies.processBoardRecomputeJobs).not.toHaveBeenCalled();
-  });
-
-  it("records a stable diagnosis failure and returns 503 when the before snapshot cannot be collected", async () => {
-    dependencies.collectOperationsSummary.mockRejectedValue(new Error("provider details must not escape"));
-    const response = await POST(new Request("https://example.test/api/cron/maintenance", {
-      method: "POST",
-      headers: { authorization: "Bearer maintenance-test-secret" },
-    }));
-    expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({
-      error: "Maintenance diagnosis unavailable.",
-      code: "MAINTENANCE_DIAGNOSIS_FAILED",
-    });
-    expect(dependencies.recordMaintenanceFailure).toHaveBeenCalledWith(
-      expect.anything(),
-      null,
-      "MAINTENANCE_DIAGNOSIS_FAILED",
-      [],
-      expect.any(Date),
-    );
     expect(dependencies.processWorkflowTasks).not.toHaveBeenCalled();
+    expect(dependencies.reconcileBoardSubscriptions).toHaveBeenCalledOnce();
   });
-
-  it("records disabled Chunk 4 processing as a stable failure instead of a successful action", async () => {
-    dependencies.adminClient.mockReturnValue(successfulAdmin());
-    dependencies.processChunk4Workers.mockResolvedValue({ status: "disabled", processed: 0 });
-    const response = await POST(new Request("https://example.test/api/cron/maintenance", {
-      method: "POST",
-      headers: { authorization: "Bearer maintenance-test-secret" },
-    }));
+  it("records parsing failure while unrelated queues continue", async () => {
+    dependencies.processPendingDocumentExtractions.mockRejectedValue(new Error("private provider detail"));
+    const response = await POST(request());
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({
-      error: "Bounded queue processing is disabled or unavailable.",
-      code: "BOUNDED_QUEUE_PROCESSING_FAILED",
-    });
-    expect(dependencies.recordMaintenanceFailure).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.anything(),
-      "BOUNDED_QUEUE_PROCESSING_FAILED",
-      expect.arrayContaining([{ code: "BOUNDED_QUEUE_PROCESSING", status: "FAILED" }]),
-      expect.any(Date),
-    );
-    expect(dependencies.reconcileBoardSubscriptions).not.toHaveBeenCalled();
+    expect(await response.text()).not.toContain("private provider detail");
+    expect(dependencies.processWorkflowTasks).toHaveBeenCalledOnce();
+    expect(dependencies.processBoardRecomputeJobs).toHaveBeenCalledOnce();
+    expect(dependencies.recordMaintenanceOutcome).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(),
+      expect.arrayContaining([{ code: "DOCUMENT_PROCESSING", status: "FAILED" }]), expect.any(Date));
   });
-
-  it("records disabled board recomputation as a stable failure instead of a successful action", async () => {
-    dependencies.adminClient.mockReturnValue(successfulAdmin());
-    dependencies.processBoardRecomputeJobs.mockResolvedValue({ status: "disabled", processed: 0, decisions: 0 });
-    const response = await POST(new Request("https://example.test/api/cron/maintenance", {
-      method: "POST",
-      headers: { authorization: "Bearer maintenance-test-secret" },
-    }));
+  it.each(["processChunk4Workers", "processBoardRecomputeJobs"])("records disabled %s without aborting other maintenance", async name => {
+    dependencies[name].mockResolvedValue({ status: "disabled", processed: 0 });
+    expect((await POST(request())).status).toBe(503);
+    expect(dependencies.processPendingDocumentExtractions).toHaveBeenCalledOnce();
+    expect(dependencies.reconcileBoardSubscriptions).toHaveBeenCalledOnce();
+    expect(dependencies.recordMaintenanceOutcome).toHaveBeenCalledOnce();
+  });
+  it("records a diagnosis failure without invoking processors", async () => {
+    dependencies.collectOperationsSummary.mockRejectedValue(new Error("provider secret"));
+    const response = await POST(request());
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({
-      error: "Board recomputation is disabled or unavailable.",
-      code: "BOARD_RECOMPUTATION_FAILED",
-    });
-    expect(dependencies.recordMaintenanceFailure).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.anything(),
-      "BOARD_RECOMPUTATION_FAILED",
-      expect.arrayContaining([{ code: "BOARD_RECOMPUTATION", status: "FAILED" }]),
-      expect.any(Date),
-    );
+    expect(await response.json()).toMatchObject({ code: "MAINTENANCE_DIAGNOSIS_FAILED" });
+    expect(dependencies.recordMaintenanceFailure).toHaveBeenCalledOnce();
+    expect(dependencies.processPendingDocumentExtractions).not.toHaveBeenCalled();
   });
 });

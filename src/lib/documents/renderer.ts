@@ -8,7 +8,8 @@ import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 
-import { pdfFontTableUsesArial } from "@/lib/documents/font-validation";
+import { pdfFontTableUsesApprovedFont } from "@/lib/documents/font-validation";
+import { pdfTextBoundsAreValid } from "@/lib/documents/pdf-bounds";
 import { pdfStructureIsValid, pdfCatalogLanguageMatches } from "@/lib/documents/pdf-validation";
 import { DOCUMENT_REQUIREMENTS } from "@/lib/documents/requirements";
 import { normalizeRenderedDocumentText } from "@/lib/documents/text-validation";
@@ -21,9 +22,9 @@ type LocalTool = { path: string; sha256: string };
 
 export type LocalRenderResult = {
   rendererIdentity: string;
-  arialFontSha256: string;
+  documentFontSha256: string;
   pageCount: 1 | 2;
-  arialResolved: true;
+  documentFontResolved: true;
   extractedTextSha256: string;
   pageImages: Array<{ bytes: Buffer; sha256: string }>;
   taggedPdf: true;
@@ -45,16 +46,16 @@ export function documentRendererConfiguration(environment: Partial<NodeJS.Proces
     pdfText: tool("APP_PDFTOTEXT_EXECUTABLE", "APP_PDFTOTEXT_EXECUTABLE_SHA256"),
     pdfPpm: tool("APP_PDFTOPPM_EXECUTABLE", "APP_PDFTOPPM_EXECUTABLE_SHA256"),
   };
-  const arialFont = tool("APP_ARIAL_FONT_FILE", "APP_ARIAL_FONT_FILE_SHA256");
+  const documentFont = tool("APP_DOCUMENT_FONT_FILE", "APP_DOCUMENT_FONT_FILE_SHA256");
   const identity = environment.APP_DOCUMENT_RENDERER_IDENTITY?.trim() || "";
   const values = Object.values(tools);
   return {
     identity,
     tools,
-    arialFont,
+    documentFont,
     ready: identity.length >= 3
       && values.every((value) => isAbsolute(value.path) && SHA256.test(value.sha256))
-      && isAbsolute(arialFont.path) && SHA256.test(arialFont.sha256),
+      && isAbsolute(documentFont.path) && SHA256.test(documentFont.sha256),
   } as const;
 }
 
@@ -68,7 +69,7 @@ export async function renderDocumentLocallyForQa(input: {
   const configuration = documentRendererConfiguration();
   if (!configuration.ready) throw new Error("approved_local_document_renderer_not_configured");
   await Promise.all(Object.values(configuration.tools).map(verifyTool));
-  await verifyTool(configuration.arialFont);
+  await verifyTool(configuration.documentFont);
   const work = await mkdtemp(join(tmpdir(), "applypack-render-"));
   const resolvedWork = resolve(work);
   const safeRoot = resolve(tmpdir()) + sep;
@@ -95,8 +96,10 @@ export async function renderDocumentLocallyForQa(input: {
     const pageMatch = pdfInfo.match(/^Pages:\s+(\d+)\s*$/im);
     const pageCount = Number(pageMatch?.[1]);
     if (pageCount !== input.expectedPages || ![1, 2].includes(pageCount)) throw new Error("rendered_page_count_invalid");
+    const boundingXml = await execute(configuration.tools.pdfText.path, ["-bbox-layout", pdfPath, "-"], 10_000);
+    if (!pdfTextBoundsAreValid(boundingXml, pageCount)) throw new Error("rendered_text_outside_page_or_bounds_invalid");
     const fontInfo = await execute(configuration.tools.pdfFonts.path, [pdfPath], 10_000);
-    if (!pdfFontTableUsesArial(fontInfo)) throw new Error("arial_font_not_resolved");
+    if (!pdfFontTableUsesApprovedFont(fontInfo)) throw new Error("document_font_not_resolved");
     await execute(configuration.tools.pdfText.path, ["-layout", "-nopgbrk", pdfPath, textPath], 10_000);
     const extractedText = normalizeRenderedDocumentText((await readFile(textPath)).toString("utf8"));
     const extractedTextSha256 = hash(Buffer.from(extractedText, "utf8"));
@@ -114,9 +117,9 @@ export async function renderDocumentLocallyForQa(input: {
     if (!searchablePdf.subarray(0, 5).equals(Buffer.from("%PDF-"))) throw new Error("rendered_pdf_invalid");
     return {
       rendererIdentity: configuration.identity,
-      arialFontSha256: configuration.arialFont.sha256,
+      documentFontSha256: configuration.documentFont.sha256,
       pageCount: pageCount as 1 | 2,
-      arialResolved: true,
+      documentFontResolved: true,
       extractedTextSha256,
       pageImages,
       searchablePdf,

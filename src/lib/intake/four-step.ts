@@ -143,7 +143,7 @@ export const factSuggestionSchema = z.object({
   id: z.uuid(),
   semanticKey: z.string().trim().min(1).max(300),
   displayLabel: z.string().trim().min(1).max(300),
-  displayValue: z.string().trim().min(1).max(1_000),
+  displayValue: z.string().trim().min(1).max(30_000),
   tier: z.enum(factTiers),
   verification: z.enum(["EXTRACTED_UNCONFIRMED", "CUSTOMER_CONFIRMED", "CUSTOMER_REJECTED", "DISPUTED"]),
   documentVersionId: z.uuid(),
@@ -287,7 +287,7 @@ export type IntakeDocument = {
   name: string;
   size: number;
   mimeType: string;
-  processingState: "UPLOADED" | "QUARANTINED" | "SCANNING" | "EXTRACTING" | "READY" | "FAILED" | "SUPERSEDED";
+  processingState: "UPLOADED" | "QUARANTINED" | "SCANNING" | "EXTRACTING" | "REVIEW_READY" | "READY" | "FAILED" | "SUPERSEDED";
   failureCode: string | null;
 };
 

@@ -10,11 +10,16 @@ const fixtures = [
   "../tests/integration/chunk5-materials-delivery.sql",
   "../tests/integration/chunk6-final-integration.sql",
   "../tests/integration/employer-first-aggregation.sql",
+  "../tests/integration/matching-fulfillment.sql",
 ];
 for (const fixture of fixtures) {
   const sqlPath = fileURLToPath(new URL(fixture, import.meta.url));
+  // stdin-fed psql cannot resolve repository-relative includes inside Docker.
+  // Expand this single reviewed, local helper; no arbitrary include paths.
+  const sql = readFileSync(sqlPath, "utf8").replace(/^\\ir reviewed-source-fixture\.sql\r?$/gm,
+    () => readFileSync(fileURLToPath(new URL("../tests/integration/reviewed-source-fixture.sql", import.meta.url)), "utf8"));
   const result = spawnSync("docker", ["exec", "-i", "supabase_db_applypack", "psql", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"], {
-    encoding: "utf8", input: readFileSync(sqlPath, "utf8"), stdio: ["pipe", "pipe", "pipe"], timeout: 60_000,
+    encoding: "utf8", input: sql, stdio: ["pipe", "pipe", "pipe"], timeout: 60_000,
   });
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);

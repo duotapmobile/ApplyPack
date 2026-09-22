@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/start-production.mjs",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -22,9 +22,12 @@
     "jobs:sources:export": "node --experimental-strip-types scripts/export-job-source-inventory.mjs",
     "stripe:configure:test": "node scripts/configure-stripe-test-prices.mjs",
     "jobs:seed:synthetic-staging": "node scripts/seed-synthetic-board-staging.mjs --confirm-staging-synthetic",
-    "staging:readiness": "node scripts/report-staging-readiness.mjs"
+    "staging:readiness": "node scripts/report-staging-readiness.mjs",
+    "test:hosted": "playwright test --config playwright.hosted.config.ts",
+    "test:fixtures": "node scripts/generate-soft-opening-fixtures.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-kms": "3.1137.0",
     "@fontsource/lato": "5.3.0",
     "@fontsource/source-serif-pro": "5.3.0",
     "@supabase/ssr": "^0.12.5",
@@ -36,6 +39,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "resend": "^6.25.0",
+    "saxes": "6.0.0",
     "server-only": "^0.0.1",
     "stripe": "^22.6.0",
     "zod": "^4.5.4"

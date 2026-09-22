@@ -3,7 +3,9 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { assertConfiguredPrice, assertConfiguredRecurringPrice, createStripeOperationalClient } from "@/lib/stripe/server";
 import { checkoutConfiguration } from "@/lib/stripe/mode";
 import { boardPlans, boardPlanPriceId } from "@/lib/job-board/plans";
-import { checkFileScannerHealth, fileScanConfiguration } from "@/lib/files/scanner";
+import { checkRuntimeFileSafety } from "@/lib/operations/runtime-readiness";
+import { checkSensitivePayloadHealth } from "@/lib/security/kms-health";
+import { checkDocumentRendererReadiness } from "@/lib/operations/renderer-readiness";
 import { maintenanceHeartbeatIsFresh } from "@/lib/operations/summary";
 
 export const dynamic = "force-dynamic";
@@ -40,8 +42,8 @@ async function stripeReady() {
 }
 
 export async function GET() {
-  const fileScan = fileScanConfiguration();
-  const scannerHealthy = fileScan.liveReady ? await checkFileScannerHealth() : false;
+  const encryption = await checkSensitivePayloadHealth();
+  const fileSafety = await checkRuntimeFileSafety();
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
   let publicOrigin = false;
   try {
@@ -61,7 +63,9 @@ export async function GET() {
     payments,
     email: Boolean(process.env.RESEND_API_KEY && (process.env.EMAIL_FROM_ADDRESS || process.env.EMAIL_FROM) && emailRecentlyVerified),
     publicOrigin,
-    fileSafety: scannerHealthy,
+    fileSafety,
+    encryption,
+    documentRendering: false,
     maintenance: false,
   };
   let database = false;
@@ -70,6 +74,7 @@ export async function GET() {
   if (configured.supabase) {
     const admin = createSupabaseAdminClient();
     if (admin) {
+      configured.documentRendering = await checkDocumentRendererReadiness(admin).catch(() => false);
       const [
         { data: heartbeat, error: heartbeatError },
         { count: unresolvedOperationalAlerts, error: alertError },
@@ -94,8 +99,8 @@ export async function GET() {
       database = !error && data?.length === 2;
       const { data: sourceReadiness, error: sourceError } = await admin.rpc("ap_current_source_readiness");
       jobSourcesRegistered = !sourceError && sourceReadiness?.jobSourcesRegistered === true;
-      authorizedSourceInventory = !sourceError && process.env.APP_JOB_SOURCE_SYNC_ENABLED === "true"
-        && sourceReadiness?.authorizedSourceInventory === true;
+      authorizedSourceInventory = !sourceError && (sourceReadiness?.manualReady === true
+        || (process.env.APP_JOB_SOURCE_SYNC_ENABLED === "true" && sourceReadiness?.automatedReady === true));
     }
   }
   const ready = Object.values(configured).every(Boolean) && database && jobSourcesRegistered && authorizedSourceInventory;

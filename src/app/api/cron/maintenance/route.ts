@@ -5,6 +5,8 @@ import { retryFailedEmails } from "@/lib/email/retry";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { processWorkflowTasks } from "@/lib/workflow/process";
 import { processPendingFileScans } from "@/lib/files/process-scans";
+import { fileScanConfiguration } from "@/lib/files/scanner";
+import { processPendingDocumentExtractions } from "@/lib/files/isolated-extraction";
 import { processPendingFeasibilityRequests } from "@/lib/matching/supabase-feasibility-store";
 import { processChunk4Workers } from "@/lib/commerce/workers";
 import { reconcileBoardSubscriptions } from "@/lib/job-board/stripe-events";
@@ -52,10 +54,11 @@ export async function POST(request: Request) {
   } catch {
     return response({ error: "Maintenance diagnosis evidence unavailable.", code: "MAINTENANCE_DIAGNOSIS_FAILED" }, 503);
   }
-  if (beforeDiagnostic.failClosedCodes.length) {
+  const globalStops = beforeDiagnostic.failClosedCodes.filter((code) => ["DATABASE_NOT_READY", "CRITICAL_SECURITY_OR_INTEGRITY_ALERT_OPEN"].includes(code));
+  if (globalStops.length) {
     return response({
       error: "Maintenance stopped by a fail-closed condition.",
-      codes: beforeDiagnostic.failClosedCodes,
+      codes: globalStops,
     }, 503);
   }
   const fail = async (
@@ -186,7 +189,7 @@ export async function POST(request: Request) {
 
   const alertEmail = process.env.APP_ADMIN_ALERT_EMAIL;
   let alerts = 0;
-  if (alertEmail) {
+  if (alertEmail && !beforeDiagnostic.codes.includes("EMAIL_NOT_READY")) {
     const warningCutoff = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString();
     const { data: dueOrders, error: dueOrdersError } = await admin.from("orders")
       .select("id,product_kind,delivery_deadline,status")
@@ -230,48 +233,56 @@ export async function POST(request: Request) {
       }
     }
   }
+  const blocked = new Set<DiagnosticCode>(beforeDiagnostic.codes);
+  // A purchasing hold does not prevent cleanup, isolated parsing, or reconciliation
+  // of obligations already paid. Each processor still enforces its own authorization.
+  const fileReady = !blocked.has("FILE_SAFETY_NOT_READY");
+  const encryptionReady = !blocked.has("ENCRYPTION_NOT_READY");
+  const sourcesReady = !blocked.has("SOURCE_PERMISSION_COVERAGE_MISSING");
+  const emailReady = !blocked.has("EMAIL_NOT_READY");
+  let documentExtractions;
+  if (fileReady) {
+    try {
+      documentExtractions = await processPendingDocumentExtractions(admin, 2);
+      actions.push({ code: "DOCUMENT_PROCESSING", status: documentExtractions.succeeded === documentExtractions.processed ? "SUCCEEDED" : "FAILED" });
+    } catch { actions.push({ code: "DOCUMENT_PROCESSING", status: "FAILED" }); }
+  } else actions.push({ code: "DOCUMENT_PROCESSING", status: "SKIPPED" });
+
   let fileScans;
-  let feasibility;
-  let workflow;
-  let emailRetries;
-  let chunk4;
-  try {
-    fileScans = await processPendingFileScans(admin, 5);
-    feasibility = await processPendingFeasibilityRequests(admin, 5);
-    workflow = await processWorkflowTasks(admin, 2);
-    emailRetries = await retryFailedEmails(admin, 10);
-    chunk4 = await processChunk4Workers(admin, 20);
-  } catch {
-    return fail("BOUNDED_QUEUE_PROCESSING_FAILED", "BOUNDED_QUEUE_PROCESSING", "Bounded queue processing failed.");
+  const queueStages: Record<string, "SUCCEEDED" | "FAILED" | "SKIPPED"> = {};
+  async function processQueue<T>(name: string, enabled: boolean, processor: () => Promise<T>): Promise<T | undefined> {
+    if (!enabled) { queueStages[name] = "SKIPPED"; return; }
+    try { const result = await processor(); queueStages[name] = "SUCCEEDED"; return result; }
+    catch { queueStages[name] = "FAILED"; }
   }
-  if (chunk4.status !== "enabled") {
-    return fail("BOUNDED_QUEUE_PROCESSING_FAILED", "BOUNDED_QUEUE_PROCESSING", "Bounded queue processing is disabled or unavailable.");
-  }
-  actions.push({ code: "BOUNDED_QUEUE_PROCESSING", status: "SUCCEEDED" });
+  if (fileScanConfiguration().mode === "clamav") {
+    fileScans = await processQueue("malware", fileReady, () => processPendingFileScans(admin, 5));
+    if (fileScans && fileScans.errors > 0) queueStages.malware = "FAILED";
+  } else fileScans = { status: "DEFERRED_V2", malwareVerdict: "NOT_SCANNED", processed: 0 };
+  const feasibility = await processQueue("feasibility", encryptionReady && sourcesReady, () => processPendingFeasibilityRequests(admin, 5));
+  const workflow = await processQueue("workflow", encryptionReady && sourcesReady, () => processWorkflowTasks(admin, 2));
+  const emailRetries = await processQueue("email", encryptionReady && emailReady, () => retryFailedEmails(admin, 10));
+  const chunk4 = await processQueue("commerce", encryptionReady, () => processChunk4Workers(admin, 20));
+  if (chunk4 && chunk4.status !== "enabled") queueStages.commerce = "FAILED";
+  const queueStates = Object.values(queueStages);
+  actions.push({ code: "BOUNDED_QUEUE_PROCESSING", status: queueStates.includes("FAILED") ? "FAILED" : queueStates.includes("SKIPPED") ? "SKIPPED" : "SUCCEEDED" });
+
   const stripe = createStripeOperationalClient();
-  if (!stripe) {
-    return fail("STRIPE_RECONCILIATION_FAILED", "STRIPE_RECONCILIATION", "Stripe reconciliation is unavailable.");
-  }
   let boardSubscriptionsReconciled;
-  try {
-    boardSubscriptionsReconciled = await reconcileBoardSubscriptions(stripe, admin);
-  } catch {
-    return fail("STRIPE_RECONCILIATION_FAILED", "STRIPE_RECONCILIATION", "Stripe reconciliation failed.");
-  }
-  if (boardSubscriptionsReconciled < 0) {
-    return fail("STRIPE_RECONCILIATION_FAILED", "STRIPE_RECONCILIATION", "Stripe reconciliation failed.");
-  }
-  actions.push({ code: "STRIPE_RECONCILIATION", status: "SUCCEEDED" });
+  if (stripe) {
+    try {
+      boardSubscriptionsReconciled = await reconcileBoardSubscriptions(stripe, admin);
+      actions.push({ code: "STRIPE_RECONCILIATION", status: boardSubscriptionsReconciled >= 0 ? "SUCCEEDED" : "FAILED" });
+    } catch { actions.push({ code: "STRIPE_RECONCILIATION", status: "FAILED" }); }
+  } else actions.push({ code: "STRIPE_RECONCILIATION", status: "SKIPPED" });
+
   let boardAdmissions;
-  try {
-    boardAdmissions = await processBoardRecomputeJobs(admin, 10);
-  } catch {
-    return fail("BOARD_RECOMPUTATION_FAILED", "BOARD_RECOMPUTATION", "Board recomputation failed.");
-  }
-  if (boardAdmissions.status !== "enabled") {
-    return fail("BOARD_RECOMPUTATION_FAILED", "BOARD_RECOMPUTATION", "Board recomputation is disabled or unavailable.");
-  }
-  actions.push({ code: "BOARD_RECOMPUTATION", status: "SUCCEEDED" });
+  if (sourcesReady) {
+    try {
+      boardAdmissions = await processBoardRecomputeJobs(admin, 10);
+      actions.push({ code: "BOARD_RECOMPUTATION", status: boardAdmissions.status === "enabled" ? "SUCCEEDED" : "FAILED" });
+    } catch { actions.push({ code: "BOARD_RECOMPUTATION", status: "FAILED" }); }
+  } else actions.push({ code: "BOARD_RECOMPUTATION", status: "SKIPPED" });
   const afterSummary = await collectOperationsSummary(admin).catch(() => null);
   if (!afterSummary) {
     return fail("MAINTENANCE_VERIFICATION_FAILED", null, "Maintenance verification unavailable.");
@@ -280,7 +291,7 @@ export async function POST(request: Request) {
   if (!diagnostics) {
     return response({ error: "Maintenance evidence could not be recorded.", code: "MAINTENANCE_VERIFICATION_FAILED" }, 503);
   }
-  const healthy = diagnostics.unresolvedCodes.length === 0;
+  const healthy = diagnostics.unresolvedCodes.length === 0 && actions.every((action) => action.status === "SUCCEEDED");
   return NextResponse.json({
     ok: healthy,
     expiredReservations: reservationResult.data?.length || 0,
@@ -294,6 +305,8 @@ export async function POST(request: Request) {
     workflow,
     feasibility,
     fileScans,
+    documentExtractions,
+    queueStages,
     emailRetries,
     chunk4,
     boardSubscriptionsReconciled,

@@ -1,10 +1,11 @@
 import "server-only";
+import { deriveBoardRequirementGate, type PersistedCandidateFact, type PersistedRequirementRow, type PersistedIntakeForMatching } from "@/lib/matching/evidence-derived";
 
 import { createHash } from "node:crypto";
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
-export const BOARD_ADMISSION_VERSION = "board-admission-v3";
+export const BOARD_ADMISSION_VERSION = "board-admission-v4";
 
 export type BoardProfileEvidence = {
   desiredActivities: string[];
@@ -279,18 +280,34 @@ async function recomputeProfile(admin: AdminClient, customerId: string, snapshot
       .eq("profile_snapshot_id", snapshotId).eq("customer_id", customerId).maybeSingle();
     if (claim.error || !claim.data) throw claim.error || new Error("BOARD_PROFILE_NOT_OWNED");
   }
-  const factsResult = await admin.from("ap_candidate_facts").select("semantic_key,capability_status,verification")
+  const factsResult = await admin.from("ap_candidate_facts").select("*")
     .eq("snapshot_id", snapshotId).is("superseded_at", null);
   if (factsResult.error) throw factsResult.error;
   let jobsQuery = admin.from("jobs").select("id,title,raw_title,description,department,location_text,schedule_type,employment_type,work_mode,eligible_states,salary_min,salary_max,salary_currency,pay_period,sales_flag,commission_flag,phone_intensity,high_volume_contact_center_flag,benefits_status,is_active,listing_status,source_freshness_status,application_path_status,last_successfully_verified_at,closing_at,rejection_reason,official_application_url,source_job_url,source_id,source:job_sources(paid_display_permission_status,permission_evidence_url,is_active)");
   if (onlyJobId) jobsQuery = jobsQuery.eq("id", onlyJobId);
-  const jobsResult = await jobsQuery.limit(5_000);
-  if (jobsResult.error) throw jobsResult.error;
+  const jobsResult = await jobsQuery.limit(5_001);
+  if (jobsResult.error || (jobsResult.data?.length || 0)>5000) throw jobsResult.error || new Error("BOARD_JOB_BOUND_EXCEEDED");
   const profile = profileEvidence(snapshotResult.data as Record<string, unknown>, (factsResult.data || []) as Array<Record<string, unknown>>);
+  const jobIdsForEvidence = (jobsResult.data || []).map(j=>j.id);
+  const sourceRpc = admin.rpc.bind(admin) as unknown as (name: string,args: Record<string,unknown>) => Promise<{data:Array<{id:string;legacy_job_id:string;requirement_completeness:number;live_verified_at:string}> | null;error:unknown}>;
+  const verified = jobIdsForEvidence.length ? await sourceRpc("ap_current_verified_job_snapshots", {p_job_ids:jobIdsForEvidence}) : {data:[],error:null};
+  if(verified.error) throw verified.error;
+  const latest = new Map<string, {id:string;requirement_completeness:number}>();
+  for(const row of verified.data || []) if(row.legacy_job_id && !latest.has(row.legacy_job_id)) latest.set(row.legacy_job_id,row);
+  const snapshotIds=[...latest.values()].map(v=>v.id);
+  const requirements=snapshotIds.length ? await admin.from("ap_requirement_nodes").select("*").in("job_snapshot_id",snapshotIds).limit(10001) : {data:[],error:null};
+  if(requirements.error || (requirements.data?.length || 0)>10000) throw requirements.error || new Error("BOARD_REQUIREMENT_BOUND_EXCEEDED");
   const evaluatedAt = new Date().toISOString();
   const rows = (jobsResult.data || []).map((raw) => {
     const job = persistedJob(raw as Record<string, unknown>);
     const decision = evaluatePersistedBoardAdmission(profile, job);
+    const evidence=latest.get(job.id);
+    try {
+      if(!evidence || evidence.requirement_completeness!==100) throw new Error("missing");
+      const nodes=(requirements.data || []).filter(n=>n.job_snapshot_id===evidence.id) as unknown as PersistedRequirementRow[];
+      const gate=deriveBoardRequirementGate(snapshotResult.data as unknown as PersistedIntakeForMatching,nodes,(factsResult.data || []) as unknown as PersistedCandidateFact[]);
+      if(gate.result!=="PASS") {decision.admitted=false;decision.exclusionCodes.push(gate.result==="FAIL"?"TYPED_REQUIREMENT_FAILED":"TYPED_REQUIREMENT_UNRESOLVED");}
+    } catch {decision.admitted=false;decision.exclusionCodes.push("TYPED_REQUIREMENT_EVIDENCE_REQUIRED");}
     return { customer_id: customerId, profile_snapshot_id: snapshotId, job_id: job.id,
       decision: decision.admitted ? "ADMITTED" : "EXCLUDED", capability_connection_codes: decision.connectionCodes,
       exclusion_codes: decision.exclusionCodes, warning_codes: decision.warningCodes,

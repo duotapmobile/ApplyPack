@@ -51,4 +51,20 @@ describe("fail-closed document pipeline", () => {
     const result = await runSecureDocumentPipeline(new Uint8Array([1]), configured, { malwareScan: async () => ({ verdict: "CLEAN", reference: null }), parseLocally: async () => ({ text: "Contact my reference Jane Example\njane@example.invalid", pageCount: 1, reference: "fixture" }) });
     expect(result).toMatchObject({ stage: "REFERENCE_ISOLATION", errorCode: "reference_isolation_uncertain", modelInput: null });
   });
+  it("keeps unknown source pagination out of model-ready evidence", async () => {
+    const result = await runSecureDocumentPipeline(new Uint8Array([1]), { ...configured, safetyPolicy: "isolated-structural-v1" }, {
+      malwareScan: async () => ({ verdict: "CLEAN", reference: "scanner-fixture" }),
+      parseLocally: async () => ({ text: "Maintained customer records.", pageCount: null, paginationStatus: "UNKNOWN", reference: "fixture" }),
+    });
+    expect(result).toMatchObject({ stage: "OPERATOR_REVIEW", pageCount: null, paginationStatus: "UNKNOWN" });
+  });
+  it("keeps deferred malware scanning distinct from operator review eligibility", async () => {
+    const result = await runSecureDocumentPipeline(new Uint8Array([1]), { ...configured, safetyPolicy: "isolated-structural-v1" }, {
+      malwareScan: async () => ({ verdict: "NOT_SCANNED", reference: null }),
+      parseLocally: async () => ({ text: "Maintained customer records.", pageCount: 1, reference: "fixture" }),
+    });
+    expect(result.stage).toBe("OPERATOR_REVIEW");
+    expect(result.stageHistory).not.toContain("MODEL_READY");
+  });
+
 });

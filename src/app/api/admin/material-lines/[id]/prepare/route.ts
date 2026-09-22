@@ -34,11 +34,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const customerId = purchase.data.customer_id;
   const snapshotId = revision.data.source_snapshot_id;
   const jobId = revision.data.job_snapshot_id;
+  const ownership = await auth.admin.rpc("ap_customer_owns_snapshot", { p_customer_id: customerId, p_snapshot_id: snapshotId });
+  if (ownership.error || ownership.data !== true) return response({ error: "Current source ownership could not be verified." }, 409);
   const [facts, nodes, reviews, job, successor, intent] = await Promise.all([
-    auth.admin.from("ap_candidate_facts").select("id,typed_value,capability_status").eq("customer_id", customerId)
+    auth.admin.from("ap_candidate_facts").select("id,typed_value,capability_status").or(`customer_id.is.null,customer_id.eq.${customerId}`)
       .eq("snapshot_id", snapshotId).in("verification", ["CUSTOMER_CONFIRMED", "HUMAN_VERIFIED"]).is("superseded_at", null).limit(501),
     auth.admin.from("ap_requirement_nodes").select("id,stable_criterion_id,source_excerpt").eq("job_snapshot_id", jobId).eq("node_kind", "CRITERION").order("position").limit(201),
-    auth.admin.from("ap_human_review_records").select("decision").eq("customer_id", customerId)
+    auth.admin.from("ap_human_review_records").select("decision").or(`customer_id.is.null,customer_id.eq.${customerId}`)
       .eq("snapshot_id", snapshotId).eq("job_snapshot_id", jobId).eq("review_kind", "MATCH_EVIDENCE").is("invalidated_at", null).limit(201),
     auth.admin.from("ap_job_snapshots").select("company,exact_title,content_sha256").eq("id", jobId).maybeSingle(),
     auth.admin.from("ap_job_snapshots").select("id").eq("supersedes_job_snapshot_id", jobId).limit(1),

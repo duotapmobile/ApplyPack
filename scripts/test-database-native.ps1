@@ -1,7 +1,8 @@
 param(
-  [string]$PostgresBin = 'C:\Users\mskir\scoop\apps\postgresql\current\bin',
+  [string]$PostgresBin = (Join-Path $env:USERPROFILE 'scoop\apps\postgresql\current\bin'),
   [string]$EvidenceDirectory = (Join-Path ([IO.Path]::GetTempPath()) ('applypack-native-db-' + [guid]::NewGuid().ToString('N'))),
   [switch]$LegacyBackfill,
+  [switch]$CapacityPressure,
   [switch]$RetainClusterData
 )
 $ErrorActionPreference = 'Stop'
@@ -53,7 +54,7 @@ alter default privileges for role postgres in schema public grant all on functio
 $bootstrapPath = Join-Path $inputPath 'bootstrap.sql'
 Set-Content -LiteralPath $bootstrapPath -Value $bootstrap -Encoding utf8
 $migrationFiles = @(Get-ChildItem (Join-Path $repoRoot 'supabase/migrations') -Filter '*.sql' | Sort-Object Name)
-$fixtures = @('chunk1-foundation.sql', 'chunk2-four-step.sql', 'chunk3-matching-engine.sql', 'chunk4-commerce-release.sql', 'chunk5-materials-delivery.sql', 'chunk6-final-integration.sql', 'employer-first-aggregation.sql')
+$fixtures = @('chunk1-foundation.sql', 'chunk2-four-step.sql', 'chunk3-matching-engine.sql', 'chunk4-commerce-release.sql', 'chunk5-materials-delivery.sql', 'chunk6-final-integration.sql', 'employer-first-aggregation.sql', 'matching-fulfillment.sql')
 if ($LegacyBackfill) { $fixtures = @('chunk1-legacy-fixture.sql', 'chunk1-legacy-verify.sql') }
 $inputs = @([pscustomobject]@{Kind='bootstrap'; Name='bootstrap.sql'; Path=$bootstrapPath})
 foreach ($migration in $migrationFiles) {
@@ -73,6 +74,10 @@ if ($LegacyBackfill) {
     @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -gt '202609030021' }) +
     @($inputs | Where-Object Name -eq 'chunk1-legacy-verify.sql')
 }
+$sharedFixture = 'reviewed-source-fixture.sql'
+$sharedFixtureCopy = Join-Path $inputPath $sharedFixture
+Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$sharedFixture") -Destination $sharedFixtureCopy
+$inputs += [pscustomobject]@{Kind='helper'; Name=$sharedFixture; Path=$sharedFixtureCopy}
 $inputs | ForEach-Object { [pscustomobject]@{Kind=$_.Kind;Name=$_.Name;Sha256=(Get-FileHash -LiteralPath $_.Path -Algorithm SHA256).Hash} } | ConvertTo-Json | Set-Content (Join-Path $evidenceRoot 'input-hashes.json')
 @"
 Native PostgreSQL engine validation only. Synthetic auth.users/auth.uid/auth.jwt,
@@ -109,6 +114,12 @@ function Invoke-Native([string]$Executable, [string[]]$Arguments, [int]$TimeoutS
   if ($null -eq $code) { throw "$Executable exited without a readable exit code; refusing to infer success" }
   if ($code -ne 0) { $output | Select-Object -Last 18 | Write-Host; throw "$Executable failed with exit $code" }
 }
+if ($CapacityPressure) {
+  $pressureScript = Join-Path $inputPath 'test-capacity-pressure.py'
+  Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/test-capacity-pressure.py') -Destination $pressureScript
+  [pscustomobject]@{Name='test-capacity-pressure.py';Sha256=(Get-FileHash -LiteralPath $pressureScript -Algorithm SHA256).Hash} |
+    ConvertTo-Json | Set-Content (Join-Path $evidenceRoot 'capacity-script-hash.json')
+}
 $previousOptions = $env:PGOPTIONS
 try {
   Invoke-Native 'psql.exe' @('--version')
@@ -116,7 +127,7 @@ try {
   Invoke-Native 'pg_ctl.exe' @('-D', $dataPath, '-l', $serverLog, '-o', "-h 127.0.0.1 -p $port", '-w', '-t', '30', 'start')
   $env:PGOPTIONS = '-c statement_timeout=60000 -c lock_timeout=10000'
   $batchPath = Join-Path $inputPath 'run-all.sql'
-  $batch = foreach ($input in $inputs) {
+  $batch = foreach ($input in ($inputs | Where-Object Kind -ne 'helper')) {
     "\echo $($input.Kind): $($input.Name)"
     "\ir '" + $input.Path.Replace('\', '/').Replace("'", "\'") + "'"
   }
@@ -124,6 +135,12 @@ try {
   $step = 'batched migrations and fixtures; see validation.log for exact file'
   Write-Host "Running $($migrationFiles.Count) migrations and $($fixtures.Count) fixtures in one psql session."
   Invoke-Native 'psql.exe' @('-X', '-h', '127.0.0.1', '-p', "$port", '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-f', $batchPath) 600
+  if ($CapacityPressure) {
+    if ($LegacyBackfill) { throw 'Capacity pressure requires the fresh synthetic fixture mode.' }
+    $step = 'independent-connection synthetic capacity pressure'
+    & python $pressureScript --postgres-bin $PostgresBin --evidence-directory $evidenceRoot --port $port
+    if ($LASTEXITCODE -ne 0) { throw 'Capacity pressure failed; see process output.' }
+  }
   "PASS: $($migrationFiles.Count) migrations and $($fixtures.Count) fixtures; native PostgreSQL engine only." | Set-Content (Join-Path $evidenceRoot 'RESULT.txt')
 } catch {
   "FAIL: $step`n$($_.Exception.Message)" | Set-Content (Join-Path $evidenceRoot 'RESULT.txt')

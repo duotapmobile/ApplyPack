@@ -1,3 +1,4 @@
+import { validateMaterialClaims, type VerifiedClaimFact, type VerifiedJobExcerpt } from "./claim-validation";
 import { createHash } from "node:crypto";
 import {
   AlignmentType,
@@ -150,6 +151,7 @@ export type ClaimProvenanceEntry = {
 };
 
 export type ArtifactProvenance = {
+  matchingReviewIds?: string[];
   schemaVersion: "applypack-claim-provenance-v1";
   generatorVersion: string;
   artifact: "RESUME" | "COVER_LETTER" | "REFERENCE_SHEET";
@@ -220,9 +222,10 @@ export async function generateEvidenceBoundReferenceSheet(input: EvidenceBoundRe
   };
 }
 
-export async function generateEvidenceBoundMaterials(input: EvidenceBoundMaterialInput): Promise<GeneratedMaterialSet> {
+export async function generateEvidenceBoundMaterials(input: EvidenceBoundMaterialInput, evidence?: { facts: VerifiedClaimFact[]; jobEvidence: VerifiedJobExcerpt[] }): Promise<GeneratedMaterialSet> {
   validateRootBindings(input);
   const fitted = fitResume(input);
+  if (evidence) validateMaterialClaims({ ...input, professionalSummary: fitted.summary, coreSkills: fitted.skills, experiences: fitted.experiences }, evidence.facts, evidence.jobEvidence);
   const resumeClaims: ClaimProvenanceEntry[] = [];
   const coverClaims: ClaimProvenanceEntry[] = [];
   const referenceClaims: ClaimProvenanceEntry[] = [];
@@ -509,7 +512,7 @@ function buildResume(
         spacing: { line: DOCUMENT_REQUIREMENTS.lineSpacingTwips.bullets, after: 0 },
         children: [new TextRun({
           text: recordClaim(claims, `resume.experience.${experienceIndex + 1}.bullet.${bulletIndex + 1}`, bullet),
-          font: "Arial",
+          font: DOCUMENT_REQUIREMENTS.font,
           size: 20,
         })],
       }));
@@ -532,8 +535,8 @@ function buildResume(
       children.push(new Paragraph({
         spacing: { before: 0, after: index === input.educationAndCertifications!.length - 1 ? 0 : 60 },
         children: [
-          new TextRun({ text: assertDeliverableText(education.degree), bold: true, font: "Arial", size: 21 }),
-          new TextRun({ text: " | " + assertDeliverableText(education.detail), font: "Arial", size: 21 }),
+          new TextRun({ text: assertDeliverableText(education.degree), bold: true, font: DOCUMENT_REQUIREMENTS.font, size: 21 }),
+          new TextRun({ text: " | " + assertDeliverableText(education.detail), font: DOCUMENT_REQUIREMENTS.font, size: 21 }),
         ],
       }));
     });
@@ -584,8 +587,8 @@ function buildCoverLetter(
     new Paragraph({
       spacing: { before: 0, after: DOCUMENT_REQUIREMENTS.spacingTwips.coverSubjectAfter },
       children: [
-        new TextRun({ text: "Re: ", bold: true, font: "Arial", size: 21 }),
-        new TextRun({ text: assertDeliverableText(input.job.exactTitle), bold: true, font: "Arial", size: 21 }),
+        new TextRun({ text: "Re: ", bold: true, font: DOCUMENT_REQUIREMENTS.font, size: 21 }),
+        new TextRun({ text: assertDeliverableText(input.job.exactTitle), bold: true, font: DOCUMENT_REQUIREMENTS.font, size: 21 }),
       ],
     }),
     paragraph(salutation, { after: DOCUMENT_REQUIREMENTS.spacingTwips.coverParagraphAfter, size: 21 }),
@@ -619,7 +622,7 @@ function buildReferenceSheet(input: Pick<EvidenceBoundMaterialInput, "contact" |
     });
     children.push(new Paragraph({
       spacing: { before: 0, after: 40 },
-      children: [new TextRun({ text: assertDeliverableText(record.name), font: "Arial", size: 21 })],
+      children: [new TextRun({ text: assertDeliverableText(record.name), font: DOCUMENT_REQUIREMENTS.font, size: 21 })],
     }));
     [record.titleAndOrganization, record.relationship, record.email, record.phone, record.approvedContext]
       .filter((value): value is string => Boolean(value))
@@ -680,7 +683,7 @@ function documentWith(children: Paragraph[], metadata: DocumentMetadata) {
     styles: {
       default: {
         document: {
-          run: { font: "Arial", size: 21, color: "000000", language: { value: metadata.language } },
+          run: { font: DOCUMENT_REQUIREMENTS.font, size: 21, color: "000000", language: { value: metadata.language } },
           paragraph: { spacing: { before: 0, after: 0, line: 240 } },
         },
       },
@@ -754,7 +757,7 @@ function majorHeading(text: string, before: number) {
     keepLines: true,
     spacing: { before, after: DOCUMENT_REQUIREMENTS.spacingTwips.headingAfter },
     border: { bottom: HEADING_BORDER },
-    children: [new TextRun({ text, bold: true, font: "Arial", size: 21 })],
+    children: [new TextRun({ text, bold: true, font: DOCUMENT_REQUIREMENTS.font, size: 21 })],
   });
 }
 
@@ -776,7 +779,7 @@ function paragraph(text: string, options: {
     spacing: { before: options.before || 0, after: options.after || 0, line: options.line || 240 },
     children: [new TextRun({
       text: assertDeliverableText(text),
-      font: "Arial",
+      font: DOCUMENT_REQUIREMENTS.font,
       size: options.size || 21,
       bold: options.bold,
       italics: options.italics,
@@ -853,13 +856,7 @@ function fitResume(input: EvidenceBoundMaterialInput) {
     skills.splice(removableSkill.index, 1);
     if (!actions.includes("removed_low_priority_skill")) actions.push("removed_low_priority_skill");
   }
-  if (units() > ONE_PAGE_FIT_UNITS && summary.text.length > 240) {
-    const sentences = summary.text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map((value) => value.trim()).filter(Boolean) || [];
-    if (sentences.length >= 3) {
-      summary.text = sentences.slice(0, 2).join(" ");
-      actions.push("tightened_summary");
-    }
-  }
+  // Preserve verified sentence context: fitting may omit whole claims, never truncate them.
   while (units() > ONE_PAGE_FIT_UNITS) {
     const olderDetail = experiences.flatMap((experience, experienceIndex) =>
       experienceIndex === 0 ? [] : experience.bullets.map((bullet, bulletIndex) => ({ experience, experienceIndex, bullet, bulletIndex })))
@@ -1018,7 +1015,7 @@ export async function inspectDocxPackage(
     editorIdentityEmpty: !/<cp:lastModifiedBy>\s*[^<\s][\s\S]*?<\/cp:lastModifiedBy>/i.test(coreXml),
     usLetter: /<w:pgSz\b[^>]*\bw:w="12240"[^>]*\bw:h="15840"/i.test(documentXml),
     exactMargins: /<w:pgMar\b[^>]*\bw:top="792"[^>]*\bw:right="1008"[^>]*\bw:bottom="792"[^>]*\bw:left="1008"/i.test(documentXml),
-    arial: /w:(?:ascii|hAnsi|cs)="Arial"/i.test(stylesXml + documentXml),
+    approvedFont: /w:(?:ascii|hAnsi|cs)="Liberation Sans"/i.test(stylesXml + documentXml),
     nativeBullets: artifact !== "RESUME" || (Boolean(numberingXml) && /<w:numPr>/i.test(documentXml)),
     semanticSectionHeadings: artifact === "COVER_LETTER" || /<w:pStyle\b[^>]*\bw:val="Heading1"/i.test(documentXml),
     keepHeadingsWithContent: artifact === "COVER_LETTER" || /<w:keepNext\b/i.test(documentXml),

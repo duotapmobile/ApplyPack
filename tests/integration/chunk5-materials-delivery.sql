@@ -101,6 +101,8 @@ insert into auth.users(
   ('15000000-0000-4000-8000-000000000003','00000000-0000-0000-8000-000000000000','authenticated','authenticated','chunk5-reviewer@example.invalid','',now(),'{}','{}',now(),now());
 update public.profiles set role='operator' where id='15000000-0000-4000-8000-000000000003';
 
+\ir reviewed-source-fixture.sql
+
 insert into public.ap_intake_snapshots(
   id,customer_id,version,snapshot_kind,access_email_normalized,payer_receipt_email,document_contact_email,
   desired_activities,avoided_activities,optional_titles,confirmed_title_restriction,optional_industries,
@@ -134,12 +136,7 @@ insert into public.jobs(
   '15000000-0000-4000-8000-000000000003',clock_timestamp()
 );
 
-with current_source as (
-  select id from public.ap_source_authorizations
-  where source_id='manual-reviewed' and state='AUTHORIZED_MANUAL_ONLY'
-  order by created_at desc,authorization_version desc limit 1
-)
-insert into public.ap_job_snapshots(
+create temporary table fixture_job_snapshot_input(
   id,legacy_job_id,origin,discovery_source,external_job_id,canonical_application_url,
   application_host_type,canonical_employer_listing_url,source_url,company,exact_title,
   normalized_fingerprint,captured_listing,retrieved_at,posted_on,posted_date_unknown,
@@ -148,6 +145,10 @@ insert into public.ap_job_snapshots(
   employer_identity_result,application_path_result,listing_activity_result,material_restrictions,
   fraud_signals,legitimacy_result,requirement_completeness,compensation_completeness,
   canonicalization_version,legacy_compatibility
+) as
+with current_source as (
+  select id from public.ap_source_authorizations
+  where source_id='manual-reviewed' and authorization_version='zz-chunk-fixture'
 )
 select
   '75000000-0000-4000-8000-000000000001','65000000-0000-4000-8000-000000000001',
@@ -160,6 +161,11 @@ select
   current_source.id,clock_timestamp()-interval '1 day','chunk5-employer.example',
   'PASS','PASS','PASS','{}','{}','PASS',100,100,'applypack-c14n-v1',false
 from current_source;
+
+select pg_temp.verify_fixture_snapshot(to_jsonb(template),'15000000-0000-4000-8000-000000000003')
+from fixture_job_snapshot_input template;
+select pg_temp.assert_true(exists(select 1 from public.ap_current_source_verifications('75000000-0000-4000-8000-000000000001')),
+ 'fixture manual review must create current immutable source evidence');
 
 insert into public.orders(
   id,customer_id,product_kind,amount_cents,status,paid_at,delivery_deadline,delivered_at,
@@ -257,7 +263,7 @@ insert into public.ap_generated_artifacts(
   '25000000-0000-4000-8000-000000000001','b5000000-0000-4000-8000-000000000001',
   '75000000-0000-4000-8000-000000000001','RESUME',
   '45000000-0000-4000-8000-000000000001','c5000000-0000-4000-8000-000000000001',
-  '{"sourceBinding":{"candidateFactIds":["65000000-0000-4000-8000-000000000001"]},"claims":[{"source":"customer-confirmed"}]}','chunk5-generator-v1',1
+  '{"sourceBinding":{"candidateFactIds":["65000000-0000-4000-8000-000000000001"]},"claims":[{"source":"customer-confirmed"}]}','applypack-documents|content=applypack-content-2026-09-22.1|template=applypack-template-2026-09-22.1|exporter=libreoffice-tagged-pdf-2026-09-22.1',1
 );
 insert into public.ap_generated_file_versions(
   id,artifact_id,version,storage_bucket,storage_path,checksum_sha256,mime_type,size_bytes,
@@ -271,16 +277,17 @@ insert into public.ap_generated_file_versions(
   '15000000-0000-4000-8000-000000000003',clock_timestamp()-interval '4 minutes',
   'Chunk_5_Fixture_Employer_Operations_Specialist_Resume.docx',repeat('b',64),repeat('d',64)
 );
+update public.ap_commerce_configuration set document_font_family='Liberation Sans',document_font_sha256=repeat('f',64),document_safety_policy='generated-structural-v1',document_renderer_identity='fixture-renderer-v1' where singleton;
 insert into public.ap_artifact_quality_reviews(
   id,file_version_id,binding_sha256,structural_checks,provenance_checks,extracted_text_sha256,
-  rendered_page_count,renderer_identity,arial_font_sha256,malware_scanner_identity,
+  rendered_page_count,renderer_identity,document_font_sha256,document_safety_policy,
   render_preview_bucket,render_preview_path,render_preview_sha256,rendered_page_sha256,
-  arial_resolved,automated_passed_at,content_approved_by,content_approved_at,content_attestation,
+  document_font_resolved,automated_passed_at,content_approved_by,content_approved_at,content_attestation,
   visual_approved_by,visual_approved_at,visual_attestation
 ) values(
   'aa500000-0000-4000-8000-000000000001','f5000000-0000-4000-8000-000000000001',
   repeat('b',64),'{"docxPackage":"PASS"}','{"claims":"PASS"}',repeat('e',64),1,
-  'fixture-renderer-v1',repeat('f',64),'fixture-clamav-v1','operator-render-previews',
+  'fixture-renderer-v1',repeat('f',64),'NOT_SCANNED:generated-structural-v1','operator-render-previews',
   'chunk5/fixture/resume-v1.pdf',repeat('1',64),array[repeat('2',64)],true,
   clock_timestamp()-interval '6 minutes','15000000-0000-4000-8000-000000000003',
   clock_timestamp()-interval '5 minutes','All factual claims match the reviewed source evidence.',
@@ -399,6 +406,44 @@ exception when raise_exception then
   if sqlerrm<>'material_download_unavailable' then raise; end if;
 end $$;
 rollback to savepoint job_closing_date_regression;
+
+savepoint job_content_change_regression;
+update public.jobs set content_hash=content_hash
+where id='65000000-0000-4000-8000-000000000001';
+select public.ap_assert_current_artifact_facts('e5000000-0000-4000-8000-000000000001');
+select pg_temp.assert_true(
+  (select downloads_revoked_at is null from public.ap_generated_file_versions where id='f5000000-0000-4000-8000-000000000001'),
+  'unchanged job content must preserve released file access');
+update public.jobs set content_hash=repeat('f',64)
+where id='65000000-0000-4000-8000-000000000001';
+select pg_temp.assert_true(
+  (select downloads_revoked_at is not null from public.ap_generated_file_versions where id='f5000000-0000-4000-8000-000000000001')
+    and (select invalidated_at is not null from public.ap_artifact_quality_reviews where id='aa500000-0000-4000-8000-000000000001')
+    and exists(select 1 from public.ap_releases where id='ab500000-0000-4000-8000-000000000001'),
+  'changed job content must revoke all linked file approvals while preserving release history');
+do $$ begin
+  perform public.ap_authorize_material_download('15000000-0000-4000-8000-000000000001',
+    'e5000000-0000-4000-8000-000000000001','f5000000-0000-4000-8000-000000000001',clock_timestamp()-interval '1 second');
+  raise exception 'changed_job_content_download_accepted';
+exception when raise_exception then
+  if sqlerrm<>'material_download_unavailable' then raise; end if;
+end $$;
+do $$ begin
+  perform public.ap_assert_current_artifact_facts('e5000000-0000-4000-8000-000000000001');
+  raise exception 'invalidated_job_snapshot_dependency_accepted';
+exception when raise_exception then
+  if sqlerrm<>'material_download_unavailable' then raise; end if;
+end $$;
+do $$ begin
+  insert into public.ap_generated_artifacts
+  select (jsonb_populate_record(null::public.ap_generated_artifacts,to_jsonb(original)||jsonb_build_object(
+    'id','e5000000-0000-4000-8000-000000000002','artifact_type','COVER_LETTER'))).*
+  from public.ap_generated_artifacts original where original.id='e5000000-0000-4000-8000-000000000001';
+  raise exception 'invalidated_job_snapshot_new_generation_accepted';
+exception when raise_exception then
+  if sqlerrm<>'material_generation_stale_job_snapshot' then raise; end if;
+end $$;
+rollback to savepoint job_content_change_regression;
 
 savepoint job_supersession_regression;
 -- An independent snapshot is not a replacement and must not revoke this release.

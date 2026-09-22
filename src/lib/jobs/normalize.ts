@@ -13,6 +13,7 @@ import {
 } from "./classify";
 import { getEmployerSource, getSource, sourceUrlMatchesDefinition } from "./source-registry";
 import type { NormalizedJob, RawJobPosting } from "./types";
+import { SOURCE_NORMALIZATION_VERSION } from "./field-evidence";
 
 export function normalizeUrl(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -72,9 +73,18 @@ export function normalizeJob(raw: RawJobPosting, now = new Date()): NormalizedJo
       : null;
   const rejected = sourceRestriction || exclusionReason({ employerName: raw.employerName, sourceName: raw.sourceName || source.sourceName, sourceUrl: sourceJobUrl, applicationUrl: officialApplicationUrl });
   const normalizedTitle = normalizeTitle(raw.title);
-  const contentHash = sha256([normalizedTitle, description || "", location || ""].join("\n"));
+  const sharedContent = { version: SOURCE_NORMALIZATION_VERSION, normalizedTitle, description, location,
+    department: raw.department ?? null, employmentType: raw.employmentType ?? null,
+    salaryMin: finiteOrNull(raw.salaryMin), salaryMax: finiteOrNull(raw.salaryMax),
+    salaryCurrency: raw.salaryCurrency ?? null, payPeriod: raw.payPeriod ?? null,
+    eligibleStates: raw.eligibleStates ?? null, eligibleCountries: raw.eligibleCountries ?? null,
+    timezoneRequirement: raw.timezoneRequirement ?? null, closingAt: raw.closingAt ?? null };
+  // Verification binds the exact application path. Cross-source duplicate fallback
+  // excludes that transport identity while retaining all material job fields.
+  const contentHash = sha256(JSON.stringify({ ...sharedContent, officialApplicationUrl }));
+  const duplicateContentHash = sha256(JSON.stringify(sharedContent));
   const locationKey = (location || "unknown").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  const deduplicationKey = sha256([employer.canonicalId, normalizedTitle, locationKey, contentHash].join("|"));
+  const deduplicationKey = sha256([employer.canonicalId, normalizedTitle, locationKey, duplicateContentHash].join("|"));
   const verifiedAt = validIso(raw.lastVerifiedAt) || now.toISOString();
   const ageHours = Math.max(0, now.getTime() - new Date(verifiedAt).getTime()) / 3_600_000;
   const sourceFreshnessStatus = ageHours <= 24 ? "fresh" : ageHours <= 72 ? "aging" : "stale";

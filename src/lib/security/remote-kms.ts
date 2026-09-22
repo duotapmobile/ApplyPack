@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { KmsEnvelopeAdapter } from "./sensitive-payload";
+import { awsKmsAdapter, awsKmsConfiguration } from "./aws-kms";
 
 type KmsEnvironment = Partial<NodeJS.ProcessEnv>;
 
@@ -33,6 +34,9 @@ async function command(path: "wrap" | "unwrap", body: Record<string, unknown>, e
 }
 
 export function remoteKmsAdapter(environment: KmsEnvironment = process.env): KmsEnvelopeAdapter {
+  // Compatibility factory: all existing callers use explicit provider selection.
+  if (environment.APP_KMS_PROVIDER === "aws") return awsKmsAdapter(environment);
+  if (environment.APP_KMS_PROVIDER && environment.APP_KMS_PROVIDER !== "remote") throw new Error("kms_provider_invalid");
   return {
     wrapDataKey: async (input) => command("wrap", {
       key: Buffer.from(input.plaintextDataKey).toString("base64"),
@@ -47,4 +51,14 @@ export function remoteKmsAdapter(environment: KmsEnvironment = process.env): Kms
       encryptionContext: input.encryptionContext,
     }, environment),
   };
+}
+
+export function kmsProviderConfigured(environment: KmsEnvironment = process.env) {
+  try {
+    if (environment.APP_KMS_PROVIDER === "aws") { awsKmsConfiguration(environment); return true; }
+    if (environment.APP_KMS_PROVIDER && environment.APP_KMS_PROVIDER !== "remote") return false;
+    endpoint(environment.APP_KMS_WRAP_URL);
+    endpoint(environment.APP_KMS_UNWRAP_URL);
+    return Boolean(environment.APP_KMS_BEARER_TOKEN?.trim());
+  } catch { return false; }
 }

@@ -118,6 +118,8 @@ insert into public.ap_sensitive_payloads(
   decode(repeat('33',16),'hex'),repeat('2',64),'fixture-kms','1',repeat('3',64)
 );
 
+\ir reviewed-source-fixture.sql
+
 insert into public.ap_intake_snapshots(
   id,draft_id,version,snapshot_kind,access_email_normalized,payer_receipt_email,document_contact_email,
   desired_activities,avoided_activities,optional_titles,confirmed_title_restriction,optional_industries,
@@ -154,7 +156,7 @@ select
   interval '30 days',50,interval '1 hour','listing-requirements-v3','current-v1',
   repeat('5',64),'operator',clock_timestamp()
 from public.ap_source_authorizations source_auth
-where source_auth.source_id='manual-reviewed' and source_auth.authorization_version='source-auth-v1';
+where source_auth.source_id='manual-reviewed' and source_auth.authorization_version='zz-chunk-fixture';
 insert into public.ap_feasibility_coverage_plans(
   id,snapshot_id,inventory_version_id,plan_version,typed_inputs,coverage_disposition,content_sha256
 ) values(
@@ -176,7 +178,7 @@ select
   'responsibility-family',source_auth.id,'62000000-0000-4000-8000-000000000041',
   true,true,true
 from public.ap_source_authorizations source_auth
-where source_auth.source_id='manual-reviewed' and source_auth.authorization_version='source-auth-v1';
+where source_auth.source_id='manual-reviewed' and source_auth.authorization_version='zz-chunk-fixture';
 insert into public.ap_feasibility_assessments(
   id,snapshot_id,coverage_plan_id,state,outcome,resolution_blocker,preliminarily_deliverable_count,
   reviewable_count,excluded_count,reasons,primary_reason,rules_version,expires_at
@@ -291,12 +293,7 @@ select
   'fresh',true,'approved','14000000-0000-4000-8000-000000000003',clock_timestamp()
 from generate_series(1,10) g;
 
-with current_source as (
-  select id from public.ap_source_authorizations
-  where source_id='manual-reviewed' and state='AUTHORIZED_MANUAL_ONLY'
-  order by created_at desc,authorization_version desc limit 1
-)
-insert into public.ap_job_snapshots(
+create temporary table fixture_job_snapshot_input(
   id,legacy_job_id,origin,discovery_source,external_job_id,canonical_application_url,
   application_host_type,canonical_employer_listing_url,source_url,company,exact_title,
   normalized_fingerprint,captured_listing,retrieved_at,posted_on,posted_date_unknown,
@@ -305,6 +302,10 @@ insert into public.ap_job_snapshots(
   employer_identity_result,application_path_result,listing_activity_result,material_restrictions,
   fraud_signals,legitimacy_result,requirement_completeness,compensation_completeness,
   canonicalization_version,legacy_compatibility
+) as
+with current_source as (
+  select id from public.ap_source_authorizations
+  where source_id='manual-reviewed' and authorization_version='zz-chunk-fixture'
 )
 select
   ('b4100000-0000-4000-8000-'||lpad(g::text,12,'0'))::uuid,
@@ -321,6 +322,11 @@ select
   current_source.id,clock_timestamp()-interval '1 day','employer'||g||'.example',
   'PASS','PASS','PASS','{}','{}','PASS',100,100,'applypack-c14n-v1',false
 from generate_series(1,10) g cross join current_source;
+
+select pg_temp.verify_fixture_snapshot(to_jsonb(template),'14000000-0000-4000-8000-000000000003')
+from fixture_job_snapshot_input template;
+select pg_temp.assert_true((select count(*)=10 from public.ap_current_source_verifications(null)),
+ 'all ten fixture jobs require actual manual verification receipts');
 
 insert into public.ap_inventory_members(
   id,inventory_version_id,job_snapshot_id,stable_normalized_job_id,selected_by_deduplication
@@ -339,7 +345,7 @@ select
   ('b4300000-0000-4000-8000-'||lpad(g::text,12,'0'))::uuid,
   ('b4100000-0000-4000-8000-'||lpad(g::text,12,'0'))::uuid,
   null,0,'ALL_OF','listing-requirements-v3','[]'
-from generate_series(1,10) g;
+from generate_series(1,10) g on conflict(id) do nothing;
 insert into public.ap_requirement_nodes(
   id,job_snapshot_id,parent_id,position,node_kind,criterion_type,stable_criterion_id,semantic_key,
   requirement_strength,source_locator,parser_certainty,criterion_version,typed_value,source_excerpt,
@@ -358,7 +364,7 @@ select
 from generate_series(1,10) g;
 
 insert into public.ap_match_evaluations(
-  id,customer_id,snapshot_id,job_snapshot_id,inventory_member_id,inventory_version_id,
+  id,customer_id,draft_id,snapshot_id,job_snapshot_id,inventory_member_id,inventory_version_id,
   eligibility,root_result,leaf_results,resolution_issues,unknown_treatments,satisfaction_paths,
   categorical_evidence_sufficient,fit_score,fit_components,evidence_confidence,confidence_components,
   salary_status,salary_disposition,soft_preferences,application_readiness,presentation_risk,
@@ -369,7 +375,7 @@ insert into public.ap_match_evaluations(
 )
 select
   ('b4500000-0000-4000-8000-'||lpad(g::text,12,'0'))::uuid,
-  '14000000-0000-4000-8000-000000000001','54000000-0000-4000-8000-000000000001',
+  null,'34000000-0000-4000-8000-000000000001','54000000-0000-4000-8000-000000000001',
   ('b4100000-0000-4000-8000-'||lpad(g::text,12,'0'))::uuid,
   ('b4200000-0000-4000-8000-'||lpad(g::text,12,'0'))::uuid,
   '74000000-0000-4000-8000-000000000001','ELIGIBLE','PASS','[]','{}','{}','[]',true,
@@ -381,7 +387,7 @@ select
     'criteria','applypack-intake-v3',
     'selector','bounded-diversity-v2',
     'jobSnapshot',encode(extensions.digest(convert_to('fixture-content-'||g,'UTF8'),'sha256'),'hex'),
-    'sourceAuthorization','source-auth-v1'
+    'sourceAuthorization','zz-chunk-fixture'
   ),
   array['hard-root-'||g],jsonb_build_array(jsonb_build_object('rootKey','hard-root-'||g,'result','PASS')),
   encode(extensions.digest(convert_to('evaluation-'||g,'UTF8'),'sha256'),'hex'),
@@ -636,6 +642,8 @@ begin
     'a4900000-0000-4000-8000-000000000001','a4900000-0000-4000-8000-000000000002'
   );
   perform pg_temp.assert_true(result_value->>'outcome'='SEARCH_ACTIVE' and (result_value->>'searchActive')::boolean, 'verified charge did not activate search');
+  -- Fifty duplicate provider deliveries must preserve one fulfillment and debit.
+  for replay_number in 1..50 loop
   replay_value:=public.ap_apply_verified_search_payment(
     'evt_chunk4_success','checkout.session.completed',repeat('e',64),clock_timestamp(),clock_timestamp()-interval '1 minute',
     'cs_chunk4_fixture','pi_chunk4_fixture','succeeded','card',2000,'USD','payer@example.invalid',
@@ -646,6 +654,7 @@ begin
     'a4900000-0000-4000-8000-000000000009','a4900000-0000-4000-8000-00000000000a'
   );
   perform pg_temp.assert_true((replay_value->>'replayed')::boolean and replay_value->>'outcome'='SEARCH_ACTIVE', 'provider-event replay was not idempotent');
+  end loop;
 end;
 $$;
 

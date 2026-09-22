@@ -35,8 +35,8 @@ type RenderRecord = {
   searchablePdfSha256: string;
   pageImageSha256: string[];
   rendererIdentity: string;
-  arialFontSha256: string;
-  arialResolved: true;
+  documentFontSha256: string;
+  documentFontResolved: true;
   taggedPdf: true;
   metadataVerified: true;
   structureTreeSha256: string;
@@ -272,8 +272,8 @@ async function renderArtifact(
     searchablePdfSha256: rendered.searchablePdfSha256,
     pageImageSha256: rendered.pageImages.map((page) => page.sha256),
     rendererIdentity: rendered.rendererIdentity,
-    arialFontSha256: rendered.arialFontSha256,
-    arialResolved: rendered.arialResolved,
+    documentFontSha256: rendered.documentFontSha256,
+    documentFontResolved: rendered.documentFontResolved,
     taggedPdf: rendered.taggedPdf,
     metadataVerified: rendered.metadataVerified,
     structureTreeSha256: rendered.structureTreeSha256,
@@ -321,7 +321,7 @@ describe("Chunk 5 real document rendering", () => {
     expect(records).toHaveLength(7);
   });
 
-  it("renders representative one- and two-page DOCX artifacts with exact text and Arial", async () => {
+  it("renders representative one- and two-page DOCX artifacts with exact text and Liberation Sans", async () => {
     const configuration = documentRendererConfiguration();
     expect(configuration.ready).toBe(true);
     const directory = outputDirectory();
@@ -338,7 +338,7 @@ describe("Chunk 5 real document rendering", () => {
     }
     expect(records).toHaveLength(7);
     expect(records.reduce((total, record) => total + record.actualPages, 0)).toBe(8);
-    expect(records.every((record) => record.expectedPages === record.actualPages && record.arialResolved)).toBe(true);
+    expect(records.every((record) => record.expectedPages === record.actualPages && record.documentFontResolved)).toBe(true);
     const report = {
       schemaVersion: "applypack-chunk5-render-evidence-v1",
       createdAt: new Date().toISOString(),
@@ -352,7 +352,7 @@ describe("Chunk 5 real document rendering", () => {
         pdfFonts: configuration.tools.pdfFonts.sha256,
         pdfText: configuration.tools.pdfText.sha256,
         pdfPpm: configuration.tools.pdfPpm.sha256,
-        arial: configuration.arialFont.sha256,
+        documentFont: configuration.documentFont.sha256,
       },
       records,
     };
