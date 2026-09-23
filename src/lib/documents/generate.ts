@@ -315,9 +315,9 @@ function metadataFor(
   const artifactTitle = artifact === "RESUME" ? "Resume"
     : artifact === "COVER_LETTER" ? "Cover Letter" : "Professional References";
   return {
-    title: `${name} - ${artifactTitle} - ${company}`,
+    title: `${name} ${artifactTitle} - ${company}`,
     author: name,
-    subject: `${target} application`,
+    subject: `Application for ${target} at ${company}`,
     language: input.documentLanguage || DOCUMENT_REQUIREMENTS.language,
     keywords: "",
   };
@@ -421,6 +421,10 @@ function provenance(
 
 function recordClaim(claims: ClaimProvenanceEntry[], placement: string, sentence: EvidenceSentence) {
   const text = assertDeliverableText(sentence.text);
+  if (/^(?:resume\.(?:summary|skill|experience\.\d+\.(?:descriptor|bullet))|cover\.paragraph)/.test(placement)
+    && /[\u2013\u2014]/u.test(text)) {
+    throw new Error("generated_dash_punctuation_not_allowed");
+  }
   if (sentence.narrative && !isNonfactualNarrative(text)) throw new Error("document_narrative_contains_unverified_claim");
   const candidateFactIds = unique(sentence.candidateFactIds || []);
   const jobEvidenceIds = unique(sentence.jobEvidenceIds || []);
@@ -444,6 +448,35 @@ function recordClaim(claims: ClaimProvenanceEntry[], placement: string, sentence
   return text;
 }
 
+function targetedSummary(summary: EvidenceSentence, targetValue: string, jobEvidenceIds: string[]): EvidenceSentence {
+  const target = assertDeliverableText(targetValue);
+  const text = assertDeliverableText(summary.text);
+  if (!summary.narrative && !(summary.candidateFactIds || []).length) {
+    throw new Error("factual_claim_missing_provenance");
+  }
+  if (normalizeForComparison(text).includes(normalizeForComparison(target))) {
+    return { ...summary, text, jobEvidenceIds: unique([...(summary.jobEvidenceIds || []), ...jobEvidenceIds]) };
+  }
+  const article = /^[aeiou]/i.test(target) ? "an" : "a";
+  const professional = text.match(/^(.+?\bprofessional)\b([\s\S]*)$/i);
+  const terminalFreeText = text.replace(/[.!?]+$/, "");
+  const targetedText = professional
+    ? `${professional[1]}${professional[2].replace(/[.!?]+$/, "")}, targeting ${article} ${target} role.`
+    : `${terminalFreeText}. This application targets ${article} ${target} role.`;
+  return {
+    ...summary,
+    text: targetedText,
+    jobEvidenceIds: unique([...(summary.jobEvidenceIds || []), ...jobEvidenceIds]),
+  };
+}
+
+function normalizeDateRange(value: string) {
+  return assertDeliverableText(value)
+    .replace(/\s*[\u2013\u2014]\s*/gu, "-")
+    .replace(/\s+to\s+/giu, "-")
+    .replace(/\s*-\s*/g, "-");
+}
+
 function recordFixedBinding(
   claims: ClaimProvenanceEntry[],
   placement: string,
@@ -462,10 +495,8 @@ function buildResume(
   const children: Paragraph[] = [
     ...candidateHeader(input, claims, "resume"),
     majorHeading("PROFESSIONAL SUMMARY", 0),
-    paragraph(recordFixedBinding(claims, "resume.targetRole",
-      `Target role: ${assertDeliverableText(input.job.exactTitle)}`, [], input.job.jobEvidenceIds),
-    { line: DOCUMENT_REQUIREMENTS.lineSpacingTwips.summary, after: 0, size: 21 }),
-    paragraph(recordClaim(claims, "resume.summary", fitted.summary), { line: DOCUMENT_REQUIREMENTS.lineSpacingTwips.summary, after: 0, size: 21 }),
+    paragraph(recordClaim(claims, "resume.summary", targetedSummary(fitted.summary, input.job.exactTitle,
+      input.job.jobEvidenceIds)), { line: DOCUMENT_REQUIREMENTS.lineSpacingTwips.summary, after: 0, size: 21 }),
   ];
   if (fitted.skills.length) {
     children.push(
@@ -478,9 +509,10 @@ function buildResume(
   fitted.experiences.forEach((experience, experienceIndex) => {
     const title = assertDeliverableText(experience.historicalTitle);
     const employer = assertDeliverableText(experience.employer);
-    const dates = assertDeliverableText(experience.dates);
+    const dates = normalizeDateRange(experience.dates);
     const location = experience.location ? assertDeliverableText(experience.location) : "";
-    const headerText = [title, employer, dates, location].filter(Boolean).join("\n");
+    const employerAndDates = [employer, dates, location].filter(Boolean).join(" | ");
+    const headerText = [title, employerAndDates].join("\n");
     recordFixedBinding(claims, `resume.experience.${experienceIndex + 1}.header`, headerText,
       experience.headerCandidateFactIds, []);
     children.push(
@@ -492,11 +524,9 @@ function buildResume(
         keepNext: true,
         keepLines: true,
       }),
-      paragraph(employer, { after: 20, size: 20, keepNext: true, keepLines: true }),
-      paragraph([dates, location].filter(Boolean).join(" | "), {
+      paragraph(employerAndDates, {
         after: 40,
-        size: 19,
-        italics: true,
+        size: 20,
         keepNext: true,
         keepLines: true,
       }),
@@ -512,7 +542,7 @@ function buildResume(
         spacing: { line: DOCUMENT_REQUIREMENTS.lineSpacingTwips.bullets, after: 0 },
         children: [new TextRun({
           text: recordClaim(claims, `resume.experience.${experienceIndex + 1}.bullet.${bulletIndex + 1}`, bullet),
-          font: DOCUMENT_REQUIREMENTS.font,
+          font: DOCUMENT_REQUIREMENTS.requestedFont,
           size: 20,
         })],
       }));
@@ -520,7 +550,7 @@ function buildResume(
   });
   const breakEntry = careerBreakPresentation(input.careerBreak);
   if (breakEntry) {
-    const text = [breakEntry.label, breakEntry.dates].filter(Boolean).join(" | ");
+    const text = [breakEntry.label, normalizeDateRange(breakEntry.dates)].filter(Boolean).join(" | ");
     children.push(majorHeading("CAREER BREAK", DOCUMENT_REQUIREMENTS.spacingTwips.educationHeadingBefore));
     children.push(paragraph(recordClaim(claims, "resume.careerBreak", {
       text,
@@ -535,8 +565,8 @@ function buildResume(
       children.push(new Paragraph({
         spacing: { before: 0, after: index === input.educationAndCertifications!.length - 1 ? 0 : 60 },
         children: [
-          new TextRun({ text: assertDeliverableText(education.degree), bold: true, font: DOCUMENT_REQUIREMENTS.font, size: 21 }),
-          new TextRun({ text: " | " + assertDeliverableText(education.detail), font: DOCUMENT_REQUIREMENTS.font, size: 21 }),
+          new TextRun({ text: assertDeliverableText(education.degree), bold: true, font: DOCUMENT_REQUIREMENTS.requestedFont, size: 21 }),
+          new TextRun({ text: " | " + assertDeliverableText(education.detail), font: DOCUMENT_REQUIREMENTS.requestedFont, size: 21 }),
         ],
       }));
     });
@@ -587,8 +617,8 @@ function buildCoverLetter(
     new Paragraph({
       spacing: { before: 0, after: DOCUMENT_REQUIREMENTS.spacingTwips.coverSubjectAfter },
       children: [
-        new TextRun({ text: "Re: ", bold: true, font: DOCUMENT_REQUIREMENTS.font, size: 21 }),
-        new TextRun({ text: assertDeliverableText(input.job.exactTitle), bold: true, font: DOCUMENT_REQUIREMENTS.font, size: 21 }),
+        new TextRun({ text: "Re: ", bold: true, font: DOCUMENT_REQUIREMENTS.requestedFont, size: 21 }),
+        new TextRun({ text: assertDeliverableText(input.job.exactTitle), bold: true, font: DOCUMENT_REQUIREMENTS.requestedFont, size: 21 }),
       ],
     }),
     paragraph(salutation, { after: DOCUMENT_REQUIREMENTS.spacingTwips.coverParagraphAfter, size: 21 }),
@@ -622,7 +652,7 @@ function buildReferenceSheet(input: Pick<EvidenceBoundMaterialInput, "contact" |
     });
     children.push(new Paragraph({
       spacing: { before: 0, after: 40 },
-      children: [new TextRun({ text: assertDeliverableText(record.name), font: DOCUMENT_REQUIREMENTS.font, size: 21 })],
+      children: [new TextRun({ text: assertDeliverableText(record.name), font: DOCUMENT_REQUIREMENTS.requestedFont, size: 21 })],
     }));
     [record.titleAndOrganization, record.relationship, record.email, record.phone, record.approvedContext]
       .filter((value): value is string => Boolean(value))
@@ -683,10 +713,30 @@ function documentWith(children: Paragraph[], metadata: DocumentMetadata) {
     styles: {
       default: {
         document: {
-          run: { font: DOCUMENT_REQUIREMENTS.font, size: 21, color: "000000", language: { value: metadata.language } },
+          run: { font: DOCUMENT_REQUIREMENTS.requestedFont, size: 21, color: "000000", language: { value: metadata.language } },
           paragraph: { spacing: { before: 0, after: 0, line: 240 } },
         },
       },
+      paragraphStyles: [{
+        id: "Heading1",
+        name: "Heading 1",
+        basedOn: "Normal",
+        next: "Normal",
+        quickFormat: true,
+        run: {
+          font: DOCUMENT_REQUIREMENTS.requestedFont,
+          size: 21,
+          bold: true,
+          color: "000000",
+          language: { value: metadata.language },
+        },
+        paragraph: {
+          keepNext: true,
+          keepLines: true,
+          spacing: { before: 0, after: DOCUMENT_REQUIREMENTS.spacingTwips.headingAfter },
+          border: { bottom: HEADING_BORDER },
+        },
+      }],
     },
     sections: [{
       properties: {
@@ -757,7 +807,7 @@ function majorHeading(text: string, before: number) {
     keepLines: true,
     spacing: { before, after: DOCUMENT_REQUIREMENTS.spacingTwips.headingAfter },
     border: { bottom: HEADING_BORDER },
-    children: [new TextRun({ text, bold: true, font: DOCUMENT_REQUIREMENTS.font, size: 21 })],
+    children: [new TextRun({ text, bold: true, font: DOCUMENT_REQUIREMENTS.requestedFont, size: 21 })],
   });
 }
 
@@ -779,7 +829,7 @@ function paragraph(text: string, options: {
     spacing: { before: options.before || 0, after: options.after || 0, line: options.line || 240 },
     children: [new TextRun({
       text: assertDeliverableText(text),
-      font: DOCUMENT_REQUIREMENTS.font,
+      font: DOCUMENT_REQUIREMENTS.requestedFont,
       size: options.size || 21,
       bold: options.bold,
       italics: options.italics,
@@ -970,6 +1020,8 @@ export type DocxPackageInspection = {
   extractedText: string;
   extractedTextSha256: string;
   packageQaSha256: string;
+  listParagraphCount: number;
+  semanticHeadings: string[];
   relationships: string[];
   entries: string[];
 };
@@ -977,6 +1029,7 @@ export type DocxPackageInspection = {
 export async function inspectDocxPackage(
   buffer: Buffer,
   artifact: ArtifactProvenance["artifact"],
+  expectedMetadata?: DocumentMetadata,
 ): Promise<DocxPackageInspection> {
   const zip = await JSZip.loadAsync(buffer);
   const entries = Object.keys(zip.files).filter((name) => !zip.files[name].dir).sort();
@@ -992,8 +1045,32 @@ export async function inspectDocxPackage(
     .map(read))).join("\n");
   const relationships = [...relationshipsXml.matchAll(/<Relationship\b[^>]*\bTarget="([^"]+)"[^>]*>/g)]
     .map((match) => match[1]).sort();
+  const paragraphXml = [...documentXml.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)].map((match) => match[0]);
+  const paragraphText = (xml: string) => [...xml.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)]
+    .map((match) => decodeXml(match[1])).join("").replace(/\s+/g, " ").trim();
+  const paragraphs = paragraphXml.map((xml) => ({ xml, text: paragraphText(xml) }));
+  const listParagraphs = paragraphs.filter(({ xml }) => /<w:numPr\b/i.test(xml));
+  const typedBulletParagraphs = paragraphs.filter(({ xml, text }) => !/<w:numPr\b/i.test(xml) && /^[\u2022\u25e6\u25aa]\s*/u.test(text));
+  const semanticHeadings = paragraphs.filter(({ xml }) => /<w:pStyle\b[^>]*\bw:val="Heading1"/i.test(xml))
+    .map(({ text }) => text);
+  const requiredHeadingOrder = artifact === "RESUME" ? ["PROFESSIONAL SUMMARY", "WORK EXPERIENCE"]
+    : artifact === "REFERENCE_SHEET" ? ["PROFESSIONAL REFERENCES"] : [];
+  const headingOrderValid = requiredHeadingOrder.every((heading, index) => {
+    const position = semanticHeadings.indexOf(heading);
+    const previous = index ? semanticHeadings.indexOf(requiredHeadingOrder[index - 1]) : -1;
+    return position > previous;
+  });
+  const detachedDateParagraph = artifact === "RESUME" && paragraphs.some(({ text }) =>
+    /^(?:[A-Za-z]{3,9}\s+)?(?:19|20)\d{2}\s*-\s*(?:(?:[A-Za-z]{3,9}\s+)?(?:19|20)\d{2}|Present)(?:\s*\|\s*[^|]+)?$/i.test(text));
   const extractedText = [...documentXml.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)]
     .map((match) => decodeXml(match[1])).join(" ").replace(/\s+/g, " ").trim();
+  const metadata = {
+    title: xmlElementValue(coreXml, "dc:title"),
+    author: xmlElementValue(coreXml, "dc:creator"),
+    subject: xmlElementValue(coreXml, "dc:subject"),
+    language: xmlElementValue(coreXml, "dc:language"),
+    keywords: xmlElementValue(coreXml, "cp:keywords"),
+  };
   const forbiddenEntries = entries.some((name) => /(?:vbaProject|macros|comments|people\.xml|customXml\/|embeddings\/|word\/media\/|word\/header\d*\.xml|word\/footer\d*\.xml)/i.test(name));
   const checks: Record<string, boolean> = {
     packageSignature: buffer.subarray(0, 2).toString() === "PK",
@@ -1010,15 +1087,23 @@ export async function inspectDocxPackage(
     metadataPresent: /<dc:title>\s*[^<\s][\s\S]*?<\/dc:title>/i.test(coreXml)
       && /<dc:creator>\s*[^<\s][\s\S]*?<\/dc:creator>/i.test(coreXml)
       && /<dc:subject>\s*[^<\s][\s\S]*?<\/dc:subject>/i.test(coreXml),
-    languageMetadata: /<dc:language>en-US<\/dc:language>/i.test(coreXml),
+    metadataMatchesExpected: !expectedMetadata || Object.entries(expectedMetadata)
+      .every(([key, value]) => metadata[key as keyof typeof metadata] === value),
+    noFrameworkAuthor: Boolean(metadata.author) && !/python[- ]?docx|libreoffice|microsoft word|applypack|generator/i.test(metadata.author),
+    languageMetadata: metadata.language === (expectedMetadata?.language || DOCUMENT_REQUIREMENTS.language),
     keywordsEmpty: !/<cp:keywords>\s*[^<\s][\s\S]*?<\/cp:keywords>/i.test(coreXml),
     editorIdentityEmpty: !/<cp:lastModifiedBy>\s*[^<\s][\s\S]*?<\/cp:lastModifiedBy>/i.test(coreXml),
     usLetter: /<w:pgSz\b[^>]*\bw:w="12240"[^>]*\bw:h="15840"/i.test(documentXml),
     exactMargins: /<w:pgMar\b[^>]*\bw:top="792"[^>]*\bw:right="1008"[^>]*\bw:bottom="792"[^>]*\bw:left="1008"/i.test(documentXml),
-    approvedFont: /w:(?:ascii|hAnsi|cs)="Liberation Sans"/i.test(stylesXml + documentXml),
-    nativeBullets: artifact !== "RESUME" || (Boolean(numberingXml) && /<w:numPr>/i.test(documentXml)),
-    semanticSectionHeadings: artifact === "COVER_LETTER" || /<w:pStyle\b[^>]*\bw:val="Heading1"/i.test(documentXml),
+    requestedFont: new RegExp(`w:(?:ascii|hAnsi|cs)="${escapeRegExp(DOCUMENT_REQUIREMENTS.requestedFont)}"`, "i")
+      .test(stylesXml + documentXml),
+    nativeBullets: artifact !== "RESUME" || (Boolean(numberingXml)
+      && /<w:numFmt\b[^>]*\bw:val="bullet"/i.test(numberingXml)
+      && listParagraphs.length > 0 && typedBulletParagraphs.length === 0),
+    semanticSectionHeadings: artifact === "COVER_LETTER" || headingOrderValid,
     keepHeadingsWithContent: artifact === "COVER_LETTER" || /<w:keepNext\b/i.test(documentXml),
+    stackedJobGrouping: artifact !== "RESUME" || !detachedDateParagraph,
+    asciiDashPunctuation: !/[\u2013\u2014]/u.test(extractedText),
     noPlaceholdersOrPromptArtifacts: Boolean(extractedText)
       && !/\[[^\]]+\]|\b(?:TBD|TODO|PLACEHOLDER|INSERT (?:NAME|DATE|COMPANY|TITLE)|YOUR NAME)\b/i.test(extractedText)
       && !containsPromptInjection(extractedText),
@@ -1030,6 +1115,8 @@ export async function inspectDocxPackage(
     checks,
     entries,
     relationships,
+    listParagraphCount: listParagraphs.length,
+    semanticHeadings,
     extractedTextSha256: sha256(extractedText),
   }));
   return {
@@ -1038,6 +1125,8 @@ export async function inspectDocxPackage(
     extractedText,
     extractedTextSha256: sha256(extractedText),
     packageQaSha256,
+    listParagraphCount: listParagraphs.length,
+    semanticHeadings,
     relationships,
     entries,
   };
@@ -1059,4 +1148,9 @@ function decodeXml(value: string) {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'");
+}
+
+function xmlElementValue(xml: string, name: string) {
+  const match = new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`, "i").exec(xml);
+  return match ? decodeXml(match[1]).trim() : "";
 }

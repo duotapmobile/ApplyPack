@@ -39,13 +39,18 @@ export async function loadMaterialStaffLines(admin: AdminClient): Promise<Materi
   if (jobsResult.error || rulesResult.error || filesResult.error) throw new Error("material_staff_bindings_unavailable");
   const files = filesResult.data || [];
   const fileIds = files.map((file) => file.id);
-  const qualityResult = fileIds.length ? await admin.from("ap_artifact_quality_reviews")
-    .select("file_version_id,automated_passed_at,content_approved_at,visual_approved_at,renderer_identity,arial_resolved,invalidated_at")
-    .in("file_version_id", fileIds) : { data: [], error: null };
-  if (qualityResult.error) throw new Error("material_staff_quality_unavailable");
+  const [qualityResult, sourceResult] = await Promise.all([
+    fileIds.length ? admin.from("ap_artifact_quality_reviews")
+      .select("file_version_id,automated_passed_at,content_approved_at,visual_approved_at,renderer_identity,arial_resolved,invalidated_at")
+      .in("file_version_id", fileIds) : Promise.resolve({ data: [], error: null }),
+    fileIds.length ? admin.from("ap_artifact_source_docx")
+      .select("file_version_id").in("file_version_id", fileIds) : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (qualityResult.error || sourceResult.error) throw new Error("material_staff_quality_unavailable");
   const jobs = new Map((jobsResult.data || []).map((job) => [job.id, job]));
   const rules = new Map((rulesResult.data || []).map((rule) => [rule.id, rule]));
   const qualities = new Map((qualityResult.data || []).map((quality) => [quality.file_version_id, quality]));
+  const sourceFileIds = new Set((sourceResult.data || []).map((source) => source.file_version_id));
   return lines.map((line) => {
     const revision = revisions.find((candidate) => candidate.line_id === line.id && Number(candidate.version) === Number(line.active_revision));
     const job = revision?.job_snapshot_id ? jobs.get(revision.job_snapshot_id) : null;
@@ -69,6 +74,7 @@ export async function loadMaterialStaffLines(admin: AdminClient): Promise<Materi
         visualApproved: Boolean(quality.visual_approved_at),
         rendererIdentity: quality.renderer_identity,
         arialResolved: Boolean(quality.arial_resolved),
+        editableSourceAvailable: sourceFileIds.has(file.id),
       }];
     });
     return {

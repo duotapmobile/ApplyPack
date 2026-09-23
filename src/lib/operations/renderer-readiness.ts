@@ -15,7 +15,7 @@ export function rendererApprovalMatches(approval: Approval | null, runtime: Rend
   return Boolean(approval && runtime.ready && approval.materials_generation_approved
     && approval.materials_generation_approval_reference?.trim()
     && approval.document_renderer_identity === runtime.identity
-    && approval.document_font_family === "Liberation Sans"
+    && approval.document_font_family === runtime.documentFontFamily
     && approval.document_font_sha256 === runtime.documentFont.sha256
     && approval.document_safety_policy === "generated-structural-v1"
     && ["DOCX", "PDF"].every(format => approval.material_output_formats.includes(format)));

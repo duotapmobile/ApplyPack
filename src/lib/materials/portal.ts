@@ -174,6 +174,7 @@ export async function loadMaterialDeliveries(input: { supabase: Supabase; custom
       if (!current || !current.safe_filename) return [];
       return [{
         id: artifact.id,
+        fileVersionId: current.id,
         type: artifact.artifact_type,
         version: Number(current.version),
         filename: current.safe_filename,

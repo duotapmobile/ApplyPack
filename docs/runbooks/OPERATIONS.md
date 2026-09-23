@@ -22,9 +22,12 @@
 1. Recheck the selected listing.
 2. Compare every claim with customer-provided source material.
 3. Keep genuine gaps visible.
-4. Produce one editable resume and cover letter for each selected job.
-5. Complete the human quality check.
-6. Upload both DOCX files through the protected admin delivery route.
+4. Generate each document through the shared evidence-bound service. The resume uses the current versioned single-column, stacked template and native Word lists.
+5. Review the editable DOCX sources and the searchable, tagged PDF previews.
+6. Complete separate factual/content and rendered-page quality checks.
+7. Deliver the resume PDF and cover-letter PDF when the employer accepts PDF. Deliver DOCX only when the employer requires it, the portal rejects PDF, or the customer asks for Word.
+8. Keep the direct employer apply link with the application record. ApplyPack never submits the application.
+9. Editable DOCX sources remain private, require MFA-protected operator access, and generate a PII-free access audit. Revoked or superseded sources enter the bounded storage-cleanup queue.
 
 ## Correction and conflict queues
 

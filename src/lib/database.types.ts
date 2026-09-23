@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -305,6 +300,44 @@ export type Database = {
             columns: ["reference_permission_id"]
             isOneToOne: false
             referencedRelation: "ap_reference_permissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_artifact_source_docx: {
+        Row: {
+          checksum_sha256: string
+          created_at: string
+          file_version_id: string
+          safe_filename: string
+          size_bytes: number
+          storage_bucket: string
+          storage_path: string
+        }
+        Insert: {
+          checksum_sha256: string
+          created_at?: string
+          file_version_id: string
+          safe_filename: string
+          size_bytes: number
+          storage_bucket: string
+          storage_path: string
+        }
+        Update: {
+          checksum_sha256?: string
+          created_at?: string
+          file_version_id?: string
+          safe_filename?: string
+          size_bytes?: number
+          storage_bucket?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_artifact_source_docx_file_version_id_fkey"
+            columns: ["file_version_id"]
+            isOneToOne: true
+            referencedRelation: "ap_generated_file_versions"
             referencedColumns: ["id"]
           },
         ]
@@ -11506,6 +11539,18 @@ export type Database = {
         }
         Returns: string
       }
+      ap_record_material_source_docx: {
+        Args: {
+          p_checksum_sha256: string
+          p_file_version_id: string
+          p_reviewer_id: string
+          p_safe_filename: string
+          p_size_bytes: number
+          p_storage_bucket: string
+          p_storage_path: string
+        }
+        Returns: Json
+      }
       ap_record_reference_isolation: {
         Args: {
           p_content_sha256: string
@@ -11599,6 +11644,48 @@ export type Database = {
           p_reviewer_id: string
           p_safe_filename: string
           p_size_bytes: number
+          p_source_line_revision_id: string
+          p_source_snapshot_id: string
+          p_storage_bucket: string
+          p_storage_path: string
+          p_structural_checks: Json
+        }
+        Returns: Json
+      }
+      ap_register_material_artifact_version_with_source_docx: {
+        Args: {
+          p_arial_font_sha256: string
+          p_arial_resolved: boolean
+          p_artifact_id: string
+          p_artifact_type: Database["public"]["Enums"]["ap_artifact_type"]
+          p_binding_sha256: string
+          p_checksum_sha256: string
+          p_claim_provenance: Json
+          p_extracted_text_sha256: string
+          p_file_version_id: string
+          p_generator_version: string
+          p_job_snapshot_id: string
+          p_malware_scanner_identity: string
+          p_material_line_id: string
+          p_mime_type: string
+          p_package_qa_sha256: string
+          p_provenance_checks: Json
+          p_reference_permission_ids: string[]
+          p_reference_regeneration_id: string
+          p_render_preview_bucket: string
+          p_render_preview_path: string
+          p_render_preview_sha256: string
+          p_rendered_page_count: number
+          p_rendered_page_sha256: string[]
+          p_renderer_identity: string
+          p_reviewer_id: string
+          p_safe_filename: string
+          p_size_bytes: number
+          p_source_docx_checksum_sha256: string
+          p_source_docx_safe_filename: string
+          p_source_docx_size_bytes: number
+          p_source_docx_storage_bucket: string
+          p_source_docx_storage_path: string
           p_source_line_revision_id: string
           p_source_snapshot_id: string
           p_storage_bucket: string
@@ -12422,12 +12509,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12451,11 +12538,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12476,11 +12563,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12501,11 +12588,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12518,11 +12605,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

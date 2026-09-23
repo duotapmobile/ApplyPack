@@ -8,7 +8,7 @@ import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 
-import { pdfFontTableUsesApprovedFont } from "@/lib/documents/font-validation";
+import { pdfFontNames, pdfFontTableUsesApprovedFont } from "@/lib/documents/font-validation";
 import { pdfTextBoundsAreValid } from "@/lib/documents/pdf-bounds";
 import { pdfStructureIsValid, pdfCatalogLanguageMatches } from "@/lib/documents/pdf-validation";
 import { DOCUMENT_REQUIREMENTS } from "@/lib/documents/requirements";
@@ -23,12 +23,21 @@ type LocalTool = { path: string; sha256: string };
 export type LocalRenderResult = {
   rendererIdentity: string;
   documentFontSha256: string;
+  actualExportedFonts: string[];
+  independentTextExtractors: string[];
   pageCount: 1 | 2;
   documentFontResolved: true;
+  fontsEmbedded: true;
+  fontsUnicodeMapped: true;
   extractedTextSha256: string;
   pageImages: Array<{ bytes: Buffer; sha256: string }>;
   taggedPdf: true;
   metadataVerified: true;
+  secondaryTextExtractor: {
+    pythonSha256: string;
+    scriptSha256: string;
+    pymupdfVersion: string;
+  } | null;
   structureTreeSha256: string;
   searchablePdf: Buffer;
   searchablePdfSha256: string;
@@ -47,6 +56,9 @@ export function documentRendererConfiguration(environment: Partial<NodeJS.Proces
     pdfPpm: tool("APP_PDFTOPPM_EXECUTABLE", "APP_PDFTOPPM_EXECUTABLE_SHA256"),
   };
   const documentFont = tool("APP_DOCUMENT_FONT_FILE", "APP_DOCUMENT_FONT_FILE_SHA256");
+  const secondaryPdfText = tool("APP_PYMUPDF_PYTHON_EXECUTABLE", "APP_PYMUPDF_PYTHON_EXECUTABLE_SHA256");
+  const secondaryPdfTextReady = isAbsolute(secondaryPdfText.path) && SHA256.test(secondaryPdfText.sha256);
+  const documentFontFamily = environment.APP_DOCUMENT_FONT_FAMILY?.trim() || "";
   const identity = environment.APP_DOCUMENT_RENDERER_IDENTITY?.trim() || "";
   const values = Object.values(tools);
   return {
@@ -55,7 +67,11 @@ export function documentRendererConfiguration(environment: Partial<NodeJS.Proces
     documentFont,
     ready: identity.length >= 3
       && values.every((value) => isAbsolute(value.path) && SHA256.test(value.sha256))
-      && isAbsolute(documentFont.path) && SHA256.test(documentFont.sha256),
+      && isAbsolute(documentFont.path) && SHA256.test(documentFont.sha256)
+      && DOCUMENT_REQUIREMENTS.approvedExportFontFamilies.includes(documentFontFamily),
+    documentFontFamily,
+    secondaryPdfText,
+    secondaryPdfTextReady,
   } as const;
 }
 
@@ -70,6 +86,10 @@ export async function renderDocumentLocallyForQa(input: {
   if (!configuration.ready) throw new Error("approved_local_document_renderer_not_configured");
   await Promise.all(Object.values(configuration.tools).map(verifyTool));
   await verifyTool(configuration.documentFont);
+  if (configuration.secondaryPdfTextReady) await verifyTool(configuration.secondaryPdfText);
+  if (process.env.APPLYPACK_REQUIRE_SECONDARY_PDF_EXTRACTOR === "true" && !configuration.secondaryPdfTextReady) {
+    throw new Error("secondary_pdf_extractor_not_configured");
+  }
   const work = await mkdtemp(join(tmpdir(), "applypack-render-"));
   const resolvedWork = resolve(work);
   const safeRoot = resolve(tmpdir()) + sep;
@@ -99,12 +119,41 @@ export async function renderDocumentLocallyForQa(input: {
     const boundingXml = await execute(configuration.tools.pdfText.path, ["-bbox-layout", pdfPath, "-"], 10_000);
     if (!pdfTextBoundsAreValid(boundingXml, pageCount)) throw new Error("rendered_text_outside_page_or_bounds_invalid");
     const fontInfo = await execute(configuration.tools.pdfFonts.path, [pdfPath], 10_000);
-    if (!pdfFontTableUsesApprovedFont(fontInfo)) throw new Error("document_font_not_resolved");
+    const actualExportedFonts = pdfFontNames(fontInfo);
+    if (!pdfFontTableUsesApprovedFont(fontInfo, [configuration.documentFontFamily])) {
+      throw new Error("document_font_not_resolved");
+    }
     await execute(configuration.tools.pdfText.path, ["-layout", "-nopgbrk", pdfPath, textPath], 10_000);
     const extractedText = normalizeRenderedDocumentText((await readFile(textPath)).toString("utf8"));
     const extractedTextSha256 = hash(Buffer.from(extractedText, "utf8"));
     if (!extractedText || extractedTextSha256 !== input.expectedExtractedTextSha256) {
       throw new Error("rendered_text_not_equivalent");
+    }
+    const independentTextExtractors = ["Poppler pdftotext"];
+    let secondaryTextExtractor: LocalRenderResult["secondaryTextExtractor"] = null;
+    if (configuration.secondaryPdfTextReady) {
+      const script = resolve(process.cwd(), "scripts", "extract-pdf-text-pymupdf.py");
+      const scriptBytes = await readFile(script);
+      const pymupdfVersion = (await execute(
+        configuration.secondaryPdfText.path,
+        ["-c", "import fitz; print(fitz.VersionBind)"],
+        10_000,
+      )).trim();
+      if (!/^\d+(?:\.\d+){2,4}$/.test(pymupdfVersion)) throw new Error("secondary_pdf_extractor_version_invalid");
+      const secondaryText = normalizeRenderedDocumentText(await execute(
+        configuration.secondaryPdfText.path,
+        [script, pdfPath],
+        20_000,
+      ));
+      if (!secondaryText || hash(Buffer.from(secondaryText, "utf8")) !== input.expectedExtractedTextSha256) {
+        throw new Error("secondary_rendered_text_not_equivalent");
+      }
+      independentTextExtractors.push(`PyMuPDF ${pymupdfVersion}`);
+      secondaryTextExtractor = {
+        pythonSha256: configuration.secondaryPdfText.sha256,
+        scriptSha256: hash(scriptBytes),
+        pymupdfVersion,
+      };
     }
     await execute(configuration.tools.pdfPpm.path, ["-png", "-r", "144", pdfPath, imageStem], 30_000);
     const imageNames = (await readdir(work)).filter((name) => name.startsWith(basename(imageStem)) && name.endsWith(".png")).sort();
@@ -118,14 +167,19 @@ export async function renderDocumentLocallyForQa(input: {
     return {
       rendererIdentity: configuration.identity,
       documentFontSha256: configuration.documentFont.sha256,
+      actualExportedFonts,
+      independentTextExtractors,
       pageCount: pageCount as 1 | 2,
       documentFontResolved: true,
+      fontsEmbedded: true,
+      fontsUnicodeMapped: true,
       extractedTextSha256,
       pageImages,
       searchablePdf,
       searchablePdfSha256: hash(searchablePdf),
       taggedPdf: true,
       metadataVerified: true,
+      secondaryTextExtractor,
       structureTreeSha256: hash(Buffer.from(structureTree, "utf8")),
     };
   } finally {

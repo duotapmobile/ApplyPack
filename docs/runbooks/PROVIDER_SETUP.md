@@ -41,6 +41,14 @@ Prices and quantities are server-controlled. Test mode must pass before live con
 5. Do not describe this control as malware scanning. Record the residual risk from docs/launch/LAUNCH_DECISIONS_2026-09-02.md.
 6. Connect ClamAV only if later approved after exact cost and privacy review; if used, configure its private host and prove a real PONG plus clean and EICAR paths.
 
+## Document renderer
+
+1. Pin LibreOffice, Poppler, the approved font file, and their SHA-256 values in the environment-scoped secret/configuration store.
+2. Set `APP_DOCUMENT_FONT_FAMILY` to the actual approved exported family: `Arial` when Arial resolves, or `Liberation Sans` when the approved standard sans-serif substitute resolves. The DOCX template still requests Arial.
+3. Run `scripts/test-document-render-windows.ps1` or the equivalent pinned Linux render check. The release check must record exported PDF font names and verify tagged output, metadata, language, structure, page count, bounds, searchable text, and rendered images.
+4. Use the optional pinned PyMuPDF Python executable for the second local extraction path. Do not make PyMuPDF an application runtime dependency merely to create a score.
+5. Revoke document-generation approval after any content, template, exporter, renderer, or font change. Reapprove only the observed current runtime; do not relabel older evidence.
+
 ## DNS
 
 Export the complete Namecheap zone before mutation. Preserve nameservers and unrelated records. Add Railway and email records exactly as each provider displays them; never copy placeholder tokens from documentation. Record changes without committing secret verification values.

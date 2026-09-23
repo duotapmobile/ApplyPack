@@ -84,12 +84,17 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - run: sudo apt-get update && sudo apt-get install -y libreoffice-writer fonts-liberation fontconfig poppler-utils
+      - run: python -m pip install PyMuPDF==1.27.2.3
       - run: npm ci
       - run: node --test scripts/test-renderer-runtime.test.mjs
       - name: Render actual DOCX files and verify PDF outputs
         env:
           APP_RENDERER_RUNTIME_DISCOVERY: 'true'
+          APPLYPACK_REQUIRE_SECONDARY_PDF_EXTRACTOR: 'true'
           APPLYPACK_RENDER_EVIDENCE_DIR: ${{ runner.temp }}/applypack-chunk5-render-ci
         run: >-
           node --input-type=module -e

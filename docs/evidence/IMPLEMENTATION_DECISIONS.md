@@ -1,6 +1,6 @@
 # ApplyPack Implementation Decisions
 
-Last updated: September 2, 2026
+Last updated: September 23, 2026
 
 ## Confirmed by the owner
 
@@ -124,3 +124,16 @@ The owner's latest direct feedback replaces the compact, playful process control
 - The dedicated `/how-it-works` page now explains intake, capacity and payment timing, research, the complete 10-match delivery, customer selection, optional $8 application materials, truthful human review, customer submission, and the no-guarantee boundary.
 - `/how-it-works` explains the operational journey. `/experience-connections`, labeled `How Matching Works`, remains focused on the reasoning used to identify credible experience and life-fit connections.
 - `What it demonstrate` is corrected to `What it demonstrates`, with the caregiving example retaining the qualified wording `What it may demonstrate`.
+
+## September 23, 2026 validated document architecture
+
+The September 23 product decision adopted the supplied benchmark winner: the existing single-column, stacked resume pattern with tighter document semantics. Each role is now a title line followed by one employer, ASCII date-range, and optional location line, then genuine Word list paragraphs. Section labels remain real Heading 1 paragraphs; no tables, text boxes, sidebars, hidden text, or detached date columns are permitted. The repository suite validates the adopted structure; it does not reproduce or independently score the six external benchmark variants.
+
+- The DOCX requests Arial. Release QA records the actual exported PDF font; only explicitly approved Arial or Liberation Sans resolution is accepted, and substitution is never reported as embedded Arial.
+- The target role is recoverable inside natural professional-summary prose instead of a standalone `Target role:` label.
+- DOCX and PDF metadata use the verified candidate, exact role, and company, with empty keywords and an explicit language. Framework or library authors fail package QA.
+- PDF is the normal customer artifact when the employer accepts it; DOCX generation and employer-required DOCX delivery remain supported.
+- Content, template, and exporter versions advanced together, so previews, approvals, releases, portal listings, and downloads reject stale artifacts.
+- Synthetic regression coverage validates identity, ordered headings, role grouping, native lists, dates, education, career breaks, metadata, Unicode names, wrapping, and cross-candidate/cross-job isolation. The render suite separately checks tagged structure, searchable text with Poppler and PyMuPDF, page images, bounds, and recorded fonts when the approved local renderer is available.
+
+This is validated against ApplyPack's local extraction and structure regression suite. It is not a claim of universal ATS compatibility, PDF/UA conformance, or improved hiring outcomes.
