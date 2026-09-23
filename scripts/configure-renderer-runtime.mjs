@@ -34,6 +34,13 @@ export function configureRendererRuntime(environment = process.env, dependencies
     pins.push([name, actual]);
   }
   for (const [name, path] of Object.entries(executablePaths)) pin(name, path);
+  if (configured.APPLYPACK_REQUIRE_SECONDARY_PDF_EXTRACTOR === "true") {
+    const pythonPath = configured.APP_PYMUPDF_PYTHON_EXECUTABLE?.trim()
+      || run("/usr/bin/env", ["which", "python3"], {
+        encoding: "utf8", timeout: 5_000, maxBuffer: 4_096, windowsHide: true,
+      }).trim();
+    pin("APP_PYMUPDF_PYTHON_EXECUTABLE", pythonPath);
+  }
   const match = run("/usr/bin/fc-match", ["--format=%{family}\n%{file}\n", "Liberation Sans:style=Regular"], {
     encoding: "utf8", timeout: 5_000, maxBuffer: 4_096, windowsHide: true,
   }).trim().split("\n");

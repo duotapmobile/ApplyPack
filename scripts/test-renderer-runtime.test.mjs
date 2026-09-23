@@ -32,6 +32,24 @@ test("installed bytes are pinned without granting any approval", () => {
   assert.equal(environment.APP_DOCUMENT_RENDERER_IDENTITY, "explicit-identity");
   assert.equal(Object.keys(environment).some((name) => /APPROV|CHECKOUT|PAYMENT/.test(name)), false);
 });
+test("required secondary extraction pins the discovered Python executable", () => {
+  const environment = {
+    APP_RENDERER_RUNTIME_DISCOVERY: "true",
+    APPLYPACK_REQUIRE_SECONDARY_PDF_EXTRACTOR: "true",
+  };
+  configureRendererRuntime(environment, {
+    ...dependencies,
+    execFileSync: (path, args, options) => {
+      if (path === "/usr/bin/env") {
+        assert.deepEqual(args, ["which", "python3"]);
+        return "/opt/python/bin/python3\n";
+      }
+      return dependencies.execFileSync(path, args, options);
+    },
+  });
+  assert.equal(environment.APP_PYMUPDF_PYTHON_EXECUTABLE, "/opt/python/bin/python3");
+  assert.equal(environment.APP_PYMUPDF_PYTHON_EXECUTABLE_SHA256, digest);
+});
 test("explicit mismatched pins fail without partially mutating configuration", () => {
   const environment = { APP_RENDERER_RUNTIME_DISCOVERY: "true", APP_PDFINFO_EXECUTABLE_SHA256: "a".repeat(64) };
   const before = { ...environment };
