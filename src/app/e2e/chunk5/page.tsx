@@ -214,7 +214,7 @@ function materialLine(state: string): MaterialDeliveryView {
 
 function artifact(id: string, type: "RESUME" | "COVER_LETTER" | "REFERENCE_SHEET", filename: string, hash: string) {
   return {
-    id, type, version: 1, filename, checksum: hash.repeat(64),
+    id, fileVersionId: id.replace(/^e/, "f"), type, version: 1, filename, checksum: hash.repeat(64),
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     createdAt: "2026-09-07T17:30:00.000Z", downloadsRevokedAt: null, supersededAt: null,
   };
@@ -246,6 +246,7 @@ function staffLine(): MaterialStaffLine {
       visualApproved: false,
       rendererIdentity: "fixture-renderer-v1",
       arialResolved: true,
+      editableSourceAvailable: true,
     }],
     openProposalKind: null,
     openSupportCases: 0,

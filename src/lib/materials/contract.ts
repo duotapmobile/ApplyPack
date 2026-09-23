@@ -4,6 +4,10 @@ export const MATERIAL_CURRENCY = "USD";
 export const MATERIAL_DOWNLOAD_SECONDS = 15 * 60;
 export { DOCUMENT_GENERATOR_VERSION as MATERIAL_GENERATOR_VERSION } from "@/lib/documents/requirements";
 
+export function materialArtifactDownloadPath(artifactId: string, fileVersionId: string) {
+  return `/api/customer/artifacts/${encodeURIComponent(artifactId)}/download?fileVersionId=${encodeURIComponent(fileVersionId)}`;
+}
+
 export const careerBreakOptions = [
   { value: "KEEP_EXISTING_TIMELINE", label: "Keep my existing timeline" },
   { value: "CAREER_BREAK", label: "Use Career Break" },
@@ -45,6 +49,15 @@ export function materialTotalCents(selectedIds: readonly string[]) {
     throw new Error("material_selection_count_invalid");
   }
   return selectedIds.length * MATERIAL_LINE_PRICE_CENTS;
+}
+
+export function preferredMaterialOutputFormat(
+  employerFormats: readonly string[],
+  configuredFormats: readonly string[],
+): "PDF" | "DOCX" | null {
+  if (employerFormats.includes("PDF") && configuredFormats.includes("PDF")) return "PDF";
+  if (employerFormats.includes("DOCX") && configuredFormats.includes("DOCX")) return "DOCX";
+  return null;
 }
 
 export function allowedWarning(code: AllowedWarningCode) {

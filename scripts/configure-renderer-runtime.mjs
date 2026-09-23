@@ -40,6 +40,7 @@ export function configureRendererRuntime(environment = process.env, dependencies
   if (match.length !== 2 || !match[0].split(",").map((value) => value.trim()).includes("Liberation Sans")
     || !isAbsolute(match[1])) throw new Error("renderer_liberation_sans_unavailable");
   pin("APP_DOCUMENT_FONT_FILE", match[1]);
+  configured.APP_DOCUMENT_FONT_FAMILY = "Liberation Sans";
   const resolvedFontHash = createHash("sha256").update(read(match[1])).digest("hex");
   if (configured.APP_DOCUMENT_FONT_FILE_SHA256 !== resolvedFontHash) throw new Error("renderer_configured_font_differs_from_resolved_font");
   configured.APP_DOCUMENT_RENDERER_IDENTITY ||= `applypack-linux-renderer-${createHash("sha256").update(JSON.stringify(pins)).digest("hex").slice(0, 20)}`;

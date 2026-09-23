@@ -14,9 +14,10 @@ import {
 } from "@/lib/documents/generate";
 import { documentRendererConfiguration, renderDocumentLocallyForQa } from "@/lib/documents/renderer";
 import { validateMaterialClaims } from "@/lib/documents/claim-validation";
-import { materialFilename } from "@/lib/materials/contract";
+import { materialFilename, preferredMaterialOutputFormat } from "@/lib/materials/contract";
 import { readReferencePayload, type StoredReferenceEnvelope } from "@/lib/materials/references";
 import { readMaterialContact, type StoredMaterialContactEnvelope } from "@/lib/materials/server";
+import { removeGeneratedStorageOrQueue } from "@/lib/materials/storage-cleanup";
 import { isSameOriginRequest } from "@/lib/security/origin";
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -109,7 +110,7 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
       .select("id,content_sha256,allowed_formats,resume_page_limit,resume_filename_instruction,cover_letter_filename_instruction,reference_filename_instruction,reference_timing,reference_count,hard_block_reason,injection_scan_state,is_current,checked_at")
       .eq("id", revision.employer_rule_snapshot_id).eq("job_snapshot_id", revision.job_snapshot_id).maybeSingle(),
     auth.admin.from("ap_commerce_configuration")
-      .select("materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_sha256,document_safety_policy")
+      .select("materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_family,document_font_sha256,document_safety_policy")
       .eq("singleton", true).maybeSingle(),
   ]);
   if (!intent || !job || !rule || !rule.is_current || rule.hard_block_reason || rule.injection_scan_state !== "CLEAR") {
@@ -123,9 +124,10 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
     || !generationConfiguration.material_output_formats.length
     || !rendererConfiguration.ready
     || rendererConfiguration.identity !== generationConfiguration.document_renderer_identity
+    || rendererConfiguration.documentFontFamily !== generationConfiguration.document_font_family
     || rendererConfiguration.documentFont.sha256 !== generationConfiguration.document_font_sha256
     || generationConfiguration.document_safety_policy !== "generated-structural-v1") {
-    return response({ error: "Approved Liberation Sans rendering and structural document policy are required." }, 503);
+    return response({ error: "Approved document-font rendering and structural document policy are required." }, 503);
   }
   const now = new Date();
   const dueAt = line.materials_due_at ? new Date(line.materials_due_at) : null;
@@ -189,9 +191,10 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
   }
   const location = stringValue(job.location_and_work_mode, "location") || stringValue(job.location_and_work_mode, "locationText") || null;
   const allowedFormats = Array.isArray(rule.allowed_formats) ? rule.allowed_formats : [];
-  const outputFormat: "DOCX" | "PDF" | null = allowedFormats.includes("DOCX")
-    && generationConfiguration.material_output_formats.includes("DOCX") ? "DOCX"
-    : allowedFormats.includes("PDF") && generationConfiguration.material_output_formats.includes("PDF") ? "PDF" : null;
+  const outputFormat = preferredMaterialOutputFormat(
+    allowedFormats,
+    generationConfiguration.material_output_formats,
+  );
   if (!outputFormat) return response({ error: "No approved output format satisfies the current employer instructions." }, 409);
   if (!/^[0-9a-f]{64}$/i.test(job.content_sha256)
     || !job.captured_listing || typeof job.captured_listing !== "object" || Array.isArray(job.captured_listing)
@@ -433,7 +436,7 @@ async function validateUploadAndRegister(input: {
   artifactType: "RESUME" | "COVER_LETTER" | "REFERENCE_SHEET";
   artifact: GeneratedArtifact;
 }) {
-  const inspection = await inspectDocxPackage(input.artifact.buffer, input.artifactType);
+  const inspection = await inspectDocxPackage(input.artifact.buffer, input.artifactType, input.artifact.metadata);
   if (!inspection.passed) throw new Error("docx_package_inspection_failed");
   const render = await renderDocumentLocallyForQa({
     docx: input.artifact.buffer,
@@ -462,19 +465,34 @@ async function validateUploadAndRegister(input: {
   const extension = input.outputFormat.toLowerCase();
   const storagePath = `${input.customerId}/materials/${input.lineId}/${fileVersionId}/${filename}`;
   const previewPath = `${input.customerId}/materials/${input.lineId}/${fileVersionId}/render-preview.pdf`;
+  const sourceDocxPath = `${input.customerId}/materials/${input.lineId}/${fileVersionId}/source/${input.artifact.filename}`;
   const previewUpload = await input.admin.storage.from("operator-render-previews").upload(previewPath, render.searchablePdf, {
     contentType: PDF_MIME,
     cacheControl: "0",
     upsert: false,
   });
   if (previewUpload.error) throw previewUpload.error;
+  const sourceUpload = await input.admin.storage.from("operator-drafts").upload(sourceDocxPath, input.artifact.buffer, {
+    contentType: DOCX_MIME,
+    cacheControl: "0",
+    upsert: false,
+  });
+  if (sourceUpload.error) {
+    await removeGeneratedStorageOrQueue(input.admin, [
+      { bucket: "operator-render-previews", path: previewPath },
+    ], "generated_upload_failed");
+    throw sourceUpload.error;
+  }
   const artifactUpload = await input.admin.storage.from("customer-deliveries").upload(storagePath, bytes, {
     contentType: input.outputFormat === "PDF" ? PDF_MIME : DOCX_MIME,
     cacheControl: "0",
     upsert: false,
   });
   if (artifactUpload.error) {
-    await input.admin.storage.from("operator-render-previews").remove([previewPath]);
+    await removeGeneratedStorageOrQueue(input.admin, [
+      { bucket: "operator-render-previews", path: previewPath },
+      { bucket: "operator-drafts", path: sourceDocxPath },
+    ], "generated_upload_failed");
     throw artifactUpload.error;
   }
   const structuralChecks = {
@@ -486,6 +504,10 @@ async function validateUploadAndRegister(input: {
     noExternalRelationships: inspection.checks.noExternalRelationships,
     noLayoutTables: inspection.checks.singleColumnLinearLayout,
     nativeBullets: inspection.checks.nativeBullets,
+    semanticHeadings: inspection.checks.semanticSectionHeadings,
+    stackedJobGrouping: inspection.checks.stackedJobGrouping,
+    asciiDashPunctuation: inspection.checks.asciiDashPunctuation,
+    editableDocxSource: true,
     linearText: inspection.checks.singleColumnLinearLayout,
     noPlaceholders: inspection.checks.noPlaceholdersOrPromptArtifacts,
     noMetadataLeak: inspection.checks.noCustomOrGeneratorMetadata && inspection.checks.noVisibleInternalIdentifiers,
@@ -497,8 +519,11 @@ async function validateUploadAndRegister(input: {
     textExtracted: Boolean(inspection.extractedText),
     twoPageExceptionApproved: input.artifact.expectedPageCount === 1
       || input.artifact.provenance.fitActions.some((action) => ["human_approved_two_page_exception", "substantive_two_page_resume"].includes(action)),
-    metadataValid: inspection.checks.metadataPresent && inspection.checks.languageMetadata
+    metadataValid: inspection.checks.metadataPresent && inspection.checks.metadataMatchesExpected
+      && inspection.checks.noFrameworkAuthor && inspection.checks.languageMetadata
       && inspection.checks.keywordsEmpty && inspection.checks.editorIdentityEmpty && render.metadataVerified,
+    fontsEmbedded: render.fontsEmbedded,
+    fontsUnicodeMapped: render.fontsUnicodeMapped,
     taggedPdf: render.taggedPdf,
     pdfStructureValid: Boolean(render.structureTreeSha256),
   };
@@ -518,7 +543,7 @@ async function validateUploadAndRegister(input: {
       && input.artifact.provenance.versions.template === input.artifact.versions.template
       && input.artifact.provenance.versions.exporter === input.artifact.versions.exporter,
   };
-  const registered = await input.admin.rpc("ap_register_material_artifact_version", {
+  const registered = await input.admin.rpc("ap_register_material_artifact_version_with_source_docx", {
     p_artifact_id: artifactId,
     p_file_version_id: fileVersionId,
     p_material_line_id: input.lineId,
@@ -551,12 +576,18 @@ async function validateUploadAndRegister(input: {
     p_render_preview_sha256: render.searchablePdfSha256,
     p_rendered_page_sha256: render.pageImages.map((page) => page.sha256),
     p_arial_resolved: render.documentFontResolved,
+    p_source_docx_storage_bucket: "operator-drafts",
+    p_source_docx_storage_path: sourceDocxPath,
+    p_source_docx_safe_filename: input.artifact.filename,
+    p_source_docx_checksum_sha256: hash(input.artifact.buffer),
+    p_source_docx_size_bytes: input.artifact.buffer.byteLength,
   });
   if (registered.error || !registered.data) {
-    await Promise.all([
-      input.admin.storage.from("operator-render-previews").remove([previewPath]),
-      input.admin.storage.from("customer-deliveries").remove([storagePath]),
-    ]);
+    await removeGeneratedStorageOrQueue(input.admin, [
+      { bucket: "operator-render-previews", path: previewPath },
+      { bucket: "operator-drafts", path: sourceDocxPath },
+      { bucket: "customer-deliveries", path: storagePath },
+    ], "generated_registration_failed");
     throw registered.error || new Error("artifact_registration_failed");
   }
   if (bytes !== input.artifact.buffer) bytes.fill(0);

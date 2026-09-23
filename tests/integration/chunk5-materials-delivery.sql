@@ -34,6 +34,11 @@ select pg_temp.assert_true(
   'operator render previews bucket is not private and bounded'
 );
 select pg_temp.assert_true(
+  exists(select 1 from pg_constraint where conname='storage_cleanup_queue_bucket_check'
+    and pg_get_constraintdef(oid) like '%operator-render-previews%'),
+  'render preview failures cannot enter the durable storage cleanup queue'
+);
+select pg_temp.assert_true(
   (select tax_treatment='UNSET_BLOCKING' and not materials_generation_approved
      and cardinality(material_output_formats)=0 and document_renderer_identity is null
      and arial_font_sha256 is null and malware_scanner_identity is null
@@ -57,6 +62,18 @@ select pg_temp.assert_true(
 select pg_temp.assert_true(
   not has_table_privilege('authenticated','public.ap_job_snapshots','select'),
   'chunk5 re-exposed immutable job snapshots directly to customers'
+);
+select pg_temp.assert_true(
+  has_table_privilege('service_role','public.ap_artifact_source_docx','select')
+  and not has_table_privilege('service_role','public.ap_artifact_source_docx','insert'),
+  'editable DOCX source table bypasses the guarded RPC'
+);
+select pg_temp.assert_true(
+  not has_function_privilege('service_role',
+    'public.ap_register_material_artifact_version(uuid,uuid,uuid,uuid,public.ap_artifact_type,uuid,uuid,uuid,uuid,uuid[],jsonb,text,text,text,text,text,text,integer,text,text,jsonb,jsonb,text,integer,text,text,text,text,text,text,text[],boolean)','execute')
+  and has_function_privilege('service_role',
+    'public.ap_register_material_artifact_version_with_source_docx(uuid,uuid,uuid,uuid,public.ap_artifact_type,uuid,uuid,uuid,uuid,uuid[],jsonb,text,text,text,text,text,text,integer,text,text,jsonb,jsonb,text,integer,text,text,text,text,text,text,text[],boolean,text,text,text,text,integer)','execute'),
+  'atomic editable-source registration privilege boundary is incorrect'
 );
 select pg_temp.assert_true(
   (select bool_and(relrowsecurity) from pg_class
@@ -263,7 +280,7 @@ insert into public.ap_generated_artifacts(
   '25000000-0000-4000-8000-000000000001','b5000000-0000-4000-8000-000000000001',
   '75000000-0000-4000-8000-000000000001','RESUME',
   '45000000-0000-4000-8000-000000000001','c5000000-0000-4000-8000-000000000001',
-  '{"sourceBinding":{"candidateFactIds":["65000000-0000-4000-8000-000000000001"]},"claims":[{"source":"customer-confirmed"}]}','applypack-documents|content=applypack-content-2026-09-22.1|template=applypack-template-2026-09-22.1|exporter=libreoffice-tagged-pdf-2026-09-22.1',1
+  '{"sourceBinding":{"candidateFactIds":["65000000-0000-4000-8000-000000000001"]},"claims":[{"source":"customer-confirmed"}]}','applypack-documents|content=applypack-content-2026-09-23.1|template=applypack-template-2026-09-23.1|exporter=libreoffice-tagged-pdf-2026-09-23.1',1
 );
 insert into public.ap_generated_file_versions(
   id,artifact_id,version,storage_bucket,storage_path,checksum_sha256,mime_type,size_bytes,
@@ -277,7 +294,11 @@ insert into public.ap_generated_file_versions(
   '15000000-0000-4000-8000-000000000003',clock_timestamp()-interval '4 minutes',
   'Chunk_5_Fixture_Employer_Operations_Specialist_Resume.docx',repeat('b',64),repeat('d',64)
 );
-update public.ap_commerce_configuration set document_font_family='Liberation Sans',document_font_sha256=repeat('f',64),document_safety_policy='generated-structural-v1',document_renderer_identity='fixture-renderer-v1' where singleton;
+update public.ap_commerce_configuration set materials_generation_approved=true,
+  materials_generation_approval_reference='synthetic-integration-approval',
+  document_font_family='Liberation Sans',document_font_sha256=repeat('f',64),
+  document_safety_policy='generated-structural-v1',document_renderer_identity='fixture-renderer-v1'
+where singleton;
 insert into public.ap_artifact_quality_reviews(
   id,file_version_id,binding_sha256,structural_checks,provenance_checks,extracted_text_sha256,
   rendered_page_count,renderer_identity,document_font_sha256,document_safety_policy,
@@ -294,6 +315,64 @@ insert into public.ap_artifact_quality_reviews(
   '15000000-0000-4000-8000-000000000003',clock_timestamp()-interval '4 minutes',
   'The rendered document has no clipping, overlap, or font substitution.'
 );
+
+savepoint editable_docx_source_gate;
+update public.ap_artifact_quality_reviews set
+  content_approved_by=null,content_approved_at=null,content_attestation=null,
+  visual_approved_by=null,visual_approved_at=null,visual_attestation=null
+where file_version_id='f5000000-0000-4000-8000-000000000001';
+update public.ap_generated_file_versions set
+  human_content_approved_by=null,human_content_approved_at=null,
+  human_visual_approved_by=null,human_visual_approved_at=null
+where id='f5000000-0000-4000-8000-000000000001';
+do $$ begin
+  perform public.ap_record_material_human_approval(
+    'f5000000-0000-4000-8000-000000000001','15000000-0000-4000-8000-000000000003',
+    'CONTENT','Reviewed content remains bound to the synthetic fixture evidence.');
+  raise exception 'approval_without_editable_source_was_accepted';
+exception when raise_exception then
+  if sqlerrm='approval_without_editable_source_was_accepted' then raise; end if;
+  if sqlerrm<>'stale_or_failed_artifact_not_approvable' then raise; end if;
+end $$;
+do $$ begin
+  perform public.ap_record_material_source_docx(
+    'f5000000-0000-4000-8000-000000000001','15000000-0000-4000-8000-000000000003',
+    'operator-drafts','wrong-customer/materials/source.docx',
+    'Chunk_5_Fixture_Employer_Operations_Specialist_Resume.docx',repeat('a',64),4096);
+  raise exception 'cross_binding_editable_source_was_accepted';
+exception when raise_exception then
+  if sqlerrm='cross_binding_editable_source_was_accepted' then raise; end if;
+  if sqlerrm<>'material_source_docx_identity_invalid' then raise; end if;
+end $$;
+select public.ap_record_material_source_docx(
+  'f5000000-0000-4000-8000-000000000001','15000000-0000-4000-8000-000000000003',
+  'operator-drafts',
+  '15000000-0000-4000-8000-000000000001/materials/b5000000-0000-4000-8000-000000000001/f5000000-0000-4000-8000-000000000001/source/Chunk_5_Fixture_Employer_Operations_Specialist_Resume.docx',
+  'Chunk_5_Fixture_Employer_Operations_Specialist_Resume.docx',repeat('a',64),4096);
+select public.ap_record_material_human_approval(
+  'f5000000-0000-4000-8000-000000000001','15000000-0000-4000-8000-000000000003',
+  'CONTENT','Reviewed content remains bound to the synthetic fixture evidence.');
+select public.ap_record_material_human_approval(
+  'f5000000-0000-4000-8000-000000000001','15000000-0000-4000-8000-000000000003',
+  'VISUAL','Reviewed rendering contains no clipping or layout regression.');
+select pg_temp.assert_true(
+  exists(select 1 from public.ap_artifact_source_docx
+    where file_version_id='f5000000-0000-4000-8000-000000000001'
+      and storage_bucket='operator-drafts' and checksum_sha256=repeat('a',64))
+  and (select content_approved_at is not null and visual_approved_at is not null
+    from public.ap_artifact_quality_reviews where file_version_id='f5000000-0000-4000-8000-000000000001'),
+  'editable DOCX source did not unlock guarded human approvals'
+);
+update public.ap_generated_file_versions set downloads_revoked_at=clock_timestamp()
+  where id='f5000000-0000-4000-8000-000000000001';
+select pg_temp.assert_true(
+  exists(select 1 from public.storage_cleanup_queue
+    where bucket='operator-drafts'
+      and storage_path like '%/f5000000-0000-4000-8000-000000000001/source/%'
+      and reason='material_source_revoked'),
+  'revoked editable DOCX source was not queued for idempotent cleanup'
+);
+rollback to savepoint editable_docx_source_gate;
 insert into public.ap_releases(
   id,customer_id,order_id,material_line_id,release_kind,committed_at,active_due_at,
   version_bundle,human_approved_by

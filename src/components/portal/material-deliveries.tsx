@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { materialArtifactDownloadPath } from "@/lib/materials/contract";
 
 export type MaterialDeliveryView = {
   lineId: string;
@@ -24,6 +25,7 @@ export type MaterialDeliveryView = {
   regeneration: { state: string; dueAt: string | null } | null;
   artifacts: Array<{
     id: string;
+    fileVersionId: string;
     type: "RESUME" | "COVER_LETTER" | "REFERENCE_SHEET";
     version: number;
     filename: string;
@@ -173,7 +175,7 @@ export function MaterialDeliveries({ lines }: { lines: MaterialDeliveryView[] })
         {line.regeneration ? <p className="deadline-note"><strong>Replacement reference sheet:</strong> {line.regeneration.state.replaceAll("_", " ").toLowerCase()}{line.regeneration.dueAt ? ` · due ${new Date(line.regeneration.dueAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET` : ""}.</p> : null}
         {line.artifacts.length ? <div className="artifact-list">{line.artifacts.map((artifact) => {
           const revoked = Boolean(artifact.downloadsRevokedAt || artifact.supersededAt);
-          return <article key={artifact.id}><div><h4>{artifactLabel(artifact.type)}</h4><p>Version {artifact.version} · SHA-256 {artifact.checksum.slice(0, 12)}…</p><p>{artifact.filename}</p></div>{revoked ? <div><strong>Download revoked</strong><p>This file is stale or a linked reference permission changed.</p></div> : <a className="button-link button-link--primary" href={`/api/customer/artifacts/${artifact.id}/download`}><span>Download current file</span></a>}
+          return <article key={artifact.id}><div><h4>{artifactLabel(artifact.type)}</h4><p>Version {artifact.version} · SHA-256 {artifact.checksum.slice(0, 12)}…</p><p>{artifact.filename}</p></div>{revoked ? <div><strong>Download revoked</strong><p>This file is stale or a linked reference permission changed.</p></div> : <a className="button-link button-link--primary" href={materialArtifactDownloadPath(artifact.id, artifact.fileVersionId)}><span>Download current file</span></a>}
             {artifact.type === "REFERENCE_SHEET" && revoked && !line.regeneration ? <div className="reference-regeneration"><p>Choose one to three fresh permissions for this exact job. Capacity must be available before a new 24-hour period starts.</p>{currentPermissions.map((permission) => <label className="confirm" key={permission.permissionId}><input type="checkbox" checked={(referenceSelections[`regen:${line.lineId}`] || []).includes(permission.permissionId)} onChange={() => togglePermission(`regen:${line.lineId}`, permission.permissionId)} />{permission.name}: {permission.exactPosition} at {permission.employer}</label>)}<button type="button" disabled={busy || !(referenceSelections[`regen:${line.lineId}`] || []).length} onClick={() => regenerate(line, artifact.id)}>Request reviewed replacement sheet</button></div> : null}
           </article>;
         })}</div> : <p>No approved files have been released for this line.</p>}

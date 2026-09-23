@@ -19,13 +19,17 @@ $pins = @{
   APP_PDFFONTS_EXECUTABLE = (Resolve-Executable pdffonts.exe)
   APP_PDFTOTEXT_EXECUTABLE = (Resolve-Executable pdftotext.exe)
   APP_PDFTOPPM_EXECUTABLE = (Resolve-Executable pdftoppm.exe)
-  APP_DOCUMENT_FONT_FILE = 'C:\Windows\Fonts\LiberationSans-Regular.ttf'
+  APP_DOCUMENT_FONT_FILE = 'C:\Windows\Fonts\arial.ttf'
+  APP_PYMUPDF_PYTHON_EXECUTABLE = (Resolve-Executable python.exe)
 }
 foreach ($pin in $pins.GetEnumerator()) {
   [Environment]::SetEnvironmentVariable($pin.Key, $pin.Value, 'Process')
   [Environment]::SetEnvironmentVariable(($pin.Key + '_SHA256'), (Get-FileHash -LiteralPath $pin.Value -Algorithm SHA256).Hash.ToLower(), 'Process')
 }
-$env:APP_DOCUMENT_RENDERER_IDENTITY = 'applypack-windows-local-qa-2026-09-22'
-$env:APPLYPACK_RENDER_EVIDENCE_DIR = Join-Path (Get-Location) ('evidence/applypack-chunk5-render-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+$env:APP_DOCUMENT_FONT_FAMILY = 'Arial'
+$env:APPLYPACK_REQUIRE_SECONDARY_PDF_EXTRACTOR = 'true'
+$env:APP_DOCUMENT_RENDERER_IDENTITY = 'applypack-windows-local-qa-2026-09-23'
+$env:APPLYPACK_RENDER_EVIDENCE_DIR = Join-Path ([IO.Path]::GetTempPath()) ('applypack-chunk5-render-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+Write-Host "Render evidence: $env:APPLYPACK_RENDER_EVIDENCE_DIR"
 npm.cmd run test:document-render
 exit $LASTEXITCODE

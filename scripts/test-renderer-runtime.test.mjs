@@ -28,6 +28,7 @@ test("installed bytes are pinned without granting any approval", () => {
   assert.equal(environment.APP_LIBREOFFICE_EXECUTABLE, "/usr/bin/soffice");
   assert.equal(environment.APP_PDFINFO_EXECUTABLE_SHA256, digest);
   assert.equal(environment.APP_DOCUMENT_FONT_FILE_SHA256, digest);
+  assert.equal(environment.APP_DOCUMENT_FONT_FAMILY, "Liberation Sans");
   assert.equal(environment.APP_DOCUMENT_RENDERER_IDENTITY, "explicit-identity");
   assert.equal(Object.keys(environment).some((name) => /APPROV|CHECKOUT|PAYMENT/.test(name)), false);
 });

@@ -36,7 +36,16 @@ type RenderRecord = {
   pageImageSha256: string[];
   rendererIdentity: string;
   documentFontSha256: string;
+  actualExportedFonts: string[];
+  independentTextExtractors: string[];
   documentFontResolved: true;
+  fontsEmbedded: true;
+  fontsUnicodeMapped: true;
+  secondaryTextExtractor: {
+    pythonSha256: string;
+    scriptSha256: string;
+    pymupdfVersion: string;
+  } | null;
   taggedPdf: true;
   metadataVerified: true;
   structureTreeSha256: string;
@@ -162,6 +171,25 @@ function careerChangeFixture() {
   return input;
 }
 
+function marissaStyleFixture() {
+  const input = baseFixture();
+  input.contact.displayName = "MARISSA WRIGHT";
+  input.contact.email = "marissa.wright@example.invalid";
+  input.contact.linkedInOrPortfolio = "https://marissa-wright.example.invalid";
+  input.job.exactTitle = "Operations Associate";
+  input.job.employer = "Sentinel Group";
+  input.professionalSummary.text = "Operations professional who coordinates accurate records and clear customer communication.";
+  input.experiences[0] = {
+    ...input.experiences[0],
+    historicalTitle: "Amazon Marketplace & Operations Specialist",
+    employer: "PRIVATE-LABEL AMAZON E-COMMERCE",
+    dates: "2019–Present",
+  };
+  input.references = undefined;
+  input.coverLetterParagraphs = realisticCoverLetter(input.job.exactTitle, input.job.employer);
+  return input;
+}
+
 function seniorTwoPageFixture() {
   const input = baseFixture();
   input.contact.displayName = "Darius Morgan";
@@ -211,6 +239,7 @@ function seniorTwoPageFixture() {
 function evidenceScenarios() {
   return [
     { id: "returning-operations", input: baseFixture() },
+    { id: "marissa-style", input: marissaStyleFixture() },
     { id: "career-change-support", input: careerChangeFixture() },
     { id: "senior-program", input: seniorTwoPageFixture() },
   ];
@@ -242,7 +271,7 @@ async function renderArtifact(
   artifactType: RenderRecord["artifact"],
   artifact: GeneratedArtifact,
 ): Promise<RenderRecord> {
-  const inspection = await inspectDocxPackage(artifact.buffer, artifactType);
+  const inspection = await inspectDocxPackage(artifact.buffer, artifactType, artifact.metadata);
   expect(inspection.passed).toBe(true);
   const stem = `${scenario}-${artifactType.toLowerCase().replace("_", "-")}`;
   await Promise.all([
@@ -273,7 +302,12 @@ async function renderArtifact(
     pageImageSha256: rendered.pageImages.map((page) => page.sha256),
     rendererIdentity: rendered.rendererIdentity,
     documentFontSha256: rendered.documentFontSha256,
+    actualExportedFonts: rendered.actualExportedFonts,
+    independentTextExtractors: rendered.independentTextExtractors,
     documentFontResolved: rendered.documentFontResolved,
+    fontsEmbedded: rendered.fontsEmbedded,
+    fontsUnicodeMapped: rendered.fontsUnicodeMapped,
+    secondaryTextExtractor: rendered.secondaryTextExtractor,
     taggedPdf: rendered.taggedPdf,
     metadataVerified: rendered.metadataVerified,
     structureTreeSha256: rendered.structureTreeSha256,
@@ -295,7 +329,7 @@ describe("Chunk 5 real document rendering", () => {
         ...(generated.referenceSheet ? [{ type: "REFERENCE_SHEET" as const, artifact: generated.referenceSheet }] : []),
       ];
       for (const { type, artifact } of artifacts) {
-        const inspection = await inspectDocxPackage(artifact.buffer, type);
+        const inspection = await inspectDocxPackage(artifact.buffer, type, artifact.metadata);
         expect(inspection.passed).toBe(true);
         const stem = `${scenario.id}-${type.toLowerCase().replace("_", "-")}`;
         await Promise.all([
@@ -318,10 +352,10 @@ describe("Chunk 5 real document rendering", () => {
       createdAt: new Date().toISOString(),
       records,
     }, null, 2) + "\n", { flag: "wx" });
-    expect(records).toHaveLength(7);
+    expect(records).toHaveLength(9);
   });
 
-  it("renders representative one- and two-page DOCX artifacts with exact text and Liberation Sans", async () => {
+  it("renders representative one- and two-page DOCX artifacts with exact text and the approved resolved font", async () => {
     const configuration = documentRendererConfiguration();
     expect(configuration.ready).toBe(true);
     const directory = outputDirectory();
@@ -336,9 +370,11 @@ describe("Chunk 5 real document rendering", () => {
         records.push(await renderArtifact(directory, scenario.id, "REFERENCE_SHEET", generated.referenceSheet));
       }
     }
-    expect(records).toHaveLength(7);
-    expect(records.reduce((total, record) => total + record.actualPages, 0)).toBe(8);
-    expect(records.every((record) => record.expectedPages === record.actualPages && record.documentFontResolved)).toBe(true);
+    expect(records).toHaveLength(9);
+    expect(records.reduce((total, record) => total + record.actualPages, 0)).toBe(10);
+    expect(records.every((record) => record.expectedPages === record.actualPages
+      && record.documentFontResolved && record.fontsEmbedded && record.fontsUnicodeMapped)).toBe(true);
+    expect(records.every((record) => record.independentTextExtractors.length >= 2)).toBe(true);
     const report = {
       schemaVersion: "applypack-chunk5-render-evidence-v1",
       createdAt: new Date().toISOString(),
@@ -353,7 +389,9 @@ describe("Chunk 5 real document rendering", () => {
         pdfText: configuration.tools.pdfText.sha256,
         pdfPpm: configuration.tools.pdfPpm.sha256,
         documentFont: configuration.documentFont.sha256,
+        secondaryPdfText: configuration.secondaryPdfText.sha256 || null,
       },
+      secondaryTextExtractor: records.find((record) => record.secondaryTextExtractor)?.secondaryTextExtractor || null,
       records,
     };
     await writeFile(resolve(directory, "render-report.json"), JSON.stringify(report, null, 2) + "\n", { flag: "wx" });

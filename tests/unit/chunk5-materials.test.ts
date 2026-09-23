@@ -11,7 +11,9 @@ import {
   careerBreakPresentation,
   cleanUntrustedDocumentText,
   materialFilename,
+  materialArtifactDownloadPath,
   materialTotalCents,
+  preferredMaterialOutputFormat,
   publicMaterialState,
   referenceReadiness,
   safeFilename,
@@ -111,6 +113,11 @@ function fixture(): EvidenceBoundMaterialInput {
 }
 
 describe("Chunk 5 materials contract", () => {
+  it("uses searchable PDF by default and retains DOCX when the employer requires it", () => {
+    expect(preferredMaterialOutputFormat(["DOCX", "PDF"], ["DOCX", "PDF"])).toBe("PDF");
+    expect(preferredMaterialOutputFormat(["DOCX"], ["DOCX", "PDF"])).toBe("DOCX");
+    expect(preferredMaterialOutputFormat(["PDF"], ["DOCX"])).toBeNull();
+  });
   it("prices every permitted subset in integer cents with no bundle or added amount", () => {
     expect(materialTotalCents(["one"])).toBe(800);
     expect(materialTotalCents(["one", "two", "three"])).toBe(2_400);
@@ -159,6 +166,11 @@ describe("Chunk 5 materials contract", () => {
     expect(safeFilename("Jamie_final_resume.docx")).toBe(false);
     expect(() => materialFilename({ displayName: "Jamie Rivera", artifact: "Resume", company: "Example", position: "Operations", extension: "docx", employerInstruction: "[Name]_final" })).toThrow("unsafe_employer_filename_instruction");
   });
+
+  it("binds customer download links to the exact current file version", () => {
+    expect(materialArtifactDownloadPath("artifact-id", "file-version-id"))
+      .toBe("/api/customer/artifacts/artifact-id/download?fileVersionId=file-version-id");
+  });
 });
 
 describe("Chunk 5 evidence-bound DOCX generation", () => {
@@ -180,8 +192,9 @@ describe("Chunk 5 evidence-bound DOCX generation", () => {
     expect(generated.resume.filename).toBe("Jamie_Rivera_Resume_Example_Services.docx");
     expect(generated.coverLetter.filename).toBe("Jamie_Rivera_Cover_Letter_Example_Services.docx");
     expect(resume.extractedText).toContain("Administrative Specialist");
-    expect(resume.extractedText).toContain("Community Example 2021 to 2026 | Richmond, VA");
-    expect(resume.extractedText).toContain("Target role: Operations Coordinator");
+    expect(resume.extractedText).toContain("Community Example | 2021-2026 | Richmond, VA");
+    expect(resume.extractedText).toContain("Operations professional who coordinates accurate records and clear customer communication, targeting an Operations Coordinator role.");
+    expect(resume.extractedText).not.toContain("Target role:");
     expect(resume.extractedText).not.toContain("OPERATIONS COORDINATOR");
     expect(resume.extractedText).not.toContain("Synthetic Reference");
     expect(resume.extractedText).not.toContain("References available upon request");

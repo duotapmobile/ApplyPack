@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { isCurrentDocumentGeneratorVersion } from "@/lib/documents/requirements";
 
@@ -7,28 +8,35 @@ export async function GET(_: Request, route: { params: Promise<{ id: string }> }
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
   const fileVersionId = z.uuid().safeParse((await route.params).id);
-  if (!fileVersionId.success) return NextResponse.json({ error: "Render preview not found." }, { status: 404 });
-  const { data: quality } = await auth.admin.from("ap_artifact_quality_reviews")
-    .select("render_preview_bucket,render_preview_path,render_preview_sha256,renderer_identity,arial_resolved")
+  if (!fileVersionId.success) return NextResponse.json({ error: "Editable source not found." }, { status: 404 });
+  const { data: source } = await auth.admin.from("ap_artifact_source_docx")
+    .select("storage_bucket,storage_path,safe_filename,checksum_sha256")
     .eq("file_version_id", fileVersionId.data).maybeSingle();
-  if (!quality || quality.render_preview_bucket !== "operator-render-previews" || !quality.arial_resolved) {
-    return NextResponse.json({ error: "Render preview not found." }, { status: 404 });
+  if (!source || source.storage_bucket !== "operator-drafts") {
+    return NextResponse.json({ error: "Editable source not found." }, { status: 404 });
   }
   const { data: file } = await auth.admin.from("ap_generated_file_versions")
     .select("artifact_id,version,superseded_at,downloads_revoked_at").eq("id", fileVersionId.data).maybeSingle();
   const { data: artifact } = file ? await auth.admin.from("ap_generated_artifacts")
     .select("generator_version,current_file_version").eq("id", file.artifact_id).maybeSingle() : { data: null };
-  if (!file || file.superseded_at || file.downloads_revoked_at || !artifact
-    || artifact.current_file_version !== file.version
+  if (!file || file.superseded_at || file.downloads_revoked_at
+    || !artifact || artifact.current_file_version !== file.version
     || !isCurrentDocumentGeneratorVersion(artifact.generator_version)) {
-    return NextResponse.json({
-      error: "This preview was created under an older document standard and must be regenerated.",
-    }, { status: 409 });
+    return NextResponse.json({ error: "This editable source is stale and must be regenerated." }, { status: 409 });
   }
-  const signed = await auth.admin.storage.from("operator-render-previews")
-    .createSignedUrl(quality.render_preview_path, 5 * 60, { download: false });
+  const audit = await auth.admin.from("audit_logs").insert({
+    actor_id: auth.user.id,
+    action: "material_source_docx_download_authorized",
+    entity_type: "generated_file_version",
+    entity_id: fileVersionId.data,
+  });
+  if (audit.error) {
+    return NextResponse.json({ error: "Editable source access could not be audited." }, { status: 503 });
+  }
+  const signed = await auth.admin.storage.from("operator-drafts")
+    .createSignedUrl(source.storage_path, 5 * 60, { download: source.safe_filename });
   if (signed.error || !signed.data.signedUrl) {
-    return NextResponse.json({ error: "Render preview is temporarily unavailable." }, { status: 503 });
+    return NextResponse.json({ error: "Editable source is temporarily unavailable." }, { status: 503 });
   }
   const response = NextResponse.redirect(signed.data.signedUrl, 303);
   response.headers.set("Cache-Control", "no-store, private");
