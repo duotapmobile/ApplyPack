@@ -90,7 +90,13 @@ Resources:
                 Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
                 Resource: !Sub "${TemporaryBucket.Arn}/ephemeral/*"
               - Effect: Allow
-                Action: [ec2:CreateNetworkInterface, ec2:DescribeNetworkInterfaces, ec2:DeleteNetworkInterface]
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DescribeSubnets
+                  - ec2:DeleteNetworkInterface
+                  - ec2:AssignPrivateIpAddresses
+                  - ec2:UnassignPrivateIpAddresses
                 Resource: "*"
   Worker:
     Type: AWS::Lambda::Function

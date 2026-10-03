@@ -84,6 +84,7 @@ describe("October 2 manual-launch hardening", () => {
     const worker = source("src/lib/files/aws-document-worker.ts");
     const readiness = source("src/lib/operations/renderer-readiness.ts");
     const launchReadiness = source("src/lib/operations/launch-readiness.ts");
+    const workerTemplate = source("infra/aws/document-worker/template.yaml");
     expect(kms).toContain('environment.APP_DEPLOYMENT_ENV === "production"');
     expect(kms).toContain('environment.APP_KMS_PROVIDER !== "aws"');
     expect(worker).toContain('region === "us-east-1"');
@@ -98,6 +99,8 @@ describe("October 2 manual-launch hardening", () => {
     expect(readiness).toContain("probeDocumentWorker");
     expect(launchReadiness).toContain('rpc("ap_manual_launch_capacity_readiness")');
     expect(launchReadiness).toContain('from("ap_manual_launch_activations")');
+    expect(launchReadiness).toContain("capacityAvailable");
+    expect(launchReadiness).toContain("legacy_subscription_retirement_reference");
     const generation = source("src/app/api/admin/material-lines/[id]/generate/route.ts");
     expect(generation).toContain("renderDocumentForQa");
     expect(generation).not.toContain("renderDocumentLocallyForQa");
@@ -107,6 +110,9 @@ describe("October 2 manual-launch hardening", () => {
     expect(handler).toContain("network_isolation_verified");
     expect(handler).toContain("functionVersionArn");
     expect(handler).toContain('ServerSideEncryption="AES256"');
+    expect(workerTemplate).toContain("ec2:DescribeSubnets");
+    expect(workerTemplate).toContain("ec2:AssignPrivateIpAddresses");
+    expect(workerTemplate).toContain("ec2:UnassignPrivateIpAddresses");
   });
 
   it("binds refunds to immutable provider payment semantics and retires subscription renewals", () => {

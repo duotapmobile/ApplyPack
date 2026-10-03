@@ -28,6 +28,10 @@ For the October 2 manual launch, this checklist and the governing amendment supe
 - [ ] Cancelled and expired sessions do not become paid work.
 - [ ] Duplicate/incorrect and eligible unfinished-item refunds reconcile locally and in Stripe.
 - [ ] Customer-dependent email tests use only a founder-authenticated synthetic test identity.
+- [ ] Enumerate every legacy paid-board subscription and every open legacy subscription Checkout Session in test and live mode; store a sanitized count-and-query receipt.
+- [ ] Cancel every renewable legacy board subscription, expire every open legacy subscription Checkout Session, and re-query until both renewable and open counts are zero.
+- [ ] Configure an external alert for any post-cutoff legacy renewal or invoice. The response is same-day cancellation, full refund, customer notice, and ledger reconciliation.
+- [ ] Store the sanitized zero-state retirement receipt in `legacy_subscription_retirement_reference`; public checkout remains locked without this immutable activation evidence.
 - [ ] Run one authorized live 1899-cent search charge and one authorized live 799-cent Apply Pack charge, deliver both, then reconcile full refunds totaling 2698 cents before public activation.
 
 ## AWS production worker

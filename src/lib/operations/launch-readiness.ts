@@ -86,6 +86,7 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
     releaseSha: false,
   };
   const deployedSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.APP_RELEASE_SHA || "";
+  let capacityAvailable = false;
   checks.releaseSha = Boolean(deployedSha && process.env.APP_EXPECTED_RELEASE_SHA === deployedSha);
   if (supabaseConfigured) {
     const admin = adminClient || createSupabaseAdminClient();
@@ -117,6 +118,8 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
       );
       checks.database = !capacityError && Boolean(capacity && typeof capacity === "object" && !Array.isArray(capacity)
         && (capacity as Record<string, unknown>).ready === true);
+      capacityAvailable = !capacityError && Boolean(capacity && typeof capacity === "object" && !Array.isArray(capacity)
+        && (capacity as Record<string, unknown>).available === true);
       checks.manualInventoryReady = !sourceError && sourceReadiness?.manualReady === true;
     }
   }
@@ -125,6 +128,7 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
     ready,
     deployedSha,
     commerceConfigured,
+    capacityAvailable,
     environmentAcceptingOrders: checkout.acceptingOrders,
     checks,
   };
@@ -135,14 +139,15 @@ export async function manualLaunchCheckoutGate(
   evaluated?: Awaited<ReturnType<typeof evaluateLaunchInfrastructure>>,
 ) {
   const infrastructure = evaluated || await evaluateLaunchInfrastructure(admin);
-  if (!infrastructure.ready || !infrastructure.environmentAcceptingOrders || !infrastructure.deployedSha) return false;
+  if (!infrastructure.ready || !infrastructure.capacityAvailable
+    || !infrastructure.environmentAcceptingOrders || !infrastructure.deployedSha) return false;
   const { data: configuration, error: configurationError } = await admin.from("ap_commerce_configuration")
     .select("checkout_enabled,launch_activation_id,launch_release_sha,tax_approval_reference,document_worker_network_attestation_sha256")
     .eq("singleton", true).maybeSingle();
   if (configurationError || !configuration?.checkout_enabled || !configuration.launch_activation_id
     || configuration.launch_release_sha !== infrastructure.deployedSha) return false;
   const { data: activation, error: activationError } = await admin.from("ap_manual_launch_activations")
-    .select("id,release_sha,tax_approval_reference,worker_network_attestation_sha256,unresolved_p0_count,unresolved_p1_count,canary_reconciled_amount_cents")
+    .select("id,release_sha,tax_approval_reference,worker_network_attestation_sha256,legacy_subscription_retirement_reference,unresolved_p0_count,unresolved_p1_count,canary_reconciled_amount_cents")
     .eq("id", configuration.launch_activation_id).maybeSingle();
   const worker = documentWorkerConfiguration();
   return Boolean(!activationError && activation
@@ -150,6 +155,7 @@ export async function manualLaunchCheckoutGate(
     && activation.tax_approval_reference === configuration.tax_approval_reference
     && activation.worker_network_attestation_sha256 === configuration.document_worker_network_attestation_sha256
     && activation.worker_network_attestation_sha256 === worker.networkAttestationSha256
+    && Boolean(activation.legacy_subscription_retirement_reference?.trim())
     && activation.unresolved_p0_count === 0
     && activation.unresolved_p1_count === 0
     && activation.canary_reconciled_amount_cents === 2_698);

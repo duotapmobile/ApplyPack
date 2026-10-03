@@ -54,6 +54,13 @@ select pg_temp.assert_true(
 );
 
 select pg_temp.assert_true(
+  exists(select 1 from information_schema.columns
+    where table_schema='public' and table_name='ap_manual_launch_activations'
+      and column_name='legacy_subscription_retirement_reference'),
+  'manual launch activation must record provider-side legacy subscription retirement evidence'
+);
+
+select pg_temp.assert_true(
   position(
     'manual_launch_rolling_capacity_unavailable'
     in pg_get_functiondef('public.ap_reserve_capacity(uuid,public.ap_capacity_resource,integer,text,timestamptz,jsonb,uuid)'::regprocedure)
@@ -82,8 +89,43 @@ select pg_temp.assert_true(
     'rollingUnits'
     in pg_get_functiondef('public.ap_manual_launch_capacity_readiness()'::regprocedure)
   ) > 0
+  and position(
+    '''available'''
+    in pg_get_functiondef('public.ap_manual_launch_capacity_readiness()'::regprocedure)
+  ) > 0
   and not has_function_privilege('service_role','public.ap_reserve_capacity(uuid,public.ap_capacity_resource,integer,text,timestamptz,jsonb,uuid)','execute'),
   'authoritative capacity must enforce and report the rolling 1/2 manual launch limits'
+);
+
+insert into auth.users(
+  id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,
+  raw_app_meta_data,raw_user_meta_data,created_at,updated_at
+) values (
+  'f1000000-0000-4000-8000-000000000001','00000000-0000-0000-0000-000000000000',
+  'authenticated','authenticated','manual-launch-capacity@example.invalid','',now(),'{}','{}',now(),now()
+);
+insert into public.ap_capacity_pools(id,resource,enabled,configuration_version) values
+  ('f2000000-0000-4000-8000-000000000001','SEARCH',true,'manual-launch-readiness-v1'),
+  ('f2000000-0000-4000-8000-000000000002','MATERIALS',true,'manual-launch-readiness-v1');
+insert into public.ap_capacity_buckets(id,pool_id,starts_at,ends_at,total_units,staffing_version) values
+  ('f3000000-0000-4000-8000-000000000001','f2000000-0000-4000-8000-000000000001',
+    clock_timestamp()-interval '1 hour',clock_timestamp()+interval '2 days',1,'manual-launch-readiness-v1'),
+  ('f3000000-0000-4000-8000-000000000002','f2000000-0000-4000-8000-000000000002',
+    clock_timestamp()-interval '1 hour',clock_timestamp()+interval '2 days',2,'manual-launch-readiness-v1');
+select pg_temp.assert_true(
+  public.ap_manual_launch_capacity_readiness()->>'ready'='true'
+  and public.ap_manual_launch_capacity_readiness()->>'available'='true',
+  'configured capacity with room must be healthy and available'
+);
+select public.ap_reserve_capacity(
+  'f1000000-0000-4000-8000-000000000001','SEARCH',1,
+  'search-invitation:f4000000-0000-4000-8000-000000000001',
+  clock_timestamp()+interval '30 minutes','[]'
+);
+select pg_temp.assert_true(
+  public.ap_manual_launch_capacity_readiness()->>'ready'='true'
+  and public.ap_manual_launch_capacity_readiness()->>'available'='false',
+  'full rolling capacity must keep health true while blocking a new checkout'
 );
 
 select pg_temp.assert_true(

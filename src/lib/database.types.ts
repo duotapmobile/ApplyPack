@@ -3705,6 +3705,7 @@ export type Database = {
           id: string
           inventory_evidence_reference: string
           kms_evidence_reference: string
+          legacy_subscription_retirement_reference: string | null
           maintenance_evidence_reference: string
           operations_supervisor_reference: string
           payment_evidence_reference: string
@@ -3733,6 +3734,7 @@ export type Database = {
           id?: string
           inventory_evidence_reference: string
           kms_evidence_reference: string
+          legacy_subscription_retirement_reference?: string | null
           maintenance_evidence_reference: string
           operations_supervisor_reference: string
           payment_evidence_reference: string
@@ -3761,6 +3763,7 @@ export type Database = {
           id?: string
           inventory_evidence_reference?: string
           kms_evidence_reference?: string
+          legacy_subscription_retirement_reference?: string | null
           maintenance_evidence_reference?: string
           operations_supervisor_reference?: string
           payment_evidence_reference?: string
