@@ -96,6 +96,11 @@ fails acceptance.
   `b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a`.
 - Final render evidence directory:
   `evidence/applypack-chunk5-render-20261003-193535`.
+- The tracked render manifest
+  `docs/evidence/DOCUMENT_RENDER_MANIFEST_2026-10-03.json` binds the local
+  artifact hashes and toolchain to source commit
+  `91469cd8920670aa80f6cbb717ceef21f9322ba7`. The binary evidence remains local
+  and ignored by Git.
 
 ## Required human and hosted proof
 
