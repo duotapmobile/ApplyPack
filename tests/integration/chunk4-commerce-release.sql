@@ -421,6 +421,29 @@ select pg_temp.assert_true(public.ap_reconcile_manual_launch_canary_provider_ter
   repeat('a',40),'14000000-0000-4000-8000-000000000003','cs_canary_race',
   'expired','unpaid','stripe-expired-unpaid-session-verified-for-retry'
 ), 'provider-terminal canary reconciliation failed');
+select pg_temp.assert_true(
+  (select superseded_at is not null from public.ap_manual_launch_canary_designations
+    where payment_attempt_id='a4500000-0000-4000-8000-000000000001'),
+  'provider-terminal reconciliation and supersession must commit atomically'
+);
+select pg_temp.assert_true(public.ap_reconcile_manual_launch_canary_provider_terminal(
+  (select id from public.ap_manual_launch_canary_designations
+    where payment_attempt_id='a4500000-0000-4000-8000-000000000001'),
+  repeat('a',40),'14000000-0000-4000-8000-000000000003','cs_canary_race',
+  'expired','unpaid','stripe-expired-unpaid-session-verified-for-retry'
+), 'an exact provider-terminal reconciliation replay must succeed');
+do $$ begin
+  perform public.ap_reconcile_manual_launch_canary_provider_terminal(
+    (select id from public.ap_manual_launch_canary_designations
+      where payment_attempt_id='a4500000-0000-4000-8000-000000000001'),
+    repeat('a',40),'14000000-0000-4000-8000-000000000003','cs_canary_race',
+    'expired','unpaid','conflicting-provider-terminal-reconciliation-evidence'
+  );
+  raise exception 'conflicting_provider_terminal_replay_succeeded';
+exception when others then
+  if sqlerrm='conflicting_provider_terminal_replay_succeeded' then raise; end if;
+  if sqlerrm<>'manual_launch_canary_provider_terminal_reconciliation_conflict' then raise; end if;
+end $$;
 select public.ap_supersede_manual_launch_canary_designation(
   (select id from public.ap_manual_launch_canary_designations
     where payment_attempt_id='a4500000-0000-4000-8000-000000000001'),

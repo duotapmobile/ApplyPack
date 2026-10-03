@@ -76,6 +76,8 @@ describe("October 2 manual-launch hardening", () => {
     expect(source("src/app/api/live/route.ts")).toContain('status: "ok"');
     const maintenance = source("src/app/api/cron/maintenance/route.ts");
     expect(maintenance).toContain('APP_LEGACY_BOARD_MAINTENANCE_ENABLED === "true"');
+    expect(maintenance).toContain('rpc("ap_ensure_manual_launch_capacity_rollover")');
+    expect(maintenance).toContain('"CAPACITY_ROLLOVER"');
     expect(source(".env.example")).toContain("APP_LEGACY_BOARD_MAINTENANCE_ENABLED=false");
   });
 

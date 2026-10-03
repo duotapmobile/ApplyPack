@@ -71,6 +71,12 @@ export async function POST(request: Request) {
     await recordMaintenanceFailure(admin, beforeSummary, code, actions, now).catch(() => null);
     return response({ error: message, code }, 503);
   };
+  const { data: capacityRollovers, error: capacityRolloverError } = await admin
+    .rpc("ap_ensure_manual_launch_capacity_rollover");
+  if (capacityRolloverError) {
+    return fail("CAPACITY_ROLLOVER_FAILED", "CAPACITY_ROLLOVER", "Capacity rollover provisioning failed.");
+  }
+  actions.push({ code: "CAPACITY_ROLLOVER", status: "SUCCEEDED" });
   const staleDraftClaims = await admin.from("apply_pack_items").update({ status: "draft_ready", delivery_claimed_at: null })
     .eq("status", "delivery_processing").not("draft_resume_path", "is", null)
     .lt("delivery_claimed_at", new Date(now.getTime() - 15 * 60_000).toISOString());
@@ -313,6 +319,7 @@ export async function POST(request: Request) {
     ));
   return NextResponse.json({
     ok: healthy,
+    capacityRollovers: Number(capacityRollovers || 0),
     expiredSearchInvitations: Number(expiredSearchInvitations || 0),
     expiredReservations: reservationResult.data?.length || 0,
     expiredCarts: cartResult.data?.length || 0,

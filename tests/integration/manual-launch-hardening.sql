@@ -191,6 +191,29 @@ insert into public.ap_capacity_buckets(id,pool_id,starts_at,ends_at,total_units,
   ('f3000000-0000-4000-8000-000000000002','f2000000-0000-4000-8000-000000000002',
     clock_timestamp()-interval '1 hour',clock_timestamp()+interval '2 days',2,'manual-launch-readiness-v1');
 select pg_temp.assert_true(
+  public.ap_ensure_manual_launch_capacity_rollover()=2
+  and public.ap_ensure_manual_launch_capacity_rollover()=0,
+  'maintenance capacity rollover must provision one idempotent successor per enabled launch pool'
+);
+select pg_temp.assert_true(
+  (select count(*)=2 from public.ap_capacity_buckets successor
+    join public.ap_capacity_pools pool on pool.id=successor.pool_id
+    where pool.resource in ('SEARCH','MATERIALS')
+      and successor.starts_at>clock_timestamp()+interval '1 day'
+      and successor.ends_at=successor.starts_at+interval '31 days'
+      and successor.staffing_version='manual-launch-rolling-24h-v1')
+  and (select count(*)=2 from public.ap_audit_events
+    where action='MANUAL_LAUNCH_CAPACITY_ROLLOVER_PROVISIONED')
+  and public.ap_manual_launch_capacity_readiness()->>'ready'='true'
+  and has_function_privilege(
+    'service_role','public.ap_ensure_manual_launch_capacity_rollover()','execute'
+  )
+  and not has_function_privilege(
+    'authenticated','public.ap_ensure_manual_launch_capacity_rollover()','execute'
+  ),
+  'capacity rollover must be audited, service-only, and preserve current readiness'
+);
+select pg_temp.assert_true(
   public.ap_manual_launch_capacity_readiness()->>'ready'='true'
   and public.ap_manual_launch_capacity_readiness()->>'available'='true',
   'configured capacity with room must be healthy and available'

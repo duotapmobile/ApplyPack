@@ -6,7 +6,7 @@
   },
   "deploy": {
     "startCommand": "node scripts/run-maintenance-once.mjs",
-    "cronSchedule": "*/15 * * * *",
+    "cronSchedule": "0 * * * *",
     "healthcheckPath": null,
     "restartPolicyType": "NEVER"
   }

@@ -1,52 +1,46 @@
--- Add an independent emergency-stop audit path, make abandoned canaries
--- recoverable only after their provider checkout is terminal and reconciled,
--- and move operator capacity controls onto the authoritative pools.
+-- Forward-only repair for canary retry safety, capacity bootstrap and rollover,
+-- and same-customer public activation. Migration 061 remains immutable.
 
 begin;
 
-alter table public.ap_manual_launch_canary_authorizations
-  add column revoked_at timestamptz,
-  add column revoked_by uuid references public.profiles(id),
-  add column revocation_evidence_reference text,
-  add constraint ap_manual_launch_canary_authorization_revocation_complete check (
-    (revoked_at is null and revoked_by is null and revocation_evidence_reference is null)
-    or (
-      revoked_at is not null and revoked_by is not null
-      and length(btrim(revocation_evidence_reference)) between 12 and 500
-    )
-  );
-
 alter table public.ap_manual_launch_canary_designations
-  add column authorization_id uuid references public.ap_manual_launch_canary_authorizations(id),
-  add column superseded_at timestamptz,
-  add column superseded_by uuid references public.profiles(id),
-  add column supersession_evidence_reference text,
-  add constraint ap_manual_launch_canary_designation_supersession_complete check (
-    (superseded_at is null and superseded_by is null and supersession_evidence_reference is null)
-    or (
-      superseded_at is not null and superseded_by is not null
-      and length(btrim(supersession_evidence_reference)) between 12 and 500
-    )
-  );
+  add column if not exists provider_terminal_reconciled_at timestamptz,
+  add column if not exists provider_terminal_reconciled_by uuid references public.profiles(id),
+  add column if not exists provider_terminal_session_id text,
+  add column if not exists provider_terminal_status text,
+  add column if not exists provider_terminal_payment_status text,
+  add column if not exists provider_terminal_evidence_reference text;
 
-do $drop_release_product_unique$
-declare constraint_name text;
+do $provider_terminal_constraint$
 begin
-  select constraint_row.conname into constraint_name
-  from pg_catalog.pg_constraint constraint_row
-  where constraint_row.conrelid='public.ap_manual_launch_canary_designations'::regclass
-    and constraint_row.contype='u'
-    and pg_catalog.pg_get_constraintdef(constraint_row.oid)='UNIQUE (release_sha, product_kind)';
-  if constraint_name is null then
-    raise exception 'manual_launch_canary_release_product_unique_missing';
+  if not exists(
+    select 1 from pg_catalog.pg_constraint
+    where conrelid='public.ap_manual_launch_canary_designations'::regclass
+      and conname='ap_manual_launch_canary_provider_terminal_complete'
+  ) then
+    alter table public.ap_manual_launch_canary_designations
+      add constraint ap_manual_launch_canary_provider_terminal_complete check (
+        (
+          provider_terminal_reconciled_at is null and provider_terminal_reconciled_by is null
+          and provider_terminal_session_id is null and provider_terminal_status is null
+          and provider_terminal_payment_status is null and provider_terminal_evidence_reference is null
+        ) or (
+          provider_terminal_reconciled_at is not null and provider_terminal_reconciled_by is not null
+          and nullif(btrim(provider_terminal_session_id),'') is not null
+          and provider_terminal_status='expired' and provider_terminal_payment_status='unpaid'
+          and length(btrim(provider_terminal_evidence_reference)) between 12 and 500
+        )
+      );
   end if;
-  execute format('alter table public.ap_manual_launch_canary_designations drop constraint %I',constraint_name);
 end;
-$drop_release_product_unique$;
+$provider_terminal_constraint$;
 
-create unique index ap_manual_launch_canary_active_release_product_unique
-  on public.ap_manual_launch_canary_designations(release_sha,product_kind)
-  where superseded_at is null;
+create table if not exists public.ap_manual_launch_canary_receipt_update_tokens(
+  designation_id uuid primary key references public.ap_manual_launch_canary_designations(id) on delete cascade,
+  transaction_id bigint not null,
+  created_at timestamptz not null default clock_timestamp()
+);
+revoke all on public.ap_manual_launch_canary_receipt_update_tokens from public,anon,authenticated,service_role;
 
 create or replace function public.ap_manual_launch_canary_authorization_is_immutable()
 returns trigger language plpgsql set search_path='' as $$
@@ -65,6 +59,13 @@ $$;
 create or replace function public.ap_manual_launch_canary_designation_is_immutable()
 returns trigger language plpgsql set search_path='' as $$
 begin
+  if tg_op='UPDATE'
+    and exists(select 1 from public.ap_manual_launch_canary_receipt_update_tokens token
+      where token.designation_id=old.id and token.transaction_id=txid_current())
+    and old.provider_terminal_reconciled_at is null
+    and new.provider_terminal_reconciled_at is not null then
+    return new;
+  end if;
   if tg_op='UPDATE'
     and old.superseded_at is null and new.superseded_at is not null
     and new.superseded_by is not null and new.supersession_evidence_reference is not null
@@ -249,6 +250,9 @@ begin
     else null end;
   if v_product_kind is null then raise exception 'manual_launch_canary_payment_shape_invalid'; end if;
 
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(p_release_sha||':'||v_product_kind,0)
+  );
   select * into canary_authorization from public.ap_manual_launch_canary_authorizations candidate
     where candidate.release_sha=p_release_sha
       and candidate.product_kind=v_product_kind
@@ -258,12 +262,9 @@ begin
         (v_product_kind='SEARCH' and candidate.search_draft_id=payment.draft_id)
         or (v_product_kind='MATERIALS' and candidate.expected_customer_id=payment.customer_id)
       )
-    order by candidate.created_at desc,candidate.id desc limit 1;
+    order by candidate.created_at desc,candidate.id desc limit 1
+    for update;
   if not found then raise exception 'manual_launch_canary_authorization_required'; end if;
-
-  perform pg_catalog.pg_advisory_xact_lock(
-    pg_catalog.hashtextextended(p_release_sha||':'||v_product_kind,0)
-  );
   select * into existing from public.ap_manual_launch_canary_designations
     where payment_attempt_id=payment.id;
   if found then
@@ -322,6 +323,12 @@ begin
     raise exception 'manual_launch_canary_admin_required';
   end if;
   select * into authorization_row from public.ap_manual_launch_canary_authorizations
+    where id=p_authorization_id and release_sha=p_release_sha;
+  if not found then raise exception 'manual_launch_canary_authorization_not_found'; end if;
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(authorization_row.release_sha||':'||authorization_row.product_kind,0)
+  );
+  select * into authorization_row from public.ap_manual_launch_canary_authorizations
     where id=p_authorization_id and release_sha=p_release_sha for update;
   if not found then raise exception 'manual_launch_canary_authorization_not_found'; end if;
   if authorization_row.revoked_at is not null then
@@ -329,6 +336,13 @@ begin
       raise exception 'manual_launch_canary_revocation_conflict';
     end if;
     return true;
+  end if;
+  if exists(
+    select 1 from public.ap_manual_launch_canary_designations designation
+    where designation.authorization_id=authorization_row.id
+      and designation.superseded_at is null
+  ) then
+    raise exception 'manual_launch_canary_designation_already_bound';
   end if;
   update public.ap_manual_launch_canary_authorizations
   set revoked_at=now_at,revoked_by=p_actor_id,revocation_evidence_reference=evidence
@@ -348,6 +362,169 @@ revoke all on function public.ap_revoke_manual_launch_canary_checkout(uuid,text,
   from public,anon,authenticated;
 grant execute on function public.ap_revoke_manual_launch_canary_checkout(uuid,text,uuid,text)
   to service_role;
+
+create or replace function public.ap_reconcile_manual_launch_canary_provider_terminal(
+  p_designation_id uuid,
+  p_release_sha text,
+  p_actor_id uuid,
+  p_provider_session_id text,
+  p_provider_session_status text,
+  p_provider_payment_status text,
+  p_evidence_reference text
+) returns boolean language plpgsql security definer set search_path='' as $$
+declare
+  designation public.ap_manual_launch_canary_designations;
+  payment public.ap_payment_attempts;
+  search_checkout public.ap_checkout_attempts;
+  material_checkout public.ap_material_checkout_intents;
+  command public.ap_external_commands;
+  evidence text:=btrim(coalesce(p_evidence_reference,''));
+  provider_session_id text:=btrim(coalesce(p_provider_session_id,''));
+  now_at timestamptz:=clock_timestamp();
+  actor_id uuid;
+begin
+  if p_release_sha !~ '^[0-9a-f]{40}$'
+    or length(evidence) not between 12 and 500
+    or provider_session_id=''
+    or p_provider_session_status<>'expired'
+    or p_provider_payment_status<>'unpaid' then
+    raise exception 'manual_launch_canary_provider_terminal_input_invalid';
+  end if;
+  select * into designation from public.ap_manual_launch_canary_designations
+    where id=p_designation_id and release_sha=p_release_sha for update;
+  if not found then raise exception 'manual_launch_canary_designation_not_found'; end if;
+  actor_id:=coalesce(p_actor_id,(select authorized_by
+    from public.ap_manual_launch_canary_authorizations where id=designation.authorization_id));
+  if not exists(select 1 from public.profiles where id=actor_id and role='admin') then
+    raise exception 'manual_launch_canary_admin_required';
+  end if;
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(designation.release_sha||':'||designation.product_kind,0)
+  );
+
+  if designation.provider_terminal_reconciled_at is not null then
+    if designation.provider_terminal_reconciled_by is distinct from actor_id
+      or designation.provider_terminal_session_id is distinct from provider_session_id
+      or designation.provider_terminal_status is distinct from p_provider_session_status
+      or designation.provider_terminal_payment_status is distinct from p_provider_payment_status
+      or designation.provider_terminal_evidence_reference is distinct from evidence then
+      raise exception 'manual_launch_canary_provider_terminal_reconciliation_conflict';
+    end if;
+    perform public.ap_supersede_manual_launch_canary_designation(
+      designation.id,designation.release_sha,actor_id,evidence
+    );
+    return true;
+  end if;
+  if designation.superseded_at is not null then
+    raise exception 'manual_launch_canary_designation_not_active';
+  end if;
+
+  select * into payment from public.ap_payment_attempts
+    where id=designation.payment_attempt_id for update;
+  if not found or payment.settlement not in ('UNPAID','FAILED')
+    or payment.provider_payment_id is not null or payment.payment_verified_at is not null
+    or payment.immediate_charge_verified or payment.dispute<>'NONE' then
+    raise exception 'manual_launch_canary_uncharged_payment_required';
+  end if;
+
+  if designation.product_kind='SEARCH' then
+    select * into search_checkout from public.ap_checkout_attempts
+      where id=payment.checkout_attempt_id for update;
+    if not found or (
+      search_checkout.provider_checkout_session_id is not null
+      and search_checkout.provider_checkout_session_id is distinct from provider_session_id
+    ) then
+      raise exception 'manual_launch_canary_provider_session_mismatch';
+    end if;
+    select * into command from public.ap_external_commands
+      where id=search_checkout.command_id for update;
+    if search_checkout.state='NONE' then
+      if not public.ap_compensate_search_checkout(
+        search_checkout.id,'CANARY_PROVIDER_SESSION_EXPIRED',provider_session_id
+      ) then
+        raise exception 'manual_launch_canary_provider_reconciliation_failed';
+      end if;
+    elsif search_checkout.state in ('OPEN','EXPIRED','CANCELED','FAILED') then
+      if search_checkout.state='OPEN' and not public.ap_expire_search_checkout(
+        search_checkout.id,'CANARY_PROVIDER_SESSION_EXPIRED'
+      ) then
+        raise exception 'manual_launch_canary_provider_reconciliation_failed';
+      end if;
+      if command.state in ('CREATING','CREATED','APPLYING') then
+        update public.ap_external_commands set state='COMPENSATING',
+          provider_object_id=coalesce(provider_object_id,provider_session_id),updated_at=now_at
+        where id=command.id;
+        update public.ap_external_commands set state='COMPENSATED',
+          reconciliation_state='RECONCILED',failure_code='CANARY_PROVIDER_SESSION_EXPIRED',
+          compensated_at=coalesce(compensated_at,now_at),updated_at=now_at
+        where id=command.id;
+      end if;
+    else
+      raise exception 'manual_launch_canary_provider_reconciliation_failed';
+    end if;
+  else
+    select * into material_checkout from public.ap_material_checkout_intents
+      where payment_attempt_id=payment.id for update;
+    if not found or (
+      material_checkout.provider_checkout_session_id is not null
+      and material_checkout.provider_checkout_session_id is distinct from provider_session_id
+    ) then
+      raise exception 'manual_launch_canary_provider_session_mismatch';
+    end if;
+    select * into command from public.ap_external_commands
+      where id=material_checkout.command_id for update;
+    if material_checkout.state in ('READY','OPEN','PREFLIGHT','BLOCKED') then
+      update public.ap_external_commands set state='COMPENSATING',
+        provider_object_id=coalesce(provider_object_id,provider_session_id),updated_at=now_at
+      where id=command.id and state in ('CREATING','CREATED','APPLYING');
+      if not public.ap_expire_material_checkout(
+        material_checkout.id,'CANARY_PROVIDER_SESSION_EXPIRED'
+      ) then
+        raise exception 'manual_launch_canary_provider_reconciliation_failed';
+      end if;
+    end if;
+    if material_checkout.state not in ('READY','OPEN','PREFLIGHT','BLOCKED','EXPIRED','FAILED') then
+      raise exception 'manual_launch_canary_provider_reconciliation_failed';
+    end if;
+    update public.ap_external_commands
+    set provider_object_id=coalesce(provider_object_id,provider_session_id),
+      reconciliation_state='RECONCILED',failure_code='CANARY_PROVIDER_SESSION_EXPIRED',
+      updated_at=now_at
+    where id=command.id;
+  end if;
+
+  insert into public.ap_manual_launch_canary_receipt_update_tokens(designation_id,transaction_id)
+  values(designation.id,txid_current());
+  update public.ap_manual_launch_canary_designations
+  set provider_terminal_reconciled_at=now_at,provider_terminal_reconciled_by=actor_id,
+    provider_terminal_session_id=provider_session_id,provider_terminal_status=p_provider_session_status,
+    provider_terminal_payment_status=p_provider_payment_status,
+    provider_terminal_evidence_reference=evidence
+  where id=designation.id;
+  delete from public.ap_manual_launch_canary_receipt_update_tokens where designation_id=designation.id;
+
+  insert into public.ap_audit_events(
+    customer_id,actor_id,action,entity_type,entity_id,non_sensitive_details,audit_version
+  ) values(
+    designation.expected_customer_id,actor_id,'MANUAL_LAUNCH_CANARY_PROVIDER_TERMINAL_RECONCILED',
+    'MANUAL_LAUNCH_CANARY_DESIGNATION',designation.id,
+    jsonb_build_object('releaseSha',designation.release_sha,'productKind',designation.product_kind,
+      'providerSessionId',provider_session_id,'providerSessionStatus',p_provider_session_status,
+      'providerPaymentStatus',p_provider_payment_status,'evidenceReference',evidence),
+    'manual-launch-canary-v4'
+  );
+  perform public.ap_supersede_manual_launch_canary_designation(
+    designation.id,designation.release_sha,actor_id,evidence
+  );
+  return true;
+end;
+$$;
+revoke all on function public.ap_reconcile_manual_launch_canary_provider_terminal(
+  uuid,text,uuid,text,text,text,text
+) from public,anon,authenticated;
+grant execute on function public.ap_reconcile_manual_launch_canary_provider_terminal(
+  uuid,text,uuid,text,text,text,text
+) to service_role;
 
 create or replace function public.ap_supersede_manual_launch_canary_designation(
   p_designation_id uuid,
@@ -397,14 +574,19 @@ begin
         where id=search_checkout.command_id for update;
       terminal_and_reconciled:=(
           search_checkout.state in ('EXPIRED','CANCELED','FAILED')
-          and (
-            search_checkout.provider_checkout_session_id is null
-            or search_checkout.expires_at<=now_at
-          )
+          or (search_checkout.state='NONE' and search_checkout.invalidated_at is not null)
         )
-        or (
-          search_checkout.state='NONE' and search_checkout.invalidated_at is not null
-          and command.state='COMPENSATED' and command.reconciliation_state='RECONCILED'
+        and (
+          (
+            search_checkout.provider_checkout_session_id is null
+            and command.state='COMPENSATED' and command.reconciliation_state='RECONCILED'
+          ) or (
+            search_checkout.provider_checkout_session_id is not null
+            and designation.provider_terminal_reconciled_at is not null
+            and designation.provider_terminal_session_id=search_checkout.provider_checkout_session_id
+            and designation.provider_terminal_status='expired'
+            and designation.provider_terminal_payment_status='unpaid'
+          )
         );
     end if;
   else
@@ -415,10 +597,17 @@ begin
         where id=material_checkout.command_id for update;
       terminal_and_reconciled:=material_checkout.state in ('EXPIRED','FAILED')
         and (
-          material_checkout.provider_checkout_session_id is null
-          or material_checkout.expires_at<=now_at
-        )
-        and command.state='COMPENSATED' and command.reconciliation_state='RECONCILED';
+          (
+            material_checkout.provider_checkout_session_id is null
+            and command.state='COMPENSATED' and command.reconciliation_state='RECONCILED'
+          ) or (
+            material_checkout.provider_checkout_session_id is not null
+            and designation.provider_terminal_reconciled_at is not null
+            and designation.provider_terminal_session_id=material_checkout.provider_checkout_session_id
+            and designation.provider_terminal_status='expired'
+            and designation.provider_terminal_payment_status='unpaid'
+          )
+        );
     end if;
   end if;
   if not terminal_and_reconciled then
@@ -458,6 +647,9 @@ create or replace function public.ap_set_manual_launch_capacity_state(
 declare
   pool public.ap_capacity_pools;
   reason text:=btrim(coalesce(p_reason,''));
+  bucket_created boolean:=false;
+  bucket_units integer:=case when p_resource='SEARCH' then 32 else 64 end;
+  now_at timestamptz:=clock_timestamp();
 begin
   if p_resource not in ('SEARCH','MATERIALS') or length(reason) not between 12 and 500 then
     raise exception 'manual_launch_capacity_state_input_invalid';
@@ -465,18 +657,42 @@ begin
   if not exists(select 1 from public.profiles where id=p_actor_id and role='admin') then
     raise exception 'manual_launch_capacity_admin_required';
   end if;
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('manual-launch-capacity:'||p_resource::text,0)
+  );
+  insert into public.ap_capacity_pools(resource,enabled,configuration_version)
+  values(p_resource,false,'manual-launch-rolling-24h-v1')
+  on conflict(resource) do nothing;
   select * into pool from public.ap_capacity_pools where resource=p_resource for update;
-  if not found then raise exception 'manual_launch_capacity_pool_missing'; end if;
-  if pool.enabled=p_enabled then return true; end if;
+  if not found then raise exception 'manual_launch_capacity_pool_provision_failed'; end if;
+  if p_enabled and not exists(
+    select 1 from public.ap_capacity_buckets bucket
+    where bucket.pool_id=pool.id and bucket.starts_at<=now_at and bucket.ends_at>now_at
+  ) then
+    if exists(select 1 from public.ap_capacity_buckets bucket
+      where bucket.pool_id=pool.id and bucket.ends_at>now_at) then
+      raise exception 'manual_launch_capacity_future_bucket_conflict';
+    end if;
+    insert into public.ap_capacity_buckets(
+      pool_id,starts_at,ends_at,total_units,staffing_version
+    ) values(
+      pool.id,now_at,now_at+interval '31 days',bucket_units,'manual-launch-rolling-24h-v1'
+    );
+    bucket_created:=true;
+  end if;
+  if pool.enabled=p_enabled and not bucket_created then return true; end if;
   update public.ap_capacity_pools
-  set enabled=p_enabled,updated_at=clock_timestamp()
+  set enabled=p_enabled,configuration_version='manual-launch-rolling-24h-v1',updated_at=now_at
   where id=pool.id;
   insert into public.ap_audit_events(
     actor_id,action,entity_type,entity_id,non_sensitive_details,audit_version
   ) values(
-    p_actor_id,'MANUAL_LAUNCH_CAPACITY_STATE_CHANGED','CAPACITY_POOL',pool.id,
+    p_actor_id,case when bucket_created then 'MANUAL_LAUNCH_CAPACITY_PROVISIONED'
+      else 'MANUAL_LAUNCH_CAPACITY_STATE_CHANGED' end,'CAPACITY_POOL',pool.id,
     jsonb_build_object('resource',p_resource,'fromEnabled',pool.enabled,
-      'toEnabled',p_enabled,'reason',reason),'manual-launch-capacity-v1'
+      'toEnabled',p_enabled,'bucketCreated',bucket_created,'bucketUnits',bucket_units,
+      'bucketEndsAt',case when bucket_created then now_at+interval '31 days' else null end,
+      'reason',reason),'manual-launch-capacity-v2'
   );
   return true;
 end;
@@ -484,6 +700,71 @@ $$;
 revoke all on function public.ap_set_manual_launch_capacity_state(public.ap_capacity_resource,boolean,uuid,text)
   from public,anon,authenticated;
 grant execute on function public.ap_set_manual_launch_capacity_state(public.ap_capacity_resource,boolean,uuid,text)
+  to service_role;
+
+create or replace function public.ap_ensure_manual_launch_capacity_rollover()
+returns integer language plpgsql security definer set search_path='' as $$
+declare
+  pool public.ap_capacity_pools;
+  current_bucket public.ap_capacity_buckets;
+  successor public.ap_capacity_buckets;
+  bucket_units integer;
+  now_at timestamptz:=clock_timestamp();
+  created_count integer:=0;
+begin
+  for pool in
+    select * from public.ap_capacity_pools
+    where enabled and resource in ('SEARCH','MATERIALS')
+    order by resource
+    for update
+  loop
+    perform pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended('manual-launch-capacity:'||pool.resource::text,0)
+    );
+    select * into current_bucket from public.ap_capacity_buckets bucket
+      where bucket.pool_id=pool.id and bucket.starts_at<=now_at and bucket.ends_at>now_at
+      order by bucket.starts_at desc limit 1 for update;
+    if not found then
+      raise exception 'manual_launch_capacity_current_bucket_required';
+    end if;
+    if current_bucket.ends_at>now_at+interval '7 days' then continue; end if;
+
+    bucket_units:=case when pool.resource='SEARCH' then 32 else 64 end;
+    select * into successor from public.ap_capacity_buckets bucket
+      where bucket.pool_id=pool.id and bucket.starts_at>=current_bucket.ends_at
+      order by bucket.starts_at limit 1 for update;
+    if found then
+      if successor.starts_at is distinct from current_bucket.ends_at
+        or successor.ends_at is distinct from current_bucket.ends_at+interval '31 days'
+        or successor.total_units<>bucket_units
+        or successor.staffing_version<>'manual-launch-rolling-24h-v1' then
+        raise exception 'manual_launch_capacity_successor_bucket_conflict';
+      end if;
+      continue;
+    end if;
+
+    insert into public.ap_capacity_buckets(
+      pool_id,starts_at,ends_at,total_units,staffing_version
+    ) values(
+      pool.id,current_bucket.ends_at,current_bucket.ends_at+interval '31 days',
+      bucket_units,'manual-launch-rolling-24h-v1'
+    ) returning * into successor;
+    insert into public.ap_audit_events(
+      action,entity_type,entity_id,non_sensitive_details,audit_version
+    ) values(
+      'MANUAL_LAUNCH_CAPACITY_ROLLOVER_PROVISIONED','CAPACITY_BUCKET',successor.id,
+      jsonb_build_object('resource',pool.resource,'priorBucketId',current_bucket.id,
+        'startsAt',successor.starts_at,'endsAt',successor.ends_at,
+        'bucketUnits',bucket_units),'manual-launch-capacity-v2'
+    );
+    created_count:=created_count+1;
+  end loop;
+  return created_count;
+end;
+$$;
+revoke all on function public.ap_ensure_manual_launch_capacity_rollover()
+  from public,anon,authenticated;
+grant execute on function public.ap_ensure_manual_launch_capacity_rollover()
   to service_role;
 
 create or replace function public.ap_record_manual_launch_activation(
@@ -499,6 +780,7 @@ declare
   canary_amount integer:=case when p_activation_phase='PUBLIC' then 2698 else 0 end;
   successful_canary_amount integer:=0;
   successful_canary_products integer:=0;
+  successful_canary_customers integer:=0;
   required_reference text;
 begin
   if p_activation_phase not in ('CANARY','PUBLIC') or p_release_sha !~ '^[0-9a-f]{40}$'
@@ -542,15 +824,17 @@ begin
         and unresolved_p0_count=0 and unresolved_p1_count=0) then
       raise exception 'manual_launch_canary_activation_missing';
     end if;
-    select coalesce(sum(refund.amount_cents),0),count(distinct designation.product_kind)
-      into successful_canary_amount,successful_canary_products
+    select coalesce(sum(refund.amount_cents),0),count(distinct designation.product_kind),
+      count(distinct designation.expected_customer_id)
+      into successful_canary_amount,successful_canary_products,successful_canary_customers
     from public.ap_manual_launch_canary_designations designation
       join public.ap_refund_operations refund
         on refund.payment_attempt_id=designation.payment_attempt_id
     where designation.release_sha=p_release_sha and designation.superseded_at is null
       and refund.reason_code='MANUAL_LAUNCH_CANARY' and refund.state='SUCCEEDED'
       and refund.superseded_at is null;
-    if successful_canary_amount<>2698 or successful_canary_products<>2 then
+    if successful_canary_amount<>2698 or successful_canary_products<>2
+      or successful_canary_customers<>1 then
       raise exception 'manual_launch_canary_refunds_not_reconciled';
     end if;
   end if;

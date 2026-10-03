@@ -262,6 +262,7 @@ describe("maintenance policy", () => {
     });
     const outcome = maintenanceOutcome(before, summary());
     expect(outcome.actionCodes).toEqual([
+      "CAPACITY_ROLLOVER",
       "EXPIRATION_CLEANUP",
       "EXPIRED_LEASE_RECOVERY",
       "DOCUMENT_PROCESSING",

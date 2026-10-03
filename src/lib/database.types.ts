@@ -11621,6 +11621,10 @@ export type Database = {
         Args: { p_request_key: string; p_schedule_id: string }
         Returns: string
       }
+      ap_ensure_manual_launch_capacity_rollover: {
+        Args: never
+        Returns: number
+      }
       ap_expire_material_change: {
         Args: { p_proposal_id: string }
         Returns: Json

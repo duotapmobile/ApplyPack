@@ -42,7 +42,7 @@ Create a separate Railway cron service that performs one authenticated HTTP requ
 curl --fail --silent --show-error --request POST --header "Authorization: Bearer ${CRON_SECRET}" https://applypack.work/api/cron/maintenance
 ```
 
-Confirm the first run exits successfully and records expiration, retention, reconciliation, queue, and alert evidence. Dormant board processing may be skipped; current Stripe/webhook integrity must remain healthy while checkout is locked or in CANARY mode.
+Confirm the first run exits successfully and records capacity rollover, expiration, retention, reconciliation, queue, and alert evidence. Enabled SEARCH and MATERIALS pools receive an audited successor bucket automatically when the current 31-day bucket has seven days or less remaining; a conflicting or missing current bucket fails maintenance closed. The maintenance heartbeat and external alert must therefore remain continuously monitored. Dormant board processing may be skipped; current Stripe/webhook integrity must remain healthy while checkout is locked or in CANARY mode.
 
 ## Controlled canary and public activation
 
