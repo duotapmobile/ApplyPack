@@ -152,6 +152,9 @@ describe("October 2 manual-launch hardening", () => {
     expect(authorization).toContain('access.role !== "admin"');
     expect(authorization).toContain("safeReleaseSha()");
     expect(retry).toContain('rpc("ap_supersede_manual_launch_canary_designation"');
+    expect(retry).toContain("stripe.checkout.sessions.retrieve");
+    expect(retry).toContain("stripe.checkout.sessions.expire");
+    expect(retry).toContain('rpc("ap_reconcile_manual_launch_canary_provider_terminal"');
     expect(retry).toContain('access.role !== "admin"');
     expect(activation).toContain('rpc("ap_record_manual_launch_activation"');
     expect(activation).toContain('z.enum(["CANARY", "PUBLIC"])');
@@ -166,6 +169,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(capacity).not.toContain('from("capacity_limits")');
     expect(searchCheckout).toContain('rpc("ap_bind_manual_launch_canary_payment"');
     expect(materialsCheckout).toContain('rpc("ap_bind_manual_launch_canary_payment"');
+    expect(materialsCheckout).toContain(":canary:${authorizationResult.data.id}");
     expect(board).toContain("cancel_at_period_end: true");
     expect(board).toContain('state: "CANCELED"');
   });

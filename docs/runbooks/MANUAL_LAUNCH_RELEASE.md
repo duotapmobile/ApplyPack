@@ -61,10 +61,10 @@ Historical `$20` and `$8` amounts are reconciliation/refund records only. They m
 ## Canary retry and emergency stop
 
 - Stop new canary sessions first: set `APP_CANARY_CHECKOUT_ENABLED=false` and redeploy. Do not disable the webhook or maintenance services.
-- Revoke a still-active authorization with `PATCH /api/admin/manual-launch/canary-authorizations`, providing its exact ID and a 12–500 character evidence reference.
+- Revoke a still-active, not-yet-bound authorization with `PATCH /api/admin/manual-launch/canary-authorizations`, providing its exact ID and a 12–500 character evidence reference. The shared database lock refuses a successful revoke once checkout binding has begun.
 - Disable both authoritative pools in Admin Capacity, with an audit reason, when no new checkout of either product may begin.
-- Expire any already-created open Stripe Checkout Session in Stripe and verify the matching local checkout reaches a terminal reconciled state. Revocation or an environment flag cannot invalidate a URL already issued by Stripe.
-- Only after that terminal reconciliation, POST the failed designation ID and evidence to `/api/admin/manual-launch/canary-retries`. The database refuses supersession for a paid, verified, open, ambiguous, or unreconciled attempt. Create a fresh short-lived authorization before retrying.
+- For a bound attempt, POST the failed designation ID and evidence to `/api/admin/manual-launch/canary-retries`. The endpoint retrieves the exact Stripe Checkout Session, expires it when still open, requires Stripe to report both `expired` and `unpaid`, records immutable local reconciliation, and only then supersedes the designation. It fails closed for paid, complete, ambiguous, mismatched, or unverifiable attempts.
+- Create a fresh short-lived authorization before retrying. Issue a fresh search invitation for SEARCH; MATERIALS derives a fresh immutable checkout identity from the new authorization while keeping the customer's substantive selection unchanged.
 
 ## Rollback
 

@@ -54,6 +54,7 @@ select pg_temp.assert_true(
   and has_function_privilege('service_role','public.ap_bind_manual_launch_canary_payment(uuid,text)','execute')
   and not has_function_privilege('authenticated','public.ap_bind_manual_launch_canary_payment(uuid,text)','execute')
   and has_function_privilege('service_role','public.ap_revoke_manual_launch_canary_checkout(uuid,text,uuid,text)','execute')
+  and has_function_privilege('service_role','public.ap_reconcile_manual_launch_canary_provider_terminal(uuid,text,uuid,text,text,text,text)','execute')
   and has_function_privilege('service_role','public.ap_supersede_manual_launch_canary_designation(uuid,text,uuid,text)','execute')
   and has_function_privilege('service_role','public.ap_set_manual_launch_capacity_state(public.ap_capacity_resource,boolean,uuid,text)','execute')
   and has_function_privilege('service_role','public.ap_record_manual_launch_activation(text,text,jsonb,uuid)','execute')
@@ -106,6 +107,13 @@ select pg_temp.assert_true(
       and column_name='legacy_subscription_retirement_reference'),
   'manual launch activation must record provider-side legacy subscription retirement evidence'
 );
+select pg_temp.assert_true(
+  position('count(distinct designation.expected_customer_id)' in pg_get_functiondef(
+    'public.ap_record_manual_launch_activation(text,text,jsonb,uuid)'::regprocedure))>0
+  and position('successful_canary_customers<>1' in pg_get_functiondef(
+    'public.ap_record_manual_launch_activation(text,text,jsonb,uuid)'::regprocedure))>0,
+  'PUBLIC activation must require both refunded products to belong to one customer'
+);
 
 select pg_temp.assert_true(
   position(
@@ -155,6 +163,25 @@ insert into auth.users(
   'f1000000-0000-4000-8000-000000000001','00000000-0000-0000-0000-000000000000',
   'authenticated','authenticated','manual-launch-capacity@example.invalid','',now(),'{}','{}',now(),now()
 );
+update public.profiles set role='admin' where id='f1000000-0000-4000-8000-000000000001';
+savepoint before_capacity_bootstrap;
+select public.ap_set_manual_launch_capacity_state(
+  'SEARCH',true,'f1000000-0000-4000-8000-000000000001','bootstrap fresh search capacity for launch test'
+);
+select public.ap_set_manual_launch_capacity_state(
+  'MATERIALS',true,'f1000000-0000-4000-8000-000000000001','bootstrap fresh materials capacity for launch test'
+);
+select pg_temp.assert_true(
+  (select count(*)=2 and bool_and(enabled) from public.ap_capacity_pools
+    where resource in ('SEARCH','MATERIALS'))
+  and (select count(*)=2 from public.ap_capacity_buckets bucket
+    join public.ap_capacity_pools pool on pool.id=bucket.pool_id
+    where pool.resource in ('SEARCH','MATERIALS')
+      and bucket.starts_at<=clock_timestamp() and bucket.ends_at>clock_timestamp())
+  and public.ap_manual_launch_capacity_readiness()->>'ready'='true',
+  'admin enablement must atomically bootstrap both fixed launch pools and current buckets'
+);
+rollback to savepoint before_capacity_bootstrap;
 insert into public.ap_capacity_pools(id,resource,enabled,configuration_version) values
   ('f2000000-0000-4000-8000-000000000001','SEARCH',true,'manual-launch-readiness-v1'),
   ('f2000000-0000-4000-8000-000000000002','MATERIALS',true,'manual-launch-readiness-v1');

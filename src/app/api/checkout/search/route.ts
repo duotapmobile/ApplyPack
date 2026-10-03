@@ -215,6 +215,8 @@ export async function POST(request: Request) {
     || !checkout.reservation_expires_at || !checkout.access_email) {
     return NextResponse.json({ error: "The current capacity reservation or immutable quote could not be created. No payment was started." }, { status: 409 });
   }
+  let canaryDesignationId: string | null = null;
+  let canaryDesignationActorId: string | null = null;
   if (canaryReleaseSha) {
     const designation = await context.admin.rpc("ap_bind_manual_launch_canary_payment", {
       p_payment_attempt_id: String(checkout.payment_attempt_id),
@@ -227,6 +229,19 @@ export async function POST(request: Request) {
       });
       return NextResponse.json({ error: "The canary authorization could not be bound. No payment was started." }, { status: 409 });
     }
+    canaryDesignationId = String(designation.data);
+    const designationOwner = await context.admin.from("ap_manual_launch_canary_designations")
+      .select("designated_by")
+      .eq("id", canaryDesignationId)
+      .maybeSingle();
+    if (designationOwner.error || !designationOwner.data?.designated_by) {
+      await context.admin.rpc("ap_compensate_search_checkout", {
+        p_checkout_attempt_id: String(checkout.checkout_attempt_id),
+        p_failure_code: "CANARY_DESIGNATION_OWNER_UNAVAILABLE",
+      });
+      return NextResponse.json({ error: "The canary authorization owner could not be verified. No payment was started." }, { status: 409 });
+    }
+    canaryDesignationActorId = designationOwner.data.designated_by;
   }
 
   let session;
@@ -261,19 +276,30 @@ export async function POST(request: Request) {
     p_provider_session_expires_at: new Date(session.expires_at * 1_000).toISOString(),
   });
   if (promoted.error || !promoted.data) {
-    let expired = false;
+    let expiredSession: Stripe.Checkout.Session | null = null;
     try {
-      await stripe.checkout.sessions.expire(session.id);
-      expired = true;
+      expiredSession = await stripe.checkout.sessions.expire(session.id);
     } catch {
       // Reconciliation remains required; a worker must not assume provider cancellation.
     }
-    if (expired) {
-      await context.admin.rpc("ap_compensate_search_checkout", {
-        p_checkout_attempt_id: String(checkout.checkout_attempt_id),
-        p_failure_code: "LOCAL_PROMOTION_FAILED_PROVIDER_EXPIRED",
-        p_provider_session_id: session.id,
-      });
+    if (expiredSession) {
+      if (canaryReleaseSha && canaryDesignationId && canaryDesignationActorId) {
+        await context.admin.rpc("ap_reconcile_manual_launch_canary_provider_terminal", {
+          p_designation_id: canaryDesignationId,
+          p_release_sha: canaryReleaseSha,
+          p_actor_id: canaryDesignationActorId,
+          p_provider_session_id: expiredSession.id,
+          p_provider_session_status: expiredSession.status,
+          p_provider_payment_status: expiredSession.payment_status,
+          p_evidence_reference: "automatic-post-create-provider-expiry",
+        });
+      } else {
+        await context.admin.rpc("ap_compensate_search_checkout", {
+          p_checkout_attempt_id: String(checkout.checkout_attempt_id),
+          p_failure_code: "LOCAL_PROMOTION_FAILED_PROVIDER_EXPIRED",
+          p_provider_session_id: session.id,
+        });
+      }
     }
     return NextResponse.json({ error: "Checkout could not be safely linked. No work was activated." }, { status: 502 });
   }
@@ -291,3 +317,4 @@ export async function POST(request: Request) {
   }), cookie);
   return response;
 }
+import type Stripe from "stripe";

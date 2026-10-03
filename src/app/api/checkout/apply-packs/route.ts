@@ -218,7 +218,26 @@ export async function POST(request: Request) {
     careerBreakCustomLabel: input.careerBreakCustomLabel,
     coverLetterBreakConsent: input.coverLetterBreakConsent,
   });
-  const requestKey = materialCheckoutRequestKey(selectionSha256);
+  const baseRequestKey = materialCheckoutRequestKey(selectionSha256);
+  let requestKey = baseRequestKey;
+  let canaryDesignationId: string | null = null;
+  let canaryDesignationActorId: string | null = null;
+  if (canaryReleaseSha) {
+    const authorizationResult = await admin.from("ap_manual_launch_canary_authorizations")
+      .select("id")
+      .eq("release_sha", canaryReleaseSha)
+      .eq("product_kind", "MATERIALS")
+      .eq("expected_customer_id", authData.user.id)
+      .is("revoked_at", null)
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (authorizationResult.error || !authorizationResult.data) {
+      return NextResponse.json({ error: "The exact customer canary authorization is unavailable." }, { status: 409 });
+    }
+    requestKey = `${baseRequestKey}:canary:${authorizationResult.data.id}`;
+  }
   const contactPayloadId = deterministicUuid(`material-contact:${requestKey}`);
   const providerSelections = selections.map((selection) => ({
     ...selection,
@@ -302,6 +321,19 @@ export async function POST(request: Request) {
       });
       return NextResponse.json({ error: "The canary authorization could not be bound. No payment was started." }, { status: 409 });
     }
+    canaryDesignationId = String(designation.data);
+    const designationOwner = await admin.from("ap_manual_launch_canary_designations")
+      .select("designated_by")
+      .eq("id", canaryDesignationId)
+      .maybeSingle();
+    if (designationOwner.error || !designationOwner.data?.designated_by) {
+      await admin.rpc("ap_expire_material_checkout", {
+        p_checkout_intent_id: String(checkout.checkoutIntentId),
+        p_reason: "CANARY_DESIGNATION_OWNER_UNAVAILABLE",
+      });
+      return NextResponse.json({ error: "The canary authorization owner could not be verified. No payment was started." }, { status: 409 });
+    }
+    canaryDesignationActorId = designationOwner.data.designated_by;
   }
 
   let session: Stripe.Checkout.Session;
@@ -335,18 +367,29 @@ export async function POST(request: Request) {
     p_provider_session_expires_at: new Date(session.expires_at * 1_000).toISOString(),
   });
   if (promoted.error || !promoted.data) {
-    let providerExpired = false;
+    let expiredSession: Stripe.Checkout.Session | null = null;
     try {
-      await stripe.checkout.sessions.expire(session.id);
-      providerExpired = true;
+      expiredSession = await stripe.checkout.sessions.expire(session.id);
     } catch {
       // The reconciliation worker retains the ambiguous command for review.
     }
-    if (providerExpired) {
-      await admin.rpc("ap_expire_material_checkout", {
-        p_checkout_intent_id: String(checkout.checkoutIntentId),
-        p_reason: "LOCAL_PROMOTION_FAILED_PROVIDER_EXPIRED",
-      });
+    if (expiredSession) {
+      if (canaryReleaseSha && canaryDesignationId && canaryDesignationActorId) {
+        await admin.rpc("ap_reconcile_manual_launch_canary_provider_terminal", {
+          p_designation_id: canaryDesignationId,
+          p_release_sha: canaryReleaseSha,
+          p_actor_id: canaryDesignationActorId,
+          p_provider_session_id: expiredSession.id,
+          p_provider_session_status: expiredSession.status,
+          p_provider_payment_status: expiredSession.payment_status,
+          p_evidence_reference: "automatic-post-create-provider-expiry",
+        });
+      } else {
+        await admin.rpc("ap_expire_material_checkout", {
+          p_checkout_intent_id: String(checkout.checkoutIntentId),
+          p_reason: "LOCAL_PROMOTION_FAILED_PROVIDER_EXPIRED",
+        });
+      }
     }
     return NextResponse.json({ error: "Checkout could not be safely linked. No work was activated." }, { status: 502 });
   }

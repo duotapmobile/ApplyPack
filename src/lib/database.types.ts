@@ -3875,6 +3875,12 @@ export type Database = {
           id: string
           payment_attempt_id: string
           product_kind: string
+          provider_terminal_evidence_reference: string | null
+          provider_terminal_payment_status: string | null
+          provider_terminal_reconciled_at: string | null
+          provider_terminal_reconciled_by: string | null
+          provider_terminal_session_id: string | null
+          provider_terminal_status: string | null
           release_sha: string
           superseded_at: string | null
           superseded_by: string | null
@@ -3890,6 +3896,12 @@ export type Database = {
           id?: string
           payment_attempt_id: string
           product_kind: string
+          provider_terminal_evidence_reference?: string | null
+          provider_terminal_payment_status?: string | null
+          provider_terminal_reconciled_at?: string | null
+          provider_terminal_reconciled_by?: string | null
+          provider_terminal_session_id?: string | null
+          provider_terminal_status?: string | null
           release_sha: string
           superseded_at?: string | null
           superseded_by?: string | null
@@ -3905,12 +3917,25 @@ export type Database = {
           id?: string
           payment_attempt_id?: string
           product_kind?: string
+          provider_terminal_evidence_reference?: string | null
+          provider_terminal_payment_status?: string | null
+          provider_terminal_reconciled_at?: string | null
+          provider_terminal_reconciled_by?: string | null
+          provider_terminal_session_id?: string | null
+          provider_terminal_status?: string | null
           release_sha?: string
           superseded_at?: string | null
           superseded_by?: string | null
           supersession_evidence_reference?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "ap_manual_launch_canary_desig_provider_terminal_reconciled_fkey"
+            columns: ["provider_terminal_reconciled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ap_manual_launch_canary_designations_authorization_id_fkey"
             columns: ["authorization_id"]
@@ -3958,6 +3983,32 @@ export type Database = {
             columns: ["superseded_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_manual_launch_canary_receipt_update_tokens: {
+        Row: {
+          created_at: string
+          designation_id: string
+          transaction_id: number
+        }
+        Insert: {
+          created_at?: string
+          designation_id: string
+          transaction_id: number
+        }
+        Update: {
+          created_at?: string
+          designation_id?: string
+          transaction_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_manual_launch_canary_receipt_update_toke_designation_id_fkey"
+            columns: ["designation_id"]
+            isOneToOne: true
+            referencedRelation: "ap_manual_launch_canary_designations"
             referencedColumns: ["id"]
           },
         ]
@@ -11922,6 +11973,18 @@ export type Database = {
           state: Database["public"]["Enums"]["ap_draft_state"]
           version: number
         }[]
+      }
+      ap_reconcile_manual_launch_canary_provider_terminal: {
+        Args: {
+          p_actor_id: string
+          p_designation_id: string
+          p_evidence_reference: string
+          p_provider_payment_status: string
+          p_provider_session_id: string
+          p_provider_session_status: string
+          p_release_sha: string
+        }
+        Returns: boolean
       }
       ap_reconcile_verified_source_run: {
         Args: { p_actor_id: string; p_run_id: string }

@@ -382,6 +382,58 @@ select pg_temp.assert_true(
   'search canary payment was not immutably designated before charge'
 );
 
+do $$ begin
+  perform public.ap_revoke_manual_launch_canary_checkout(
+    (select authorization_id from public.ap_manual_launch_canary_designations
+      where payment_attempt_id='a4500000-0000-4000-8000-000000000001'),
+    repeat('a',40),'14000000-0000-4000-8000-000000000003',
+    'attempted-revocation-after-checkout-binding'
+  );
+  raise exception 'bound_canary_authorization_was_revoked';
+exception when others then
+  if sqlerrm='bound_canary_authorization_was_revoked' then raise; end if;
+  if sqlerrm<>'manual_launch_canary_designation_already_bound' then raise; end if;
+end $$;
+
+savepoint before_local_expiry_retry_race;
+select pg_temp.assert_true(public.ap_promote_search_checkout(
+  'a4400000-0000-4000-8000-000000000001','cs_canary_race',
+  clock_timestamp()+interval '29 minutes'
+), 'provider search session was not promoted for retry-race fixture');
+select pg_temp.assert_true(public.ap_expire_search_checkout(
+  'a4400000-0000-4000-8000-000000000001','LOCAL_TIME_ONLY_EXPIRY'
+), 'local search expiry fixture failed');
+do $$ begin
+  perform public.ap_supersede_manual_launch_canary_designation(
+    (select id from public.ap_manual_launch_canary_designations
+      where payment_attempt_id='a4500000-0000-4000-8000-000000000001'),
+    repeat('a',40),'14000000-0000-4000-8000-000000000003',
+    'local-expiry-is-not-provider-reconciliation'
+  );
+  raise exception 'local_expiry_allowed_canary_retry';
+exception when others then
+  if sqlerrm='local_expiry_allowed_canary_retry' then raise; end if;
+  if sqlerrm<>'manual_launch_canary_terminal_reconciliation_required' then raise; end if;
+end $$;
+select pg_temp.assert_true(public.ap_reconcile_manual_launch_canary_provider_terminal(
+  (select id from public.ap_manual_launch_canary_designations
+    where payment_attempt_id='a4500000-0000-4000-8000-000000000001'),
+  repeat('a',40),'14000000-0000-4000-8000-000000000003','cs_canary_race',
+  'expired','unpaid','stripe-expired-unpaid-session-verified-for-retry'
+), 'provider-terminal canary reconciliation failed');
+select public.ap_supersede_manual_launch_canary_designation(
+  (select id from public.ap_manual_launch_canary_designations
+    where payment_attempt_id='a4500000-0000-4000-8000-000000000001'),
+  repeat('a',40),'14000000-0000-4000-8000-000000000003',
+  'stripe-expired-unpaid-session-verified-for-retry'
+);
+select pg_temp.assert_true(
+  (select superseded_at is not null from public.ap_manual_launch_canary_designations
+    where payment_attempt_id='a4500000-0000-4000-8000-000000000001'),
+  'provider-terminal reconciled canary could not be superseded'
+);
+rollback to savepoint before_local_expiry_retry_race;
+
 savepoint before_ambiguous_checkout_compensation;
 select pg_temp.assert_true(not public.ap_compensate_search_checkout(
   'a4400000-0000-4000-8000-000000000001','LOCAL_PROMOTION_FAILED_RECONCILIATION_REQUIRED',null
@@ -403,8 +455,11 @@ select pg_temp.assert_true((select lifecycle='RELEASED' and debit_disposition='R
 rollback to savepoint before_confirmed_checkout_compensation;
 
 savepoint before_canary_retry_recovery;
-select pg_temp.assert_true(public.ap_compensate_search_checkout(
-  'a4400000-0000-4000-8000-000000000001','LOCAL_PROMOTION_FAILED_PROVIDER_EXPIRED','cs_canary_retry_expired'
+select pg_temp.assert_true(public.ap_reconcile_manual_launch_canary_provider_terminal(
+  (select id from public.ap_manual_launch_canary_designations
+    where payment_attempt_id='a4500000-0000-4000-8000-000000000001'),
+  repeat('a',40),'14000000-0000-4000-8000-000000000003','cs_canary_retry_expired',
+  'expired','unpaid','provider-session-expired-and-reconciled-for-safe-retry'
 ), 'confirmed provider cancellation did not prepare canary retry');
 select public.ap_supersede_manual_launch_canary_designation(
   (select id from public.ap_manual_launch_canary_designations

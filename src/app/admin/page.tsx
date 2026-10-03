@@ -184,10 +184,11 @@ export default async function AdminPage() {
     const job = Array.isArray(match?.job) ? match.job[0] : match?.job;
     return { id: item.id, correction_text: item.correction_text, company: job?.company || "Employer", title: job?.title || "Apply Pack" };
   });
-  const capacityLimits = (capacityPools || []).map((pool) => ({
-    kind: pool.resource === "SEARCH" ? "job_search" : "apply_pack",
-    units_per_24h: pool.resource === "SEARCH" ? 1 : 2,
-    enabled: pool.enabled,
+  const poolState = new Map((capacityPools || []).map((pool) => [pool.resource, pool.enabled]));
+  const capacityLimits = (["SEARCH", "MATERIALS"] as const).map((resource) => ({
+    kind: resource === "SEARCH" ? "job_search" : "apply_pack",
+    units_per_24h: resource === "SEARCH" ? 1 : 2,
+    enabled: poolState.get(resource) ?? false,
   }));
   const candidatesByOrder = new Map<string, ReturnType<typeof candidatePayload>[]>();
   for (const candidate of candidateRows || []) {
