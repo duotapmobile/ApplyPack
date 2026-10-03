@@ -42,7 +42,15 @@ fails acceptance.
   unbolded signoff.
 - PDF is selected before DOCX when both formats are allowed. A safe explicit
   employer filename instruction takes precedence; otherwise filenames use the
-  locked candidate/artifact/company convention.
+  locked candidate/artifact/company convention. Explicit names reject control
+  and bidirectional-format characters, trailing dots/spaces, and Windows device
+  names.
+- The editable DOCX source is retained in the private operator-drafts bucket
+  even when PDF is selected for customer delivery. Its path, hash, size, MIME
+  type, and filename are bound into the immutable artifact provenance.
+- A missing employer page limit remains unspecified rather than being silently
+  converted to one page. Concise complete cover letters are accepted; the
+  250-350 word range is guidance rather than a fabricated minimum.
 - PDF metadata uses the candidate as author and binds the exact company and role
   in title and subject. Generated DOCX packages reject hidden text, unsafe
   relationships, drawings, text boxes, tables, headers, footers, comments,
@@ -50,9 +58,20 @@ fails acceptance.
 - Production renderer readiness now requires actual Arial bytes and a matching
   SHA-256. The AWS worker image accepts a licensed Arial TTF only through a
   BuildKit secret and fails closed on font fallback.
+- PDF structure validation checks the actual tagged hierarchy, including the
+  document root, headings, paragraphs, links, and native list/list-item/body
+  structure rather than treating the presence of isolated tag names as proof.
 - Forward migration `202610030066_locked_document_generation_standard.sql`
   disables prior material-generation approval until the Arial renderer is
-  reapproved and records a launch checkpoint. No published migration was edited.
+  reapproved and records a launch checkpoint. Migration
+  `202610030067_document_source_and_rollback_compatibility.sql` preserves the
+  prior compatible renderer contract for forward-fix rollback, requires the
+  private editable source for newly generated artifacts, enforces only explicit
+  employer page limits, and restores advisory-lock-first capacity rollover.
+  No published migration was edited.
+- The isolated worker is capped at 512 MiB in both infrastructure and runtime
+  validation. The AWS budget defaults on and requires both launch-alert email
+  recipients.
 
 ## Local acceptance evidence
 
@@ -61,20 +80,22 @@ fails acceptance.
 - Unit/integration suite: 85 files, 604 tests passed.
 - Production build: passed on Next.js 16.3.8.
 - Production dependency audit: zero vulnerabilities.
-- Database contract fixtures: 11 passed.
+- Database contract fixtures: 12 passed.
 - Database types: match the local migrated schema.
 - Historical-data upgrade fixture: passed.
-- Rollback-compatibility fixture: passed; local schema restored through all 71
+- Rollback-compatibility fixture: passed; local schema restored through all 72
   migrations.
-- Browser matrix: 301 passed, 24 intentional project-specific skips, zero
-  failures across desktop Chromium, Firefox, desktop WebKit, mobile WebKit, and
-  mobile Chromium.
+- Browser matrix on the preceding document-alignment commit: 301 passed, 24
+  intentional project-specific skips, zero failures across desktop Chromium,
+  Firefox, desktop WebKit, mobile WebKit, and mobile Chromium. The corrective
+  delta covered server-side provenance, validation, infrastructure, and SQL; it
+  did not change the customer interface.
 - Real local render QA: seven artifacts across eight pages; searchable tagged
   PDFs, exact extracted text, metadata, structure trees, and visual page review
   passed. Arial file SHA-256:
   `b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a`.
 - Final render evidence directory:
-  `evidence/applypack-chunk5-render-20261003-163955`.
+  `evidence/applypack-chunk5-render-20261003-193535`.
 
 ## Required human and hosted proof
 

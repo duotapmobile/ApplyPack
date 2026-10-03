@@ -39,6 +39,8 @@ const promptInjectionPatterns = [
 
 const placeholderPattern = /\[[^\]]+\]|\b(?:TBD|TODO|PLACEHOLDER|INSERT (?:NAME|DATE|COMPANY|TITLE)|YOUR NAME)\b/i;
 const genericVersionToken = /(^|_)(?:final|updated|new|v2)(?=_|\.)/i;
+const unsafeFilenameFormatControl = /\p{Cf}/u;
+const windowsReservedFilename = /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9]|CONIN\$|CONOUT\$)(?:\.|$)/i;
 
 export function materialTotalCents(selectedIds: readonly string[]) {
   const unique = new Set(selectedIds);
@@ -134,9 +136,14 @@ export function materialFilename(input: {
 }
 
 function safeExplicitEmployerFilename(value: string, extension: "docx" | "pdf") {
-  return value.length <= 180
+  const basename = value.slice(0, -(extension.length + 1));
+  return Boolean(basename)
+    && value.length <= 180
     && new RegExp(`^[^/\\\\:*?"<>|]{1,175}\\.${extension}$`, "i").test(value)
     && !/[\[\]]/.test(value)
+    && !unsafeFilenameFormatControl.test(value)
+    && !windowsReservedFilename.test(value)
+    && !/[. ]$/.test(basename)
     && !/(?:^|\.)\.?\.?(?:\/|\\)/.test(value);
 }
 
@@ -144,6 +151,8 @@ export function safeFilename(value: string) {
   return value.length <= 180
     && /^[^/\\]{1,175}\.(docx|pdf)$/i.test(value)
     && !/[\[\]]/.test(value)
+    && !unsafeFilenameFormatControl.test(value)
+    && !windowsReservedFilename.test(value)
     && !genericVersionToken.test(value);
 }
 

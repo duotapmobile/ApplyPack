@@ -1,0 +1,67 @@
+begin;
+
+create or replace function pg_temp.assert_true(value boolean, message text) returns void
+language plpgsql as $$ begin if value is distinct from true then raise exception '%',message; end if; end $$;
+
+select pg_temp.assert_true(exists(
+  select 1 from public.ap_migration_checkpoints
+  where migration_id='202610030067' and checkpoint='DOCUMENT_SOURCE_AND_ROLLBACK_COMPATIBILITY'
+),'document source and rollback compatibility checkpoint missing');
+
+do $$
+declare registration text; auth_definition text; rollover text;
+begin
+  registration:=pg_get_functiondef(
+    'public.ap_register_material_artifact_version(uuid,uuid,uuid,uuid,public.ap_artifact_type,uuid,uuid,uuid,uuid,uuid[],jsonb,text,text,text,text,text,text,integer,text,text,jsonb,jsonb,text,integer,text,text,text,text,text,text,text[],boolean)'::regprocedure
+  );
+  auth_definition:=pg_get_functiondef('public.ap_assert_current_artifact_facts(uuid)'::regprocedure);
+  rollover:=pg_get_functiondef('public.ap_ensure_manual_launch_capacity_rollover()'::regprocedure);
+  perform pg_temp.assert_true(
+    position('config.document_font_family in (''Arial'',''Liberation Sans'')' in registration)>0,
+    'preceding renderer approval contract is not accepted by registration'
+  );
+  perform pg_temp.assert_true(
+    position('applypack-content-2026-09-22.1' in auth_definition)>0
+      and position('applypack-universal-document-standard-2026-10-03.1' in auth_definition)>0
+      and position('cross join public.ap_commerce_configuration' in auth_definition)=0,
+    'delivered-file authorization is not portable across the preceding and locked contracts'
+  );
+  perform pg_temp.assert_true(
+    position('pg_advisory_xact_lock' in rollover)>0
+      and position('pg_advisory_xact_lock' in rollover)<position('FOR UPDATE' in upper(rollover)),
+    'capacity rollover does not acquire the advisory lock before row locks'
+  );
+end $$;
+
+-- The preceding application can be deliberately reapproved after migration
+-- 066 without opening checkout; the transaction rolls this fixture back.
+update public.ap_commerce_configuration
+set document_font_family='Liberation Sans',
+    document_font_sha256=repeat('a',64),
+    document_renderer_identity='rollback-fixture-renderer',
+    document_safety_policy='generated-structural-v1',
+    materials_generation_approved=false,
+    materials_generation_approval_reference=null
+where singleton;
+select pg_temp.assert_true((select document_font_family='Liberation Sans'
+  and not materials_generation_approved from public.ap_commerce_configuration where singleton),
+  'preceding renderer cannot be selected fail-closed');
+
+select pg_temp.assert_true(
+  to_regprocedure('public.ap_authorize_material_download(uuid,uuid,uuid,timestamptz)') is not null,
+  'customer download authorization contract missing');
+select pg_temp.assert_true(
+  to_regprocedure('public.claim_stripe_webhook(text)') is not null,
+  'webhook replay contract missing');
+select pg_temp.assert_true(
+  to_regprocedure('public.ap_record_search_refund_result_verified(uuid,text,text,text,integer,text,uuid,text,text,text,timestamptz,text)') is not null,
+  'verified refund reconciliation contract missing');
+select pg_temp.assert_true(
+  to_regprocedure('public.ap_ensure_manual_launch_capacity_rollover()') is not null,
+  'maintenance capacity rollover contract missing');
+select pg_temp.assert_true(
+  has_function_privilege('service_role','public.claim_stripe_webhook(text)','EXECUTE')
+  and has_function_privilege('service_role','public.ap_record_search_refund_result_verified(uuid,text,text,text,integer,text,uuid,text,text,text,timestamptz,text)','EXECUTE'),
+  'rollback-critical webhook or refund grant missing');
+
+rollback;

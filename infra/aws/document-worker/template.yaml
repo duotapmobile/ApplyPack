@@ -14,13 +14,16 @@ Parameters:
   S3PrefixListId:
     Type: String
     Description: Regional com.amazonaws.us-east-1.s3 managed prefix list ID
-  AlertEmail:
+  PrimaryAlertEmail:
     Type: String
-    Default: ""
+    AllowedPattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+  SecondaryAlertEmail:
+    Type: String
+    AllowedPattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
   CreateBudget:
     Type: String
     AllowedValues: ["true", "false"]
-    Default: "false"
+    Default: "true"
   KmsKeyArn:
     Type: String
   KmsKeyVersion:
@@ -106,7 +109,7 @@ Resources:
       Code: { ImageUri: !Ref WorkerImageUri }
       Role: !GetAtt WorkerRole.Arn
       Architectures: [x86_64]
-      MemorySize: 1024
+      MemorySize: 512
       Timeout: 30
       ReservedConcurrentExecutions: 2
       EphemeralStorage: { Size: 1024 }
@@ -162,7 +165,9 @@ Resources:
             Threshold: 80
             ThresholdType: PERCENTAGE
           Subscribers:
-            - Address: !Ref AlertEmail
+            - Address: !Ref PrimaryAlertEmail
+              SubscriptionType: EMAIL
+            - Address: !Ref SecondaryAlertEmail
               SubscriptionType: EMAIL
         - Notification:
             ComparisonOperator: GREATER_THAN
@@ -170,7 +175,9 @@ Resources:
             Threshold: 100
             ThresholdType: PERCENTAGE
           Subscribers:
-            - Address: !Ref AlertEmail
+            - Address: !Ref PrimaryAlertEmail
+              SubscriptionType: EMAIL
+            - Address: !Ref SecondaryAlertEmail
               SubscriptionType: EMAIL
 Outputs:
   BucketName: { Value: !Ref TemporaryBucket }

@@ -322,7 +322,7 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
       },
       rules: {
         outputFormat: "DOCX",
-        resumePageLimit: rule.resume_page_limit === 2 ? 2 : 1,
+        resumePageLimit: rule.resume_page_limit === 1 || rule.resume_page_limit === 2 ? rule.resume_page_limit : null,
         resumeFilenameInstruction: outputFormat === "DOCX" ? rule.resume_filename_instruction : null,
         coverLetterFilenameInstruction: outputFormat === "DOCX" ? rule.cover_letter_filename_instruction : null,
         referenceFilenameInstruction: outputFormat === "DOCX" ? rule.reference_filename_instruction : null,
@@ -470,20 +470,41 @@ async function validateUploadAndRegister(input: {
   const fileVersionId = randomUUID();
   const extension = input.outputFormat.toLowerCase();
   const storagePath = `${input.customerId}/materials/${input.lineId}/${fileVersionId}/${filename}`;
+  const editableSourcePath = `${input.customerId}/materials/${input.lineId}/${fileVersionId}/editable-source/${input.artifact.filename}`;
   const previewPath = `${input.customerId}/materials/${input.lineId}/${fileVersionId}/render-preview.pdf`;
+  const editableSource = {
+    storageBucket: "operator-drafts" as const,
+    storagePath: editableSourcePath,
+    safeFilename: input.artifact.filename,
+    checksumSha256: hash(input.artifact.buffer),
+    sizeBytes: input.artifact.buffer.byteLength,
+    mimeType: DOCX_MIME,
+  };
+  const sourceUpload = await input.admin.storage.from(editableSource.storageBucket).upload(
+    editableSource.storagePath,
+    input.artifact.buffer,
+    { contentType: DOCX_MIME, cacheControl: "0", upsert: false },
+  );
+  if (sourceUpload.error) throw sourceUpload.error;
   const previewUpload = await input.admin.storage.from("operator-render-previews").upload(previewPath, render.searchablePdf, {
     contentType: PDF_MIME,
     cacheControl: "0",
     upsert: false,
   });
-  if (previewUpload.error) throw previewUpload.error;
+  if (previewUpload.error) {
+    await input.admin.storage.from(editableSource.storageBucket).remove([editableSource.storagePath]);
+    throw previewUpload.error;
+  }
   const artifactUpload = await input.admin.storage.from("customer-deliveries").upload(storagePath, bytes, {
     contentType: input.outputFormat === "PDF" ? PDF_MIME : DOCX_MIME,
     cacheControl: "0",
     upsert: false,
   });
   if (artifactUpload.error) {
-    await input.admin.storage.from("operator-render-previews").remove([previewPath]);
+    await Promise.all([
+      input.admin.storage.from("operator-render-previews").remove([previewPath]),
+      input.admin.storage.from(editableSource.storageBucket).remove([editableSource.storagePath]),
+    ]);
     throw artifactUpload.error;
   }
   const structuralChecks = {
@@ -542,7 +563,7 @@ async function validateUploadAndRegister(input: {
     p_job_snapshot_id: input.jobSnapshotId,
     p_reference_regeneration_id: input.regenerationId,
     p_reference_permission_ids: input.permissionIds,
-    p_claim_provenance: input.artifact.provenance,
+    p_claim_provenance: { ...input.artifact.provenance, editableSource },
     p_generator_version: input.artifact.provenance.generatorVersion,
     p_storage_bucket: "customer-deliveries",
     p_storage_path: storagePath,
@@ -569,6 +590,7 @@ async function validateUploadAndRegister(input: {
     await Promise.all([
       input.admin.storage.from("operator-render-previews").remove([previewPath]),
       input.admin.storage.from("customer-deliveries").remove([storagePath]),
+      input.admin.storage.from(editableSource.storageBucket).remove([editableSource.storagePath]),
     ]);
     throw registered.error || new Error("artifact_registration_failed");
   }

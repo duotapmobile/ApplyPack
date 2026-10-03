@@ -263,7 +263,7 @@ insert into public.ap_generated_artifacts(
   '25000000-0000-4000-8000-000000000001','b5000000-0000-4000-8000-000000000001',
   '75000000-0000-4000-8000-000000000001','RESUME',
   '45000000-0000-4000-8000-000000000001','c5000000-0000-4000-8000-000000000001',
-  '{"sourceBinding":{"candidateFactIds":["65000000-0000-4000-8000-000000000001"]},"claims":[{"source":"customer-confirmed"}]}','applypack-documents|instructions=applypack-universal-document-standard-2026-10-03.1|standardSha256=1d85789d434c0252d1797e366cd732931756fd4baa74bc36045fdeb2547786cf|content=applypack-content-2026-10-03.1|template=applypack-template-2026-10-03.1|exporter=libreoffice-tagged-pdf-2026-10-03.1',1
+  '{"sourceBinding":{"candidateFactIds":["65000000-0000-4000-8000-000000000001"]},"claims":[{"source":"customer-confirmed"}],"editableSource":{"storageBucket":"operator-drafts","storagePath":"15000000-0000-4000-8000-000000000001/materials/b5000000-0000-4000-8000-000000000001/f5000000-0000-4000-8000-000000000001/editable-source/Chunk_5_Fixture_Employer_Operations_Specialist_Resume.docx","safeFilename":"Chunk_5_Fixture_Employer_Operations_Specialist_Resume.docx","checksumSha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","sizeBytes":4096,"mimeType":"application/vnd.openxmlformats-officedocument.wordprocessingml.document"}}','applypack-documents|instructions=applypack-universal-document-standard-2026-10-03.1|standardSha256=1d85789d434c0252d1797e366cd732931756fd4baa74bc36045fdeb2547786cf|content=applypack-content-2026-10-03.1|template=applypack-template-2026-10-03.1|exporter=libreoffice-tagged-pdf-2026-10-03.1',1
 );
 insert into public.ap_generated_file_versions(
   id,artifact_id,version,storage_bucket,storage_path,checksum_sha256,mime_type,size_bytes,

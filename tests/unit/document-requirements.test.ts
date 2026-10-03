@@ -52,11 +52,12 @@ describe("versioned document requirements", () => {
   });
 
   it("requires semantic PDF structure appropriate to each artifact", () => {
-    const resume = "Structure:\nDocument\n  H1\n  P\n  L\n    LI";
-    const letter = "Structure:\nDocument\n  P\n  P";
+    const resume = "Structure:\nDocument\n  P\n    Link\n  H1\n  P\n  P\n  L\n    LI\n      Lbl\n      LBody\n        P";
+    const letter = "Structure:\nDocument\n  P\n    Link\n  P\n  P\n  P\n  P\n  P\n  P\n  P";
     expect(pdfStructureIsValid(resume, "RESUME")).toBe(true);
     expect(pdfStructureIsValid(letter, "COVER_LETTER")).toBe(true);
     expect(pdfStructureIsValid(letter, "RESUME")).toBe(false);
-    expect(pdfStructureIsValid("Document\nH1\nL\nLI", "RESUME")).toBe(false);
+    expect(pdfStructureIsValid("Document\n  P\n    Link\n  H1\n  L\n    LI", "RESUME")).toBe(false);
+    expect(pdfStructureIsValid("Document\n  P\n    Link\n  H1\n  P\n  L\n    LI\n      LBody\n        P", "RESUME")).toBe(false);
   });
 });

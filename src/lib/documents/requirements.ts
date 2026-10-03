@@ -73,7 +73,7 @@ export const DOCUMENT_REQUIREMENTS = Object.freeze({
   coverLetter: {
     paragraphMinimum: 3,
     paragraphMaximum: 4,
-    supportedWordMinimum: 250,
+    normalWordMinimum: 250,
     supportedWordMaximum: 350,
     humanApprovedWordMaximum: 400,
   },

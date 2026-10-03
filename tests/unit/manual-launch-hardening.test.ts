@@ -118,6 +118,7 @@ describe("October 2 manual-launch hardening", () => {
     const launchReadiness = source("src/lib/operations/launch-readiness.ts");
     const workerTemplate = source("infra/aws/document-worker/template.yaml");
     const documentPolicy = source("supabase/migrations/202610030066_locked_document_generation_standard.sql");
+    const documentCompatibility = source("supabase/migrations/202610030067_document_source_and_rollback_compatibility.sql");
     expect(kms).toContain('environment.APP_DEPLOYMENT_ENV === "production"');
     expect(kms).toContain('environment.APP_KMS_PROVIDER !== "aws"');
     expect(worker).toContain('region === "us-east-1"');
@@ -142,6 +143,9 @@ describe("October 2 manual-launch hardening", () => {
     const generation = source("src/app/api/admin/material-lines/[id]/generate/route.ts");
     expect(generation).toContain("renderDocumentForQa");
     expect(generation).not.toContain("renderDocumentLocallyForQa");
+    expect(generation).toContain('storageBucket: "operator-drafts"');
+    expect(generation).toContain("editableSourcePath");
+    expect(generation).toContain("p_claim_provenance: { ...input.artifact.provenance, editableSource }");
     const handler = source("infra/aws/document-worker/handler.py");
     expect(handler).toContain('operation == "render-docx"');
     expect(handler).toContain('operation == "probe-document"');
@@ -149,13 +153,25 @@ describe("October 2 manual-launch hardening", () => {
     expect(handler).toContain("pdftoppm");
     expect(handler).toContain("network_isolation_verified");
     expect(handler).toContain("functionVersionArn");
+    expect(handler).toContain("requested_memory");
+    expect(handler).toContain("worker_memory_configuration_bound");
     expect(handler).toContain('ServerSideEncryption="AES256"');
     expect(workerTemplate).toContain("ec2:DescribeSubnets");
     expect(workerTemplate).toContain("ec2:AssignPrivateIpAddresses");
     expect(workerTemplate).toContain("ec2:UnassignPrivateIpAddresses");
+    expect(workerTemplate).toContain("MemorySize: 512");
+    expect(workerTemplate).toContain("PrimaryAlertEmail");
+    expect(workerTemplate).toContain("SecondaryAlertEmail");
+    expect(workerTemplate).toContain('Default: "true"');
     expect(documentPolicy).toContain("document_font_family='Arial'");
     expect(documentPolicy).toContain("materials_generation_approved=false");
     expect(documentPolicy).toContain("LOCKED_DOCUMENT_GENERATION_STANDARD");
+    expect(documentCompatibility).toContain("locked_editable_document_source_required");
+    expect(documentCompatibility).toContain("resume_content_exceeds_employer_page_limit");
+    expect(documentCompatibility).toContain("DOCUMENT_SOURCE_AND_ROLLBACK_COMPATIBILITY");
+    expect(documentCompatibility).toContain("Liberation Sans");
+    expect(documentCompatibility.indexOf("pg_advisory_xact_lock"))
+      .toBeLessThan(documentCompatibility.indexOf("where resource=resource_value and enabled for update"));
   });
 
   it("binds refunds to immutable provider payment semantics and retires subscription renewals", () => {

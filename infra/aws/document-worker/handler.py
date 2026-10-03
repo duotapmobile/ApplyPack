@@ -15,6 +15,7 @@ import boto3
 
 IDENTITY = "applypack-document-worker-v1"
 MAX_SOURCE = 10 * 1024 * 1024
+MAX_MEMORY = 512 * 1024 * 1024
 s3 = boto3.client("s3")
 
 
@@ -42,10 +43,19 @@ def _runtime_attestation(context):
 
 def _bounded(event):
     limits = event.get("limits") or {}
+    requested_memory = int(limits.get("maxMemoryBytes", MAX_MEMORY))
+    configured_memory_mb = int(os.environ.get("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", "0") or "0")
+    if requested_memory < 1 or requested_memory > MAX_MEMORY:
+        raise ValueError("memory_bound")
+    if configured_memory_mb and configured_memory_mb * 1024 * 1024 > MAX_MEMORY:
+        raise ValueError("worker_memory_configuration_bound")
+    if configured_memory_mb and requested_memory > configured_memory_mb * 1024 * 1024:
+        raise ValueError("memory_bound")
     return {
         "expanded": min(int(limits.get("maxExpandedBytes", 52_428_800)), 52_428_800),
         "pages": min(int(limits.get("maxPages", 40)), 40),
         "milliseconds": min(int(limits.get("maxMilliseconds", 30_000)), 30_000),
+        "memory": requested_memory,
     }
 
 

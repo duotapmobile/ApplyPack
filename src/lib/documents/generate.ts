@@ -79,7 +79,7 @@ export type ReferenceSheetRecord = {
 
 export type EmployerDocumentRules = {
   outputFormat: "DOCX" | "PDF";
-  resumePageLimit: 1 | 2;
+  resumePageLimit: 1 | 2 | null;
   resumeFilenameInstruction?: string | null;
   coverLetterFilenameInstruction?: string | null;
   referenceFilenameInstruction?: string | null;
@@ -175,6 +175,14 @@ export type ArtifactProvenance = {
   };
   cacheIdentitySha256: string;
   versions: typeof DOCUMENT_VERSIONS;
+  editableSource?: {
+    storageBucket: "operator-drafts";
+    storagePath: string;
+    safeFilename: string;
+    checksumSha256: string;
+    sizeBytes: number;
+    mimeType: typeof DOCX_MIME;
+  };
 };
 
 export type GeneratedArtifact = {
@@ -575,8 +583,7 @@ function buildCoverLetter(
     recordClaim(claims, `cover.paragraph.${index + 1}`, item));
   if (paragraphs.length < 3 || paragraphs.length > 4) throw new Error("cover_letter_paragraph_count_invalid");
   const wordCount = paragraphs.join(" ").trim().split(/\s+/).filter(Boolean).length;
-  if (wordCount < DOCUMENT_REQUIREMENTS.coverLetter.supportedWordMinimum
-    || wordCount > DOCUMENT_REQUIREMENTS.coverLetter.humanApprovedWordMaximum
+  if (wordCount > DOCUMENT_REQUIREMENTS.coverLetter.humanApprovedWordMaximum
     || (wordCount > DOCUMENT_REQUIREMENTS.coverLetter.supportedWordMaximum && !input.humanApprovedLongLetter)) {
     throw new Error("cover_letter_word_count_invalid");
   }
@@ -930,7 +937,7 @@ function fitResume(input: EvidenceBoundMaterialInput) {
   }
   if (units() > TWO_PAGE_FIT_UNITS) throw new Error("resume_content_exceeds_two_page_limit");
   const expectedPages = units() <= ONE_PAGE_FIT_UNITS ? 1 : 2;
-  if (expectedPages === 2 && input.rules.resumePageLimit !== 2) {
+  if (expectedPages === 2 && input.rules.resumePageLimit === 1) {
     throw new Error("resume_content_exceeds_employer_page_limit");
   }
   if (expectedPages === 2) actions.push(input.humanApprovedTwoPageException
