@@ -311,13 +311,21 @@ values(
 
 savepoint before_manual_launch_material_canary_refund;
 insert into public.ap_payment_attempts(
-  id,customer_id,provider,provider_payment_id,amount_cents,currency,settlement,dispute,
-  payment_verified_at,provider_payment_status,payment_method_type,immediate_charge_verified
+  id,customer_id,provider,amount_cents,currency,settlement,dispute
 ) values(
   'b9500000-0000-4000-8000-000000000001','15000000-0000-4000-8000-000000000001',
-  'stripe','pi_chunk5_manual_launch_canary',799,'USD','PAID','NONE',clock_timestamp()-interval '20 minutes',
-  'succeeded','card',true
+  'stripe',799,'USD','UNPAID','NONE'
 );
+select public.ap_designate_manual_launch_canary_payment(
+  'b9500000-0000-4000-8000-000000000001','15000000-0000-4000-8000-000000000001',
+  'MATERIALS',repeat('a',40),'15000000-0000-4000-8000-000000000003',
+  'authorized-test-customer-material-canary-before-card-entry'
+);
+update public.ap_payment_attempts set
+  provider_payment_id='pi_chunk5_manual_launch_canary',settlement='PAID',
+  payment_verified_at=clock_timestamp()-interval '20 minutes',provider_payment_status='succeeded',
+  payment_method_type='card',immediate_charge_verified=true
+where id='b9500000-0000-4000-8000-000000000001';
 insert into public.ap_material_purchases(id,customer_id,payment_attempt_id,amount_cents,currency,completed_at)
 values(
   'ba500000-0000-4000-8000-000000000001','15000000-0000-4000-8000-000000000001',
@@ -328,15 +336,15 @@ insert into public.ap_material_lines(
   allocated_amount_cents,readiness,fulfillment,substitution,selected_reference_sheet,active_revision,
   selection_confirmed_at,materials_payment_verified_at,materials_capacity_confirmed_at,
   materials_started_at,materials_due_at,earned_revenue_at
-) values(
+) select
   'bb500000-0000-4000-8000-000000000001','ba500000-0000-4000-8000-000000000001',
   '25000000-0000-4000-8000-000000000001','85000000-0000-4000-8000-000000000001',
   'b9500000-0000-4000-8000-000000000001','manual-launch-canary-material-line',799,
-  'CHECKOUT_ELIGIBLE','DELIVERED','NONE',false,1,clock_timestamp()-interval '21 minutes',
-  clock_timestamp()-interval '20 minutes',clock_timestamp()-interval '20 minutes',
-  clock_timestamp()-interval '20 minutes',clock_timestamp()+interval '23 hours 40 minutes',
-  clock_timestamp()-interval '1 minute'
-);
+  'CHECKOUT_ELIGIBLE','DELIVERED','NONE',false,1,now_at-interval '21 minutes',
+  now_at-interval '20 minutes',now_at-interval '20 minutes',
+  now_at-interval '20 minutes',(now_at-interval '20 minutes')+interval '24 hours',
+  now_at-interval '1 minute'
+from (select clock_timestamp() as now_at) fixture_clock;
 insert into public.ap_releases(
   id,customer_id,order_id,material_line_id,release_kind,committed_at,active_due_at,
   version_bundle,human_approved_by
@@ -344,7 +352,7 @@ insert into public.ap_releases(
   'bc500000-0000-4000-8000-000000000001','15000000-0000-4000-8000-000000000001',
   '25000000-0000-4000-8000-000000000001','bb500000-0000-4000-8000-000000000001',
   'MATERIAL_PAIR',clock_timestamp()-interval '1 minute',clock_timestamp()+interval '23 hours 40 minutes',
-  '{"pricingVersion":"manual-launch-pricing-2026-10-02-v2"}',
+  '{"pricingVersion":"manual-launch-pricing-2026-10-02-v2","termsVersion":"manual-launch-terms-2026-10-02-v2","privacyVersion":"privacy-v1"}',
   '15000000-0000-4000-8000-000000000003'
 );
 do $$
@@ -352,7 +360,7 @@ declare refund_id uuid;
 begin
   refund_id:=public.ap_queue_manual_launch_canary_refund(
     'b9500000-0000-4000-8000-000000000001','15000000-0000-4000-8000-000000000003',
-    'staging-canary-material-delivery-and-download-verified'
+    'staging-canary-material-delivery-and-download-verified',repeat('a',40)
   );
   perform pg_temp.assert_true((select amount_cents=799 and scope='MATERIAL_LINE'
     and material_line_id='bb500000-0000-4000-8000-000000000001'

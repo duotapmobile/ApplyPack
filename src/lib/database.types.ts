@@ -3693,6 +3693,7 @@ export type Database = {
         Row: {
           accepted_p2_disposition_reference: string
           accessibility_evidence_reference: string
+          activation_phase: string
           approved_by: string
           backup_restore_evidence_reference: string
           canary_reconciled_amount_cents: number
@@ -3722,6 +3723,7 @@ export type Database = {
         Insert: {
           accepted_p2_disposition_reference: string
           accessibility_evidence_reference: string
+          activation_phase?: string
           approved_by: string
           backup_restore_evidence_reference: string
           canary_reconciled_amount_cents: number
@@ -3751,6 +3753,7 @@ export type Database = {
         Update: {
           accepted_p2_disposition_reference?: string
           accessibility_evidence_reference?: string
+          activation_phase?: string
           approved_by?: string
           backup_restore_evidence_reference?: string
           canary_reconciled_amount_cents?: number
@@ -3784,6 +3787,136 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_manual_launch_canary_authorizations: {
+        Row: {
+          authorized_by: string
+          created_at: string
+          evidence_reference: string
+          expected_customer_id: string
+          expires_at: string
+          id: string
+          product_kind: string
+          release_sha: string
+          search_draft_id: string | null
+        }
+        Insert: {
+          authorized_by: string
+          created_at?: string
+          evidence_reference: string
+          expected_customer_id: string
+          expires_at: string
+          id?: string
+          product_kind: string
+          release_sha: string
+          search_draft_id?: string | null
+        }
+        Update: {
+          authorized_by?: string
+          created_at?: string
+          evidence_reference?: string
+          expected_customer_id?: string
+          expires_at?: string
+          id?: string
+          product_kind?: string
+          release_sha?: string
+          search_draft_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_manual_launch_canary_authorization_expected_customer_id_fkey"
+            columns: ["expected_customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_manual_launch_canary_authorizations_authorized_by_fkey"
+            columns: ["authorized_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_manual_launch_canary_authorizations_search_draft_id_fkey"
+            columns: ["search_draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_manual_launch_canary_designations: {
+        Row: {
+          designated_at: string
+          designated_by: string
+          evidence_reference: string
+          expected_amount_cents: number
+          expected_customer_id: string
+          id: string
+          payment_attempt_id: string
+          product_kind: string
+          release_sha: string
+        }
+        Insert: {
+          designated_at?: string
+          designated_by: string
+          evidence_reference: string
+          expected_amount_cents: number
+          expected_customer_id: string
+          id?: string
+          payment_attempt_id: string
+          product_kind: string
+          release_sha: string
+        }
+        Update: {
+          designated_at?: string
+          designated_by?: string
+          evidence_reference?: string
+          expected_amount_cents?: number
+          expected_customer_id?: string
+          id?: string
+          payment_attempt_id?: string
+          product_kind?: string
+          release_sha?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_manual_launch_canary_designations_designated_by_fkey"
+            columns: ["designated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_manual_launch_canary_designations_expected_customer_id_fkey"
+            columns: ["expected_customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_manual_launch_canary_designations_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["corrected_payment_attempt_id"]
+          },
+          {
+            foreignKeyName: "ap_manual_launch_canary_designations_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_payment_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_manual_launch_canary_designations_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_payment_refund_aggregates"
+            referencedColumns: ["payment_attempt_id"]
           },
         ]
       }
@@ -10796,6 +10929,18 @@ export type Database = {
         Args: { p_artifact_id: string }
         Returns: undefined
       }
+      ap_authorize_manual_launch_canary_checkout: {
+        Args: {
+          p_actor_id: string
+          p_evidence_reference: string
+          p_expected_customer_id: string
+          p_expires_at: string
+          p_product_kind: string
+          p_release_sha: string
+          p_search_draft_id: string
+        }
+        Returns: string
+      }
       ap_authorize_material_download: {
         Args: {
           p_artifact_id: string
@@ -10924,6 +11069,10 @@ export type Database = {
       ap_bind_confirmed_document_facts: {
         Args: { p_snapshot_id: string }
         Returns: undefined
+      }
+      ap_bind_manual_launch_canary_payment: {
+        Args: { p_payment_attempt_id: string; p_release_sha: string }
+        Returns: string
       }
       ap_board_has_access: {
         Args: { p_customer_id: string; p_now?: string }
@@ -11346,6 +11495,17 @@ export type Database = {
         Args: { p_reason: string; p_request_id: string; p_worker_id: string }
         Returns: boolean
       }
+      ap_designate_manual_launch_canary_payment: {
+        Args: {
+          p_actor_id: string
+          p_evidence_reference: string
+          p_expected_customer_id: string
+          p_payment_attempt_id: string
+          p_product_kind: string
+          p_release_sha: string
+        }
+        Returns: string
+      }
       ap_enqueue_board_job_recompute: {
         Args: { p_change_key: string; p_job_id: string; p_reason_code: string }
         Returns: string
@@ -11380,6 +11540,7 @@ export type Database = {
         Args: { p_checkout_attempt_id: string; p_reason: string }
         Returns: boolean
       }
+      ap_expire_search_checkout_invitations: { Args: never; Returns: number }
       ap_fail_feasibility_request: {
         Args: {
           p_error_code: string
@@ -11519,6 +11680,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_manual_launch_canary_checkout_authorized: {
+        Args: {
+          p_expected_customer_id?: string
+          p_product_kind: string
+          p_release_sha: string
+          p_search_draft_id?: string
+        }
+        Returns: boolean
+      }
       ap_manual_launch_capacity_readiness: { Args: never; Returns: Json }
       ap_offer_material_substitution: {
         Args: {
@@ -11649,6 +11819,7 @@ export type Database = {
           p_actor_id: string
           p_evidence_reference: string
           p_payment_attempt_id: string
+          p_release_sha: string
         }
         Returns: string
       }

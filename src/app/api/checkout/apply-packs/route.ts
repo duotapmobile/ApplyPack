@@ -18,7 +18,11 @@ import {
 } from "@/lib/security/sensitive-payload";
 import { assertConfiguredPrice, createStripeMaterialsClient } from "@/lib/stripe/server";
 import { APPLY_PACK_CONTRACT_VERSION } from "@/lib/domain/applypack";
-import { manualLaunchCheckoutGate } from "@/lib/operations/launch-readiness";
+import {
+  evaluateLaunchInfrastructure,
+  manualLaunchCanaryCheckoutGate,
+  manualLaunchCheckoutGate,
+} from "@/lib/operations/launch-readiness";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -127,7 +131,16 @@ export async function POST(request: Request) {
   });
   if (!rate.configured) return NextResponse.json({ error: "Secure checkout controls are unavailable." }, { status: 503 });
   if (!rate.allowed) return NextResponse.json({ error: "Too many checkout attempts. Try again later." }, { status: 429 });
-  if (!await manualLaunchCheckoutGate(admin, undefined, "MATERIALS").catch(() => false)) {
+  const infrastructure = await evaluateLaunchInfrastructure(admin).catch(() => null);
+  const publicCheckoutAllowed = Boolean(infrastructure
+    && await manualLaunchCheckoutGate(admin, infrastructure, "MATERIALS").catch(() => false));
+  const canaryReleaseSha = !publicCheckoutAllowed && infrastructure
+    && await manualLaunchCanaryCheckoutGate(admin, "MATERIALS", {
+      expectedCustomerId: authData.user.id,
+    }, infrastructure).catch(() => false)
+    ? infrastructure.deployedSha
+    : null;
+  if (!publicCheckoutAllowed && !canaryReleaseSha) {
     return NextResponse.json({ error: "Checkout remains locked until the exact release and launch evidence are healthy." }, { status: 503 });
   }
 
@@ -271,10 +284,24 @@ export async function POST(request: Request) {
   });
   const checkout = prepared && typeof prepared === "object" && !Array.isArray(prepared)
     ? prepared as Record<string, unknown> : null;
-  if (prepareError || !checkout?.checkoutIntentId || !checkout.expiresAt || !checkout.providerIdempotencyKey) {
+  if (prepareError || !checkout?.checkoutIntentId || !checkout.paymentAttemptId
+    || !checkout.expiresAt || !checkout.providerIdempotencyKey) {
     return NextResponse.json({
       error: "One or more jobs, instructions, references, entitlements, or capacity records are not checkout-ready. No charge was made.",
     }, { status: 409 });
+  }
+  if (canaryReleaseSha) {
+    const designation = await admin.rpc("ap_bind_manual_launch_canary_payment", {
+      p_payment_attempt_id: String(checkout.paymentAttemptId),
+      p_release_sha: canaryReleaseSha,
+    });
+    if (designation.error || !designation.data) {
+      await admin.rpc("ap_expire_material_checkout", {
+        p_checkout_intent_id: String(checkout.checkoutIntentId),
+        p_reason: "CANARY_AUTHORIZATION_BINDING_FAILED",
+      });
+      return NextResponse.json({ error: "The canary authorization could not be bound. No payment was started." }, { status: 409 });
+    }
   }
 
   let session: Stripe.Checkout.Session;
@@ -318,7 +345,7 @@ export async function POST(request: Request) {
     if (providerExpired) {
       await admin.rpc("ap_expire_material_checkout", {
         p_checkout_intent_id: String(checkout.checkoutIntentId),
-        p_reason_code: "LOCAL_PROMOTION_FAILED_PROVIDER_EXPIRED",
+        p_reason: "LOCAL_PROMOTION_FAILED_PROVIDER_EXPIRED",
       });
     }
     return NextResponse.json({ error: "Checkout could not be safely linked. No work was activated." }, { status: 502 });

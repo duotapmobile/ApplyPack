@@ -45,5 +45,5 @@ export async function requireAdmin() {
   if (!assurance || assurance.currentLevel !== "aal2") {
     return { ok: false as const, response: NextResponse.json({ error: "Admin MFA verification required." }, { status: 403 }) };
   }
-  return { ok: true as const, user: authData.user, admin };
+  return { ok: true as const, user: authData.user, admin, role: profile.role as "operator" | "admin" };
 }

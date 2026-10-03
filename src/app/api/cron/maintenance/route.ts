@@ -99,6 +99,12 @@ export async function POST(request: Request) {
     return fail("EXPIRATION_CLEANUP_FAILED", "EXPIRATION_CLEANUP", "Rate-limit retention maintenance failed.");
   }
 
+  const { data: expiredSearchInvitations, error: invitationExpiryError } = await admin
+    .rpc("ap_expire_search_checkout_invitations");
+  if (invitationExpiryError) {
+    return fail("EXPIRATION_CLEANUP_FAILED", "EXPIRATION_CLEANUP", "Search invitation expiration maintenance failed.");
+  }
+
   const [reservationResult, cartResult] = await Promise.all([
     admin.from("capacity_reservations").update({ status: "expired" }).eq("status", "reserved").lt("expires_at", nowIso).select("id"),
     admin.from("apply_pack_carts").update({ status: "expired" }).eq("status", "checkout_pending")
@@ -307,6 +313,7 @@ export async function POST(request: Request) {
     ));
   return NextResponse.json({
     ok: healthy,
+    expiredSearchInvitations: Number(expiredSearchInvitations || 0),
     expiredReservations: reservationResult.data?.length || 0,
     expiredCarts: cartResult.data?.length || 0,
     removedRateLimits: removedRateLimits || 0,

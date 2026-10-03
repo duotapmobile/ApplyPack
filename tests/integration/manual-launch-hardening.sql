@@ -44,9 +44,32 @@ select pg_temp.assert_true(has_function_privilege('service_role','public.ap_begi
 select pg_temp.assert_true(not has_function_privilege('service_role','public.ap_record_search_refund_result(uuid,text,text,text,text,text,timestamptz,text)','execute'), 'service role can bypass verified refund binding');
 select pg_temp.assert_true(has_function_privilege('service_role','public.ap_record_search_refund_result_verified(uuid,text,text,text,integer,text,uuid,text,text,text,timestamptz,text)','execute'), 'verified refund binding unavailable');
 select pg_temp.assert_true(
-  has_function_privilege('service_role','public.ap_queue_manual_launch_canary_refund(uuid,uuid,text)','execute')
-  and not has_function_privilege('authenticated','public.ap_queue_manual_launch_canary_refund(uuid,uuid,text)','execute'),
+  has_function_privilege('service_role','public.ap_queue_manual_launch_canary_refund(uuid,uuid,text,text)','execute')
+  and not has_function_privilege('authenticated','public.ap_queue_manual_launch_canary_refund(uuid,uuid,text,text)','execute')
+  and has_function_privilege('service_role','public.ap_designate_manual_launch_canary_payment(uuid,uuid,text,text,uuid,text)','execute')
+  and not has_function_privilege('authenticated','public.ap_designate_manual_launch_canary_payment(uuid,uuid,text,text,uuid,text)','execute')
+  and has_function_privilege('service_role','public.ap_authorize_manual_launch_canary_checkout(text,text,uuid,uuid,uuid,text,timestamptz)','execute')
+  and not has_function_privilege('authenticated','public.ap_authorize_manual_launch_canary_checkout(text,text,uuid,uuid,uuid,text,timestamptz)','execute')
+  and has_function_privilege('service_role','public.ap_bind_manual_launch_canary_payment(uuid,text)','execute')
+  and not has_function_privilege('authenticated','public.ap_bind_manual_launch_canary_payment(uuid,text)','execute'),
   'manual-launch canary refunds must remain service-only'
+);
+select pg_temp.assert_true(
+  (select relrowsecurity from pg_class where oid='public.ap_manual_launch_canary_designations'::regclass)
+  and exists(select 1 from pg_trigger
+    where tgrelid='public.ap_manual_launch_canary_designations'::regclass
+      and tgname='ap_manual_launch_canary_designation_immutable' and not tgisinternal),
+  'pre-charge canary designations must be private and immutable'
+);
+select pg_temp.assert_true(
+  (select relrowsecurity from pg_class where oid='public.ap_manual_launch_canary_authorizations'::regclass)
+  and exists(select 1 from pg_trigger
+    where tgrelid='public.ap_manual_launch_canary_authorizations'::regclass
+      and tgname='ap_manual_launch_canary_authorization_immutable' and not tgisinternal)
+  and exists(select 1 from information_schema.columns
+    where table_schema='public' and table_name='ap_manual_launch_activations'
+      and column_name='activation_phase'),
+  'customer-bound canary authorizations and activation phases must be private and immutable'
 );
 select pg_temp.assert_true(
   exists(select 1 from pg_trigger where tgrelid='public.ap_search_checkout_invitations'::regclass
@@ -198,15 +221,34 @@ select pg_temp.assert_true(
   (select pg_get_functiondef('public.ap_issue_search_checkout_invitation(uuid,uuid,uuid,uuid,text,timestamptz,uuid,text)'::regprocedure)
      like '%ap_reserve_capacity%SEARCH%search-invitation:%'
      and pg_get_functiondef('public.ap_issue_search_checkout_invitation(uuid,uuid,uuid,uuid,text,timestamptz,uuid,text)'::regprocedure)
-     like '%expires_at<=now_at%revoked_at=now_at%'),
-  'invitation issuance must reserve search capacity atomically and retire expired invitations'
+     like '%expires_at<=now_at%revoked_at=now_at%'
+     and position(
+       'where consumed_at is null and revoked_at is null and expires_at<=now_at'
+       in pg_get_functiondef('public.ap_issue_search_checkout_invitation(uuid,uuid,uuid,uuid,text,timestamptz,uuid,text)'::regprocedure)
+     )>0
+     and position(
+       'where draft_id=p_draft_id and consumed_at is null and revoked_at is null and expires_at<=now_at'
+       in pg_get_functiondef('public.ap_issue_search_checkout_invitation(uuid,uuid,uuid,uuid,text,timestamptz,uuid,text)'::regprocedure)
+     )=0),
+  'invitation issuance must reserve search capacity atomically and globally retire expired invitations'
 );
 select pg_temp.assert_true(
   (select pg_get_functiondef('public.ap_begin_invited_search_checkout(uuid,text,uuid,text,uuid,uuid,text,uuid,text,uuid,text,uuid,uuid,text,text,uuid)'::regprocedure)
-     like '%consumed_at is not null%checkout_invitation_invalid%'
+     like '%consumed_at is not null%checkout_invitation_consumed%'
      and pg_get_functiondef('public.ap_begin_invited_search_checkout(uuid,text,uuid,text,uuid,uuid,text,uuid,text,uuid,text,uuid,uuid,text,text,uuid)'::regprocedure)
-     like '%checkout_invitation_capacity_invalid%ap_begin_search_checkout%consumed_at=clock_timestamp()%'),
-  'invited checkout must reject consumed or invalid capacity and consume once'
+     like '%checkout_invitation_capacity_invalid%ap_begin_search_checkout%consumed_at=clock_timestamp()%'
+     and pg_get_functiondef('public.ap_begin_invited_search_checkout(uuid,text,uuid,text,uuid,uuid,text,uuid,text,uuid,text,uuid,uuid,text,text,uuid)'::regprocedure)
+     like '%quote.id=p_quote_id%checkout_attempt.id=p_checkout_attempt_id%payment.id=p_payment_attempt_id%'),
+  'invited checkout must consume once and permit only exact idempotent provider replay'
+);
+select pg_temp.assert_true(
+  position(
+    '''providerIdempotencyKey'',''materials-checkout/''||existing.command_id::text'
+    in pg_get_functiondef(
+      'public.ap_begin_material_checkout(uuid,uuid,uuid,uuid,uuid,text,text,jsonb,text,text,boolean,boolean,boolean)'::regprocedure
+    )
+  )>0,
+  'material checkout replay must return the original provider idempotency key'
 );
 select pg_temp.assert_true(
   (select pg_get_functiondef('public.ap_begin_search_checkout(uuid,text,uuid,uuid,text,uuid,text,uuid,text,uuid,uuid,text,text,uuid)'::regprocedure)
@@ -232,11 +274,21 @@ select pg_temp.assert_true(
   'refunds must use the immutable historical or current paid amount'
 );
 select pg_temp.assert_true(
-  (select pg_get_functiondef('public.ap_queue_manual_launch_canary_refund(uuid,uuid,text)'::regprocedure)
-    like '%fulfillment<>''DELIVERED''%SEARCH_EXACT_TEN%MATERIAL_PAIR%MATERIAL_TRIPLE%'
-    and pg_get_functiondef('public.ap_queue_manual_launch_canary_refund(uuid,uuid,text)'::regprocedure)
-    like '%payment.amount_cents=1899%payment.amount_cents=799%MANUAL_LAUNCH_CANARY%'),
-  'canary refunds must be limited to delivered current-price manual-launch products'
+  (select position('manual_launch_canary_designation_required' in definition) > 0
+    and position('where payment_attempt_id=payment.id and release_sha=p_release_sha' in definition) > 0
+    and position('payment.amount_cents<>1899' in definition) > 0
+    and position('payment.amount_cents<>799' in definition) > 0
+    and position('fulfillment<>''DELIVERED''' in definition) > 0
+    and position('SEARCH_EXACT_TEN' in definition) > 0
+    and position('MATERIAL_PAIR' in definition) > 0
+    and position('MATERIAL_TRIPLE' in definition) > 0
+    and position('MANUAL_LAUNCH_CANARY' in definition) > 0
+   from (
+     select pg_get_functiondef(
+       'public.ap_queue_manual_launch_canary_refund(uuid,uuid,text,text)'::regprocedure
+     ) as definition
+   ) function_source),
+  'canary refunds must require an exact-release designation and delivered current-price product'
 );
 
 rollback;

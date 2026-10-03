@@ -12,6 +12,10 @@ import { documentWorkerConfiguration } from "@/lib/files/aws-document-worker";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 type LaunchCapacityResource = "SEARCH" | "MATERIALS";
+type CanaryCheckoutSubject = {
+  expectedCustomerId: string;
+  searchDraftId?: string;
+};
 
 let stripeCache: { checkedAt: number; healthy: boolean } | null = null;
 
@@ -161,10 +165,11 @@ export async function manualLaunchCheckoutGate(
   if (configurationError || !configuration?.checkout_enabled || !configuration.launch_activation_id
     || configuration.launch_release_sha !== infrastructure.deployedSha) return false;
   const { data: activation, error: activationError } = await admin.from("ap_manual_launch_activations")
-    .select("id,release_sha,tax_approval_reference,worker_network_attestation_sha256,legacy_subscription_retirement_reference,unresolved_p0_count,unresolved_p1_count,canary_reconciled_amount_cents")
+    .select("id,activation_phase,release_sha,tax_approval_reference,worker_network_attestation_sha256,legacy_subscription_retirement_reference,unresolved_p0_count,unresolved_p1_count,canary_reconciled_amount_cents")
     .eq("id", configuration.launch_activation_id).maybeSingle();
   const worker = documentWorkerConfiguration();
   return Boolean(!activationError && activation
+    && activation.activation_phase === "PUBLIC"
     && activation.release_sha === infrastructure.deployedSha
     && activation.tax_approval_reference === configuration.tax_approval_reference
     && activation.worker_network_attestation_sha256 === configuration.document_worker_network_attestation_sha256
@@ -173,4 +178,46 @@ export async function manualLaunchCheckoutGate(
     && activation.unresolved_p0_count === 0
     && activation.unresolved_p1_count === 0
     && activation.canary_reconciled_amount_cents === 2_698);
+}
+
+export async function manualLaunchCanaryCheckoutGate(
+  admin: AdminClient,
+  resource: LaunchCapacityResource,
+  subject: CanaryCheckoutSubject,
+  evaluated?: Awaited<ReturnType<typeof evaluateLaunchInfrastructure>>,
+) {
+  const infrastructure = evaluated || await evaluateLaunchInfrastructure(admin);
+  if (!infrastructure.ready || !infrastructure.commerceConfigured
+    || infrastructure.environmentAcceptingOrders || !infrastructure.deployedSha
+    || !infrastructure.capacityByResource[resource]) return false;
+  if (!/^[a-f0-9]{40}$/.test(infrastructure.deployedSha)
+    || !/^[a-f0-9-]{36}$/.test(subject.expectedCustomerId)
+    || (resource === "SEARCH" && !subject.searchDraftId)
+    || (resource === "MATERIALS" && subject.searchDraftId)) return false;
+
+  const { data: configuration, error: configurationError } = await admin.from("ap_commerce_configuration")
+    .select("checkout_enabled,launch_activation_id,launch_release_sha,launch_product_scope,tax_configuration_approved,tax_approval_reference,search_price_cents,material_line_price_cents")
+    .eq("singleton", true).maybeSingle();
+  if (configurationError || !configuration?.checkout_enabled || !configuration.launch_activation_id
+    || configuration.launch_release_sha !== infrastructure.deployedSha
+    || configuration.launch_product_scope !== "MANUAL_ONLY"
+    || !configuration.tax_configuration_approved || !configuration.tax_approval_reference
+    || configuration.search_price_cents !== SEARCH_PRICE_CENTS
+    || configuration.material_line_price_cents !== APPLY_PACK_PRICE_CENTS) return false;
+
+  const { data: activation, error: activationError } = await admin.from("ap_manual_launch_activations")
+    .select("id,activation_phase,release_sha,unresolved_p0_count,unresolved_p1_count,canary_reconciled_amount_cents")
+    .eq("id", configuration.launch_activation_id).maybeSingle();
+  if (activationError || !activation || activation.activation_phase !== "CANARY"
+    || activation.release_sha !== infrastructure.deployedSha
+    || activation.unresolved_p0_count !== 0 || activation.unresolved_p1_count !== 0
+    || activation.canary_reconciled_amount_cents !== 0) return false;
+
+  const authorization = await admin.rpc("ap_manual_launch_canary_checkout_authorized", {
+    p_release_sha: infrastructure.deployedSha,
+    p_product_kind: resource,
+    p_expected_customer_id: subject.expectedCustomerId,
+    p_search_draft_id: subject.searchDraftId || null,
+  });
+  return !authorization.error && authorization.data === true;
 }

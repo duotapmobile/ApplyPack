@@ -10,7 +10,11 @@ import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { isSameOriginRequest } from "@/lib/security/origin";
 import { assertConfiguredPrice, createStripeSearchClient } from "@/lib/stripe/server";
 import { SEARCH_CONTRACT_VERSION, SEARCH_PRICE_CENTS } from "@/lib/domain/applypack";
-import { manualLaunchCheckoutGate } from "@/lib/operations/launch-readiness";
+import {
+  evaluateLaunchInfrastructure,
+  manualLaunchCanaryCheckoutGate,
+  manualLaunchCheckoutGate,
+} from "@/lib/operations/launch-readiness";
 
 const schema = z.object({
   snapshotId: z.uuid(),
@@ -79,7 +83,27 @@ export async function POST(request: Request) {
     || view.state !== "COMPLETE" || view.outcome !== "LIKELY" || view.checkoutEligible !== true) {
     return NextResponse.json({ error: "This search is not currently eligible for Checkout. No payment was started." }, { status: 409 });
   }
-  if (!await manualLaunchCheckoutGate(context.admin, undefined, "SEARCH").catch(() => false)) {
+  const infrastructure = await evaluateLaunchInfrastructure(context.admin).catch(() => null);
+  const publicCheckoutAllowed = Boolean(infrastructure
+    && await manualLaunchCheckoutGate(context.admin, infrastructure, "SEARCH").catch(() => false));
+  let canaryReleaseSha: string | null = null;
+  if (!publicCheckoutAllowed && infrastructure) {
+    const snapshot = await context.admin.from("ap_intake_snapshots")
+      .select("access_email_normalized").eq("id", parsed.data.snapshotId)
+      .eq("draft_id", context.capability.draftId).maybeSingle();
+    const customer = snapshot.data?.access_email_normalized
+      ? await context.admin.rpc("ap_find_customer_by_access_email", {
+        p_email: snapshot.data.access_email_normalized,
+      })
+      : null;
+    if (customer?.data && await manualLaunchCanaryCheckoutGate(context.admin, "SEARCH", {
+      expectedCustomerId: customer.data,
+      searchDraftId: context.capability.draftId,
+    }, infrastructure).catch(() => false)) {
+      canaryReleaseSha = infrastructure.deployedSha;
+    }
+  }
+  if (!publicCheckoutAllowed && !canaryReleaseSha) {
     return NextResponse.json({ error: "Checkout remains locked until the exact release and launch evidence are healthy." }, { status: 503 });
   }
 
@@ -187,8 +211,22 @@ export async function POST(request: Request) {
     p_access_payload_id: accessPayloadId,
   });
   const checkout = Array.isArray(prepared) ? prepared[0] : prepared;
-  if (prepareError || !checkout?.checkout_attempt_id || !checkout.reservation_expires_at || !checkout.access_email) {
+  if (prepareError || !checkout?.checkout_attempt_id || !checkout.payment_attempt_id
+    || !checkout.reservation_expires_at || !checkout.access_email) {
     return NextResponse.json({ error: "The current capacity reservation or immutable quote could not be created. No payment was started." }, { status: 409 });
+  }
+  if (canaryReleaseSha) {
+    const designation = await context.admin.rpc("ap_bind_manual_launch_canary_payment", {
+      p_payment_attempt_id: String(checkout.payment_attempt_id),
+      p_release_sha: canaryReleaseSha,
+    });
+    if (designation.error || !designation.data) {
+      await context.admin.rpc("ap_compensate_search_checkout", {
+        p_checkout_attempt_id: String(checkout.checkout_attempt_id),
+        p_failure_code: "CANARY_AUTHORIZATION_BINDING_FAILED",
+      });
+      return NextResponse.json({ error: "The canary authorization could not be bound. No payment was started." }, { status: 409 });
+    }
   }
 
   let session;

@@ -73,7 +73,7 @@ insert into auth.users(
   ('14000000-0000-4000-8000-000000000001','00000000-0000-0000-0000-000000000000','authenticated','authenticated','chunk4-customer@example.invalid','',now(),'{}','{}',now(),now()),
   ('14000000-0000-4000-8000-000000000002','00000000-0000-0000-0000-000000000000','authenticated','authenticated','chunk4-other@example.invalid','',now(),'{}','{}',now(),now()),
   ('14000000-0000-4000-8000-000000000003','00000000-0000-0000-0000-000000000000','authenticated','authenticated','chunk4-reviewer@example.invalid','',now(),'{}','{}',now(),now());
-update public.profiles set role='operator' where id='14000000-0000-4000-8000-000000000003';
+update public.profiles set role='admin' where id='14000000-0000-4000-8000-000000000003';
 
 insert into public.ap_manual_launch_activations(
   id,release_sha,health_evidence_reference,database_evidence_reference,payment_evidence_reference,
@@ -81,15 +81,15 @@ insert into public.ap_manual_launch_activations(
   backup_restore_evidence_reference,inventory_evidence_reference,accessibility_evidence_reference,
   product_supervisor_reference,security_supervisor_reference,operations_supervisor_reference,
   tenth_man_supervisor_reference,accepted_p2_disposition_reference,unresolved_p0_count,unresolved_p1_count,
-  canary_reconciliation_reference,canary_reconciled_amount_cents,tax_approval_reference,
+  canary_reconciliation_reference,canary_reconciled_amount_cents,tax_approval_reference,activation_phase,
   worker_network_attestation_sha256,evidence_bundle_sha256,approved_by
 ) values(
   'a4200000-0000-4000-8000-000000000001',repeat('a',40),'fixture-health-evidence','fixture-database-evidence','fixture-payment-evidence',
   'fixture-email-evidence','fixture-kms-evidence','fixture-worker-evidence','fixture-maintenance-evidence',
   'fixture-backup-restore','fixture-inventory-evidence','fixture-accessibility-evidence',
   'fixture-product-supervisor','fixture-security-supervisor','fixture-operations-supervisor',
-  'fixture-tenth-man-supervisor','fixture-p2-disposition',0,0,'fixture-canary-reconciliation',2698,
-  'fixture-tax-approval-reference',repeat('b',64),repeat('c',64),'14000000-0000-4000-8000-000000000003'
+  'fixture-tenth-man-supervisor','fixture-p2-disposition',0,0,'fixture-canary-pending',0,
+  'fixture-tax-approval-reference','CANARY',repeat('b',64),repeat('c',64),'14000000-0000-4000-8000-000000000003'
 );
 update public.ap_commerce_configuration set
   tax_configuration_approved=true,tax_approval_reference='fixture-tax-approval-reference',
@@ -229,6 +229,107 @@ select pg_temp.assert_true(
   'current likely feasibility with capacity was not checkout eligible'
 );
 
+savepoint before_cross_draft_expired_invitation;
+insert into public.ap_anonymous_drafts(
+  id,capability_secret_hash,expires_at
+) values(
+  '34000000-0000-4000-8000-0000000000ea',repeat('e',64),
+  statement_timestamp()+interval '1 day'
+);
+insert into public.ap_capacity_allocations(
+  id,bucket_id,draft_id,units,lifecycle,debit_disposition,request_key,
+  staffing_version,reserved_at,expires_at,audit_version
+) values(
+  'e4100000-0000-4000-8000-000000000001','a4100000-0000-4000-8000-000000000001',
+  '34000000-0000-4000-8000-0000000000ea',1,'RESERVED','HELD',
+  'search-invitation:e4200000-0000-4000-8000-000000000001','fixture-staffing-v1',
+  statement_timestamp()-interval '30 minutes',statement_timestamp()-interval '1 second',
+  'manual-launch-v2'
+);
+insert into public.ap_search_checkout_invitations(
+  id,draft_id,snapshot_id,assessment_id,capacity_allocation_id,
+  secret_hash,issued_by,issued_at,expires_at,rationale
+) values(
+  'e4200000-0000-4000-8000-000000000001','34000000-0000-4000-8000-0000000000ea',
+  '54000000-0000-4000-8000-000000000001','64000000-0000-4000-8000-000000000001',
+  'e4100000-0000-4000-8000-000000000001',repeat('e',64),
+  '14000000-0000-4000-8000-000000000003',statement_timestamp()-interval '30 minutes',
+  statement_timestamp()-interval '1 second',
+  'Expired invitation for the cross-draft capacity regression.'
+);
+select public.ap_issue_search_checkout_invitation(
+  'e4300000-0000-4000-8000-000000000001','34000000-0000-4000-8000-000000000001',
+  '54000000-0000-4000-8000-000000000001','64000000-0000-4000-8000-000000000001',
+  repeat('f',64),statement_timestamp()+interval '20 minutes',
+  '14000000-0000-4000-8000-000000000003',
+  'Issue a replacement invitation after another draft expired.'
+);
+select pg_temp.assert_true(
+  (select revoked_at is not null from public.ap_search_checkout_invitations
+   where id='e4200000-0000-4000-8000-000000000001'),
+  'expired invitation from another draft was not revoked'
+);
+select pg_temp.assert_true(
+  (select lifecycle='RELEASED' and debit_disposition='RETURNED' and returned_at is not null
+   from public.ap_capacity_allocations where id='e4100000-0000-4000-8000-000000000001'),
+  'expired cross-draft invitation hold was not returned'
+);
+select pg_temp.assert_true(
+  exists(select 1 from public.ap_capacity_audit
+    where allocation_id='e4100000-0000-4000-8000-000000000001'
+      and reason_code='INVITATION_REVOKED' and to_lifecycle='RELEASED' and to_debit='RETURNED'),
+  'expired cross-draft invitation release was not audited'
+);
+select pg_temp.assert_true(
+  exists(select 1 from public.ap_search_checkout_invitations invitation
+    join public.ap_capacity_allocations allocation on allocation.id=invitation.capacity_allocation_id
+    where invitation.id='e4300000-0000-4000-8000-000000000001'
+      and invitation.draft_id='34000000-0000-4000-8000-000000000001'
+      and allocation.lifecycle='RESERVED' and allocation.debit_disposition='HELD'),
+  'the next draft could not reserve the released search slot'
+);
+select pg_temp.assert_true(
+  public.ap_manual_launch_capacity_readiness()->'resources'
+    @> '[{"resource":"SEARCH","rollingUnits":1,"checkoutAvailable":true}]'::jsonb,
+  'capacity readiness did not retain only the next draft active invitation'
+);
+rollback to savepoint before_cross_draft_expired_invitation;
+
+savepoint before_invitation_provider_retry;
+select public.ap_issue_search_checkout_invitation(
+  'e4300000-0000-4000-8000-000000000010','34000000-0000-4000-8000-000000000001',
+  '54000000-0000-4000-8000-000000000001','64000000-0000-4000-8000-000000000001',
+  repeat('7',64),statement_timestamp()+interval '20 minutes',
+  '14000000-0000-4000-8000-000000000003',
+  'Issue a single-use invitation for exact provider command replay.'
+);
+select * from public.ap_begin_invited_search_checkout(
+  'e4300000-0000-4000-8000-000000000010',repeat('7',64),
+  '34000000-0000-4000-8000-000000000001',repeat('a',64),
+  '54000000-0000-4000-8000-000000000001','64000000-0000-4000-8000-000000000001',
+  'chunk4-invited-provider-retry','e4200000-0000-4000-8000-000000000010',repeat('6',64),
+  'e4300000-0000-4000-8000-000000000011','search-checkout/e4300000-0000-4000-8000-000000000011',
+  'e4400000-0000-4000-8000-000000000010','e4500000-0000-4000-8000-000000000010',
+  repeat('5',64),repeat('4',64),'5a000000-0000-4000-8000-000000000001'
+);
+select * from public.ap_begin_invited_search_checkout(
+  'e4300000-0000-4000-8000-000000000010',repeat('7',64),
+  '34000000-0000-4000-8000-000000000001',repeat('a',64),
+  '54000000-0000-4000-8000-000000000001','64000000-0000-4000-8000-000000000001',
+  'chunk4-invited-provider-retry','e4200000-0000-4000-8000-000000000010',repeat('6',64),
+  'e4300000-0000-4000-8000-000000000011','search-checkout/e4300000-0000-4000-8000-000000000011',
+  'e4400000-0000-4000-8000-000000000010','e4500000-0000-4000-8000-000000000010',
+  repeat('5',64),repeat('4',64),'5a000000-0000-4000-8000-000000000001'
+);
+select pg_temp.assert_true(
+  (select consumed_at is not null from public.ap_search_checkout_invitations
+    where id='e4300000-0000-4000-8000-000000000010')
+  and (select count(*)=1 from public.ap_quotes where idempotency_key='chunk4-invited-provider-retry')
+  and (select count(*)=1 from public.ap_payment_attempts where id='e4500000-0000-4000-8000-000000000010'),
+  'a consumed invitation did not replay the exact provider command idempotently'
+);
+rollback to savepoint before_invitation_provider_retry;
+
 do $$
 declare prepared record;
 begin
@@ -247,6 +348,19 @@ begin
 end;
 $$;
 
+select public.ap_authorize_manual_launch_canary_checkout(
+  repeat('a',40),'SEARCH','14000000-0000-4000-8000-000000000001',
+  '34000000-0000-4000-8000-000000000001','14000000-0000-4000-8000-000000000003',
+  'authorized-test-customer-search-canary-before-card-entry',clock_timestamp()+interval '1 hour'
+);
+select pg_temp.assert_true(
+  public.ap_manual_launch_canary_checkout_authorized(
+    repeat('a',40),'SEARCH','14000000-0000-4000-8000-000000000001',
+    '34000000-0000-4000-8000-000000000001'
+  ),
+  'exact-release customer-bound search canary was not authorized'
+);
+
 select * from public.ap_begin_search_checkout(
   '34000000-0000-4000-8000-000000000001',repeat('a',64),
   '54000000-0000-4000-8000-000000000001','64000000-0000-4000-8000-000000000001',
@@ -257,6 +371,16 @@ select * from public.ap_begin_search_checkout(
 );
 select pg_temp.assert_true((select count(*)=1 from public.ap_quotes where idempotency_key='chunk4-search-request'), 'checkout replay duplicated quote');
 select pg_temp.assert_true((select lifecycle='RESERVED' and debit_disposition='HELD' from public.ap_capacity_allocations where request_key='search-checkout:chunk4-search-request'), 'checkout did not atomically hold capacity');
+select public.ap_bind_manual_launch_canary_payment(
+  'a4500000-0000-4000-8000-000000000001',repeat('a',40)
+);
+select pg_temp.assert_true(
+  (select product_kind='SEARCH' and release_sha=repeat('a',40)
+    and expected_customer_id='14000000-0000-4000-8000-000000000001'
+   from public.ap_manual_launch_canary_designations
+   where payment_attempt_id='a4500000-0000-4000-8000-000000000001'),
+  'search canary payment was not immutably designated before charge'
+);
 
 savepoint before_ambiguous_checkout_compensation;
 select pg_temp.assert_true(not public.ap_compensate_search_checkout(
@@ -1305,13 +1429,36 @@ select pg_temp.assert_true((select count(*)=10 and bool_and(release_explanation 
 select pg_temp.assert_true((select count(*)=1 from public.ap_outbox_messages where id='a4900000-0000-4000-8000-000000000010' and state='QUEUED' and message_kind='SEARCH_EXACT_TEN_DELIVERED'), 'delivery outbox message missing');
 
 savepoint before_manual_launch_search_canary_refund;
+insert into public.ap_payment_attempts(
+  id,customer_id,provider,provider_payment_id,amount_cents,currency,settlement,dispute,
+  payment_verified_at,provider_payment_status,payment_method_type,immediate_charge_verified
+) values(
+  'd4500000-0000-4000-8000-000000000001','14000000-0000-4000-8000-000000000001',
+  'stripe','pi_chunk4_ordinary_customer',1899,'USD','PAID','NONE',clock_timestamp()-interval '10 minutes',
+  'succeeded','card',true
+);
+do $$ begin
+  perform public.ap_queue_manual_launch_canary_refund(
+    'd4500000-0000-4000-8000-000000000001','14000000-0000-4000-8000-000000000003',
+    'ordinary-customer-payment-must-not-enter-canary-refund',repeat('a',40)
+  );
+  raise exception 'ordinary_customer_payment_entered_canary_refund';
+exception when raise_exception then
+  if sqlerrm='ordinary_customer_payment_entered_canary_refund' then raise; end if;
+  if sqlerrm<>'manual_launch_canary_designation_required' then raise; end if;
+end $$;
 do $$
-declare refund_id uuid;
+declare refund_id uuid; replay_id uuid;
 begin
   refund_id:=public.ap_queue_manual_launch_canary_refund(
     'a4500000-0000-4000-8000-000000000001','14000000-0000-4000-8000-000000000003',
-    'staging-canary-search-delivery-and-download-verified'
+    'staging-canary-search-delivery-and-download-verified',repeat('a',40)
   );
+  replay_id:=public.ap_queue_manual_launch_canary_refund(
+    'a4500000-0000-4000-8000-000000000001','14000000-0000-4000-8000-000000000003',
+    'staging-canary-search-delivery-and-download-verified',repeat('a',40)
+  );
+  perform pg_temp.assert_true(replay_id=refund_id,'canary refund replay returned a different operation');
   perform pg_temp.assert_true((select amount_cents=1899 and scope='FULL_SEARCH'
     and state='PENDING' and reason_code='MANUAL_LAUNCH_CANARY'
     from public.ap_refund_operations where id=refund_id),
@@ -1323,6 +1470,9 @@ begin
     where entity_id=refund_id and action='MANUAL_LAUNCH_CANARY_REFUND_QUEUED'
       and actor_id='14000000-0000-4000-8000-000000000003'),
     'search canary refund evidence was not audited');
+  perform pg_temp.assert_true((select count(*)=1 from public.ap_audit_events
+    where entity_id=refund_id and action='MANUAL_LAUNCH_CANARY_REFUND_QUEUED'),
+    'canary refund replay duplicated the queued audit event');
 end;
 $$;
 rollback to savepoint before_manual_launch_search_canary_refund;
