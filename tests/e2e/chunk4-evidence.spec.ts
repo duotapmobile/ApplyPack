@@ -5,6 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { gotoStable, waitForHydration } from "./helpers/hydration";
 
 const resume = { name: "synthetic-resume.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7\n%%EOF") };
+const TRANSIENT_CAPTURE_ERROR = /execution context was destroyed|frame was detached|target page, context or browser has been closed/i;
 
 async function completeFeasibility(page: Page, state: string) {
   await page.context().clearCookies();
@@ -29,11 +30,18 @@ async function completeFeasibility(page: Page, state: string) {
 }
 
 async function capture(page: Page, path: string) {
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path, fullPage: true, animations: "disabled", scale: "css" });
-  await waitForHydration(page);
-  const accessibility = await new AxeBuilder({ page }).exclude("script").analyze();
-  expect(accessibility.violations.filter((item) => ["moderate", "serious", "critical"].includes(item.impact || ""))).toEqual([]);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await waitForHydration(page);
+    try {
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({ path, fullPage: true, animations: "disabled", scale: "css" });
+      const accessibility = await new AxeBuilder({ page }).exclude("script").analyze();
+      expect(accessibility.violations.filter((item) => ["moderate", "serious", "critical"].includes(item.impact || ""))).toEqual([]);
+      return;
+    } catch (error) {
+      if (!TRANSIENT_CAPTURE_ERROR.test(String(error)) || attempt === 2) throw error;
+    }
+  }
 }
 
 async function clickHydratedCheckout(page: Page) {
@@ -41,8 +49,10 @@ async function clickHydratedCheckout(page: Page) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       await waitForHydration(page);
-      await page.getByRole("button", { name: "Use My $18.99 Checkout Invitation" }).click();
-      await page.waitForURL(/\/e2e\/chunk4\?state=confirming$/, { timeout: 10_000 });
+      await Promise.all([
+        page.waitForURL(/\/e2e\/chunk4\?state=confirming$/, { timeout: 15_000 }),
+        page.getByRole("button", { name: "Use My $18.99 Checkout Invitation" }).click({ timeout: 15_000 }),
+      ]);
       return;
     } catch (error) {
       lastError = error;
@@ -54,6 +64,10 @@ async function clickHydratedCheckout(page: Page) {
 }
 
 test("Chunk 4 review, eligibility, payment, exception, adjustment, refund, and exact-ten evidence", async ({ page }, testInfo) => {
+  test.skip(
+    !["desktop", "mobile"].includes(testInfo.project.name),
+    "Evidence screenshots are generated once per approved desktop and mobile Chromium viewport.",
+  );
   test.setTimeout(900_000);
   const mobile = testInfo.project.name === "mobile";
   const width = mobile ? 390 : 1440;

@@ -9,7 +9,7 @@ import { StagingBoardMaterialReview } from "@/components/admin/staging-board-mat
 import { PendingIntakes } from "@/components/admin/pending-intakes";
 import { Chunk4StaffQueue, type StaffQueueRow, type StaffReviewCandidate } from "@/components/admin/chunk4-staff-queue";
 import { SignOutButton } from "@/components/auth/sign-out-button";
-import { isAdminEmailAllowed } from "@/lib/auth/require-admin";
+import { hasFreshAdminMfa, isAdminEmailAllowed } from "@/lib/auth/require-admin";
 import { loadSyntheticBoardReviewJobs } from "@/lib/job-board/staging-review";
 import { loadMaterialStaffLines } from "@/lib/materials/admin";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -29,6 +29,10 @@ export default async function AdminPage() {
   if (!profile || !["operator", "admin"].includes(profile.role)) redirect("/my-applypack");
   const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
   if (!assurance || assurance.currentLevel !== "aal2") return <AdminMfa />;
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  const verified = token ? await supabase.auth.getClaims(token).catch(() => null) : null;
+  if (!verified || verified.error || !hasFreshAdminMfa(verified.data?.claims, authData.user.id)) return <AdminMfa />;
   const [{ data: orders }, { data: capacity }, { data: failures }, { data: applyRows }, { data: conflictRows }, { data: correctionRows }, { data: capacityPools }, { data: candidateRows }] = await Promise.all([
     admin.from("orders").select("id,product_kind,status,amount_cents,delivery_deadline,created_at,intake_id,intake:intakes(email,direction,priorities,dealbreakers,location_preference,schedule_preference,minimum_salary,experience_summary,notes,cover_letter_path,source_scan_status,source_deleted_at,intake_answers(answers))").in("status", ["paid", "in_fulfillment"]).order("delivery_deadline"),
     admin.from("capacity_reservations").select("id,kind,units,status,reserved_at,expires_at,confirmed_at").in("status", ["reserved", "confirmed"]).order("reserved_at", { ascending: false }),

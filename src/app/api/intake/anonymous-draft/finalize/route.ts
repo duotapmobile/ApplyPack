@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { deterministicUuid } from "@/lib/commerce/server";
 import { anonymousDraftContext, anonymousDraftError } from "@/lib/drafts/anonymous-server";
 import { canonicalSha256, CANONICALIZATION_VERSION } from "@/lib/domain/foundation";
 import { buildFourStepSnapshot, fourStepDraftSchema, normalizedFourStepDraft, validateFourStep, FOUR_STEP_SCHEMA_VERSION } from "@/lib/intake/four-step";
@@ -41,7 +41,16 @@ export async function POST(request: Request) {
   if (!sensitivePayloadEncryptionReady(configuration)) {
     return NextResponse.json({ error: "Secure intake finalization is unavailable until the approved production KMS is configured.", code: "KMS_NOT_CONFIGURED" }, { status: 503 });
   }
-  const snapshotId = randomUUID();
+  const finalizationKey = canonicalSha256({
+    draftId: context.capability.draftId,
+    expectedVersion: parsed.data.expectedVersion,
+    answers,
+    termsVersion: commerce.terms_version,
+    privacyVersion: commerce.privacy_version,
+    schemaVersion: FOUR_STEP_SCHEMA_VERSION,
+  });
+  const snapshotId = deterministicUuid(`intake-snapshot:${finalizationKey}`);
+  const sensitivePayloadId = deterministicUuid(`intake-sensitive:${finalizationKey}`);
   const sensitivePlaintext = Buffer.from(JSON.stringify({
     schemaVersion: FOUR_STEP_SCHEMA_VERSION, fullName: answers.fullName,
     customDealbreaker: answers.customDealbreaker || null,
@@ -55,16 +64,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Secure intake finalization is temporarily unavailable.", code: "KMS_UNAVAILABLE" }, { status: 503 });
   } finally { sensitivePlaintext.fill(0); }
 
-  const sensitivePayloadId = randomUUID();
-  const sensitiveInsert = await context.admin.from("ap_sensitive_payloads").insert({
-    id: sensitivePayloadId, draft_id: context.capability.draftId, ciphertext: bytea(envelope.ciphertext),
-    encryption_algorithm: envelope.algorithm, encrypted_data_key: bytea(envelope.encryptedDataKey), nonce: bytea(envelope.nonce),
-    authentication_tag: bytea(envelope.authenticationTag), content_sha256: envelope.contentSha256,
-    kms_key_identity: envelope.keyIdentity, kms_key_version: envelope.keyVersion, encryption_context_hash: envelope.encryptionContextHash,
-  });
-  if (sensitiveInsert.error) return NextResponse.json({ error: "The encrypted intake could not be stored." }, { status: 502 });
-
-
   const snapshot = buildFourStepSnapshot(answers, envelope.contentSha256, CANONICALIZATION_VERSION);
   const reviews = Object.fromEntries(Object.entries(answers.factReviews).map(([factId, decision]) => [factId, {
     decision, correction: answers.factCorrections[factId] ?? null,
@@ -76,10 +75,15 @@ export async function POST(request: Request) {
     termsVersion: commerce.terms_version,
     privacyVersion: commerce.privacy_version,
   });
-  const { data, error } = await context.admin.rpc("ap_finalize_four_step_intake_with_legal_acceptance", {
+  const { data, error } = await context.admin.rpc("ap_finalize_four_step_intake_with_legal_acceptance_v2", {
     p_draft_id: context.capability.draftId, p_secret_hash: context.secretHash, p_expected_version: parsed.data.expectedVersion,
     p_snapshot_id: snapshotId, p_snapshot: snapshot, p_content_sha256: canonicalSha256(snapshot),
     p_sensitive_payload_id: sensitivePayloadId, p_fact_reviews: reviews,
+    p_sensitive_ciphertext: bytea(envelope.ciphertext), p_sensitive_encryption_algorithm: envelope.algorithm,
+    p_sensitive_encrypted_data_key: bytea(envelope.encryptedDataKey), p_sensitive_nonce: bytea(envelope.nonce),
+    p_sensitive_authentication_tag: bytea(envelope.authenticationTag), p_sensitive_content_sha256: envelope.contentSha256,
+    p_kms_key_identity: envelope.keyIdentity, p_kms_key_version: envelope.keyVersion,
+    p_encryption_context_hash: envelope.encryptionContextHash,
     p_terms_version: commerce.terms_version, p_privacy_version: commerce.privacy_version,
     p_acceptance_sha256: acceptanceSha256,
   });

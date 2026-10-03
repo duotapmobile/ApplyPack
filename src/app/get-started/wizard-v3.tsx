@@ -18,6 +18,7 @@ import {
 type ServerDraft = { id: string; version: number; state: string; currentStep: number; answers: FourStepDraft;
   documents: IntakeDocument[]; facts: FactSuggestion[]; presentedFactIds: string[] };
 type SaveState = "LOADING" | "SAVING" | "SAVED" | "ERROR" | "CONFLICT" | "READY";
+type PendingFinalization = { expectedVersion: number; answers: FourStepDraft };
 const labels = Object.fromEntries([...activityCatalog, ...industryCatalog.map(([id, label]) => [id, label] as const), ...breadthChoices]);
 const draftSignature = (value: FourStepDraft, currentStep: number) => JSON.stringify([currentStep, value]);
 
@@ -43,6 +44,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   const lastPersisted = useRef("");
   const presentingFacts = useRef<Set<string>>(new Set());
   const pendingEditFocus = useRef<string | null>(null);
+  const pendingFinalization = useRef<PendingFinalization | null>(null);
 
   const hydrate = useCallback((value: ServerDraft, restored = false) => {
     const nextDraft = normalizedFourStepDraft({ ...emptyFourStepDraft, ...value.answers });
@@ -50,6 +52,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     setServerDraft(value); setDraft(nextDraft); setStep(nextStep);
     setPresented(new Set(value.presentedFactIds || [])); setSaveState("READY");
     setFinalized(["COMPLETE", "LOCKED_TO_CHECKOUT"].includes(value.state));
+    pendingFinalization.current = null;
     lastPersisted.current = draftSignature(nextDraft, nextStep);
     if (restored) setNotice("Your saved intake was restored on this device session.");
     readyRef.current = true;
@@ -156,6 +159,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   const titleSuggestions = useMemo(() => facts.filter((fact) => /title|role/i.test(fact.semanticKey)).map((fact) => fact.displayValue), [facts]);
 
   function update<K extends keyof FourStepDraft>(key: K, value: FourStepDraft[K]) {
+    pendingFinalization.current = null;
     setDraft((current) => normalizedFourStepDraft({ ...current, [key]: value })); setErrors([]); setNotice("");
   }
   function toggle<K extends "desiredActivities" | "avoidedActivities" | "targetTitles" | "industryInterests" | "blockedIndustries" | "workModes" | "employmentTypes" | "schedules" | "dealbreakers">(key: K, value: FourStepDraft[K][number]) {
@@ -167,6 +171,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     setErrors(next); setNotice(""); requestAnimationFrame(() => errorRef.current?.focus());
   }
   async function move(next: 0 | 1 | 2 | 3) {
+    pendingFinalization.current = null;
     const movingForward = next > step;
     const nextErrors = movingForward ? validateFourStep(step, draft, { resume, facts, presentedFactIds: presented }) : [];
     if (nextErrors.length) return showErrors(nextErrors);
@@ -176,6 +181,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     if (saved) { setStep(destination); setReturnToReview(false); setErrors([]); setNotice("Progress saved securely."); }
   }
   async function editSection(target: 0 | 1 | 2 | 3, controlId: string, editAll = false) {
+    pendingFinalization.current = null;
     if (finalized && !fixtureMode) {
       setSaveState("SAVING");
       setNotice("Closing the prior feasibility and Checkout before editing.");
@@ -197,6 +203,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
 
   async function upload(kind: "resume" | "prior_cover_letter", file: File | null) {
     if (!file || !serverDraft) return;
+    pendingFinalization.current = null;
     if (kind === "prior_cover_letter") setDraft((current) => ({ ...current, priorCoverLetterUse: "FACT_EXTRACTION_ONLY" }));
     setBusyDocument(kind === "resume" ? "RESUME" : "PRIOR_COVER_LETTER"); setNotice(`${file.name} is uploading to private storage.`);
     if (fixtureMode) { const document: IntakeDocument = { id: crypto.randomUUID(), version: 1, kind: kind === "resume" ? "RESUME" : "PRIOR_COVER_LETTER",
@@ -215,6 +222,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
 
   async function remove(kind: "resume" | "prior_cover_letter") {
     if (!serverDraft) return; setBusyDocument(kind === "resume" ? "RESUME" : "PRIOR_COVER_LETTER");
+    pendingFinalization.current = null;
     if (kind === "prior_cover_letter") setDraft((current) => ({ ...current, priorCoverLetterUse: "NEITHER" }));
     if (fixtureMode) { setServerDraft({ ...serverDraft, version: serverDraft.version + 1, documents: serverDraft.documents.filter((item) => item.kind !== (kind === "resume" ? "RESUME" : "PRIOR_COVER_LETTER")) }); setBusyDocument(null); return; }
     const response = await fetch(`/api/intake/anonymous-draft/document?kind=${kind}&expectedVersion=${serverDraft.version}`, { method: "DELETE" });
@@ -231,6 +239,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
 
   async function retryDocument(kind: "resume" | "prior_cover_letter") {
     if (!serverDraft) return;
+    pendingFinalization.current = null;
     if (fixtureMode) { setServerDraft({ ...serverDraft, version: serverDraft.version + 1, documents: serverDraft.documents.map((item) => item.kind === (kind === "resume" ? "RESUME" : "PRIOR_COVER_LETTER") ? { ...item, processingState: "QUARANTINED", failureCode: null } : item) }); return; }
     const response = await fetch("/api/intake/anonymous-draft/document/retry", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedVersion: serverDraft.version, kind }) });
     const result = await response.json();
@@ -263,13 +272,33 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     if (!serverDraft) return;
     setSaveState("SAVING");
     if (fixtureMode) { setFinalized(true); setSaveState("SAVED"); setNotice("Your intake is saved. Feasibility review is pending. No payment was started."); return; }
-    const saved = await save(draft, 3); if (!saved) return;
-    const response = await fetch("/api/intake/anonymous-draft/finalize", { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ expectedVersion: saved.version, answers: draft }) });
-    const result = await response.json();
-    if (!response.ok) { setSaveState(response.status === 409 ? "CONFLICT" : "ERROR"); setNotice(result.error || "The intake could not be finalized."); return; }
-    setFeasibility({ state: "PENDING", outcome: null, checkoutEligible: false, snapshotId: result.snapshotId });
-    setFinalized(true); setSaveState("SAVED"); setNotice(result.feasibility.message + " No payment was started.");
+    let command = pendingFinalization.current;
+    if (!command) {
+      const answers = normalizedFourStepDraft(draft);
+      const saved = await save(answers, 3); if (!saved) return;
+      command = { expectedVersion: saved.version, answers };
+      pendingFinalization.current = command;
+    }
+    try {
+      const response = await fetch("/api/intake/anonymous-draft/finalize", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify(command) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status < 500) pendingFinalization.current = null;
+        setSaveState(response.status === 409 ? "CONFLICT" : "ERROR");
+        setNotice(result.error || (response.status >= 500
+          ? "Finalization was interrupted. Select Finish intake again to safely check the same request."
+          : "The intake could not be finalized."));
+        return;
+      }
+      pendingFinalization.current = null;
+      setServerDraft((current) => current && ({ ...current, version: result.draftVersion, state: "COMPLETE", currentStep: 3 }));
+      setFeasibility({ state: "PENDING", outcome: null, checkoutEligible: false, snapshotId: result.snapshotId });
+      setFinalized(true); setSaveState("SAVED"); setNotice(result.feasibility.message + " No payment was started.");
+    } catch {
+      setSaveState("ERROR");
+      setNotice("Finalization was interrupted. Select Finish intake again to safely check the same request.");
+    }
   }
 
   async function startCheckout() {

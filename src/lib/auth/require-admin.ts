@@ -12,6 +12,22 @@ export function isAdminEmailAllowed(email: string | null | undefined) {
   return allowed.includes(email.toLowerCase());
 }
 
+export function hasFreshAdminMfa(claims: unknown, userId: string, now = Date.now()) {
+  if (!claims || typeof claims !== "object" || Array.isArray(claims)) return false;
+  const value = claims as Record<string, unknown>;
+  if (value.sub !== userId || !Array.isArray(value.amr)) return false;
+  const verifiedAt = value.amr.reduce<number | null>((latest, item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return latest;
+    const entry = item as Record<string, unknown>;
+    if (entry.method !== "totp" || !Number.isSafeInteger(entry.timestamp)) return latest;
+    const timestamp = entry.timestamp as number;
+    return timestamp > 0 && (latest === null || timestamp > latest) ? timestamp : latest;
+  }, null);
+  if (verifiedAt === null) return false;
+  const verifiedAtMs = verifiedAt * 1_000;
+  return verifiedAtMs <= now && now - verifiedAtMs <= 15 * 60 * 1_000;
+}
+
 export async function requireAdmin() {
   const supabase = await createSupabaseServerClient();
   const admin = createSupabaseAdminClient();
@@ -44,6 +60,12 @@ export async function requireAdmin() {
   const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
   if (!assurance || assurance.currentLevel !== "aal2") {
     return { ok: false as const, response: NextResponse.json({ error: "Admin MFA verification required." }, { status: 403 }) };
+  }
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  const verified = token ? await supabase.auth.getClaims(token).catch(() => null) : null;
+  if (!verified || verified.error || !hasFreshAdminMfa(verified.data?.claims, authData.user.id)) {
+    return { ok: false as const, response: NextResponse.json({ error: "Fresh admin MFA verification required." }, { status: 403 }) };
   }
   return { ok: true as const, user: authData.user, admin, role: profile.role as "operator" | "admin" };
 }

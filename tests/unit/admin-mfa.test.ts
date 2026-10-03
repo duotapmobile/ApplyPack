@@ -10,6 +10,8 @@ describe("admin MFA", () => {
     expect(adminPage).toContain("isAdminEmailAllowed");
     expect(adminPage).toContain('["operator", "admin"].includes(profile.role)');
     expect(adminPage).toContain('assurance.currentLevel !== "aal2"');
+    expect(adminPage).toContain("hasFreshAdminMfa");
+    expect(adminPage).toContain("supabase.auth.getClaims(token)");
     expect(adminPage).toContain("<AdminMfa />");
   });
 

@@ -11702,6 +11702,36 @@ export type Database = {
           snapshot_id: string
         }[]
       }
+      ap_finalize_four_step_intake_with_legal_acceptance_v2: {
+        Args: {
+          p_acceptance_sha256: string
+          p_content_sha256: string
+          p_draft_id: string
+          p_encryption_context_hash: string
+          p_expected_version: number
+          p_fact_reviews: Json
+          p_kms_key_identity: string
+          p_kms_key_version: string
+          p_privacy_version: string
+          p_secret_hash: string
+          p_sensitive_authentication_tag: string
+          p_sensitive_ciphertext: string
+          p_sensitive_content_sha256: string
+          p_sensitive_encrypted_data_key: string
+          p_sensitive_encryption_algorithm: string
+          p_sensitive_nonce: string
+          p_sensitive_payload_id: string
+          p_snapshot: Json
+          p_snapshot_id: string
+          p_terms_version: string
+        }
+        Returns: {
+          draft_version: number
+          feasibility_request_id: string
+          legal_acceptance_id: string
+          snapshot_id: string
+        }[]
+      }
       ap_finalize_job_source_run: {
         Args: { p_lease_epoch: number; p_owner: string; p_run_id: string }
         Returns: Json
