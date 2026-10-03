@@ -1,0 +1,492 @@
+UNIVERSAL RESUME AND COVER LETTER GENERATION STANDARD
+Consolidated revision: October 3, 2026
+
+PURPOSE
+
+Create accurate, relevant application documents that are easy for a person to scan and technically straightforward to extract and interpret. Use the rules below as a self-contained generation contract. The source register at the end explains the research, prior experiments, and limits behind the rules; it is not applicant-facing content.
+
+These rules are universal. Read all applicant details dynamically from verified inputs. Never hard-code a person's identity, employer, history, education, contact details, or private circumstances into the template. Keep applicant-specific preferences in that applicant's profile.
+
+1. AUTHORITY, SCOPE, AND CONFLICTS
+
+- Follow the employer's explicit submission requirements, including file type, page limit, application questions, and required information.
+- Apply current applicant instructions and their approved profile preferences to discretionary choices. Flag an actual conflict with an employer requirement rather than silently choosing a noncompliant submission.
+- Otherwise use this consolidated standard. It supersedes conflicting older formatting examples, research summaries, and template defaults.
+- Treat facts, compatibility requirements, house-style preferences, and research observations as different things. A chosen font size or margin is a design default, not a scientifically proven hiring advantage.
+- This file governs document generation and packet delivery. It does not authorize submitting applications, sending outreach, editing LinkedIn, or uploading personal documents to third-party testing services.
+- Do not turn the source register into extra documents the applicant must manage. One rules file is sufficient for this handoff.
+
+2. REQUIRED INPUTS AND FACT CONTROL
+
+Use the full job posting, verified employer and exact role, employer-direct application URL, applicant facts, and applicant preferences. Record the posting's retrieval date and any stated posting date separately.
+
+Maintain an internal fact record containing:
+- Exact supplied name and contact information.
+- Historical titles, employers, dates at their known precision, and employment type only when known.
+- Actual responsibilities, tools, work products, decisions, scope, outcomes, and verified metrics.
+- Education, credentials, projects, and current certification status where relevant.
+- Which source or applicant statement supports each material claim.
+- Material uncertainties or contradictory records that still need resolution.
+
+Applicant statements are usable factual inputs; do not require independent documentary proof for every ordinary work-history detail. Do not treat an earlier AI-generated resume as proof of a claim unless its underlying fact was supplied or confirmed. Prefer a current verified correction over stale material.
+
+Never invent missing months, full-time status, management authority, tools, qualifications, results, numerical improvements, or reasons for a career break. Do not convert a parser's guess into a new applicant fact. Count overlapping periods once when calculating years of experience, and distinguish total experience from experience in a particular function.
+
+Ask only for missing information that materially affects accuracy or eligibility. Otherwise omit an unsupported claim or write a narrower factual statement. Keep questions and uncertainty markers in working notes, never in final application documents.
+
+3. REVIEW THE JOB BEFORE WRITING
+
+Read the entire posting, not only its title or first few bullets. Confirm the company, role, location eligibility, work arrangement, schedule or travel requirements, and mandatory qualifications relevant to the applicant's stated constraints.
+
+Map each material requirement internally to:
+- DIRECT: demonstrated performance of substantially the same work.
+- TRANSFERABLE: a supported parallel in another setting, with the difference kept clear.
+- GAP: a known qualification the applicant does not have.
+- UNKNOWN: insufficient information to determine whether they have it.
+
+Rank evidence by importance to the actual work, not by keyword frequency alone. Separate required and preferred qualifications. Do not claim that formatting or transferable skills overcome a missing mandatory license or other explicit eligibility gate.
+
+Verify a direct employer or employer-authorized ATS URL when available. A redirect to a generic careers homepage is not verification that the specific role is open. If the posting is unavailable, use the supplied copy for drafting and accurately state that live status could not be verified. Do not invent a posting date, infer one from a search crawl date, or describe a closed role as active.
+
+4. UNDERSTAND WHAT IS BEING CHECKED
+
+Keep these stages separate:
+- Text extraction: can the words be recovered from the file?
+- Field parsing: are the name, employers, titles, dates, and qualifications assigned correctly?
+- Retrieval or matching: can supported job-related terms and evidence be found?
+- Eligibility and screening: how the employer applies its configured criteria.
+- Human review: whether a person can understand the applicant's relevance and trust the claims.
+
+A plain-text pass does not prove correct field parsing. A parser pass does not prove a ranking advantage or interview likelihood. A rejection does not, by itself, identify which stage caused it. Do not describe every ATS as one scoring algorithm or assume all employers enable the same features.
+
+5. GENERATION SEQUENCE
+
+Use this sequence for each application:
+1. Establish verified facts and exact applicant/job identity.
+2. Map the posting to direct evidence, transferable evidence, gaps, and unknowns.
+3. Select the strongest relevant evidence and decide section order.
+4. Draft the resume and cover letter.
+5. Improve specificity, readability, and natural voice without weakening the substance.
+6. Check every claim, scope implication, and metric.
+7. Generate the structured source document and export the submission files.
+8. Check content, extraction, structure, field associations, visual appearance, and final delivery binding.
+
+Do not repeatedly rewrite an already accurate packet solely to chase a commercial scanner score.
+
+6. RESUME ARCHITECTURE AND FIRST SCAN
+
+Default order for an experienced applicant:
+- Name and contact information.
+- PROFESSIONAL SUMMARY, when it adds useful positioning.
+- CORE SKILLS, when supported and useful.
+- WORK EXPERIENCE.
+- EDUCATION & CERTIFICATIONS.
+- Additional relevant sections only when needed, such as PROJECTS, ADDITIONAL EXPERIENCE, or CAREER BREAK.
+
+Education or projects may move higher for an early-career applicant when they supply the strongest relevant evidence. A short summary plus chronological experience can support a career transition; do not use a functional layout that disconnects claims from employers and dates.
+
+Make the top of the page answer: Who is this person? What relevant work have they done? Why does that experience connect to this role? Put the strongest supported evidence early without distorting chronology or inflating seniority.
+
+Use familiar section labels, consistent job boundaries, and concise paragraphs. Do not insert every optional section. A highlights block may replace a redundant summary or skills block if an approved profile calls for it; do not repeat the same accomplishments in three places.
+
+Use an initial skim as a design check, not a claim that every recruiter reads for exactly six, seven, or ten seconds.
+
+7. PAGE LAYOUT AND VISUAL HIERARCHY
+
+Default house style:
+- US Letter, 8.5 by 11 inches.
+- One column, all essential content in normal document flow.
+- Top/bottom margins: 0.55 inches.
+- Left/right margins: 0.70 inches.
+- Arial requested; black text on white.
+- Name: 18 pt, regular weight.
+- Contact information: 9.5 pt, regular weight.
+- Body and skills: 10.5 pt.
+- Experience bullets: 10 pt.
+- Section headings: 10.5 pt, bold.
+- Job titles: 10.5 pt, bold.
+
+These compact settings preserve the established profile. They are not universal optimums or a claim of accessibility compliance. Use a larger approved profile when the applicant needs larger type. Never make body text or bullets smaller than this baseline to force a page count. If a page is difficult to read at normal viewing size, revise content or use more space.
+
+Use real styles, consistent spacing, and restrained emphasis to establish hierarchy. Names remain regular weight throughout the packet. Short section labels may be uppercase; do not force names, summaries, or paragraphs into all caps. Avoid underlining ordinary prose, heavy italics, and bolding every keyword. Bold is a visual aid, not a proven ATS weighting method.
+
+Do not use layout tables, multiple columns, text boxes, sidebars, floating objects, photos, logos, decorative graphics, icons, skill bars, charts, or page borders in the standard submission template. Avoid manual spaces or repeated tabs to simulate columns. Do not add letter spacing that turns words into separated characters.
+
+Keep body text left aligned with a natural right edge. Do not fully justify it. Disable automatic word hyphenation and avoid forced line breaks within words. Use normal punctuation, with ASCII hyphens for date ranges; do not use em or en dashes in generated prose.
+
+8. SPACING AND SECTION RULES
+
+Use paragraph settings rather than blank paragraphs to control spacing. The following are house-style defaults, in points unless otherwise stated:
+
+- Name: centered; 0 before, 9 after.
+- Contact: centered in the body; 0 before, 18 after on a resume and 16-18 after on a letter. Allow a clean second line if needed.
+- Summary heading: 0 before, 6 after.
+- Skills heading: 18 before, 6 after.
+- Experience heading: 14 before, 6 after.
+- Education/certification heading: 10 before, 6 after.
+- Summary and skills paragraphs: 1.05 line spacing; 0 before/after.
+- First job title: approximately 3 before, 2 after.
+- Subsequent job titles: 10 before, 2 after.
+- Employer/date paragraph: 0 before, approximately 3 after.
+- Bullets: 1.15 line spacing; 0 extra before/after in the established compact profile.
+- Bullet left indent: about 0.17 inches; hanging indent: about 0.11 inches.
+- Degree paragraph: 0 before, 3 after; degree name may be bold.
+- Certification paragraph: regular weight, 0 before/after.
+
+The established section treatment is a paragraph bottom border, 1.5 pt, dark gray #4A4A4A, 2 pt from the heading text. This is a paragraph property, not a drawn shape, and carries no text or meaning unavailable in the heading. Use it consistently across major resume sections. Do not put a rule under contact information or between individual jobs. Remove inherited blue heading colors and unrelated borders.
+
+The 1.15 bullet spacing applies inside wrapped bullets. Do not silently restore the older 1.20 line spacing and 7 pt after every bullet. Conversely, do not assume 0 extra paragraph spacing guarantees comfortable reading: shorten dense bullets and inspect actual visual separation. More whitespace may be used in an approved larger profile.
+
+9. NAME, CONTACT DETAILS, AND LINKS
+
+Preserve the full supplied name, including middle names, capitalization, accents, apostrophes, hyphens, and diacritics. Do not mechanically title-case it, strip accents, bold it, or convert it to all caps. The name must be the clear identity at the top of the document, with no competing target-title banner.
+
+Use verified fields only. A typical contact line contains city/state, phone, email, and a relevant LinkedIn or portfolio URL. Omit unavailable fields. Do not add a street address, birth date, marital status, children, sensitive identifiers, or a photo unless a specific legitimate application requirement calls for it.
+
+Keep essential contact text in the main document body, even if a multi-page profile uses a secondary page marker. Use readable visible email addresses and URLs, with correct hyperlink targets. Do not substitute icons, QR codes, or generic 'click here' labels for contact text. Check that links remain functional after export and are not broken across awkward line boundaries.
+
+10. SUMMARY AND TARGET ROLE
+
+Keep a summary to approximately 2-3 visual lines when it is useful. Establish relevant experience and a concrete contribution or capability. Avoid a generic objective about wanting to grow or joining a dynamic company.
+
+Include the exact target title naturally when helpful and accurate as a target. Do not imply the applicant has held a role they are only seeking. No large standalone target-title banner. Do not use the older mechanical 'Target role:' label as the default; the current formatting preference is to integrate the role naturally into the summary.
+
+Do not require an exact sentence count, force the title into the first three words, or pad the summary with generic traits. Omit a summary that adds nothing beyond the first experience entry.
+
+11. SKILLS AND TRUTHFUL JOB TERMINOLOGY
+
+Use a short, relevant selection of supported skills in normal text flow. Separate skills with vertical bars and wrap between complete skills. Determine wrapping from the rendered width, not a fixed number of skills per line. Keep phrases such as Google Sheets together whenever they fit on a line; an unusually long phrase may wrap naturally without becoming separate list items.
+
+Each claimed skill must be supported by actual experience or clearly identified training. Show especially important skills in the relevant experience bullet as evidence, without enforcing a repetition quota. Category labels can organize a longer skills section, but they are ordinary text unless they genuinely introduce a subsection.
+
+Use the employer's terminology when it accurately describes the work. Expand a relevant acronym once when useful, then use the familiar abbreviation. Do not replace accurate plain wording with jargon solely to echo the posting, and do not substitute related-but-different work to manufacture a match.
+
+No keyword-count targets, density percentages, score thresholds, automatic double-listing, or supposedly high-weight 'super keywords.' A term appearing repeatedly in a posting may signal emphasis, but it does not reveal a universal ranking formula.
+
+12. WORK EXPERIENCE, DATES, AND OWNERSHIP
+
+Use reverse chronology within sections and this current stacked structure:
+
+Historical Job Title
+Employer Name | Date Range
+Native list bullets belonging to that role
+
+This two-line job header is the current file's default. Do not claim it is identical to every earlier experimental layout, some of which used a separate date line. Keep a detached date line only for a concrete layout need or an approved profile, and verify its association.
+
+Preserve historical titles. An accurate functional clarification may accompany a title when supported and approved; do not silently rename a past role to the target role. Do not default self-employment to Founder, CEO, Owner, Director, or Manager. Equally, do not erase a genuine title or leadership responsibility merely because a source example concerned a different applicant.
+
+Use verified employer names and business descriptors. Do not invent Inc., LLC, or another legal suffix to influence parsing. Distinguish same-employer promotions and simultaneous roles with their actual dates. Do not merge two positions into one larger job or imply uninterrupted employment across a break.
+
+Use a consistent date convention at the precision available, such as 2019-Present or Jan 2023-Sep 2026. Do not invent months, round tenure upward, or silently change an end date. Include remote status or work location only when verified and useful, never inferred from the target job.
+
+A brief business-description line is optional when an unfamiliar organization needs context. Keep it factual, normally one line, at about 9.5 pt with 5 pt after. It must not become a second summary or an inflated company description.
+
+13. BULLETS: SUBSTANCE, SPECIFICITY, AND RIGOR
+
+Use genuine native list paragraphs with actual list definitions, not a manually typed bullet character. Each bullet must remain attached to the correct role in reading order and in the source structure.
+
+Write each bullet around an action, its object, and useful context. Add the method, scope, deliverable, decision, or outcome when known. Use Action-Scope-Outcome or XYZ as editing aids, not mandatory formulas that demand a fabricated result.
+
+Prefer one main idea per bullet, usually 1-2 visual lines. A third line is acceptable when it carries necessary evidence. Allocate more space to recent and relevant work, not an identical bullet count to every job. Put the strongest relevant bullet first within a role without rewriting the timeline.
+
+Specificity should answer some of these questions:
+- What process, records, product, audience, or workstream was involved?
+- What did the applicant personally decide, produce, coordinate, diagnose, or resolve?
+- What tool or method did they actually use?
+- What constraint, dependency, discrepancy, or recurring problem did they handle?
+- What changed, or what concrete work product resulted?
+
+Plain language must retain the real difficulty and scope of the work. Do not reduce substantive experience to 'helped with tasks,' 'kept things organized,' 'worked with people,' or 'adjusted when a plan was not working.' Name the action and the work involved. Do not compensate with inflated claims of strategy or enterprise transformation.
+
+Use direct verbs suited to the evidence, such as analyzed, reconciled, developed, coordinated, documented, reviewed, managed, or resolved. Vary them naturally; swapping verbs does not strengthen a weak fact. Resume bullets normally omit first-person pronouns. Use present tense for ongoing responsibilities and past tense for completed actions, consistently.
+
+Distinguish individual contribution from team results. Do not claim sole ownership of a collective outcome, and do not use vague 'we' language to avoid saying what the applicant did. Use supported leadership evidence, including delegation or review, without inventing direct reports.
+
+14. METRICS, OUTCOMES, AND TRANSFERABLE EXPERIENCE
+
+Use numbers when verified and meaningful. State enough context to make a number interpretable: timeframe, baseline, unit, population, or the applicant's contribution, as relevant. Distinguish a percentage from a percentage-point change. Do not present a company-wide result as personally caused by the applicant.
+
+Useful evidence can include scale, frequency, turnaround time, volume, accuracy, budget responsibility, or a specific deliverable. A strong factual bullet does not require a number. If an outcome is unknown, describe the supported action and work product instead. Do not convert an intended purpose into a claimed measured result or add 'improved efficiency' without evidence.
+
+Missing metrics may be noted privately for follow-up. Never leave '[needs metric]' or similar drafting placeholders in a deliverable. Do not delay an otherwise usable packet to invent or demand unnecessary numbers.
+
+Translate experience by explaining the actual shared task or method. Teaching, caregiving, self-employment, projects, and volunteer work can supply relevant evidence, but retain the setting and actual status. Do not label classroom leadership as corporate program management or a small business process as enterprise operations unless that description is factually justified.
+
+When relevant AI experience exists, identify the actual task, tool, verification or judgment performed, and supported result. Listing an AI product is not proof of competence. Do not lead every resume with AI, invent automation work, or imply a project is paid employment. Include a portfolio link only if verified and appropriate to share.
+
+15. EDUCATION, CERTIFICATIONS, AND CAREER BREAKS
+
+Use correct institution, degree, field, and credential names. Distinguish earned, in-progress, expired, and planned credentials. Never turn coursework into a completed qualification or imply an expired license is current. Include required dates and active-status details when the posting needs them.
+
+Graduation years are optional unless required or useful for the applicant's situation. Do not apply a blanket rule to remove all older work or assume years of experience prove age. Use relevance and applicant preferences to decide what older material can be shortened.
+
+A career-break entry is optional and should be neutral, accurate, and separate from paid employment. Use only the reason the applicant has chosen to disclose. Do not infer health, family, legal, or other sensitive circumstances. Do not manufacture consulting to fill a gap. A functional resume or altered dates must not be used to disguise it.
+
+16. COVER LETTER STRUCTURE AND LAYOUT
+
+Prepare a separate one-page letter using the resume's page size, margins, font family, name, and contact styling. Normally use 250-350 words in 3-4 short paragraphs. A shorter complete letter is preferable to padding; approach 400 words only when the content and required instructions justify it.
+
+Use:
+- Current letter date, unless the applicant specifies another accurate date.
+- Verified recipient and company, or Company Hiring Team if no recipient is confirmed.
+- Re: Exact Job Title, bold, below the recipient area.
+- A suitable salutation when used by the approved letter format.
+- A specific opening, relevant evidence and context, and a practical closing.
+- Sincerely, followed by the applicant's full name in regular weight.
+
+Do not guess a hiring manager from a loosely related LinkedIn profile. Do not invent an address. Do not repeat a role banner above the contact line or add body section headings by default.
+
+Body: 10.5 pt, regular, left aligned, 1.10-1.15 line spacing, 9 pt after paragraphs. Date and recipient paragraphs: approximately 4 pt after. Re: line: approximately 10 pt after. Signoff: approximately 8 pt before and 4 pt after; typed name: 0 after. Keep the signoff and name together.
+
+Avoid body paragraphs longer than approximately 5-6 visual lines. Do not add a signature image unless requested. An emailed letter or portal text field should follow that channel's instructions rather than mechanically reproduce a full attachment layout.
+
+17. COVER LETTER WRITING: NATURAL, SPECIFIC, AND SUBSTANTIAL
+
+The opening should establish the actual connection between the candidate's experience and the role's work. It may reference a verified company detail when that detail strengthens the case. Do not invent a company problem, personal story, referral, mission connection, or enthusiasm.
+
+Use one or two concrete examples, or a small number of tightly connected proof points. Explain what the applicant handled, how they approached it, and why it prepares them for this work. Add judgment, context, motivation, or a useful career-transition explanation that is not apparent from bullet points alone.
+
+If a nontraditional background is central to the application, acknowledge it briefly and immediately connect it to supported evidence. Do not open with an apology, list every shortcoming, or say 'I am not the traditional candidate' in every letter. A preferred qualification gap does not require a disclaimer paragraph.
+
+Keep the language professional without making it abstract or elementary. 'I kept track of what was ready' may omit meaningful coordination, dependencies, and issue resolution. Restore the verified substance rather than merely making the sentence longer. Explain how the work was done instead of repeatedly stating that skills are transferable.
+
+Avoid routine use of:
+- 'I am writing to express my interest,' 'I am thrilled to apply,' and 'I believe I would be an excellent fit.'
+- 'Sits at the intersection of,' 'uniquely positioned,' 'proven track record,' and 'dynamic organization.'
+- Generic claims of passion, adaptability, attention to detail, or being a fast learner with no supporting example.
+- 'Leverage,' 'synergy,' 'seamlessly,' 'foster,' 'delve,' and unnecessarily grand verbs.
+- 'My resume gives more detail,' 'I hope my experience could be useful,' and other weak closing filler.
+
+These are editorial preferences, not a list of words proven to trigger an AI detector. An accurate role-specific term should not be removed just because it also appears in AI-generated text.
+
+Vary sentence lengths naturally. Use complete, purposeful paragraphs. Remove repeated introductions, robotic transitions, long adjective chains, and copied job-description phrasing. Do not intentionally add mistakes, fake typing history, or manipulate file timestamps to pretend the document was written differently.
+
+The closing should state the relevant contribution or interest in discussing the work, without begging, exaggerated praise, or guarantees. Do not automatically add a P.S. line because of an anecdotal callback claim. Read the letter aloud or perform an equivalent natural-language review; the applicant should be able to explain every sentence in an interview.
+
+18. PAGE LENGTH, WRAPPING, AND PAGINATION
+
+Use one page when relevant evidence fits comfortably, and two when substantive experience warrants it. Respect an explicit applicant-specific page limit. Do not make a particular applicant's one-page preference a universal rule. Specialized applications and academic CVs may require a different document type or length; verify those instructions.
+
+Before changing typography or margins:
+1. Remove irrelevant content and repeated claims.
+2. Tighten verbose bullets and the summary.
+3. Reduce low-value skills and older detail.
+4. Rebalance evidence toward the role's most important work.
+
+Do not pad a sparse document, manufacture bullets, insert large gaps, or stretch text to occupy a target percentage of a page. Do not sacrifice important evidence to make every resume visually identical. Record substantive omissions internally so tailoring does not erase the master history.
+
+Keep section headings with following content. Keep each job header through its first bullet together. Do not chain every bullet with 'keep with next,' which can push a whole role to another page. Keep ordinary bullets together where practical; if a role crosses pages, break between bullets and preserve clear continuation context. Avoid a heading, isolated date, or signoff stranded on a new page.
+
+Review one-word wraps, large blank areas, crowded blocks, broken skill phrases, and page balance at normal viewing size. Make content and spacing adjustments deliberately, then re-render. A file can have the expected page count and still fail visual QA.
+
+19. SEMANTIC SOURCE STRUCTURE
+
+Create an editable structured source, normally DOCX. Use real Word heading styles for section labels, customized to the chosen appearance. Use paragraph styles for job titles, employer/date lines, body text, and contact information. Individual skills and keywords are not headings.
+
+Use native numbering/list definitions for bullets. Check effective styles and inherited properties, not just the visible style name. A manually typed bullet, a bold paragraph, or a bookmark is not a substitute for list or heading semantics.
+
+If an existing generator uses another structured source, implement equivalent heading, paragraph, list, and reading-order behavior and validate the result. Do not introduce a second export stack unnecessarily. Maintain a genuine editable fallback when needed; never rename a PDF to DOCX or deliver an image inside a Word file as an editable resume.
+
+20. SUBMISSION FORMAT AND PDF EXPORT
+
+Normal packet delivery:
+1. Verified direct application link.
+2. Resume PDF.
+3. Cover letter PDF.
+
+Default to PDF only when the employer does not specify a different format. Follow an employer's DOCX requirement. Keep the editable source available internally; deliver it when requested, required by the portal, or needed as an editable fallback. Do not routinely add extra formats the user did not request. If the employer explicitly excludes cover letters, follow that instruction.
+
+Export a genuine PDF with searchable, selectable text. Do not use screenshots, image-only output, rasterized pages, or an OCR layer to disguise generated image text. Avoid password restrictions that obstruct opening or extraction. Verify the current portal's file-size and format requirements; keep routine text packets lightweight without sacrificing text quality.
+
+Use a structure-preserving export route. Enable tagged PDF output when available, and inspect the resulting tags rather than trusting the export setting. A print-to-PDF route must not be assumed to preserve accessibility structure.
+
+For an existing LibreOffice exporter, the documented tagged-PDF filter argument is:
+pdf:writer_pdf_Export:{"UseTaggedPDF":{"type":"boolean","value":"true"}}
+
+Pass process arguments as an array rather than building a shell command with applicant data. Use a unique temporary LibreOffice profile per concurrent conversion, a timeout, explicit error handling, and cleanup. Confirm a nonempty output exists and was produced by the current run, not a stale previous file.
+
+For Microsoft Word export, use the accessibility checker and enable document structure tags. Other exporters must meet equivalent output checks. Verify actual fonts after export. A requested font is not proof that it was used or embedded.
+
+21. METADATA, FILENAMES, AND APPLICATION BINDING
+
+Set both source and exported document properties accurately:
+- Title: Full Name Resume - Company, or Full Name Cover Letter - Company.
+- Author: the applicant's supplied name.
+- Subject: Application for Exact Job Title at Company.
+- Keywords: empty.
+- Language: the actual document language.
+
+Replace default author/title placeholders or unrelated names inherited from templates. Do not confuse author metadata with technical Creator or Producer fields: those may legitimately identify Word, LibreOffice, or a library. Do not falsify producer, editing history, or timestamps to conceal the generation process. Keep PDF document information and XMP consistent when both are written.
+
+Metadata is for accurate identification and accessibility. It is not a hidden keyword channel or a proven ranking technique.
+
+Use delivery filenames:
+Full_Name_Resume_Company.pdf
+Full_Name_Cover_Letter_Company.pdf
+
+Use identical basenames for any delivered DOCX versions. Use underscores; remove filesystem-invalid characters while keeping the identity recognizable. Preserve legitimate numbers and meaningful name spelling. Do not add dates, target role, internal IDs, version suffixes, Final, Updated, or New unless explicitly required.
+
+For multiple roles at the same company, isolate each packet internally by application ID or folder so identical delivery names cannot overwrite another packet. Bind the applicant, job, company, posting, document content, metadata, filenames, and URL to the same application.
+
+22. PROHIBITED CONTENT AND TEMPLATE RESIDUE
+
+Never include hidden white text, zero-point text, off-page text, concealed keywords, pasted job descriptions, instructions directed at an ATS or LLM, or misleading accessibility text. Do not use metadata, alt text, or PDF tags to make a qualification claim absent from the visible document.
+
+Inspect for unresolved placeholders, old company names, competitor references, internal notes, comments, tracked changes, prompt residue, duplicated paragraphs, and accidental sample data. Resolve edits in the release copy while preserving working history separately when needed. Do not remove truthful content merely because a checker flags a word or an unfamiliar name.
+
+23. QA ON EVERY GENERATED PACKET
+
+Keep each check's actual status and evidence separate. Use PASS, FAIL, BLOCKED, NOT_RUN, or UNSUPPORTED. A tool that was inaccessible did not pass. A check marked UNSUPPORTED does not automatically waive a requirement.
+
+A. CONTENT AND RELEVANCE
+- Confirm exact identity and contact details, chronology, title accuracy, known date precision, qualifications, metrics, and ownership of outcomes.
+- Check the requirement-to-evidence map, meaningful keyword context, gap handling, and applicant constraints.
+- Run the natural-voice and credibility review on both documents.
+- Confirm the cover letter adds useful context and addresses the correct company and role.
+
+B. TEXT EXTRACTION
+- Extract the structured source and final PDF, using independent methods when practical. The established workflow uses Mammoth for DOCX and pdfplumber plus Poppler for PDF, or documented equivalents.
+- Compare each extraction to the approved expected content, not only to the other extractor. Two readers can repeat the same omission.
+- Check name, contacts, heading order, complete multiword skills, every role's title/employer/dates/bullets, education, credentials, and special characters.
+- Normalize Unicode and whitespace narrowly. Preserve accents, word boundaries, numbers, order, and meaningful punctuation. Do not normalize away missing words or altered dates.
+
+C. STRUCTURE AND FIELD ASSOCIATION
+- Inspect actual heading styles, native lists, reading order, and job boundaries.
+- Confirm no bullet, date, or title is assigned to the wrong role.
+- Inspect any semantic parser output against the verified source, including unwanted invented fields. A blank name or guessed employment type remains an error even when raw text is complete.
+- Check PDF tags, role mappings, and reading order where supported. Inspect heading, paragraph, and list relationships; tag presence or bookmark presence alone is insufficient.
+
+D. VISUAL REVIEW
+- Render every final page and inspect it at normal reading scale and enlarged where needed.
+- Check clipping, overlap, missing glyphs, odd characters, font substitution, margins, line wraps, skill phrases, crowded bullets, blank regions, paragraph rhythm, heading placement, job grouping, and page count.
+- Inspect resume and letter together for consistent identity and styling.
+- Re-render after content or layout changes that can alter appearance. A prior screenshot is not evidence for a changed output.
+
+E. FILE AND DELIVERY REVIEW
+- Verify actual PDF text, language, metadata, fonts, hyperlinks, filename, file size, and current output identity.
+- Confirm the direct job link and report any live-status uncertainty.
+- Verify the delivered file is the checked version. If a portal preview or autofill is being reviewed as part of an authorized task, compare its fields with the source and correct errors before submission.
+
+Record internally: input/output hashes, instruction/template version, renderer and checker versions, check statuses, expected versus observed differences, and unresolved issues. Keep logs and raw parser JSON out of applicant documents. Report only material limits to the user.
+
+24. ACCESSIBILITY AND VALIDATION CLAIMS
+
+Use real headings and lists, sensible reading order, sufficient contrast, accurate title/language, and real link text. Verify exported structure when claiming a tagged PDF. Do not equate the chosen small-font profile with broad accessibility for every reader.
+
+Do not claim PDF/UA compliance without appropriate automated and manual validation. Do not call a document '100% ATS-safe,' universally compatible, AI-proof, or fully validated merely because it exported, looks good, or passes text extraction.
+
+Describe what was actually checked. If a required check fails, correct it before claiming completion. If a tool is blocked or a required capability unavailable, report that limitation accurately. Do not change applicant facts or accents to make a parser appear successful.
+
+25. GENERATOR INTEGRATION AND REGRESSION
+
+When the task includes implementation in an application, store these requirements in its versioned shared generator configuration and load them for generation, preview, regeneration, download, and ZIP delivery. Include candidate, job, content, template, and exporter versions in cache identity. Avoid stale output and cross-applicant or cross-job contamination. Preserve established human delivery review.
+
+After a generator, template, font, or exporter change, use synthetic fixtures covering long and accented names, long employers, wrapped skills/bullets, promotions, concurrent jobs, year-only dates, unknown fields, career breaks, sparse content, and multi-page boundaries. Include negative controls for missing jobs, merged words, altered dates, and lost accents while accepting equivalent Unicode.
+
+Use an available semantic reader to compare fixture fields with known truth and record its limits. Use synthetic data by default for external tests; obtain authorization before sending real applicant information to a third-party checker. Record service/model versions when exposed. Broaden testing only for a concrete risk, changed behavior, or required gate.
+
+Changing this text file alone does not install a template skill or update a production generator. Do not claim application integration without changing and testing the actual code path. This revision is an instruction-file update, not a claim that new resume exports or commercial parser tests have been run.
+
+26. HISTORICAL EXPERIMENTS: PRESERVE THE LIMITS
+
+The recovered September 13 and September 18 implementation records report the following. These are historical documented findings, not experiments rerun for this revision:
+
+- Format experiment: one fictional candidate, five resume variants and one cover letter, with 18 successful local extraction comparisons. These were not 18 different ATS engines.
+- Affinda: ten resume files each passed 25 defined recovery checks, but each also acquired three unsupported full-time employment assertions. This was not 100% semantic accuracy.
+- OpenResume: an earlier layout misidentified the target title as the name, produced seven job groups instead of three, and split a multiword skill. A revised stacked layout recovered three job groups and intact skill phrases, but the accented name field remained blank although the raw text contained it. That semantic failure was not resolved by successful extraction.
+- Filename experiment: three byte-identical PDFs with different names produced identical 28-row OpenResume tables. The rows were not 28 correctness checks. No Affinda filename result was obtained because the upload failed. No filename ranking benefit was established.
+- Structure experiment: five DOCX and ten PDF variants passed 25 strict extraction comparisons. Real headings produced five HTML headings; tagged resume PDFs contained five H1 elements, three lists, and seven list items. Appearance was reported pixel-identical within each document type. Accurate metadata survived export without changing body extraction. This did not test hiring rankings or establish that tagging fixes the earlier name-recognition failure.
+- The earlier environment requested Arial but exported Liberation Sans. Native Word/Arial pagination, commercial cover-letter parsing, complete accessibility certification, and universal ATS compatibility were not established by those samples.
+
+Retain the decision: real section headings, accurate metadata, and verified tagged export improve document structure. Do not turn it into a claim of higher hiring scores. Every new output needs checks against its own bytes; historical sample results are not certification of later files.
+
+27. RESEARCH CLAIMS THAT MUST NOT BECOME RULES
+
+Older notes are a research archive, not an authority to copy every claim. Do not reinstate:
+- Universal TF-IDF explanations or claims that every ATS automatically scores, ranks, and rejects all applications the same way.
+- A mandatory 60-75%, 80%, or 90% score, 2-3% keyword density, 25-35 keywords, repeated-keyword quotas, or fixed first-three-word/bullet weighting.
+- Exact claimed parsing accuracy percentages for all reverse-chronological, hybrid, or functional resumes without applicable validation.
+- A universal DOCX-over-PDF or PDF-over-DOCX advantage.
+- Claimed callback multipliers from filenames, a P.S., title mirroring, referrals, or timing as guaranteed outcomes.
+- A fixed number of bullets, page count, keyword coverage band, or dollar figures chosen to imitate observational high-performing groups.
+- Claims that certain words, flawless grammar, or paragraph structures prove AI authorship, or that simulated human typing improves screening.
+- A blanket claim that every ATS detects and automatically rejects hidden text. Hidden manipulation is prohibited regardless of whether detection is demonstrated.
+- Claims that paid job-board listings are necessarily legitimate, search operators reveal unindexed pages, or early application guarantees review.
+
+Keep the useful practical lessons: readable structure, accurate field associations, truthful tailoring, concrete evidence, human review, clear writing, current direct links, and no manipulative hidden content.
+
+28. SOURCE REGISTER AND HOW THE RESEARCH WAS USED
+
+A. ATTACHED MATERIAL REVIEWED
+
+- Formatting(2).txt, the latest supplied baseline, matches Formatting(1).txt and Formatting.txt byte for byte. Preserved PDF-first delivery, universal inputs, two-line employment headers, naturally integrated target role, factual limits, metadata, naming, and QA. Added the implementation details and evidence limits absent from the shorter version.
+- resume-bot-bypass.txt: retained simple structure, supported job terminology, meaningful acronyms, and specific cover-letter evidence. Rejected blanket ATS mechanics, automatic AI-detection claims, and guaranteed referral effects.
+- resume-bot-bypass-2.txt: retained genuine terminology alignment and skill evidence. Rejected TF-IDF generalizations, score targets, repeated-term weights, universal format superiority, prompt-injection tactics, and anecdotal P.S. performance promises.
+- resume-tips.txt: retained rapid-scan hierarchy, evidence with context, clear individual contribution, credible scope, and natural letters. Rejected unsupported six-data-point percentages, callback multipliers, keyword quotas, and universal recruiter behavior claims.
+- Resume and Cover Letter Optimization(1).md: retained chronology, role-aware tailoring, fact-constrained writing, interview-defensible claims, and contextual letters. Removed unsupported parser percentages, density targets, mandatory metrics, fixed sentence counts, and placeholders from final output.
+- Remote Job Board Recommendations.md: retained employer-direct application verification, posting freshness checks, and correct source binding at the delivery stage. Board rankings, prices, numerical claims, and outreach programs are outside this formatting standard and require their own current verification.
+
+B. PRIOR PROJECT FINDINGS RECOVERED
+
+- 08-Resume-formatting-guidelines-and-Naming.txt and 09-Cover-Letter.txt, including their September 13 current-generation contracts: spacing, regular-weight names, semantic structure, page handling, natural voice, filenames, and regression requirements. Applicant-specific content remains in applicant profiles.
+- APPLYPACK_IMPLEMENTATION.md: the consolidated September 13 structure, metadata, filename, parser, and exporter findings.
+- ResumeandCoverletterGuidelines.txt: the September 18 additions on Jeff Su, Huntr, conditional AI evidence, and observed-versus-causal claims.
+
+Conflicts are resolved in the main rules, not left for the generator to guess. The supplied current file's natural target-role wording, two-line employment header, universal page-length flexibility, and PDF-only normal delivery supersede incompatible older examples. Historical tests remain historical; changed layouts require new checks.
+
+C. RECOVERED VIDEO AND UNDERLYING RESEARCH
+
+Jeff Su, 'Resume Guide for the AI Era: 5 Research-Backed Rules,' September 15, 2026:
+https://www.jeffsu.org/resume-ai-era-guide/
+Previously discussed video: https://youtu.be/N1Fm4JYae1I
+
+The creator's companion guide was read for this revision; the video transcript was not independently retrieved. Applied lessons: simple text-based layout, evidence-led tailoring, factual AI-assisted drafting, verified impact, and role-relevant proof of AI work. The guide is a synthesis, not the primary evidence for every statistic it quotes. Its AI-first advice is conditional here, not mandatory.
+
+Huntr, The Q2 2026 Job Search Trends Report:
+https://huntr.co/research/job-search-trends-q2-2026
+
+The primary report was checked. Its tailored-versus-untailored comparison covers 1,994,555 applications over October 2024-June 2026, not only Q2. Recorded interview rates were 5.71% versus 3.09%. Huntr notes substantial between-person differences and a much narrower same-person gap. Its 'untailored' group can include resumes edited manually outside its tool. These are observational platform data, not proof that this template causes an 84% improvement. Higher keyword coverage did not consistently mean better outcomes. Do not prescribe a coverage band, bullet quota, or page count from these groups.
+
+Other historical video URLs cited in the supplied notes:
+https://www.youtube.com/watch?v=9HFYE6a5Q8I
+https://www.youtube.com/watch?v=sgyvtuRrn2U
+https://www.youtube.com/watch?v=2JL1k3tichc
+https://www.youtube.com/watch?v=o5kXdoR8joE
+https://www.youtube.com/watch?v=a43Je1KQY3s
+https://www.youtube.com/watch?v=2eQfBomjErc
+https://www.youtube.com/watch?v=TDB4TMqjAIU
+https://www.youtube.com/watch?v=qJvC3wK4F6Y
+
+These links are retained as research leads. Reliable titles, transcripts, and episode-level verification were not recovered for them in this revision. Their summarized suggestions were assessed through the attached notes, not presented as independently watched or verified videos. No separately named podcast episode or podcast transcript was recovered. Do not invent a podcast attribution or claim complete coverage of unavailable recordings.
+
+D. PRIMARY GUIDANCE CHECKED FOR THIS REVISION
+
+Greenhouse, Unsuccessful resume parse:
+https://support.greenhouse.io/hc/en-us/articles/200989175-Unsuccessful-resume-parse
+Supports avoiding complex layouts and isolated contact fields, and checking partial field recovery. It documents a 2.5 MB parsing limit in its guidance; this is not a universal upload limit for all portals. It describes manual correction after failed parsing, not automatic rejection as an inevitable consequence.
+
+MIT Career Advising, Make your resume ATS-friendly:
+https://capd.mit.edu/resources/make-your-resume-ats-friendly/
+Supports common readable fonts, restrained formatting, meaningful job terminology, unbroken words, following requested file types, and text checks. Text checks remain only one layer of QA.
+
+Harvard Mignone Center, HES: Create Impactful Resumes and Cover Letters:
+https://careerservices.fas.harvard.edu/resources/hes-create-impactful-resumes-and-cover-letters/
+Supports specific factual writing, evidence-based tailoring, consistent readable presentation, and brief letters with relevant examples. Its sample phrasing does not override the applicant's established voice preferences.
+
+Microsoft, Create accessible PDFs:
+https://support.microsoft.com/en-us/accessibility/office-accessibility/create-accessible-pdfs
+Supports checking source accessibility and preserving document structure tags during export. Actual output still requires inspection.
+
+LibreOffice, PDF CLI Parameters:
+https://help.libreoffice.org/latest/en-US/text/shared/guide/pdf_params.html
+Documents UseTaggedPDF and other export options. Enabling an option is not proof of full PDF/UA compliance or correct reading order.
+
+The earlier Lever parsing reference and Yale formatting reference were attempted but did not yield usable article content in this retrieval. No new factual claim in this revision depends on their unavailable pages. Historical developer-tool references remain implementation options, not certifications: Mammoth, pdfplumber, Poppler, OpenResume, and Affinda.
+
+29. FINAL DELIVERY AND DEFINITION OF DONE
+
+Normal user-facing delivery should contain the company and exact role, the direct application URL, and working links to the resume and cover-letter PDFs. Include Word only for the exceptions above. Do not send the applicant through an aggregator when a verified employer-direct page is available. Mention only meaningful unresolved limitations, not internal logs or a lengthy testing report.
+
+A packet is complete when the available job information was reviewed; applicant facts and relevance were checked; both documents were tailored and reviewed for credibility and voice; the source and exports were generated correctly; extraction, structure, metadata, links, filenames, and final pages were checked; and the delivered files belong to the same applicant and application.
+
+Never substitute 'the file exported successfully' for this definition of done. The goal is a truthful, clearly structured application a person can read easily and a system can interpret with fewer avoidable errors.

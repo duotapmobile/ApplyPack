@@ -90,10 +90,21 @@ export async function renderDocumentLocallyForQa(input: DocumentRenderInput): Pr
   const pdfPath = join(work, `${stem}.pdf`);
   const textPath = join(work, `${stem}.txt`);
   const imageStem = join(work, `${stem}-page`);
-  const officeProfile = pathToFileURL(join(work, "libreoffice-profile")).href;
   try {
     await writeFile(inputPath, input.docx, { flag: "wx" });
-    await execute(configuration.tools.office.path, [`-env:UserInstallation=${officeProfile}`, "--headless", "--nologo", "--nodefault", "--nolockcheck", "--norestore", "--convert-to", DOCUMENT_REQUIREMENTS.pdfExportFilter, "--outdir", work, inputPath], 45_000);
+    let conversionError: unknown;
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const officeProfile = pathToFileURL(join(work, `libreoffice-profile-${attempt}`)).href;
+      try {
+        await execute(configuration.tools.office.path, [`-env:UserInstallation=${officeProfile}`, "--headless", "--nologo", "--nodefault", "--nolockcheck", "--norestore", "--convert-to", DOCUMENT_REQUIREMENTS.pdfExportFilter, "--outdir", work, inputPath], 45_000);
+        conversionError = undefined;
+        break;
+      } catch (error) {
+        conversionError = error;
+        await rm(pdfPath, { force: true });
+      }
+    }
+    if (conversionError) throw conversionError;
     const pdfInfo = await execute(configuration.tools.pdfInfo.path, [pdfPath], 10_000);
     if (!/^Tagged:\s+yes\s*$/im.test(pdfInfo)) throw new Error("rendered_pdf_not_tagged");
     assertPdfMetadata(pdfInfo, input.expectedMetadata);

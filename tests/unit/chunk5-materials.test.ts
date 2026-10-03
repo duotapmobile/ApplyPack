@@ -63,6 +63,9 @@ function fixture(): EvidenceBoundMaterialInput {
       exactTitle: "Operations Coordinator",
       employer: "Example Services",
       location: "Richmond, VA",
+      canonicalApplicationUrl: "https://jobs.example.invalid/operations-coordinator",
+      retrievedAt: "2026-10-03T12:00:00.000Z",
+      postedOn: null,
       postingContentSha256: "a".repeat(64),
       jobEvidenceIds: [JOB_EVIDENCE],
     },
@@ -158,6 +161,8 @@ describe("Chunk 5 materials contract", () => {
     expect(safeFilename("Jamie_Rivera_Resume_Example_Services_Operations_Coordinator.docx")).toBe(true);
     expect(safeFilename("Jamie_final_resume.docx")).toBe(false);
     expect(() => materialFilename({ displayName: "Jamie Rivera", artifact: "Resume", company: "Example", position: "Operations", extension: "docx", employerInstruction: "[Name]_final" })).toThrow("unsafe_employer_filename_instruction");
+    expect(materialFilename({ displayName: "Jamie Rivera", artifact: "Resume", company: "Example", position: "Operations",
+      extension: "pdf", employerInstruction: "Employer Required Final.pdf" })).toBe("Employer_Required_Final.pdf");
   });
 });
 
@@ -179,9 +184,16 @@ describe("Chunk 5 evidence-bound DOCX generation", () => {
     expect(generated.referenceSheet?.expectedPageCount).toBe(1);
     expect(generated.resume.filename).toBe("Jamie_Rivera_Resume_Example_Services.docx");
     expect(generated.coverLetter.filename).toBe("Jamie_Rivera_Cover_Letter_Example_Services.docx");
+    expect(generated.resume.metadata).toEqual({
+      title: "Jamie Rivera Resume - Example Services",
+      author: "Jamie Rivera",
+      subject: "Application for Operations Coordinator at Example Services",
+      language: "en-US",
+      keywords: "",
+    });
     expect(resume.extractedText).toContain("Administrative Specialist");
-    expect(resume.extractedText).toContain("Community Example 2021 to 2026 | Richmond, VA");
-    expect(resume.extractedText).toContain("Target role: Operations Coordinator");
+    expect(resume.extractedText).toContain("Community Example | 2021-2026 | Richmond, VA");
+    expect(resume.extractedText).not.toContain("Target role:");
     expect(resume.extractedText).not.toContain("OPERATIONS COORDINATOR");
     expect(resume.extractedText).not.toContain("Synthetic Reference");
     expect(resume.extractedText).not.toContain("References available upon request");
@@ -194,9 +206,18 @@ describe("Chunk 5 evidence-bound DOCX generation", () => {
       referencePermissionIds: [],
     });
     expect(generated.referenceSheet?.provenance.sourceBinding.referencePermissionIds).toEqual([REFERENCE_PERMISSION]);
+    expect(generated.resume.provenance.jobBinding).toEqual({
+      canonicalApplicationUrl: "https://jobs.example.invalid/operations-coordinator",
+      retrievedAt: "2026-10-03T12:00:00.000Z",
+      postedOn: null,
+    });
+    expect(resume.relationships).toEqual(expect.arrayContaining([
+      "mailto:jamie@example.invalid",
+      "https://example.invalid/jamie",
+    ]));
   });
 
-  it("uses natural name casing and keeps the cover-letter salutation and signature name unbolded", async () => {
+  it("preserves supplied name casing and keeps the cover-letter salutation and signature name unbolded", async () => {
     const input = fixture();
     input.contact.displayName = "MARISSA WRIGHT";
     const generated = await generateEvidenceBoundMaterials(input);
@@ -207,14 +228,14 @@ describe("Chunk 5 evidence-bound DOCX generation", () => {
     ]);
     const coverXml = await coverZip.file("word/document.xml")!.async("string");
     const paragraphs = [...coverXml.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)].map((match) => match[0]);
-    const nameParagraphs = paragraphs.filter((paragraphXml) => paragraphXml.includes("Marissa Wright"));
+    const nameParagraphs = paragraphs.filter((paragraphXml) => paragraphXml.includes("MARISSA WRIGHT"));
     const signature = nameParagraphs.at(-1);
     const salutation = paragraphs.find((paragraphXml) => paragraphXml.includes("Dear Example Services Hiring Team,"));
 
-    expect(resume.extractedText).toContain("Marissa Wright");
-    expect(cover.extractedText).toContain("Marissa Wright");
-    expect(resume.extractedText).not.toContain("MARISSA WRIGHT");
-    expect(cover.extractedText).not.toContain("MARISSA WRIGHT");
+    expect(resume.extractedText).toContain("MARISSA WRIGHT");
+    expect(cover.extractedText).toContain("MARISSA WRIGHT");
+    expect(resume.extractedText).not.toContain("Marissa Wright");
+    expect(cover.extractedText).not.toContain("Marissa Wright");
     expect(nameParagraphs).toHaveLength(2);
     expect(signature).toBeDefined();
     expect(signature).not.toMatch(/<w:b\b/);
@@ -284,11 +305,9 @@ describe("Chunk 5 evidence-bound DOCX generation", () => {
         priority: 1,
       })),
     }));
-    await expect(generateEvidenceBoundMaterials(twoPage)).rejects.toThrow("resume_content_requires_human_approved_two_page_exception");
-    twoPage.humanApprovedTwoPageException = true;
     const approved = await generateEvidenceBoundMaterials(twoPage);
     expect(approved.resume.expectedPageCount).toBe(2);
-    expect(approved.resume.provenance.fitActions).toContain("human_approved_two_page_exception");
+    expect(approved.resume.provenance.fitActions).toContain("substantive_two_page_resume");
   });
 
   it("fails closed on incomplete or contradictory requirement maps", async () => {
@@ -303,6 +322,15 @@ describe("Chunk 5 evidence-bound DOCX generation", () => {
       candidateFactIds: [FACT_ONE],
     };
     await expect(generateEvidenceBoundMaterials(contradictory)).rejects.toThrow("requirement_mapping_evidence_conflict");
+  });
+
+  it("requires a direct HTTPS application URL and separately recorded retrieval date", async () => {
+    const badUrl = fixture();
+    badUrl.job.canonicalApplicationUrl = "http://jobs.example.invalid/operations-coordinator";
+    await expect(generateEvidenceBoundMaterials(badUrl)).rejects.toThrow("job_direct_application_url_required");
+    const missingRetrieval = fixture();
+    missingRetrieval.job.retrievedAt = "unknown";
+    await expect(generateEvidenceBoundMaterials(missingRetrieval)).rejects.toThrow("job_retrieval_date_required");
   });
 
   it("preserves candidate diacritics in exact delivery filenames", () => {

@@ -17,7 +17,7 @@ export function rendererApprovalMatches(approval: Approval | null, runtime: Rend
   return Boolean(approval && runtime.ready && approval.materials_generation_approved
     && approval.materials_generation_approval_reference?.trim()
     && approval.document_renderer_identity === runtime.identity
-    && approval.document_font_family === "Liberation Sans"
+    && approval.document_font_family === "Arial"
     && approval.document_font_sha256 === runtime.documentFont.sha256
     && approval.document_safety_policy === "generated-structural-v1"
     && ["DOCX", "PDF"].every(format => approval.material_output_formats.includes(format)));
@@ -53,7 +53,7 @@ export async function checkDocumentRendererReadiness(admin: AdminClient) {
     return Boolean(approval && worker.ready && approval.materials_generation_approved
       && approval.materials_generation_approval_reference?.trim()
       && approval.document_renderer_identity === worker.identity
-      && approval.document_font_family === "Liberation Sans"
+      && approval.document_font_family === "Arial"
       && approval.document_font_sha256 === worker.fontSha256
       && approval.document_worker_network_attestation_sha256 === worker.networkAttestationSha256
       && approval.document_safety_policy === "generated-structural-v1"

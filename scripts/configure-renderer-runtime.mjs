@@ -34,11 +34,11 @@ export function configureRendererRuntime(environment = process.env, dependencies
     pins.push([name, actual]);
   }
   for (const [name, path] of Object.entries(executablePaths)) pin(name, path);
-  const match = run("/usr/bin/fc-match", ["--format=%{family}\n%{file}\n", "Liberation Sans:style=Regular"], {
+  const match = run("/usr/bin/fc-match", ["--format=%{family}\n%{file}\n", "Arial:style=Regular"], {
     encoding: "utf8", timeout: 5_000, maxBuffer: 4_096, windowsHide: true,
   }).trim().split("\n");
-  if (match.length !== 2 || !match[0].split(",").map((value) => value.trim()).includes("Liberation Sans")
-    || !isAbsolute(match[1])) throw new Error("renderer_liberation_sans_unavailable");
+  if (match.length !== 2 || !match[0].split(",").map((value) => value.trim()).includes("Arial")
+    || !isAbsolute(match[1])) throw new Error("renderer_arial_unavailable");
   pin("APP_DOCUMENT_FONT_FILE", match[1]);
   const resolvedFontHash = createHash("sha256").update(read(match[1])).digest("hex");
   if (configured.APP_DOCUMENT_FONT_FILE_SHA256 !== resolvedFontHash) throw new Error("renderer_configured_font_differs_from_resolved_font");

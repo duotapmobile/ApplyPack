@@ -15,14 +15,14 @@ function runtime(identity = "renderer-v1", path = "/runtime/approved-tool") {
  tools: { office: tool, pdfInfo: tool, pdfFonts: tool, pdfText: tool, pdfPpm: tool } } as ReturnType<typeof documentRendererConfiguration>;
 }
 const approval = { materials_generation_approved: true, materials_generation_approval_reference: "review-v1",
- material_output_formats: ["DOCX", "PDF"], document_renderer_identity: "renderer-v1", document_font_family: "Liberation Sans",
+ material_output_formats: ["DOCX", "PDF"], document_renderer_identity: "renderer-v1", document_font_family: "Arial",
  document_font_sha256: sha256, document_safety_policy: "generated-structural-v1",
  document_worker_network_attestation_sha256: "a".repeat(64) };
 describe("renderer readiness uses current approval and actual pins", () => {
  it("rejects revoked approval, wrong policy, wrong font, missing PDF and changed runtime", () => {
   expect(rendererApprovalMatches(approval, runtime())).toBe(true);
   for (const changed of [{ materials_generation_approved: false }, { document_safety_policy: "malware-clean" },
-   { document_font_family: "Arial" }, { material_output_formats: ["DOCX"] }, { document_renderer_identity: "old-renderer" },
+   { document_font_family: "Liberation Sans" }, { material_output_formats: ["DOCX"] }, { document_renderer_identity: "old-renderer" },
    { document_font_sha256: "0".repeat(64) }]) expect(rendererApprovalMatches({ ...approval, ...changed }, runtime())).toBe(false);
  });
  it("reads configured files and rejects substituted bytes", async () => {

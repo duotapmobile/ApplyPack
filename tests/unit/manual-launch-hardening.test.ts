@@ -91,6 +91,7 @@ describe("October 2 manual-launch hardening", () => {
     const finalize = source("src/app/api/intake/anonymous-draft/finalize/route.ts");
     const wizard = source("src/app/get-started/wizard-v3.tsx");
     const migration = source("supabase/migrations/202610030064_atomic_sensitive_intake_finalization.sql");
+    const rollbackCompatibility = source("supabase/migrations/202610030065_preserve_intake_rollback_compatibility.sql");
     expect(finalize).toContain('rpc("ap_finalize_four_step_intake_with_legal_acceptance_v2"');
     expect(finalize).not.toContain('rpc("ap_record_snapshot_legal_acceptance"');
     expect(finalize).not.toContain('from("ap_sensitive_payloads").insert');
@@ -105,6 +106,9 @@ describe("October 2 manual-launch hardening", () => {
     expect(migration).toContain("join public.ap_snapshot_legal_acceptances acceptance");
     expect(migration).toContain("revoke all on function public.ap_finalize_four_step_intake(");
     expect(migration).toContain("revoke all on function public.ap_record_snapshot_legal_acceptance(");
+    expect(rollbackCompatibility).toContain("from public,anon,authenticated");
+    expect(rollbackCompatibility).toContain("to service_role");
+    expect(rollbackCompatibility).toContain("INTAKE_ROLLBACK_COMPATIBILITY");
   });
 
   it("forces production envelope encryption through AWS KMS and probes the isolated renderer", () => {
@@ -113,6 +117,7 @@ describe("October 2 manual-launch hardening", () => {
     const readiness = source("src/lib/operations/renderer-readiness.ts");
     const launchReadiness = source("src/lib/operations/launch-readiness.ts");
     const workerTemplate = source("infra/aws/document-worker/template.yaml");
+    const documentPolicy = source("supabase/migrations/202610030066_locked_document_generation_standard.sql");
     expect(kms).toContain('environment.APP_DEPLOYMENT_ENV === "production"');
     expect(kms).toContain('environment.APP_KMS_PROVIDER !== "aws"');
     expect(worker).toContain('region === "us-east-1"');
@@ -148,6 +153,9 @@ describe("October 2 manual-launch hardening", () => {
     expect(workerTemplate).toContain("ec2:DescribeSubnets");
     expect(workerTemplate).toContain("ec2:AssignPrivateIpAddresses");
     expect(workerTemplate).toContain("ec2:UnassignPrivateIpAddresses");
+    expect(documentPolicy).toContain("document_font_family='Arial'");
+    expect(documentPolicy).toContain("materials_generation_approved=false");
+    expect(documentPolicy).toContain("LOCKED_DOCUMENT_GENERATION_STANDARD");
   });
 
   it("binds refunds to immutable provider payment semantics and retires subscription renewals", () => {

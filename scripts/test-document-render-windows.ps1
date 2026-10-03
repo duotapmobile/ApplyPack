@@ -19,13 +19,13 @@ $pins = @{
   APP_PDFFONTS_EXECUTABLE = (Resolve-Executable pdffonts.exe)
   APP_PDFTOTEXT_EXECUTABLE = (Resolve-Executable pdftotext.exe)
   APP_PDFTOPPM_EXECUTABLE = (Resolve-Executable pdftoppm.exe)
-  APP_DOCUMENT_FONT_FILE = 'C:\Windows\Fonts\LiberationSans-Regular.ttf'
+  APP_DOCUMENT_FONT_FILE = 'C:\Windows\Fonts\arial.ttf'
 }
 foreach ($pin in $pins.GetEnumerator()) {
   [Environment]::SetEnvironmentVariable($pin.Key, $pin.Value, 'Process')
   [Environment]::SetEnvironmentVariable(($pin.Key + '_SHA256'), (Get-FileHash -LiteralPath $pin.Value -Algorithm SHA256).Hash.ToLower(), 'Process')
 }
-$env:APP_DOCUMENT_RENDERER_IDENTITY = 'applypack-windows-local-qa-2026-09-22'
+$env:APP_DOCUMENT_RENDERER_IDENTITY = 'applypack-windows-local-qa-2026-10-03'
 $env:APPLYPACK_RENDER_EVIDENCE_DIR = Join-Path (Get-Location) ('evidence/applypack-chunk5-render-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
-npm.cmd run test:document-render
-exit $LASTEXITCODE
+npm.cmd run test:document-render -- --reporter=verbose
+if ($LASTEXITCODE -ne 0) { throw "Document render tests failed with exit code $LASTEXITCODE." }

@@ -10,9 +10,9 @@ const dependencies = {
   readFileSync: () => Buffer.from("synthetic fixture bytes"),
   execFileSync: (path, args, options) => {
     assert.equal(path, "/usr/bin/fc-match");
-    assert.equal(args[1], "Liberation Sans:style=Regular");
+    assert.equal(args[1], "Arial:style=Regular");
     assert.equal(options.timeout, 5000);
-    return "Liberation Sans\n/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf\n";
+    return "Arial\n/usr/share/fonts/truetype/msttcorefonts/Arial.ttf\n";
   },
 };
 
@@ -40,7 +40,7 @@ test("explicit mismatched pins fail without partially mutating configuration", (
 test("font fallback and command timeout both fail closed", () => {
   const environment = { APP_RENDERER_RUNTIME_DISCOVERY: "true" };
   assert.throws(() => configureRendererRuntime(environment, { ...dependencies,
-    execFileSync: () => "DejaVu Sans\n/usr/share/fonts/fallback.ttf\n" }), /liberation_sans_unavailable/);
+    execFileSync: () => "Liberation Sans\n/usr/share/fonts/fallback.ttf\n" }), /renderer_arial_unavailable/);
   assert.throws(() => configureRendererRuntime(environment, { ...dependencies,
     execFileSync: () => { throw new Error("ETIMEDOUT"); } }), /ETIMEDOUT/);
   assert.equal(environment.APP_DOCUMENT_FONT_FILE, undefined);

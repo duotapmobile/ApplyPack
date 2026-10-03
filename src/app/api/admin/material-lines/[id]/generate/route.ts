@@ -15,6 +15,7 @@ import {
 import { documentRendererConfiguration, renderDocumentForQa } from "@/lib/documents/renderer";
 import { documentWorkerConfiguration } from "@/lib/files/aws-document-worker";
 import { validateMaterialClaims } from "@/lib/documents/claim-validation";
+import { selectDocumentOutputFormat } from "@/lib/documents/requirements";
 import { materialFilename } from "@/lib/materials/contract";
 import { readReferencePayload, type StoredReferenceEnvelope } from "@/lib/materials/references";
 import { readMaterialContact, type StoredMaterialContactEnvelope } from "@/lib/materials/server";
@@ -104,7 +105,7 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
   const [{ data: intent }, { data: job }, { data: rule }, { data: generationConfiguration }] = await Promise.all([
     auth.admin.from("ap_material_checkout_intents").select("contact_payload_id,career_break_choice,career_break_custom_label,cover_letter_break_consent")
       .eq("id", purchase.checkout_intent_id).eq("customer_id", purchase.customer_id).maybeSingle(),
-    auth.admin.from("ap_job_snapshots").select("id,company,exact_title,location_and_work_mode,content_sha256,captured_listing")
+    auth.admin.from("ap_job_snapshots").select("id,company,exact_title,location_and_work_mode,canonical_application_url,retrieved_at,posted_on,content_sha256,captured_listing")
       .eq("id", revision.job_snapshot_id).maybeSingle(),
     auth.admin.from("ap_employer_submission_rules")
       .select("id,content_sha256,allowed_formats,resume_page_limit,resume_filename_instruction,cover_letter_filename_instruction,reference_filename_instruction,reference_timing,reference_count,hard_block_reason,injection_scan_state,is_current,checked_at")
@@ -132,7 +133,7 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
     || !generationConfiguration.material_output_formats.length
     || !rendererReady
     || generationConfiguration.document_safety_policy !== "generated-structural-v1") {
-    return response({ error: "Approved Liberation Sans rendering and structural document policy are required." }, 503);
+    return response({ error: "Approved Arial rendering and structural document policy are required." }, 503);
   }
   const now = new Date();
   const dueAt = line.materials_due_at ? new Date(line.materials_due_at) : null;
@@ -196,9 +197,7 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
   }
   const location = stringValue(job.location_and_work_mode, "location") || stringValue(job.location_and_work_mode, "locationText") || null;
   const allowedFormats = Array.isArray(rule.allowed_formats) ? rule.allowed_formats : [];
-  const outputFormat: "DOCX" | "PDF" | null = allowedFormats.includes("DOCX")
-    && generationConfiguration.material_output_formats.includes("DOCX") ? "DOCX"
-    : allowedFormats.includes("PDF") && generationConfiguration.material_output_formats.includes("PDF") ? "PDF" : null;
+  const outputFormat = selectDocumentOutputFormat(allowedFormats, generationConfiguration.material_output_formats);
   if (!outputFormat) return response({ error: "No approved output format satisfies the current employer instructions." }, 409);
   if (!/^[0-9a-f]{64}$/i.test(job.content_sha256)
     || !job.captured_listing || typeof job.captured_listing !== "object" || Array.isArray(job.captured_listing)
@@ -224,6 +223,9 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
       exactTitle: job.exact_title,
       employer: job.company,
       location,
+      canonicalApplicationUrl: job.canonical_application_url,
+      retrievedAt: job.retrieved_at,
+      postedOn: job.posted_on,
       postingContentSha256: job.content_sha256,
       jobEvidenceIds: requirementIds,
     },
@@ -521,9 +523,13 @@ async function validateUploadAndRegister(input: {
       && new Set(input.artifact.provenance.requirementMappings.map((mapping) => mapping.jobEvidenceId)).size
         === input.artifact.provenance.requirementMappings.length,
     postingContentBound: /^[0-9a-f]{64}$/i.test(input.artifact.provenance.postingContentSha256),
-    versionTupleBound: input.artifact.provenance.versions.content === input.artifact.versions.content
+    versionTupleBound: input.artifact.provenance.versions.instructions === input.artifact.versions.instructions
+      && input.artifact.provenance.versions.content === input.artifact.versions.content
       && input.artifact.provenance.versions.template === input.artifact.versions.template
       && input.artifact.provenance.versions.exporter === input.artifact.versions.exporter,
+    directApplicationUrlBound: input.artifact.provenance.jobBinding.canonicalApplicationUrl.startsWith("https://")
+      && Boolean(input.artifact.provenance.jobBinding.retrievedAt),
+    cacheIdentityBound: /^[0-9a-f]{64}$/i.test(input.artifact.provenance.cacheIdentitySha256),
   };
   const registered = await input.admin.rpc("ap_register_material_artifact_version", {
     p_artifact_id: artifactId,

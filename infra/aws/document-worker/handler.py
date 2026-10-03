@@ -130,17 +130,19 @@ def _probe_document(data, limits):
 
 
 def _font_sha256():
-    configured = os.environ.get("LIBERATION_SANS_FONT_PATH")
+    configured = os.environ.get("ARIAL_FONT_PATH")
     if configured:
         path = Path(configured)
         if not path.is_file():
             raise ValueError("font_unavailable")
         return hashlib.sha256(path.read_bytes()).hexdigest()
     match = subprocess.run(
-        ["fc-match", "--format=%{file}", "Liberation Sans"],
+        ["fc-match", "--format=%{family}\n%{file}", "Arial:style=Regular"],
         capture_output=True, text=True, timeout=5, check=True,
-    ).stdout.strip()
-    path = Path(match)
+    ).stdout.strip().splitlines()
+    if len(match) != 2 or "Arial" not in [family.strip() for family in match[0].split(",")]:
+        raise ValueError("arial_font_unavailable")
+    path = Path(match[1])
     if not path.is_file():
         raise ValueError("font_unavailable")
     return hashlib.sha256(path.read_bytes()).hexdigest()

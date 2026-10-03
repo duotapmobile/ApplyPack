@@ -263,7 +263,7 @@ insert into public.ap_generated_artifacts(
   '25000000-0000-4000-8000-000000000001','b5000000-0000-4000-8000-000000000001',
   '75000000-0000-4000-8000-000000000001','RESUME',
   '45000000-0000-4000-8000-000000000001','c5000000-0000-4000-8000-000000000001',
-  '{"sourceBinding":{"candidateFactIds":["65000000-0000-4000-8000-000000000001"]},"claims":[{"source":"customer-confirmed"}]}','applypack-documents|content=applypack-content-2026-09-22.1|template=applypack-template-2026-09-22.1|exporter=libreoffice-tagged-pdf-2026-09-22.1',1
+  '{"sourceBinding":{"candidateFactIds":["65000000-0000-4000-8000-000000000001"]},"claims":[{"source":"customer-confirmed"}]}','applypack-documents|instructions=applypack-universal-document-standard-2026-10-03.1|standardSha256=1d85789d434c0252d1797e366cd732931756fd4baa74bc36045fdeb2547786cf|content=applypack-content-2026-10-03.1|template=applypack-template-2026-10-03.1|exporter=libreoffice-tagged-pdf-2026-10-03.1',1
 );
 insert into public.ap_generated_file_versions(
   id,artifact_id,version,storage_bucket,storage_path,checksum_sha256,mime_type,size_bytes,
@@ -277,7 +277,7 @@ insert into public.ap_generated_file_versions(
   '15000000-0000-4000-8000-000000000003',clock_timestamp()-interval '4 minutes',
   'Chunk_5_Fixture_Employer_Operations_Specialist_Resume.docx',repeat('b',64),repeat('d',64)
 );
-update public.ap_commerce_configuration set document_font_family='Liberation Sans',document_font_sha256=repeat('f',64),document_safety_policy='generated-structural-v1',document_renderer_identity='fixture-renderer-v1' where singleton;
+update public.ap_commerce_configuration set document_font_family='Arial',document_font_sha256=repeat('f',64),document_safety_policy='generated-structural-v1',document_renderer_identity='fixture-renderer-v1' where singleton;
 insert into public.ap_artifact_quality_reviews(
   id,file_version_id,binding_sha256,structural_checks,provenance_checks,extracted_text_sha256,
   rendered_page_count,renderer_identity,document_font_sha256,document_safety_policy,

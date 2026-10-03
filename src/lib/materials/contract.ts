@@ -66,9 +66,11 @@ export function cleanUntrustedDocumentText(value: string) {
 }
 
 export function assertDeliverableText(value: string) {
-  const cleaned = cleanUntrustedDocumentText(value);
-  if (!cleaned || placeholderPattern.test(cleaned)) throw new Error("deliverable_placeholder_or_empty_text");
-  return cleaned;
+  const securityNormalized = cleanUntrustedDocumentText(value);
+  if (!securityNormalized || placeholderPattern.test(securityNormalized)) throw new Error("deliverable_placeholder_or_empty_text");
+  return value.normalize("NFC")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, "")
+    .replace(/\s+/gu, " ").trim();
 }
 
 export function careerBreakPresentation(input: {
@@ -121,14 +123,21 @@ export function materialFilename(input: {
   const result = [person, input.artifact, company].join("_") + "." + input.extension;
   if (!safeFilename(result)) throw new Error("generated_filename_invalid");
   if (input.employerInstruction) {
-    const explicit = input.employerInstruction.normalize("NFKC").replace(/[\\/:*?"<>|]/g, "_").replace(/\s+/g, "_");
+    const instruction = cleanUntrustedDocumentText(input.employerInstruction);
+    if (placeholderPattern.test(instruction)) throw new Error("unsafe_employer_filename_instruction");
+    const explicit = instruction.normalize("NFKC").replace(/\s+/g, "_");
     const withExtension = explicit.toLowerCase().endsWith("." + input.extension) ? explicit : explicit + "." + input.extension;
-    if (!safeFilename(withExtension)) throw new Error("unsafe_employer_filename_instruction");
-    if (withExtension.toLocaleLowerCase("en-US") !== result.toLocaleLowerCase("en-US")) {
-      throw new Error("employer_filename_conflicts_with_delivery_contract");
-    }
+    if (!safeExplicitEmployerFilename(withExtension, input.extension)) throw new Error("unsafe_employer_filename_instruction");
+    return withExtension;
   }
   return result;
+}
+
+function safeExplicitEmployerFilename(value: string, extension: "docx" | "pdf") {
+  return value.length <= 180
+    && new RegExp(`^[^/\\\\:*?"<>|]{1,175}\\.${extension}$`, "i").test(value)
+    && !/[\[\]]/.test(value)
+    && !/(?:^|\.)\.?\.?(?:\/|\\)/.test(value);
 }
 
 export function safeFilename(value: string) {

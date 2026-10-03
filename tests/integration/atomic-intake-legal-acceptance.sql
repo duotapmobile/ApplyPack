@@ -108,10 +108,13 @@ select pg_temp.assert_true(
   and not has_function_privilege('authenticated','public.ap_finalize_four_step_intake(uuid,text,bigint,uuid,jsonb,text,uuid,jsonb)','EXECUTE')
   and not has_function_privilege('anon','public.ap_record_snapshot_legal_acceptance(uuid,text,uuid,text,text,text)','EXECUTE')
   and not has_function_privilege('authenticated','public.ap_record_snapshot_legal_acceptance(uuid,text,uuid,text,text,text)','EXECUTE')
+  and not has_function_privilege('anon','public.ap_finalize_four_step_intake_with_legal_acceptance(uuid,text,bigint,uuid,jsonb,text,uuid,jsonb,text,text,text)','EXECUTE')
+  and not has_function_privilege('authenticated','public.ap_finalize_four_step_intake_with_legal_acceptance(uuid,text,bigint,uuid,jsonb,text,uuid,jsonb,text,text,text)','EXECUTE')
   and not has_function_privilege('anon','public.ap_finalize_four_step_intake_with_legal_acceptance_v2(uuid,text,bigint,uuid,jsonb,text,uuid,bytea,text,bytea,bytea,bytea,text,text,text,text,jsonb,text,text,text)','EXECUTE')
   and not has_function_privilege('authenticated','public.ap_finalize_four_step_intake_with_legal_acceptance_v2(uuid,text,bigint,uuid,jsonb,text,uuid,bytea,text,bytea,bytea,bytea,text,text,text,text,jsonb,text,text,text)','EXECUTE')
   and has_function_privilege('service_role','public.ap_finalize_four_step_intake(uuid,text,bigint,uuid,jsonb,text,uuid,jsonb)','EXECUTE')
   and has_function_privilege('service_role','public.ap_record_snapshot_legal_acceptance(uuid,text,uuid,text,text,text)','EXECUTE')
+  and has_function_privilege('service_role','public.ap_finalize_four_step_intake_with_legal_acceptance(uuid,text,bigint,uuid,jsonb,text,uuid,jsonb,text,text,text)','EXECUTE')
   and has_function_privilege('service_role','public.ap_finalize_four_step_intake_with_legal_acceptance_v2(uuid,text,bigint,uuid,jsonb,text,uuid,bytea,text,bytea,bytea,bytea,text,text,text,text,jsonb,text,text,text)','EXECUTE'),
   'intake finalization function privileges are not fail closed'
 );

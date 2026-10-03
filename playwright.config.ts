@@ -6,7 +6,10 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   timeout: 120_000,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : 2,
+  // Next's development acceptance server can perform document-replacing
+  // compiles when multiple browser engines first visit the same fixture route.
+  // Serialize projects so those reloads cannot corrupt another journey.
+  workers: 1,
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL: "http://127.0.0.1:3100",

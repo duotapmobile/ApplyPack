@@ -1,0 +1,94 @@
+# October 3 Document Standard Alignment
+
+Date: 2026-10-03
+
+Status: source implementation accepted locally; public checkout remains locked.
+
+## Authority binding
+
+The supplied `Formatting(2).txt` is preserved line-for-line at
+`docs/applypack/13_UNIVERSAL_RESUME_AND_COVER_LETTER_STANDARD.txt`.
+
+Normalized LF SHA-256:
+
+`1d85789d434c0252d1797e366cd732931756fd4baa74bc36045fdeb2547786cf`
+
+The generator version includes both the immutable instruction version and this
+hash. A unit test recomputes the tracked file hash so a silent standard change
+fails acceptance.
+
+## Enforced in code
+
+- Candidate identity, contact details, employment, education, references, job
+  requirements, company, role, direct application URL, and observation dates
+  are read from verified inputs. No applicant profile is hard-coded.
+- Generated factual claims retain immutable candidate-fact and job-evidence
+  identifiers. Artifacts also bind the job URL, retrieval date, posting hash,
+  generator tuple, and a deterministic cache identity.
+- Résumés and cover letters use US Letter pages, 0.55-inch top/bottom margins,
+  0.70-inch side margins, Arial, black text, one column, real paragraph styles,
+  native bullets, and dark-gray paragraph borders under major résumé headings.
+- The exact supplied name casing and Unicode characters are preserved. Contact
+  text stays in the document body; email and portfolio values have visible,
+  validated hyperlink targets.
+- Résumé employment headers use a two-line title then employer/date/location
+  treatment. Displayed date ranges use an ASCII hyphen. Generated prose rejects
+  en and em dashes.
+- The résumé summary is natural prose and no longer adds a `Target role:` banner.
+  Substantive verified history may produce a two-page résumé without deleting
+  required experience.
+- Cover letters require three or four supported paragraphs, job/company
+  specificity, two to four evidence points, a correct salutation, and an
+  unbolded signoff.
+- PDF is selected before DOCX when both formats are allowed. A safe explicit
+  employer filename instruction takes precedence; otherwise filenames use the
+  locked candidate/artifact/company convention.
+- PDF metadata uses the candidate as author and binds the exact company and role
+  in title and subject. Generated DOCX packages reject hidden text, unsafe
+  relationships, drawings, text boxes, tables, headers, footers, comments,
+  tracked changes, and prompt artifacts.
+- Production renderer readiness now requires actual Arial bytes and a matching
+  SHA-256. The AWS worker image accepts a licensed Arial TTF only through a
+  BuildKit secret and fails closed on font fallback.
+- Forward migration `202610030066_locked_document_generation_standard.sql`
+  disables prior material-generation approval until the Arial renderer is
+  reapproved and records a launch checkpoint. No published migration was edited.
+
+## Local acceptance evidence
+
+- Lint: passed.
+- Type checking: passed.
+- Unit/integration suite: 85 files, 604 tests passed.
+- Production build: passed on Next.js 16.3.8.
+- Production dependency audit: zero vulnerabilities.
+- Database contract fixtures: 11 passed.
+- Database types: match the local migrated schema.
+- Historical-data upgrade fixture: passed.
+- Rollback-compatibility fixture: passed; local schema restored through all 71
+  migrations.
+- Browser matrix: 301 passed, 24 intentional project-specific skips, zero
+  failures across desktop Chromium, Firefox, desktop WebKit, mobile WebKit, and
+  mobile Chromium.
+- Real local render QA: seven artifacts across eight pages; searchable tagged
+  PDFs, exact extracted text, metadata, structure trees, and visual page review
+  passed. Arial file SHA-256:
+  `b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a`.
+- Final render evidence directory:
+  `evidence/applypack-chunk5-render-20261003-163955`.
+
+## Required human and hosted proof
+
+The locked standard requires judgment that cannot be truthfully replaced by a
+unit test. Operators must still verify factual accuracy, chronology, job-map
+coverage, natural language, visual hierarchy, employer instructions, working
+links, and final PDF appearance before release. Native Microsoft Word/Arial,
+commercial parser behavior, and assistive-technology behavior are not proven by
+the local LibreOffice render.
+
+Production AWS KMS and isolated-renderer attestation, hosted staging journeys,
+three-account isolation, real payment/refund canaries, maintenance and alert
+evidence, backup restoration, manual accessibility testing, permitted real-job
+inventory rehearsal, tax approval, production migration/deployment, exact-SHA
+health, and supervisor signatures remain separate launch gates. Until those
+gates pass, the only accurate launch verdict is `NOT READY` and checkout must
+remain locked.
