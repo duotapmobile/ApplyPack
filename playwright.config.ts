@@ -14,7 +14,10 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: "npm run dev -- --hostname 127.0.0.1 --port 3100",
+    // The Turbopack development HMR client intermittently drops generated chunks
+    // under the parallel WebKit matrix. Webpack keeps the acceptance server
+    // deterministic while the production build remains a separate required gate.
+    command: "npm run dev -- --webpack --hostname 127.0.0.1 --port 3100",
     url: "http://127.0.0.1:3100",
     env: { ...process.env, APP_E2E_FIXTURE_MODE: "true" },
     reuseExistingServer: false,

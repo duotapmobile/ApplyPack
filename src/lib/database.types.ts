@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -1494,6 +1489,7 @@ export type Database = {
           document_safety_policy: string | null
           download_ttl_seconds: number | null
           immediate_payment_methods: string[]
+          launch_product_scope: string
           malware_scanner_identity: string | null
           material_line_price_cents: number
           material_output_formats: string[]
@@ -1508,6 +1504,8 @@ export type Database = {
           provider_idempotent_email_approved: boolean
           reauthentication_window_seconds: number | null
           release_verification_ttl_seconds: number | null
+          sales_activation_approved: boolean
+          sales_activation_reference: string | null
           search_price_cents: number
           singleton: boolean
           tax_approval_reference: string | null
@@ -1530,6 +1528,7 @@ export type Database = {
           document_safety_policy?: string | null
           download_ttl_seconds?: number | null
           immediate_payment_methods?: string[]
+          launch_product_scope?: string
           malware_scanner_identity?: string | null
           material_line_price_cents?: number
           material_output_formats?: string[]
@@ -1544,6 +1543,8 @@ export type Database = {
           provider_idempotent_email_approved?: boolean
           reauthentication_window_seconds?: number | null
           release_verification_ttl_seconds?: number | null
+          sales_activation_approved?: boolean
+          sales_activation_reference?: string | null
           search_price_cents?: number
           singleton?: boolean
           tax_approval_reference?: string | null
@@ -1566,6 +1567,7 @@ export type Database = {
           document_safety_policy?: string | null
           download_ttl_seconds?: number | null
           immediate_payment_methods?: string[]
+          launch_product_scope?: string
           malware_scanner_identity?: string | null
           material_line_price_cents?: number
           material_output_formats?: string[]
@@ -1580,6 +1582,8 @@ export type Database = {
           provider_idempotent_email_approved?: boolean
           reauthentication_window_seconds?: number | null
           release_verification_ttl_seconds?: number | null
+          sales_activation_approved?: boolean
+          sales_activation_reference?: string | null
           search_price_cents?: number
           singleton?: boolean
           tax_approval_reference?: string | null
@@ -6548,6 +6552,87 @@ export type Database = {
         }
         Relationships: []
       }
+      ap_search_checkout_invitations: {
+        Row: {
+          assessment_id: string
+          capacity_allocation_id: string
+          consumed_at: string | null
+          draft_id: string
+          expires_at: string
+          id: string
+          issued_at: string
+          issued_by: string
+          rationale: string
+          revoked_at: string | null
+          secret_hash: string
+          snapshot_id: string
+        }
+        Insert: {
+          assessment_id: string
+          capacity_allocation_id: string
+          consumed_at?: string | null
+          draft_id: string
+          expires_at: string
+          id: string
+          issued_at?: string
+          issued_by: string
+          rationale: string
+          revoked_at?: string | null
+          secret_hash: string
+          snapshot_id: string
+        }
+        Update: {
+          assessment_id?: string
+          capacity_allocation_id?: string
+          consumed_at?: string | null
+          draft_id?: string
+          expires_at?: string
+          id?: string
+          issued_at?: string
+          issued_by?: string
+          rationale?: string
+          revoked_at?: string | null
+          secret_hash?: string
+          snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_search_checkout_invitations_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "ap_feasibility_assessments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_checkout_invitations_capacity_allocation_id_fkey"
+            columns: ["capacity_allocation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_capacity_allocations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_checkout_invitations_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_checkout_invitations_issued_by_fkey"
+            columns: ["issued_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_checkout_invitations_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_search_deadline_history: {
         Row: {
           capacity_allocation_id: string
@@ -10628,6 +10713,37 @@ export type Database = {
         }
         Returns: Json
       }
+      ap_begin_invited_search_checkout: {
+        Args: {
+          p_access_payload_id?: string
+          p_assessment_id: string
+          p_browser_secret_hash: string
+          p_checkout_attempt_id: string
+          p_command_id: string
+          p_draft_id: string
+          p_email_secret_hash: string
+          p_invitation_id: string
+          p_invitation_secret_hash: string
+          p_payment_attempt_id: string
+          p_provider_idempotency_key: string
+          p_quote_id: string
+          p_quote_sha256: string
+          p_request_key: string
+          p_secret_hash: string
+          p_snapshot_id: string
+        }
+        Returns: {
+          access_email: string
+          allocation_id: string
+          checkout_attempt_id: string
+          command_id: string
+          lease_expires_at: string
+          payment_attempt_id: string
+          provider_idempotency_key: string
+          quote_id: string
+          reservation_expires_at: string
+        }[]
+      }
       ap_begin_material_checkout: {
         Args: {
           p_career_break_choice: string
@@ -11264,6 +11380,19 @@ export type Database = {
           p_outbox_id: string
           p_payload_id: string
           p_secret_hash: string
+        }
+        Returns: string
+      }
+      ap_issue_search_checkout_invitation: {
+        Args: {
+          p_assessment_id: string
+          p_draft_id: string
+          p_expires_at: string
+          p_invitation_id: string
+          p_issued_by: string
+          p_rationale: string
+          p_secret_hash: string
+          p_snapshot_id: string
         }
         Returns: string
       }
@@ -12422,12 +12551,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12451,11 +12580,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12476,11 +12605,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12501,11 +12630,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12518,11 +12647,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

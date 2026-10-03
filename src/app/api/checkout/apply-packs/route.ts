@@ -4,6 +4,7 @@ import type Stripe from "stripe";
 import { z } from "zod";
 import { canonicalApplicationOrigin, deterministicUuid, postgresBytea } from "@/lib/commerce/server";
 import { documentRendererConfiguration } from "@/lib/documents/renderer";
+import { documentWorkerConfiguration } from "@/lib/files/aws-document-worker";
 
 import { careerBreakPresentation, MATERIAL_LINE_PRICE_CENTS, materialTotalCents } from "@/lib/materials/contract";
 import { materialCheckoutRequestKey, materialSelectionSha256 } from "@/lib/materials/server";
@@ -16,6 +17,7 @@ import {
   sensitivePayloadEncryptionReady,
 } from "@/lib/security/sensitive-payload";
 import { assertConfiguredPrice, createStripeMaterialsClient } from "@/lib/stripe/server";
+import { APPLY_PACK_CONTRACT_VERSION } from "@/lib/domain/applypack";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -136,6 +138,12 @@ export async function POST(request: Request) {
     .eq("singleton", true).maybeSingle();
   const commerce = configuration as CommerceConfiguration | null;
   const renderer = documentRendererConfiguration();
+  const worker = documentWorkerConfiguration();
+  const productionRendererReady = process.env.APP_DEPLOYMENT_ENV === "production"
+    ? worker.ready && worker.identity === commerce?.document_renderer_identity
+      && worker.fontSha256 === commerce?.document_font_sha256
+    : renderer.ready && renderer.identity === commerce?.document_renderer_identity
+      && renderer.documentFont.sha256 === commerce?.document_font_sha256;
 
   if (configurationError || !commerce || !commerce.checkout_enabled
     || commerce.canonical_site_url !== applicationOrigin
@@ -148,8 +156,7 @@ export async function POST(request: Request) {
     || commerce.immediate_payment_methods.length !== 1 || commerce.immediate_payment_methods[0] !== "card"
     || !commerce.materials_generation_approved || !commerce.materials_generation_approval_reference
     || !commerce.material_output_formats.length
-    || !renderer.ready || renderer.identity !== commerce.document_renderer_identity
-    || renderer.documentFont.sha256 !== commerce.document_font_sha256
+    || !productionRendererReady
     || commerce.document_safety_policy !== "generated-structural-v1") {
     return NextResponse.json({
       error: "Checkout is disabled until the approved tax-inclusive price and production commerce controls are configured.",
@@ -279,7 +286,7 @@ export async function POST(request: Request) {
       metadata: {
         checkout_intent_id: String(checkout.checkoutIntentId),
         product_kind: "apply_pack",
-        contract_version: "chunk5-v1",
+        contract_version: APPLY_PACK_CONTRACT_VERSION,
       },
     }, { idempotencyKey: String(checkout.providerIdempotencyKey) });
   } catch {

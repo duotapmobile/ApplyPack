@@ -3,6 +3,7 @@ import "server-only";
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import type Stripe from "stripe";
 import { canonicalSha256 } from "@/lib/domain/foundation";
+import { SEARCH_CONTRACT_VERSION, SEARCH_PRICE_CENTS } from "@/lib/domain/applypack";
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
@@ -30,8 +31,8 @@ export function deterministicUuid(value: string) {
   return `${joined.slice(0, 8)}-${joined.slice(8, 12)}-${joined.slice(12, 16)}-${joined.slice(16, 20)}-${joined.slice(20)}`;
 }
 
-export function searchCheckoutRequestKey(input: { draftId: string; snapshotId: string; assessmentId: string }) {
-  return `search:${canonicalSha256({ ...input, version: "chunk4-v1" })}`;
+export function searchCheckoutRequestKey(input: { draftId: string; snapshotId: string; assessmentId: string; invitationId?: string }) {
+  return `search:${canonicalSha256({ ...input, version: SEARCH_CONTRACT_VERSION })}`;
 }
 
 export function searchQuoteSha256(input: {
@@ -46,7 +47,7 @@ export function searchQuoteSha256(input: {
 }) {
   return canonicalSha256({
     ...input,
-    amountCents: 2_000,
+    amountCents: SEARCH_PRICE_CENTS,
     currency: "USD",
     mode: "payment",
     paymentMethodTypes: ["card"],
@@ -110,18 +111,20 @@ export function immediateSearchPayment(input: {
   paymentIntent: Stripe.PaymentIntent;
   charge: Stripe.Charge | null;
   expectedPriceId: string;
+  expectedAmountCents?: number;
 }) {
+  const expectedAmountCents = input.expectedAmountCents ?? SEARCH_PRICE_CENTS;
   const line = input.session.line_items?.data?.[0];
   const type = input.charge?.payment_method_details?.type || input.paymentIntent.payment_method_types?.[0] || "";
   const valid = input.session.mode === "payment"
     && input.session.payment_status === "paid"
-    && input.session.amount_total === 2_000
+    && input.session.amount_total === expectedAmountCents
     && input.session.currency?.toUpperCase() === "USD"
     && input.session.line_items?.data.length === 1
     && line?.quantity === 1
     && line.price?.id === input.expectedPriceId
     && input.paymentIntent.status === "succeeded"
-    && input.paymentIntent.amount_received === 2_000
+    && input.paymentIntent.amount_received === expectedAmountCents
     && input.paymentIntent.currency.toUpperCase() === "USD"
     && input.paymentIntent.capture_method !== "manual"
     && input.paymentIntent.amount_capturable === 0

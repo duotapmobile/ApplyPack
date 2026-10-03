@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { waitForHydration } from "./helpers/hydration";
+import { gotoStable, waitForHydration } from "./helpers/hydration";
 
 async function findOverflow(page: Page) {
   return page.evaluate(() => {
@@ -25,44 +25,46 @@ test("why-customize renders its approved message, links, and initial HTML", asyn
     if (message.type() === "error") consoleErrors.push(message.text());
   });
 
-  const response = await page.goto("/why-customize");
+  const response = await gotoStable(page, "/why-customize");
   expect(response?.status()).toBe(200);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Beat the bot. Reach the human.");
   await expect(page.getByText("Not with tricks. With a résumé built from research, customized for the job, and grounded in experience you actually have.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Build My Custom Application" }).first()).toHaveAttribute("href", "/my-applypack");
-  await expect(page.getByRole("link", { name: "Find Jobs That Fit" }).first()).toHaveAttribute("href", "/job-board");
-  await expect(page.getByRole("link", { name: "Customize My Résumé" }).first()).toHaveAttribute("href", "/my-applypack");
+  await expect(page.getByRole("link", { name: "Start My Intake" }).first()).toHaveAttribute("href", "/get-started");
+  await expect(page.getByRole("link", { name: "Choose a Delivered Job" }).first()).toHaveAttribute("href", "/my-applypack");
   await expect(page.getByText("Illustrative fictional example, not an ATS result.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Questions about résumé bots and customization" })).toBeVisible();
   await expect(page.locator("details").filter({ hasText: "How do I get past résumé bots?" })).toHaveCount(1);
 
-  await page.reload();
+  await gotoStable(page, "/why-customize");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   expect(consoleErrors).toEqual([]);
 });
 
 test("why-customize is discoverable and its internal destinations resolve", async ({ page, request }) => {
-  for (const destination of ["/job-board", "/my-applypack", "/how-it-works"]) {
+  for (const destination of ["/get-started", "/my-applypack", "/how-it-works"]) {
     expect((await request.get(destination)).status(), destination).toBe(200);
   }
+  expect((await request.get("/job-board")).status()).toBe(404);
 
   const sitemap = await request.get("/sitemap.xml");
   expect(sitemap.status()).toBe(200);
   expect(await sitemap.text()).toContain("/why-customize");
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/why-customize");
+  await gotoStable(page, "/why-customize");
+  await waitForHydration(page);
   await page.getByRole("button", { name: "Open navigation" }).click();
   await expect(page.getByRole("navigation", { name: "Mobile navigation" }).getByRole("link", { name: "Why customize?" })).toHaveAttribute("aria-current", "page");
   await page.getByRole("button", { name: "Close navigation" }).click();
   await expect(page.getByRole("contentinfo").getByRole("link", { name: "Why customize?" })).toHaveAttribute("href", "/why-customize");
 
-  await page.goto("/before-and-after");
+  await gotoStable(page, "/before-and-after");
   await expect(page.locator(".brief-tailoring-link")).toHaveAttribute("href", "/why-customize");
 });
 
 test("comparison drag, buttons, keyboard, and page scrolling share one stable state", async ({ page, browserName }, testInfo) => {
-  await page.goto("/why-customize#comparison");
+  await gotoStable(page, "/why-customize#comparison");
   await waitForHydration(page);
   const slider = page.getByRole("slider", { name: "Before and After ApplyPack résumé comparison" });
   const canvas = page.getByTestId("resume-comparison-canvas");
@@ -116,7 +118,7 @@ test("comparison drag, buttons, keyboard, and page scrolling share one stable st
 
 test("comparison supports touch dragging and cancels cleanly for vertical scrolling", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "Touch behavior is exercised in the mobile Chromium project.");
-  await page.goto("/why-customize#comparison");
+  await gotoStable(page, "/why-customize#comparison");
   const canvas = page.getByTestId("resume-comparison-canvas");
   const slider = page.getByRole("slider");
   await canvas.scrollIntoViewIfNeeded();
@@ -151,7 +153,7 @@ for (const viewport of [
 ]) {
   test(`why-customize has readable reflow and no page overflow at ${viewport.label}`, async ({ page }) => {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
-    await page.goto("/why-customize");
+    await gotoStable(page, "/why-customize");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     expect(await findOverflow(page), viewport.label).toEqual([]);
     const handle = page.getByRole("slider");
@@ -167,7 +169,7 @@ for (const viewport of [
 
 test("why-customize passes focused accessibility and reduced-motion checks", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/why-customize");
+  await gotoStable(page, "/why-customize");
   await waitForHydration(page);
   const results = await new AxeBuilder({ page }).exclude("script").analyze();
   expect(results.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
@@ -177,7 +179,7 @@ test("why-customize passes focused accessibility and reduced-motion checks", asy
 
 test("why-customize remains readable at 200 percent text size", async ({ page }) => {
   await page.setViewportSize({ width: 640, height: 900 });
-  await page.goto("/why-customize");
+  await gotoStable(page, "/why-customize");
   await page.addStyleTag({ content: "html { font-size: 200% !important; }" });
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   expect(await findOverflow(page)).toEqual([]);
@@ -187,7 +189,7 @@ test("why-customize remains readable at 200 percent text size", async ({ page })
 test("why-customize keeps essential comparison and Q&A copy without JavaScript", async ({ browser }) => {
   const context = await browser.newContext({ javaScriptEnabled: false });
   const page = await context.newPage();
-  await page.goto("http://127.0.0.1:3100/why-customize");
+  await gotoStable(page, "http://127.0.0.1:3100/why-customize");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Beat the bot. Reach the human.");
   await expect(page.getByRole("heading", { name: "Read both résumé excerpts" })).toBeVisible();
   await expect(page.getByText("Important gap: No software onboarding experience is stated.", { exact: false }).last()).toBeVisible();

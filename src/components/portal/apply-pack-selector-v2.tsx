@@ -277,7 +277,7 @@ export function ApplyPackSelector({
 
   return (
     <section className="portal-section">
-      <div className="portal-section__heading"><div><p className="eyebrow">YOUR COMPLETED SEARCH</p><h2>10 Researched Job Matches</h2><p>Choose Tailored Resume + Cover Letter sets for current listings.</p></div><p>Each selected job is a separate $8 order with one tailored resume and one tailored cover letter. {availableUnits === null ? "Checking current capacity..." : availableUnits > 0 ? `${availableUnits} can be accepted now; availability is reserved only when checkout opens.` : "No 24-hour production slots are currently available."}</p></div>
+      <div className="portal-section__heading"><div><p className="eyebrow">YOUR COMPLETED SEARCH</p><h2>10 Researched Job Matches</h2><p>Choose Tailored Resume + Cover Letter sets for current listings.</p></div><p>Each selected job is a separate $7.99 order with one tailored resume and one tailored cover letter. {availableUnits === null ? "Checking current capacity..." : availableUnits > 0 ? `${availableUnits} can be accepted now; availability is reserved only when checkout opens.` : "No 24-hour production slots are currently available."}</p></div>
       <div className="match-grid">
         {matches.map((match) => {
           const checked = selected.includes(match.id);
@@ -386,7 +386,7 @@ export function ApplyPackSelector({
       </div>
 
       {selected.length ? <div className="cart-review">
-        <div><p className="eyebrow">REVIEW SELECTED JOBS</p><h3>{selected.length} document set{selected.length === 1 ? "" : "s"} × $8 each · {"$" + selected.length * 8} total</h3><p>Tax is included. No added tax or fee.</p></div>
+        <div><p className="eyebrow">REVIEW SELECTED JOBS</p><h3>{selected.length} document set{selected.length === 1 ? "" : "s"} × $7.99 each · {"$" + (selected.length * 7.99).toFixed(2)} total</h3><p>Checkout remains locked until the required tax approval and configuration are recorded.</p></div>
         <fieldset className="document-contact"><legend>Contact details printed on every selected document</legend>
           <label>Professional name <input required maxLength={120} autoComplete="name" value={contact.displayName} onChange={(event) => updateContact("displayName", event.target.value)} /></label>
           <label>Email <input required maxLength={254} type="email" autoComplete="email" value={contact.email} onChange={(event) => updateContact("email", event.target.value)} /></label>
@@ -406,7 +406,7 @@ export function ApplyPackSelector({
         <label className="confirm"><input type="checkbox" checked={outcomesAcknowledged} onChange={(event) => setOutcomesAcknowledged(event.target.checked)} />I understand ApplyPack cannot guarantee employer review, interviews, offers, or employment.</label>
       </div> : null}
 
-      <div className="selection-bar"><div><ShoppingBag aria-hidden="true" /><span><strong>{selected.length}</strong> selected</span><b>{"$" + selected.length * 8}</b></div><button className="wizard-next" disabled={busy || selected.length === 0} onClick={checkout}>{busy ? "Preparing..." : "Review and Pay"}</button></div>
+      <div className="selection-bar"><div><ShoppingBag aria-hidden="true" /><span><strong>{selected.length}</strong> selected</span><b>{"$" + (selected.length * 7.99).toFixed(2)}</b></div><button className="wizard-next" disabled={busy || selected.length === 0} onClick={checkout}>{busy ? "Preparing..." : "Review and Pay"}</button></div>
       <p className={message ? "form-message" : "sr-only"} role="status" aria-live="polite">{message || "Choose only currently available jobs."}</p>
     </section>
   );

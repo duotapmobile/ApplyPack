@@ -67,7 +67,9 @@ select pg_temp.assert_true(not has_table_privilege('authenticated','public.ap_st
 update public.ap_commerce_configuration set
   tax_configuration_approved=true,
   tax_approval_reference='rollback-only-tax-approval',
-  pricing_version='search-price-v1',
+  sales_activation_approved=true,
+  sales_activation_reference='test-only-sales-approval',
+  pricing_version='manual-launch-pricing-2026-10-02-v2',
   tax_version='tax-inclusive-v1',
   terms_version='terms-v1',
   privacy_version='privacy-v1',
@@ -81,6 +83,7 @@ update public.ap_commerce_configuration set
   release_verification_ttl_seconds=3600
 where singleton;
 select pg_temp.assert_true((select count(*)=1 from public.ap_commerce_configuration where singleton and checkout_enabled), 'commerce singleton unavailable');
+select set_config('applypack.checkout_invitation_id','a4000000-0000-4000-8000-000000000099',true);
 
 insert into auth.users(
   id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,
@@ -439,7 +442,7 @@ rollback to savepoint before_unsettled_completed_event;
 do $$ begin
   perform public.ap_apply_verified_search_payment(
     'evt_chunk4_wrong_identity','checkout.session.completed',repeat('c',64),clock_timestamp(),clock_timestamp()-interval '1 minute',
-    'cs_chunk4_fixture','pi_chunk4_fixture','succeeded','card',2000,'USD','payer@example.invalid',
+    'cs_chunk4_fixture','pi_chunk4_fixture','succeeded','card',1899,'USD','payer@example.invalid',
     '14000000-0000-4000-8000-000000000002','24000000-0000-4000-8000-000000000001',
     '94000000-0000-4000-8000-000000000001','a4600000-0000-4000-8000-000000000001',
     'a4700000-0000-4000-8000-000000000001',repeat('d',64),
@@ -473,7 +476,7 @@ declare winner_result jsonb; duplicate_result jsonb;
 begin
   winner_result:=public.ap_apply_verified_search_payment(
     'evt_chunk4_second_wins','checkout.session.completed',repeat('1',64),clock_timestamp(),clock_timestamp()-interval '1 minute',
-    'cs_chunk4_fixture_second','pi_chunk4_second_wins','succeeded','card',2000,'USD','second-payer@example.invalid',
+    'cs_chunk4_fixture_second','pi_chunk4_second_wins','succeeded','card',1899,'USD','second-payer@example.invalid',
     '14000000-0000-4000-8000-000000000001','24000000-0000-4000-8000-000000000002',
     '94000000-0000-4000-8000-000000000002','a4600000-0000-4000-8000-000000000002',
     'a4700000-0000-4000-8000-000000000002',repeat('2',64),
@@ -482,7 +485,7 @@ begin
   );
   duplicate_result:=public.ap_apply_verified_search_payment(
     'evt_chunk4_late_duplicate','checkout.session.completed',repeat('3',64),clock_timestamp(),clock_timestamp()-interval '30 seconds',
-    'cs_chunk4_fixture','pi_chunk4_late_duplicate','succeeded','card',2000,'USD','different-payer@example.invalid',
+    'cs_chunk4_fixture','pi_chunk4_late_duplicate','succeeded','card',1899,'USD','different-payer@example.invalid',
     '14000000-0000-4000-8000-000000000001','24000000-0000-4000-8000-000000000003',
     '94000000-0000-4000-8000-000000000003','a4600000-0000-4000-8000-000000000003',
     'a4700000-0000-4000-8000-000000000003',repeat('4',64),
@@ -497,7 +500,7 @@ $$;
 select pg_temp.assert_true((select count(*)=1 and bool_and(winning_payment_attempt_id='a4500000-0000-4000-8000-000000000002')
   from public.ap_search_services where original_snapshot_id='54000000-0000-4000-8000-000000000001'),
   'two paid sessions activated more than one search');
-select pg_temp.assert_true((select count(*)=1 and bool_and(state='PENDING' and amount_cents=2000 and reason_code='DUPLICATE_PAID_ATTEMPT')
+select pg_temp.assert_true((select count(*)=1 and bool_and(state='PENDING' and amount_cents=1899 and reason_code='DUPLICATE_PAID_ATTEMPT')
   from public.ap_refund_operations where payment_attempt_id='a4500000-0000-4000-8000-000000000001'),
   'duplicate paid session did not queue exactly one full refund');
 select pg_temp.assert_true((select state='EXPIRED' and stale_reason='DUPLICATE_PAID_ATTEMPT'
@@ -540,7 +543,7 @@ begin
   where id='34000000-0000-4000-8000-000000000001';
   stale_result:=public.ap_apply_verified_search_payment(
     'evt_chunk4_stale_paid','checkout.session.completed',repeat('5',64),clock_timestamp(),clock_timestamp()-interval '20 seconds',
-    'cs_chunk4_fixture','pi_chunk4_stale_paid','succeeded','card',2000,'USD','payer-change@example.invalid',
+    'cs_chunk4_fixture','pi_chunk4_stale_paid','succeeded','card',1899,'USD','payer-change@example.invalid',
     '14000000-0000-4000-8000-000000000001','24000000-0000-4000-8000-000000000004',
     '94000000-0000-4000-8000-000000000004','a4600000-0000-4000-8000-000000000004',
     'a4700000-0000-4000-8000-000000000004',repeat('6',64),
@@ -572,7 +575,7 @@ declare result_value jsonb;
 begin
   result_value:=public.ap_apply_verified_search_payment(
     'evt_chunk4_reacquire_success','checkout.session.completed',repeat('7',64),clock_timestamp(),clock_timestamp()-interval '10 seconds',
-    'cs_chunk4_fixture','pi_chunk4_reacquire_success','succeeded','card',2000,'USD','payer@example.invalid',
+    'cs_chunk4_fixture','pi_chunk4_reacquire_success','succeeded','card',1899,'USD','payer@example.invalid',
     '14000000-0000-4000-8000-000000000001','24000000-0000-4000-8000-000000000005',
     '94000000-0000-4000-8000-000000000005','a4600000-0000-4000-8000-000000000005',
     'a4700000-0000-4000-8000-000000000005',repeat('8',64),
@@ -608,7 +611,7 @@ declare result_value jsonb;
 begin
   result_value:=public.ap_apply_verified_search_payment(
     'evt_chunk4_reacquire_failed','checkout.session.completed',repeat('9',64),clock_timestamp(),clock_timestamp()-interval '10 seconds',
-    'cs_chunk4_fixture','pi_chunk4_reacquire_failed','succeeded','card',2000,'USD','payer@example.invalid',
+    'cs_chunk4_fixture','pi_chunk4_reacquire_failed','succeeded','card',1899,'USD','payer@example.invalid',
     '14000000-0000-4000-8000-000000000001','24000000-0000-4000-8000-000000000006',
     '94000000-0000-4000-8000-000000000006','a4600000-0000-4000-8000-000000000006',
     'a4700000-0000-4000-8000-000000000006',repeat('0',64),
@@ -621,7 +624,7 @@ begin
 end;
 $$;
 select pg_temp.assert_true(not exists(select 1 from public.ap_search_services)
-  and (select count(*)=1 and bool_and(state='PENDING' and amount_cents=2000 and reason_code='CAPACITY_EXCEPTION')
+  and (select count(*)=1 and bool_and(state='PENDING' and amount_cents=1899 and reason_code='CAPACITY_EXCEPTION')
     from public.ap_refund_operations where payment_attempt_id='a4500000-0000-4000-8000-000000000001')
   and (select state='COMPLETED' and capacity_exception_at is not null
     and reacquisition_attempted_at is not null from public.ap_checkout_attempts
@@ -634,7 +637,7 @@ declare result_value jsonb; replay_value jsonb;
 begin
   result_value:=public.ap_apply_verified_search_payment(
     'evt_chunk4_success','checkout.session.completed',repeat('e',64),clock_timestamp(),clock_timestamp()-interval '1 minute',
-    'cs_chunk4_fixture','pi_chunk4_fixture','succeeded','card',2000,'USD','payer@example.invalid',
+    'cs_chunk4_fixture','pi_chunk4_fixture','succeeded','card',1899,'USD','payer@example.invalid',
     '14000000-0000-4000-8000-000000000001','24000000-0000-4000-8000-000000000001',
     '94000000-0000-4000-8000-000000000001','a4600000-0000-4000-8000-000000000001',
     'a4700000-0000-4000-8000-000000000001',repeat('d',64),
@@ -646,7 +649,7 @@ begin
   for replay_number in 1..50 loop
   replay_value:=public.ap_apply_verified_search_payment(
     'evt_chunk4_success','checkout.session.completed',repeat('e',64),clock_timestamp(),clock_timestamp()-interval '1 minute',
-    'cs_chunk4_fixture','pi_chunk4_fixture','succeeded','card',2000,'USD','payer@example.invalid',
+    'cs_chunk4_fixture','pi_chunk4_fixture','succeeded','card',1899,'USD','payer@example.invalid',
     '14000000-0000-4000-8000-000000000001','24000000-0000-4000-8000-000000000009',
     '94000000-0000-4000-8000-000000000009','a4600000-0000-4000-8000-000000000009',
     'a4700000-0000-4000-8000-000000000009',repeat('d',64),
@@ -660,7 +663,7 @@ $$;
 
 select pg_temp.assert_true((select count(*)=1 from public.ap_search_services where original_snapshot_id='54000000-0000-4000-8000-000000000001'), 'verified webhook duplicated search');
 -- Contract-level replay pressure only: these assertions do not prove Stripe transport or email delivery.
-select pg_temp.assert_true((select count(*)=1 and sum(amount_cents)=2000 and bool_and(settlement='PAID')
+select pg_temp.assert_true((select count(*)=1 and sum(amount_cents)=1899 and bool_and(settlement='PAID')
   from public.ap_payment_attempts where draft_id='34000000-0000-4000-8000-000000000001'),
   'fifty provider replays duplicated or changed the payment total');
 select pg_temp.assert_true((select count(*)=1 and bool_and(applied_at is not null)
@@ -672,7 +675,7 @@ select pg_temp.assert_true((select count(*)=1 and sum(units)=1 and bool_and(life
 select pg_temp.assert_true((select count(*)=1 and bool_and(message_kind='PAYMENT_VERIFIED_SEARCH_STARTED' and state='QUEUED')
   from public.ap_outbox_messages where order_id='94000000-0000-4000-8000-000000000001'),
   'fifty provider replays queued more than one started notification');
-select pg_temp.assert_true((select settlement='PAID' and immediate_charge_verified and payment_method_type='card' and amount_cents=2000 and currency='USD' and payer_receipt_email='payer@example.invalid' from public.ap_payment_attempts where id='a4500000-0000-4000-8000-000000000001'), 'verified payment facts were not persisted');
+select pg_temp.assert_true((select settlement='PAID' and immediate_charge_verified and payment_method_type='card' and amount_cents=1899 and currency='USD' and payer_receipt_email='payer@example.invalid' from public.ap_payment_attempts where id='a4500000-0000-4000-8000-000000000001'), 'verified payment facts were not persisted');
 select pg_temp.assert_true((select paid_at<>search_activated_at from public.orders join public.ap_search_services on legacy_order_id=orders.id where orders.id='94000000-0000-4000-8000-000000000001'), 'provider payment time was replaced by activation time');
 select pg_temp.assert_true((select delivery_due_at=service_started_at+interval '24 hours' and service_started_at>=intake_completed_at and service_started_at>=capacity_confirmed_at from public.ap_search_services where id='a4600000-0000-4000-8000-000000000001'), 'exact activation deadline clock is invalid');
 select pg_temp.assert_true((select lifecycle='CONSUMED' and debit_disposition='SPENT' and expires_at is null from public.ap_capacity_allocations where id=(select capacity_allocation_id from public.ap_search_services where id='a4600000-0000-4000-8000-000000000001')), 'capacity was not consumed exactly once');
@@ -887,7 +890,7 @@ begin
     amendment_id,'14000000-0000-4000-8000-000000000001','chunk4-adjustment-declined','Customer chose the full refund.'
   );
   perform pg_temp.assert_true(declined->>'outcome'='REFUND_PROCESSING', 'adjustment decline did not start refund');
-  perform pg_temp.assert_true((select count(*)=1 and bool_and(amount_cents=2000 and currency='USD' and state='PENDING' and required) from public.ap_refund_operations where payment_attempt_id='a4500000-0000-4000-8000-000000000001' and superseded_at is null), 'required full refund was not durable');
+  perform pg_temp.assert_true((select count(*)=1 and bool_and(amount_cents=1899 and currency='USD' and state='PENDING' and required) from public.ap_refund_operations where payment_attempt_id='a4500000-0000-4000-8000-000000000001' and superseded_at is null), 'required full refund was not durable');
 end;
 $$;
 rollback to savepoint before_adjustment_decline;
@@ -1195,7 +1198,7 @@ select public.ap_apply_search_dispute(
   'evt_chunk4_search_dispute_won',repeat('6',64),clock_timestamp(),'pi_chunk4_fixture','WON',
   'a4900000-0000-4000-8000-000000000071'
 );
-select pg_temp.assert_true((select count(*)=1 and bool_and(state='PENDING' and amount_cents=2000)
+select pg_temp.assert_true((select count(*)=1 and bool_and(state='PENDING' and amount_cents=1899)
   from public.ap_refund_operations where payment_attempt_id='a4500000-0000-4000-8000-000000000001'
     and scope='FULL_SEARCH' and superseded_at is null),
   'won pre-delivery search dispute did not start one full refund');

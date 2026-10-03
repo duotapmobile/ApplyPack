@@ -1,10 +1,12 @@
 # ApplyPack
 
+Manual launch scope: $18.99 for exactly ten distinct, current, human-reviewed job matches and $7.99 per selected job for one tailored resume plus one tailored cover letter. There is no launch subscription or public job board. Search checkout is operator-invited and remains locked until every launch gate passes.
+
 ApplyPack is DuoTap LLC's manual-first job-search and application-document service at `applypack.work`.
 
-- Job Match Search: $20 for 10 current, human-reviewed job matches.
-- Application Pack: $8 per selected job for one tailored resume and one tailored cover letter.
-- Turnaround: within 24 hours after successful payment and all required information is available.
+- Job Match Search: $18.99 for exactly 10 distinct, current, human-reviewed job matches, available only through a short-lived operator invitation.
+- Apply Pack: $7.99 per selected job for one tailored resume and one tailored cover letter.
+- Turnaround: search delivery within 24 clock hours after successful payment; Apply Pack delivery within 24 clock hours after payment and receipt of complete required inputs.
 - Capacity defaults: one search and two Application Packs per rolling 24-hour window.
 
 The application includes the public site, guided intake, passwordless customer portal, Stripe Checkout, transactional email, private file delivery, an MFA-protected operator console, corrections and conflict review, capacity controls, refund operations, retention maintenance, accessibility checks, and Railway deployment configuration.
@@ -56,7 +58,7 @@ Use test mode first. Configure the signed webhook endpoint at `/api/stripe/webho
 - `charge.refunded`
 - `charge.dispute.created`
 
-The server fixes prices at 2,000 cents for a search and 800 cents per Application Pack. Payment status changes only from verified provider events.
+The server fixes new manual-launch prices at 1,899 cents for a search and 799 cents per Apply Pack. Historical 2,000/800-cent records remain valid only for reconciliation and refunds under their original contract versions. Payment status changes only from verified provider events.
 
 ## Email and inbound mail
 

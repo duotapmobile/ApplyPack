@@ -1,5 +1,7 @@
 # ApplyPack Product Source of Truth
 
+> October 2, 2026 authority: `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` supersedes conflicting prices, subscription-board provisions, checkout timing, and launch activation rules in this document.
+
 Last updated: September 1, 2026
 
 ## Product definition

@@ -9,10 +9,13 @@ import { remoteKmsAdapter } from "@/lib/security/remote-kms";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { isSameOriginRequest } from "@/lib/security/origin";
 import { assertConfiguredPrice, createStripeSearchClient } from "@/lib/stripe/server";
+import { SEARCH_CONTRACT_VERSION, SEARCH_PRICE_CENTS } from "@/lib/domain/applypack";
 
 const schema = z.object({
   snapshotId: z.uuid(),
   assessmentId: z.uuid(),
+  invitationId: z.uuid(),
+  invitationSecret: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
 }).strict();
 
 type CommerceConfiguration = {
@@ -89,7 +92,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Checkout is disabled until the required tax, payment, access, and email settings are approved." }, { status: 503 });
   }
   try {
-    await assertConfiguredPrice(stripe, priceId, { unitAmount: 2_000, productName: "Job Match Search" });
+    await assertConfiguredPrice(stripe, priceId, { unitAmount: SEARCH_PRICE_CENTS, productName: "Job Match Search" });
   } catch {
     return NextResponse.json({ error: "Checkout pricing failed verification. No charge was made." }, { status: 503 });
   }
@@ -98,6 +101,7 @@ export async function POST(request: Request) {
     draftId: context.capability.draftId,
     snapshotId: parsed.data.snapshotId,
     assessmentId: parsed.data.assessmentId,
+    invitationId: parsed.data.invitationId,
   });
   const quoteId = deterministicUuid(`quote:${requestKey}`);
   const commandId = deterministicUuid(`checkout-command:${requestKey}`);
@@ -160,7 +164,9 @@ export async function POST(request: Request) {
     }
   }
 
-  const { data: prepared, error: prepareError } = await context.admin.rpc("ap_begin_search_checkout", {
+  const { data: prepared, error: prepareError } = await context.admin.rpc("ap_begin_invited_search_checkout", {
+    p_invitation_id: parsed.data.invitationId,
+    p_invitation_secret_hash: hashCapabilitySecret(parsed.data.invitationSecret),
     p_draft_id: context.capability.draftId,
     p_secret_hash: context.secretHash,
     p_snapshot_id: parsed.data.snapshotId,
@@ -195,7 +201,7 @@ export async function POST(request: Request) {
         checkout_attempt_id: String(checkout.checkout_attempt_id),
         quote_id: String(checkout.quote_id),
         product_kind: "job_search",
-        contract_version: "chunk4-v1",
+        contract_version: SEARCH_CONTRACT_VERSION,
       },
     }, { idempotencyKey: String(checkout.provider_idempotency_key) });
   } catch {
@@ -233,7 +239,7 @@ export async function POST(request: Request) {
   const response = NextResponse.json({
     url: session.url,
     expiresAt: new Date(session.expires_at * 1_000).toISOString(),
-    amountCents: 2_000,
+    amountCents: SEARCH_PRICE_CENTS,
     currency: "USD",
   });
   const cookie = checkoutCookieSettings();

@@ -1,0 +1,164 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ApplyPack bounded no-internet document extraction and render worker
+Parameters:
+  WorkerImageUri:
+    Type: String
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  PrivateRouteTableIds:
+    Type: CommaDelimitedList
+  S3PrefixListId:
+    Type: String
+    Description: Regional com.amazonaws.us-east-1.s3 managed prefix list ID
+  AlertEmail:
+    Type: String
+    Default: ""
+  CreateBudget:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+  KmsKeyArn:
+    Type: String
+  KmsKeyVersion:
+    Type: String
+    MinLength: 1
+Conditions:
+  ShouldCreateBudget: !Equals [!Ref CreateBudget, "true"]
+Resources:
+  TemporaryBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteTemporaryWorkerObjects
+            Status: Enabled
+            ExpirationInDays: 1
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+  WorkerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ApplyPack document worker no outbound internet
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          DestinationPrefixListId: !Ref S3PrefixListId
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      VpcId: !Ref VpcId
+      RouteTableIds: !Ref PrivateRouteTableIds
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+            Resource: !Sub "${TemporaryBucket.Arn}/ephemeral/*"
+  WorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: WorkerTemporaryObjectOnly
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+                Resource: !Sub "${TemporaryBucket.Arn}/ephemeral/*"
+              - Effect: Allow
+                Action: [ec2:CreateNetworkInterface, ec2:DescribeNetworkInterfaces, ec2:DeleteNetworkInterface]
+                Resource: "*"
+  Worker:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: applypack-production-document-worker
+      PackageType: Image
+      Code: { ImageUri: !Ref WorkerImageUri }
+      Role: !GetAtt WorkerRole.Arn
+      Architectures: [x86_64]
+      MemorySize: 1024
+      Timeout: 30
+      ReservedConcurrentExecutions: 2
+      EphemeralStorage: { Size: 1024 }
+      VpcConfig:
+        SecurityGroupIds: [!Ref WorkerSecurityGroup]
+        SubnetIds: !Ref PrivateSubnetIds
+      Environment:
+        Variables:
+          PYTHONUNBUFFERED: "1"
+  WebRuntimePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: ApplyPack web runtime access to the isolated worker and production wrapping key
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: lambda:InvokeFunction
+            Resource: !GetAtt Worker.Arn
+          - Effect: Allow
+            Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+            Resource: !Sub "${TemporaryBucket.Arn}/ephemeral/*"
+          - Effect: Allow
+            Action: [kms:Encrypt, kms:Decrypt]
+            Resource: !Ref KmsKeyArn
+            Condition:
+              StringEquals:
+                kms:EncryptionContext:application: ApplyPack
+                kms:EncryptionContext:deployment: production
+                kms:EncryptionContext:keyVersion: !Ref KmsKeyVersion
+          - Effect: Allow
+            Action: kms:DescribeKey
+            Resource: !Ref KmsKeyArn
+  Budget:
+    Type: AWS::Budgets::Budget
+    Condition: ShouldCreateBudget
+    Properties:
+      Budget:
+        BudgetLimit: { Amount: 5, Unit: USD }
+        BudgetName: ApplyPack-new-AWS-cost-ceiling
+        BudgetType: COST
+        TimeUnit: MONTHLY
+      NotificationsWithSubscribers:
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: FORECASTED
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref AlertEmail
+              SubscriptionType: EMAIL
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: ACTUAL
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref AlertEmail
+              SubscriptionType: EMAIL
+Outputs:
+  BucketName: { Value: !Ref TemporaryBucket }
+  FunctionName: { Value: !Ref Worker }
+  WebRuntimePolicyArn: { Value: !Ref WebRuntimePolicy }

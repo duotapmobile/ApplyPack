@@ -165,7 +165,8 @@ do $$ begin
   values ('10000000-0000-4000-8000-000000000001','75000000-0000-4000-8000-000000000002','81000000-0000-4000-8000-000000000001',(select id from public.ap_capacity_allocations where request_key='reserve-checkout'),'OPEN','cs_unapproved',now()+interval '20 minutes');
   raise exception 'checkout opened without approved tax configuration';
 exception when others then if sqlerrm='checkout opened without approved tax configuration' then raise; end if; end $$;
-update public.ap_commerce_configuration set tax_configuration_approved=true,tax_approval_reference='test-approval';
+update public.ap_commerce_configuration set tax_configuration_approved=true,tax_approval_reference='test-approval',
+  sales_activation_approved=true,sales_activation_reference='test-only-sales-approval';
 insert into public.ap_checkout_attempts(customer_id,quote_id,command_id,capacity_allocation_id,state,provider_checkout_session_id,expires_at)
 values ('10000000-0000-4000-8000-000000000001','75000000-0000-4000-8000-000000000002','81000000-0000-4000-8000-000000000001',(select id from public.ap_capacity_allocations where request_key='reserve-checkout'),'OPEN','cs_approved',now()+interval '20 minutes');
 select pg_temp.assert_true(not (select cleanup_enabled from public.ap_retention_configuration),'retention cleanup enabled without approved durations');

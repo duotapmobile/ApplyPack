@@ -35,6 +35,7 @@ describe("maintenance authorization and independent queues", () => {
   beforeEach(() => {
     vi.stubEnv("CRON_SECRET", "maintenance-test-secret");
     vi.stubEnv("APP_ADMIN_ALERT_EMAIL", "");
+    vi.stubEnv("APP_LEGACY_BOARD_MAINTENANCE_ENABLED", "true");
     Object.values(dependencies).forEach(mock => mock.mockReset());
     dependencies.adminClient.mockReturnValue({ from: vi.fn(query), rpc: vi.fn().mockResolvedValue({ data: 0, error: null }),
       storage: { from: vi.fn(() => ({ remove: vi.fn().mockResolvedValue({ error: null }) })) } });
@@ -61,6 +62,24 @@ describe("maintenance authorization and independent queues", () => {
     expect((await POST(new Request("https://example.test/api/cron/maintenance", { method: "POST" }))).status).toBe(401);
     expect(dependencies.adminClient).not.toHaveBeenCalled();
     expect(dependencies.processUnpaidSourceRetention).not.toHaveBeenCalled();
+  });
+  it("keeps retired board maintenance dormant unless it is explicitly enabled", async () => {
+    vi.stubEnv("APP_LEGACY_BOARD_MAINTENANCE_ENABLED", "false");
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(dependencies.reconcileBoardSubscriptions).not.toHaveBeenCalled();
+    expect(dependencies.processBoardRecomputeJobs).not.toHaveBeenCalled();
+    expect(dependencies.processWorkflowTasks).toHaveBeenCalledOnce();
+    expect(dependencies.recordMaintenanceOutcome).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.arrayContaining([
+        { code: "STRIPE_RECONCILIATION", status: "SKIPPED" },
+        { code: "BOARD_RECOMPUTATION", status: "SKIPPED" },
+      ]),
+      expect.any(Date),
+    );
   });
   it.each(["DATABASE_NOT_READY", "CRITICAL_SECURITY_OR_INTEGRITY_ALERT_OPEN"])("stops every processor for %s", async code => {
     dependencies.recordMaintenanceDiagnosis.mockResolvedValue({ codes: [code], failClosedCodes: [code], repairableCodes: [] });

@@ -271,8 +271,9 @@ export async function POST(request: Request) {
   actions.push({ code: "BOUNDED_QUEUE_PROCESSING", status: queueStates.includes("FAILED") ? "FAILED" : queueStates.includes("SKIPPED") ? "SKIPPED" : "SUCCEEDED" });
 
   const stripe = createStripeOperationalClient();
+  const legacyBoardMaintenanceEnabled = process.env.APP_LEGACY_BOARD_MAINTENANCE_ENABLED === "true";
   let boardSubscriptionsReconciled;
-  if (stripe) {
+  if (stripe && legacyBoardMaintenanceEnabled) {
     try {
       boardSubscriptionsReconciled = await reconcileBoardSubscriptions(stripe, admin);
       actions.push({ code: "STRIPE_RECONCILIATION", status: boardSubscriptionsReconciled >= 0 ? "SUCCEEDED" : "FAILED" });
@@ -280,7 +281,7 @@ export async function POST(request: Request) {
   } else actions.push({ code: "STRIPE_RECONCILIATION", status: "SKIPPED" });
 
   let boardAdmissions;
-  if (sourcesReady) {
+  if (sourcesReady && legacyBoardMaintenanceEnabled) {
     try {
       boardAdmissions = await processBoardRecomputeJobs(admin, 10);
       actions.push({ code: "BOARD_RECOMPUTATION", status: boardAdmissions.status === "enabled" ? "SUCCEEDED" : "FAILED" });
@@ -294,7 +295,16 @@ export async function POST(request: Request) {
   if (!diagnostics) {
     return response({ error: "Maintenance evidence could not be recorded.", code: "MAINTENANCE_VERIFICATION_FAILED" }, 503);
   }
-  const healthy = diagnostics.unresolvedCodes.length === 0 && actions.every((action) => action.status === "SUCCEEDED");
+  const intentionallyDormantBoardActions = new Set<MaintenanceActionCode>([
+    "STRIPE_RECONCILIATION",
+    "BOARD_RECOMPUTATION",
+  ]);
+  const healthy = diagnostics.unresolvedCodes.length === 0 && actions.every((action) =>
+    action.status === "SUCCEEDED" || (
+      !legacyBoardMaintenanceEnabled
+      && action.status === "SKIPPED"
+      && intentionallyDormantBoardActions.has(action.code)
+    ));
   return NextResponse.json({
     ok: healthy,
     expiredReservations: reservationResult.data?.length || 0,

@@ -92,8 +92,8 @@ test("Chunk 5 selection checkout, delivery, proposals, references, support, and 
 
     await page.goto("/e2e/chunk5?state=selection");
     await page.getByRole("checkbox", { name: /Select Tailored Resume \+ Cover Letter for Operations Coordinator/ }).check();
-    await expect(page.getByRole("heading", { name: /1 document set.*\$8 total/ })).toBeVisible();
-    await expect(page.getByText("Tax is included. No added tax or fee.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /1 document set.*\$7\.99 total/ })).toBeVisible();
+    await expect(page.getByText("Checkout remains locked until the required tax approval and configuration are recorded.")).toBeVisible();
     await expect(page.getByRole("radio", { name: "Keep my existing timeline" })).toBeVisible();
     await expect(page.getByRole("radio", { name: "Use Career Break" })).toBeVisible();
     await expect(page.getByRole("radio", { name: "Use Family Caregiving" })).toBeVisible();

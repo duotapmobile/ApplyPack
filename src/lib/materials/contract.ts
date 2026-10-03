@@ -1,4 +1,6 @@
-export const MATERIAL_LINE_PRICE_CENTS = 800;
+import { APPLY_PACK_PRICE_CENTS } from "@/lib/domain/applypack";
+
+export const MATERIAL_LINE_PRICE_CENTS = APPLY_PACK_PRICE_CENTS;
 export const MATERIAL_MAX_LINES = 10;
 export const MATERIAL_CURRENCY = "USD";
 export const MATERIAL_DOWNLOAD_SECONDS = 15 * 60;
@@ -144,8 +146,8 @@ export function publicMaterialState(input: {
   now?: Date;
 }) {
   const now = input.now || new Date();
-  if (input.refundState === "SUCCEEDED") return { label: "Refunded", message: "The full $8 line refund was confirmed." };
-  if (input.refundState === "PENDING") return { label: "Refund processing", message: "The required $8 line refund is still processing." };
+  if (input.refundState === "SUCCEEDED") return { label: "Refunded", message: "The full $7.99 line refund was confirmed." };
+  if (input.refundState === "PENDING") return { label: "Refund processing", message: "The required $7.99 line refund is still processing." };
   if (input.refundState === "FAILED") return { label: "Refund problem", message: "The required refund needs staff attention." };
   if (input.substitution === "REQUIRED" || input.substitution === "OFFERED") {
     return { label: "Choose a substitute or refund", message: "This listing or its submission instructions changed. ApplyPack will never substitute silently." };

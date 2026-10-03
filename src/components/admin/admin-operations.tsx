@@ -95,7 +95,7 @@ export function AdminOperations({ searchOrders, applyItems, conflicts, correctio
     </section>
 
     <section className="admin-control">
-      <div className="admin-control__heading"><div><p className="eyebrow">APPLY PACK PRODUCTION</p><h2>Upload reviewed DOCX files</h2></div><p>Each card is one separate $8 order.</p></div>
+      <div className="admin-control__heading"><div><p className="eyebrow">APPLY PACK PRODUCTION</p><h2>Upload reviewed DOCX files</h2></div><p>Each card is one separate $7.99 order.</p></div>
       {applyItems.length ? applyItems.map((item) => <article className="admin-work-card" key={item.id}>
         <div><strong>{item.title}</strong><span>{item.company} - Order {item.order_id.slice(0, 8).toUpperCase()}</span></div>
         {item.emphasis_notes ? <p><b>Emphasize:</b> {item.emphasis_notes}</p> : null}

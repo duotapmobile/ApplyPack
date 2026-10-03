@@ -34,6 +34,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   const [finalized, setFinalized] = useState(false);
   const [feasibility, setFeasibility] = useState<FeasibilityView | null>(null);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [checkoutInvitation, setCheckoutInvitation] = useState<{ id: string; secret: string } | null>(null);
   const [returnToReview, setReturnToReview] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
@@ -68,6 +69,20 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   }, [fixtureMode, hydrate]);
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      const id = params.get("invitationId");
+      const secret = params.get("invitationSecret");
+      if (id && secret) {
+        setCheckoutInvitation({ id, secret });
+        window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+      } else {
+        setCheckoutInvitation(null);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
   useEffect(() => {
     if (!finalized) return;
     if (fixtureMode) {
@@ -259,10 +274,15 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
 
   async function startCheckout() {
     if (!feasibility?.snapshotId || !feasibility.assessmentId || !feasibility.checkoutEligible) return;
-    setCheckoutBusy(true); setNotice("Reserving current capacity and preparing secure checkout. No payment has started yet.");
+    if (!checkoutInvitation) {
+      setNotice("Your intake is ready for operator review. Checkout remains locked until a short-lived, single-use invitation is issued.");
+      return;
+    }
+    setCheckoutBusy(true); setNotice("Validating your reserved capacity and preparing secure checkout. No payment has started yet.");
     if (fixtureMode) { router.push("/e2e/chunk4?state=confirming"); return; }
     const response = await fetch("/api/checkout/search", { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ snapshotId: feasibility.snapshotId, assessmentId: feasibility.assessmentId }) });
+      body: JSON.stringify({ snapshotId: feasibility.snapshotId, assessmentId: feasibility.assessmentId,
+        invitationId: checkoutInvitation.id, invitationSecret: checkoutInvitation.secret }) });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || typeof result.url !== "string") {
       setCheckoutBusy(false); setNotice(result.error || "Secure checkout could not be prepared. No payment was started.");
@@ -275,7 +295,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
 
   return <main id="main-content" className="wizard-page"><div className="page-frame wizard-layout">
     <aside className="wizard-aside"><p className="eyebrow eyebrow--light">YOUR JOB SEARCH</p><h1>Find work that fits.</h1>
-      <p>Complete four short steps. You will review everything before feasibility.</p><div className="wizard-price"><strong>$20</strong><span>once<br />no subscription required</span></div>
+      <p>Complete four short steps. You will review everything before feasibility.</p><div className="wizard-price"><strong>$18.99</strong><span>once<br />no subscription</span></div>
       <p className="wizard-security"><LockKeyhole aria-hidden="true" /> Private documents. 10 researched matches. No account or payment before review.</p></aside>
     <section className="wizard-panel" aria-labelledby="wizard-title">
       <div className="wizard-progress" role="progressbar" aria-label="Intake progress" aria-valuemin={1} aria-valuemax={4} aria-valuenow={step + 1} aria-valuetext={`Step ${step + 1} of 4`}><span>STEP {step + 1} OF 4</span><div><i style={{ width: `${(step + 1) * 25}%` }} /></div></div>
@@ -283,7 +303,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
       {errors.length > 0 && <div className="intake-errors" ref={errorRef} tabIndex={-1} role="alert" aria-labelledby="error-title"><strong id="error-title">Please fix {errors.length === 1 ? "this item" : "these items"}:</strong><ul>{errors.map((error) => <li key={error.fieldId}><a href={`#${error.fieldId}`} onClick={(event) => { event.preventDefault(); document.getElementById(error.fieldId)?.focus(); }}>{error.message}</a></li>)}</ul></div>}
 
       {step === 0 && <Step headingRef={headingRef} title="Start with your documents" help="See the offer and privacy boundary before sharing anything.">
-        <div className="intake-offer"><strong>$20 once for 10 researched job matches.</strong><span>No subscription is required for Top 10. No account or payment in this intake.</span></div>
+        <div className="intake-offer"><strong>$18.99 once for exactly 10 current, human-reviewed job matches.</strong><span>No subscription. No account or payment in this intake; checkout requires an operator-issued invitation.</span></div>
         <p className="privacy-note"><LockKeyhole aria-hidden="true" /> Your files use private storage and a separate secure browser session. Document bytes never go into browser local storage. Remove unnecessary sensitive information before upload.</p>
         <div className="field-grid"><Field id="full-name" label="Full name" required errors={errors}><input id="full-name" autoComplete="name" value={draft.fullName} onChange={(e) => update("fullName", e.target.value)} /></Field>
         <Field id="email" label="Email address" required help="Used to resume and, after payment, access your order." errors={errors}><input id="email" type="email" autoComplete="email" value={draft.email} aria-describedby="email-help" onChange={(e) => update("email", e.target.value)} /></Field></div><ErrorFor errors={errors} fieldId="full-name" /><ErrorFor errors={errors} fieldId="email" />
@@ -297,7 +317,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
       {step === 1 && <Step headingRef={headingRef} title="Choose the work you want" help="Activities guide matching. Avoided activities are preferences unless you mark them as dealbreakers in Step 4.">
         <CheckCatalog id="desired-activities" legend="What would you like to do?" options={activityOptions} errors={errors} values={draft.desiredActivities} onToggle={(value) => toggle("desiredActivities", value)} /><ErrorFor errors={errors} fieldId="desired-activities" />
         <label className="confirm"><input type="checkbox" checked={draft.guidanceRequested} onChange={(e) => update("guidanceRequested", e.target.checked)} /><span><strong>Help me decide from my experience.</strong> We will use the editable adjacent-opportunities starting point; this does not confirm any resume fact.</span></label>
-        <CheckCatalog id="avoided-activities" legend="What would you rather avoid?" options={activityOptions} values={draft.avoidedActivities} onToggle={(value) => toggle("avoidedActivities", value)} />{draft.avoidedActivities.length > 0 && <PreferenceSelects id="avoided-preference-strength" items={draft.avoidedActivities.map((value) => [`activity:${value}`, labels[value] || value])} values={draft.workConditionPreferences} onChange={(key, value) => update("workConditionPreferences", { ...draft.workConditionPreferences, [key]: value })} intro="Avoided activities remain optional preferences unless you explicitly choose Do not show me or Dealbreaker. They never rank the subscription board." />}
+        <CheckCatalog id="avoided-activities" legend="What would you rather avoid?" options={activityOptions} values={draft.avoidedActivities} onToggle={(value) => toggle("avoidedActivities", value)} />{draft.avoidedActivities.length > 0 && <PreferenceSelects id="avoided-preference-strength" items={draft.avoidedActivities.map((value) => [`activity:${value}`, labels[value] || value])} values={draft.workConditionPreferences} onChange={(key, value) => update("workConditionPreferences", { ...draft.workConditionPreferences, [key]: value })} intro="Avoided activities remain optional preferences unless you explicitly choose Do not show me or Dealbreaker. They are applied only to your private search criteria." />}
         <Field id="target-titles" label="Titles you have in mind" help="Optional retrieval hints, not proof that you qualify."><input id="target-titles" value={draft.targetTitles.join(", ")} onChange={(e) => list("targetTitles", e.target.value)} placeholder="Operations coordinator, project assistant" /></Field>{titleSuggestions.length > 0 && <div className="suggestion-chips" aria-label="Resume-suggested titles">{titleSuggestions.map((title) => <button type="button" key={title} onClick={() => update("targetTitles", [...new Set([...draft.targetTitles, title])])}>Add {title}</button>)}</div>}{draft.targetTitles.length > 0 && <div className="suggestion-chips" aria-label="Selected title hints">{draft.targetTitles.map((title) => <button type="button" key={title} onClick={() => update("targetTitles", draft.targetTitles.filter((item) => item !== title))}>{title} ×</button>)}</div>}
         {draft.searchBreadth === "CLOSE_TO_PREVIOUS_WORK" && draft.targetTitles.length > 0 && <label className="confirm"><input type="checkbox" checked={draft.titleRestrictionConfirmed} onChange={(e) => update("titleRestrictionConfirmed", e.target.checked)} /><span>Limit this narrow search to the title families I entered.</span></label>}
         <CheckCatalog id="industry-interests" legend="Industries you are interested in (optional)" options={industryCatalog.map(([id, name, description]) => [id, name, description] as const)} values={draft.industryInterests} onToggle={(value) => toggle("industryInterests", value)} />
@@ -330,7 +350,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
         {draft.dealbreakers.includes("SOMETHING_ELSE") && <><Field id="custom-dealbreaker" label="What else should we leave out?" required errors={errors}><textarea id="custom-dealbreaker" value={draft.customDealbreaker} onChange={(e) => update("customDealbreaker", e.target.value)} /></Field><ErrorFor errors={errors} fieldId="custom-dealbreaker" /></>}
         {unknownCriteria.map((criterion) => { const fieldId = unknownPolicyFieldId(criterion.key); return <fieldset key={criterion.key} id={fieldId} tabIndex={-1} aria-invalid={hasError(errors, fieldId) || undefined} aria-describedby={hasError(errors, fieldId) ? errorId(fieldId) : undefined}><legend>If an employer does not state {criterion.label.toLowerCase()}, what should we do?</legend><Radio name={`unknown-${criterion.key}`} value="EXCLUDE_IF_UNKNOWN" checked={draft.employerUnknownPolicies[criterion.key] || ""} onChange={(next) => update("employerUnknownPolicies", { ...draft.employerUnknownPolicies, [criterion.key]: next })} label="Exclude it if unknown" /><Radio name={`unknown-${criterion.key}`} value="ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING" checked={draft.employerUnknownPolicies[criterion.key] || ""} onChange={(next) => update("employerUnknownPolicies", { ...draft.employerUnknownPolicies, [criterion.key]: next })} label="Include it with an unknown warning" /><ErrorFor errors={errors} fieldId={fieldId} /></fieldset>; })}
         <Review draft={draft} resume={resume} cover={cover} onEdit={editSection} />
-        {finalized && feasibility && <FeasibilityResult value={feasibility} checkoutBusy={checkoutBusy}
+        {finalized && feasibility && <FeasibilityResult value={feasibility} checkoutBusy={checkoutBusy} invitationAvailable={checkoutInvitation !== null}
           onCheckout={() => void startCheckout()} onEdit={() => editSection(3, "work-modes", true)} />}
         <div className="deadline-note"><strong>Service boundary</strong><p>ApplyPack researches public listings and provides 10 matches after feasibility, capacity, and payment. We do not contact employers, submit applications, or guarantee interviews, offers, salary, employment, or continued listing availability.</p></div>
         <ErrorFor errors={errors} fieldId="terms-accepted" /><label className="confirm legal-agreement"><input id="terms-accepted" type="checkbox" aria-invalid={hasError(errors, "terms-accepted") || undefined} aria-describedby={hasError(errors, "terms-accepted") ? errorId("terms-accepted") : undefined} checked={draft.termsAccepted} onChange={(e) => update("termsAccepted", e.target.checked)} /><span>I agree to the <Link href="/terms" target="_blank">Terms</Link> and <Link href="/privacy" target="_blank">Privacy Policy</Link>.</span></label>
@@ -342,8 +362,8 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     </section></div></main>;
 }
 
-function FeasibilityResult({ value, checkoutBusy, onCheckout, onEdit }: {
-  value: FeasibilityView; checkoutBusy: boolean; onCheckout: () => void; onEdit: () => void;
+function FeasibilityResult({ value, checkoutBusy, invitationAvailable, onCheckout, onEdit }: {
+  value: FeasibilityView; checkoutBusy: boolean; invitationAvailable: boolean; onCheckout: () => void; onEdit: () => void;
 }) {
   const presentation = feasibilityPresentation(value);
   return <section className={`feasibility-result feasibility-result--${value.state.toLowerCase()}`} aria-live="polite" aria-labelledby="feasibility-title">
@@ -352,7 +372,8 @@ function FeasibilityResult({ value, checkoutBusy, onCheckout, onEdit }: {
     <p>{presentation.message}</p>
     {typeof value.preliminarilyDeliverableCount === "number" && <p><strong>{value.preliminarilyDeliverableCount}</strong> current candidates passed the preliminary evidence gates. Human release review is still required.</p>}
     <div className="admin-buttons">
-      {presentation.canCheckout && <button className="wizard-next" type="button" disabled={checkoutBusy} onClick={onCheckout}>{checkoutBusy ? "Preparing secure checkout…" : SEARCH_CHECKOUT_CTA}<ArrowRight aria-hidden="true" /></button>}
+      {presentation.canCheckout && invitationAvailable && <button className="wizard-next" type="button" disabled={checkoutBusy} onClick={onCheckout}>{checkoutBusy ? "Preparing secure checkout…" : SEARCH_CHECKOUT_CTA}<ArrowRight aria-hidden="true" /></button>}
+      {presentation.canCheckout && !invitationAvailable && <p>Your intake is ready for operator review. Checkout remains locked until capacity and ten suitable opportunities are verified and a single-use invitation is issued.</p>}
       {presentation.showEdit && <button className="secondary-button" type="button" onClick={onEdit}>Edit my settings</button>}
       {presentation.showHumanReview && <Link href="/help?topic=feasibility-review">Request human review</Link>}
       {presentation.showLeave && <Link href="/">Leave without paying</Link>}

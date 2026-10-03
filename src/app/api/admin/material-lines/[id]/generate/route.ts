@@ -12,7 +12,8 @@ import {
   type GeneratedArtifact,
   type ReferenceSheetRecord,
 } from "@/lib/documents/generate";
-import { documentRendererConfiguration, renderDocumentLocallyForQa } from "@/lib/documents/renderer";
+import { documentRendererConfiguration, renderDocumentForQa } from "@/lib/documents/renderer";
+import { documentWorkerConfiguration } from "@/lib/files/aws-document-worker";
 import { validateMaterialClaims } from "@/lib/documents/claim-validation";
 import { materialFilename } from "@/lib/materials/contract";
 import { readReferencePayload, type StoredReferenceEnvelope } from "@/lib/materials/references";
@@ -116,14 +117,20 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
     return response({ error: "Current employer instructions are not generation-ready." }, 409);
   }
   const rendererConfiguration = documentRendererConfiguration();
+  const workerConfiguration = documentWorkerConfiguration();
+  const rendererReady = process.env.APP_DEPLOYMENT_ENV === "production"
+    ? workerConfiguration.ready
+      && workerConfiguration.identity === generationConfiguration?.document_renderer_identity
+      && workerConfiguration.fontSha256 === generationConfiguration?.document_font_sha256
+    : rendererConfiguration.ready
+      && rendererConfiguration.identity === generationConfiguration?.document_renderer_identity
+      && rendererConfiguration.documentFont.sha256 === generationConfiguration?.document_font_sha256;
 
   if (!generationConfiguration?.materials_generation_approved
     || !generationConfiguration.materials_generation_approval_reference
     || !Array.isArray(generationConfiguration.material_output_formats)
     || !generationConfiguration.material_output_formats.length
-    || !rendererConfiguration.ready
-    || rendererConfiguration.identity !== generationConfiguration.document_renderer_identity
-    || rendererConfiguration.documentFont.sha256 !== generationConfiguration.document_font_sha256
+    || !rendererReady
     || generationConfiguration.document_safety_policy !== "generated-structural-v1") {
     return response({ error: "Approved Liberation Sans rendering and structural document policy are required." }, 503);
   }
@@ -435,7 +442,7 @@ async function validateUploadAndRegister(input: {
 }) {
   const inspection = await inspectDocxPackage(input.artifact.buffer, input.artifactType);
   if (!inspection.passed) throw new Error("docx_package_inspection_failed");
-  const render = await renderDocumentLocallyForQa({
+  const render = await renderDocumentForQa({
     docx: input.artifact.buffer,
     expectedPages: input.artifact.expectedPageCount,
     expectedExtractedTextSha256: inspection.extractedTextSha256,

@@ -29,6 +29,8 @@ export function checkoutConfiguration() {
   );
   const searchPriceConfigured = Boolean(process.env.STRIPE_JOB_SEARCH_PRICE_ID);
   const webhookConfigured = Boolean(process.env.STRIPE_WEBHOOK_SECRET);
+  const commerceConfigured = modeMatchesCredential && liveGuardSatisfied && pricesConfigured && webhookConfigured;
+  const acceptingOrders = checkoutEnabled && commerceConfigured;
 
   return {
     mode,
@@ -41,6 +43,8 @@ export function checkoutConfiguration() {
     boardPricesConfigured,
     searchPriceConfigured,
     webhookConfigured,
+    commerceConfigured,
+    acceptingOrders,
     searchReady:
       checkoutEnabled &&
       modeMatchesCredential &&
@@ -48,11 +52,7 @@ export function checkoutConfiguration() {
       searchPriceConfigured &&
       webhookConfigured,
     ready:
-      checkoutEnabled &&
-      modeMatchesCredential &&
-      liveGuardSatisfied &&
-      pricesConfigured &&
-      webhookConfigured,
+      acceptingOrders,
     boardReady:
       checkoutEnabled &&
       modeMatchesCredential &&

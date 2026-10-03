@@ -40,7 +40,18 @@ type CommerceConfiguration = {
 
 const response = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "cache-control": "private, no-store, max-age=0" } });
 
+function boardOriginCheckoutIsDisabled(): boolean {
+  return true;
+}
+
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  if (boardOriginCheckoutIsDisabled()) {
+    return NextResponse.json(
+      { error: "Board-origin materials checkout is not offered in the manual launch." },
+      { status: 410, headers: { "cache-control": "no-store" } },
+    );
+  }
+  /* istanbul ignore next -- historical implementation remains unreachable for reconciliation reference. */
   if (!isSameOriginRequest(request)) return response({ error: "This checkout request was rejected." }, 403);
   const input = schema.safeParse(await request.json().catch(() => null));
   if (!input.success) return response({ error: "Review the contact details and required acknowledgments." }, 400);

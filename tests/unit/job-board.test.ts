@@ -71,17 +71,19 @@ describe("paid filtered job board", () => {
     }
   });
 
-  it("requires full checkout readiness for board checkout and handles the provider lifecycle", () => {
+  it("hard-disables new board checkout while retaining historical provider reconciliation", () => {
     const checkout = readFileSync("src/app/api/checkout/job-board/route.ts", "utf8");
     const events = readFileSync("src/lib/job-board/stripe-events.ts", "utf8");
-    expect(checkout).toContain("createStripeBoardClient");
+    expect(checkout).toContain("Subscription checkout is not offered in the manual launch.");
+    expect(checkout).toContain("status: 410");
+    expect(checkout).not.toContain("createStripeBoardClient");
     expect(events).toContain('event.type === "customer.subscription.created"');
     expect(events).toContain('expand: ["latest_invoice"]');
     expect(events).toContain('requestedState === "PENDING"');
     expect(events).toContain('latestInvoiceId === binding.invoice.id');
     const health = readFileSync("src/app/api/health/route.ts", "utf8");
     expect(health).toContain('admin.rpc("ap_current_source_readiness")');
-    expect(health).toContain('process.env.APP_JOB_SOURCE_SYNC_ENABLED === "true"');
+    expect(health).not.toContain("STRIPE_JOB_BOARD_WEEKLY_PRICE_ID");
   });
 
   it("keeps subscription access separate from purchased material orders in the migration", () => {

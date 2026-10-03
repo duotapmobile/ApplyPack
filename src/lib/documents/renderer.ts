@@ -20,7 +20,7 @@ const SHA256 = /^[0-9a-f]{64}$/i;
 
 type LocalTool = { path: string; sha256: string };
 
-export type LocalRenderResult = {
+export type DocumentRenderResult = {
   rendererIdentity: string;
   documentFontSha256: string;
   pageCount: 1 | 2;
@@ -32,6 +32,15 @@ export type LocalRenderResult = {
   structureTreeSha256: string;
   searchablePdf: Buffer;
   searchablePdfSha256: string;
+};
+export type LocalRenderResult = DocumentRenderResult;
+
+export type DocumentRenderInput = {
+  docx: Buffer;
+  expectedPages: 1 | 2;
+  expectedExtractedTextSha256: string;
+  artifactType: ArtifactProvenance["artifact"];
+  expectedMetadata: DocumentMetadata;
 };
 
 export function documentRendererConfiguration(environment: Partial<NodeJS.ProcessEnv> = process.env) {
@@ -59,13 +68,15 @@ export function documentRendererConfiguration(environment: Partial<NodeJS.Proces
   } as const;
 }
 
-export async function renderDocumentLocallyForQa(input: {
-  docx: Buffer;
-  expectedPages: 1 | 2;
-  expectedExtractedTextSha256: string;
-  artifactType: ArtifactProvenance["artifact"];
-  expectedMetadata: DocumentMetadata;
-}): Promise<LocalRenderResult> {
+export async function renderDocumentForQa(input: DocumentRenderInput): Promise<DocumentRenderResult> {
+  if (process.env.APP_DEPLOYMENT_ENV === "production") {
+    const { renderWithDocumentWorker } = await import("@/lib/files/aws-document-worker");
+    return renderWithDocumentWorker(input);
+  }
+  return renderDocumentLocallyForQa(input);
+}
+
+export async function renderDocumentLocallyForQa(input: DocumentRenderInput): Promise<LocalRenderResult> {
   const configuration = documentRendererConfiguration();
   if (!configuration.ready) throw new Error("approved_local_document_renderer_not_configured");
   await Promise.all(Object.values(configuration.tools).map(verifyTool));

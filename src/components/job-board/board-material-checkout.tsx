@@ -29,7 +29,7 @@ export function BoardMaterialCheckout({ jobId, initialEmail }: { jobId: string; 
     } catch (error) { setState("error"); setMessage(error instanceof Error ? error.message : "Checkout is unavailable."); }
   }
   return <form className="wizard-fields" onSubmit={submit} aria-describedby="board-material-description">
-    <p id="board-material-description">One human-reviewed tailored résumé and one tailored cover letter for this job: $8 total. ApplyPack does not submit the application.</p>
+    <p id="board-material-description">Board-origin document checkout is unavailable in the manual launch. No charge can be started here.</p>
     <div className="field-grid"><label>Full name<input name="displayName" autoComplete="name" required /></label>
       <label>Email<input name="email" type="email" autoComplete="email" defaultValue={initialEmail} required /></label>
       <label>Phone<input name="phone" type="tel" autoComplete="tel" required /></label>
@@ -43,7 +43,7 @@ export function BoardMaterialCheckout({ jobId, initialEmail }: { jobId: string; 
     <label className="confirm"><input name="documentFactsConfirmed" type="checkbox" required /> I confirm ApplyPack must use only verified facts from my current profile.</label>
     <label className="confirm"><input name="noAutoApplyAcknowledged" type="checkbox" required /> I understand ApplyPack does not apply to the employer.</label>
     <label className="confirm"><input name="outcomesAcknowledged" type="checkbox" required /> I understand documents do not guarantee interviews or employment.</label>
-    <button className="button-link button-link--primary" type="submit" disabled={state === "loading"}>{state === "loading" ? "Opening secure checkout…" : "Buy résumé + cover letter — $8"}</button>
+    <button className="button-link button-link--primary" type="submit" disabled>Board-origin checkout unavailable</button>
     {state === "error" ? <p className="form-message" role="alert">{message} No charge was made unless Stripe shows a completed payment.</p> : null}
   </form>;
 }

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { assertConfiguredPrice, assertConfiguredRecurringPrice, createStripeOperationalClient } from "@/lib/stripe/server";
+import { assertConfiguredPrice, createStripeOperationalClient } from "@/lib/stripe/server";
 import { checkoutConfiguration } from "@/lib/stripe/mode";
-import { boardPlans, boardPlanPriceId } from "@/lib/job-board/plans";
+import { APPLY_PACK_PRICE_CENTS, SEARCH_PRICE_CENTS } from "@/lib/domain/applypack";
 import { checkRuntimeFileSafety } from "@/lib/operations/runtime-readiness";
 import { checkSensitivePayloadHealth } from "@/lib/security/kms-health";
 import { checkDocumentRendererReadiness } from "@/lib/operations/renderer-readiness";
@@ -15,22 +15,16 @@ let stripeCache: { checkedAt: number; healthy: boolean } | null = null;
 async function stripeReady() {
   if (stripeCache && Date.now() - stripeCache.checkedAt < 5 * 60 * 1000) return stripeCache.healthy;
   const checkout = checkoutConfiguration();
-  if (!checkout.ready || !checkout.searchReady || !checkout.boardReady) return false;
+  if (!checkout.commerceConfigured) return false;
   const stripe = createStripeOperationalClient();
   const searchPrice = process.env.STRIPE_JOB_SEARCH_PRICE_ID;
   const packPrice = process.env.STRIPE_APPLY_PACK_PRICE_ID;
   let healthy = false;
-  const weeklyPrice = boardPlanPriceId("weekly");
-  const monthlyPrice = boardPlanPriceId("monthly");
-  const threeMonthPrice = boardPlanPriceId("three_months");
-  if (stripe && searchPrice && packPrice && weeklyPrice && monthlyPrice && threeMonthPrice) {
+  if (stripe && searchPrice && packPrice) {
     try {
       await Promise.all([
-        assertConfiguredPrice(stripe, searchPrice, { unitAmount: 2000, productName: "Job Match Search" }),
-        assertConfiguredPrice(stripe, packPrice, { unitAmount: 800, productName: "Tailored Resume + Cover Letter" }),
-        assertConfiguredRecurringPrice(stripe, weeklyPrice, { unitAmount: boardPlans.weekly.amountCents, interval: boardPlans.weekly.interval, intervalCount: boardPlans.weekly.intervalCount }),
-        assertConfiguredRecurringPrice(stripe, monthlyPrice, { unitAmount: boardPlans.monthly.amountCents, interval: boardPlans.monthly.interval, intervalCount: boardPlans.monthly.intervalCount }),
-        assertConfiguredRecurringPrice(stripe, threeMonthPrice, { unitAmount: boardPlans.three_months.amountCents, interval: boardPlans.three_months.interval, intervalCount: boardPlans.three_months.intervalCount }),
+        assertConfiguredPrice(stripe, searchPrice, { unitAmount: SEARCH_PRICE_CENTS, productName: "Job Match Search" }),
+        assertConfiguredPrice(stripe, packPrice, { unitAmount: APPLY_PACK_PRICE_CENTS, productName: "Tailored Resume + Cover Letter" }),
       ]);
       healthy = true;
     } catch {
@@ -42,6 +36,7 @@ async function stripeReady() {
 }
 
 export async function GET() {
+  const checkout = checkoutConfiguration();
   const encryption = await checkSensitivePayloadHealth();
   const fileSafety = await checkRuntimeFileSafety();
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
@@ -60,7 +55,8 @@ export async function GET() {
     && Date.now() - emailVerifiedAt <= 30 * 24 * 60 * 60 * 1_000;
   const configured = {
     supabase: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) && (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)),
-    payments,
+    commerceConfigured: payments,
+    acceptingOrders: checkout.acceptingOrders,
     email: Boolean(process.env.RESEND_API_KEY && (process.env.EMAIL_FROM_ADDRESS || process.env.EMAIL_FROM) && emailRecentlyVerified),
     publicOrigin,
     fileSafety,
@@ -69,8 +65,9 @@ export async function GET() {
     maintenance: false,
   };
   let database = false;
-  let jobSourcesRegistered = false;
-  let authorizedSourceInventory = false;
+  let manualInventoryReady = false;
+  const deployedSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.APP_RELEASE_SHA || "";
+  const releaseSha = Boolean(deployedSha && process.env.APP_EXPECTED_RELEASE_SHA === deployedSha);
   if (configured.supabase) {
     const admin = createSupabaseAdminClient();
     if (admin) {
@@ -96,18 +93,34 @@ export async function GET() {
         && (unresolvedCriticalAlerts || 0) === 0
       );
       const { data, error } = await admin.from("capacity_limits").select("kind,units_per_24h,enabled");
-      database = !error && data?.length === 2;
+      database = !error && data?.length === 2
+        && data.some((row) => row.kind === "job_search" && row.enabled && row.units_per_24h === 1)
+        && data.some((row) => row.kind === "apply_pack" && row.enabled && row.units_per_24h === 2);
       const { data: sourceReadiness, error: sourceError } = await admin.rpc("ap_current_source_readiness");
-      jobSourcesRegistered = !sourceError && sourceReadiness?.jobSourcesRegistered === true;
-      authorizedSourceInventory = !sourceError && (sourceReadiness?.manualReady === true
-        || (process.env.APP_JOB_SOURCE_SYNC_ENABLED === "true" && sourceReadiness?.automatedReady === true));
+      manualInventoryReady = !sourceError && sourceReadiness?.manualReady === true;
     }
   }
-  const ready = Object.values(configured).every(Boolean) && database && jobSourcesRegistered && authorizedSourceInventory;
+  const infrastructureChecks = {
+    supabase: configured.supabase,
+    commerceConfigured: configured.commerceConfigured,
+    email: configured.email,
+    publicOrigin: configured.publicOrigin,
+    fileSafety: configured.fileSafety,
+    encryption: configured.encryption,
+    documentRendering: configured.documentRendering,
+    maintenance: configured.maintenance,
+    database,
+    manualInventoryReady,
+    releaseSha,
+  };
+  const ready = Object.values(infrastructureChecks).every(Boolean);
   return NextResponse.json(
     {
       status: ready ? "ready" : "not_ready",
-      checks: { ...configured, database, jobSourcesRegistered, authorizedSourceInventory },
+      releaseSha: deployedSha || null,
+      commerceConfigured: configured.commerceConfigured,
+      acceptingOrders: configured.acceptingOrders,
+      checks: infrastructureChecks,
     },
     { status: ready ? 200 : 503, headers: { "cache-control": "no-store" } }
   );

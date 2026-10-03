@@ -112,9 +112,9 @@ function fixture(): EvidenceBoundMaterialInput {
 
 describe("Chunk 5 materials contract", () => {
   it("prices every permitted subset in integer cents with no bundle or added amount", () => {
-    expect(materialTotalCents(["one"])).toBe(800);
-    expect(materialTotalCents(["one", "two", "three"])).toBe(2_400);
-    expect(materialTotalCents(Array.from({ length: 10 }, (_, index) => String(index)))).toBe(8_000);
+    expect(materialTotalCents(["one"])).toBe(799);
+    expect(materialTotalCents(["one", "two", "three"])).toBe(2_397);
+    expect(materialTotalCents(Array.from({ length: 10 }, (_, index) => String(index)))).toBe(7_990);
     expect(() => materialTotalCents([])).toThrow("material_selection_count_invalid");
     expect(() => materialTotalCents(["same", "same"])).toThrow("duplicate_material_selection");
     expect(() => materialTotalCents(Array.from({ length: 11 }, (_, index) => String(index)))).toThrow("material_selection_count_invalid");
@@ -133,7 +133,7 @@ describe("Chunk 5 materials contract", () => {
     expect(careerBreakPresentation({ choice: "CAREER_BREAK", start: "2020", end: "2021" })).toEqual({ label: "Career Break", dates: "2020 to 2021" });
     expect(careerBreakPresentation({ choice: "FAMILY_CAREGIVING" })).toEqual({ label: "Family Caregiving", dates: "" });
     expect(() => careerBreakPresentation({ choice: "CUSTOM_WORDING", customLabel: "Household Engineer" })).toThrow("career_break_label_not_neutral");
-    expect(materialTotalCents(["one"])).toBe(800);
+    expect(materialTotalCents(["one"])).toBe(799);
   });
 
   it("uses visible approved warnings and plain-language public lifecycle states", () => {
