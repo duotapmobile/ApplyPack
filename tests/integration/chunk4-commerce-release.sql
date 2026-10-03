@@ -402,6 +402,39 @@ select pg_temp.assert_true((select state='NONE' and invalidated_at is not null
 select pg_temp.assert_true((select lifecycle='RELEASED' and debit_disposition='RETURNED' from public.ap_capacity_allocations where request_key='search-checkout:chunk4-search-request'), 'confirmed compensation did not return never-consumed capacity');
 rollback to savepoint before_confirmed_checkout_compensation;
 
+savepoint before_canary_retry_recovery;
+select pg_temp.assert_true(public.ap_compensate_search_checkout(
+  'a4400000-0000-4000-8000-000000000001','LOCAL_PROMOTION_FAILED_PROVIDER_EXPIRED','cs_canary_retry_expired'
+), 'confirmed provider cancellation did not prepare canary retry');
+select public.ap_supersede_manual_launch_canary_designation(
+  (select id from public.ap_manual_launch_canary_designations
+    where payment_attempt_id='a4500000-0000-4000-8000-000000000001'),
+  repeat('a',40),'14000000-0000-4000-8000-000000000003',
+  'provider-session-expired-and-reconciled-for-safe-retry'
+);
+select pg_temp.assert_true(
+  (select superseded_at is not null and authorization_id is not null
+    from public.ap_manual_launch_canary_designations
+    where payment_attempt_id='a4500000-0000-4000-8000-000000000001')
+  and (select revoked_at is not null from public.ap_manual_launch_canary_authorizations
+    where id=(select authorization_id from public.ap_manual_launch_canary_designations
+      where payment_attempt_id='a4500000-0000-4000-8000-000000000001')),
+  'terminal uncharged canary supersession did not preserve the audit trail and revoke its authorization'
+);
+select public.ap_authorize_manual_launch_canary_checkout(
+  repeat('a',40),'SEARCH','14000000-0000-4000-8000-000000000001',
+  '34000000-0000-4000-8000-000000000001','14000000-0000-4000-8000-000000000003',
+  'authorized-retry-after-terminal-reconciled-canary',clock_timestamp()+interval '45 minutes'
+);
+select pg_temp.assert_true(
+  public.ap_manual_launch_canary_checkout_authorized(
+    repeat('a',40),'SEARCH','14000000-0000-4000-8000-000000000001',
+    '34000000-0000-4000-8000-000000000001'
+  ),
+  'a terminal reconciled uncharged canary could not be safely reauthorized on the same release'
+);
+rollback to savepoint before_canary_retry_recovery;
+
 do $$ begin
   perform public.ap_reserve_capacity(
     '14000000-0000-4000-8000-000000000001','SEARCH',3,'chunk4-over-capacity',

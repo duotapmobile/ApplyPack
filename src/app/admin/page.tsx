@@ -29,14 +29,14 @@ export default async function AdminPage() {
   if (!profile || !["operator", "admin"].includes(profile.role)) redirect("/my-applypack");
   const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
   if (!assurance || assurance.currentLevel !== "aal2") return <AdminMfa />;
-  const [{ data: orders }, { data: capacity }, { data: failures }, { data: applyRows }, { data: conflictRows }, { data: correctionRows }, { data: capacityLimits }, { data: candidateRows }] = await Promise.all([
+  const [{ data: orders }, { data: capacity }, { data: failures }, { data: applyRows }, { data: conflictRows }, { data: correctionRows }, { data: capacityPools }, { data: candidateRows }] = await Promise.all([
     admin.from("orders").select("id,product_kind,status,amount_cents,delivery_deadline,created_at,intake_id,intake:intakes(email,direction,priorities,dealbreakers,location_preference,schedule_preference,minimum_salary,experience_summary,notes,cover_letter_path,source_scan_status,source_deleted_at,intake_answers(answers))").in("status", ["paid", "in_fulfillment"]).order("delivery_deadline"),
     admin.from("capacity_reservations").select("id,kind,units,status,reserved_at,expires_at,confirmed_at").in("status", ["reserved", "confirmed"]).order("reserved_at", { ascending: false }),
     admin.from("webhook_events").select("id,event_type,error_message,received_at").not("error_message", "is", null).order("received_at", { ascending: false }).limit(10),
     admin.from("apply_pack_items").select("id,order_id,status,emphasis_notes,do_not_mention_notes,customer_update_notes,draft_resume_path,draft_cover_letter_path,draft_generated_at,draft_generator_version,orders!inner(status),job_match:job_matches(job:jobs(company,title))").in("orders.status", ["paid", "in_fulfillment"]).neq("status", "delivered"),
     admin.from("conflict_reviews").select("id,explanation,job_match:job_matches(job:jobs(company,title))").eq("status", "submitted").order("created_at"),
     admin.from("correction_requests").select("id,correction_text,apply_pack_item:apply_pack_items(job_match:job_matches(job:jobs(company,title)))").eq("status", "submitted").order("created_at"),
-    admin.from("capacity_limits").select("kind,units_per_24h,enabled").order("kind"),
+    admin.from("ap_capacity_pools").select("resource,enabled").in("resource", ["SEARCH", "MATERIALS"]).order("resource"),
     admin.from("search_candidates").select("search_order_id,evaluation_id,ranking_score,fit_summary,requirements,concerns,job:jobs(*)").eq("review_status", "proposed").order("ranking_score", { ascending: false }),
   ]);
   const { data: pendingRequests } = await admin.from("ap_feasibility_requests").select("id,snapshot_id,state,created_at").eq("state", "PENDING").order("created_at");
@@ -184,6 +184,11 @@ export default async function AdminPage() {
     const job = Array.isArray(match?.job) ? match.job[0] : match?.job;
     return { id: item.id, correction_text: item.correction_text, company: job?.company || "Employer", title: job?.title || "Apply Pack" };
   });
+  const capacityLimits = (capacityPools || []).map((pool) => ({
+    kind: pool.resource === "SEARCH" ? "job_search" : "apply_pack",
+    units_per_24h: pool.resource === "SEARCH" ? 1 : 2,
+    enabled: pool.enabled,
+  }));
   const candidatesByOrder = new Map<string, ReturnType<typeof candidatePayload>[]>();
   for (const candidate of candidateRows || []) {
     const job = Array.isArray(candidate.job) ? candidate.job[0] : candidate.job;
@@ -215,7 +220,7 @@ export default async function AdminPage() {
         <Chunk4StaffQueue rows={staffQueue} candidates={staffReviewCandidates} />
         <StagingBoardMaterialReview initialJobs={stagingBoardReviewJobs} />
         <Chunk5MaterialStaffQueue lines={materialStaffLines} />
-        <AdminOperations searchOrders={searchOrders} applyItems={applyItems} conflicts={conflicts} corrections={corrections} capacityLimits={capacityLimits || []} />
+        <AdminOperations searchOrders={searchOrders} applyItems={applyItems} conflicts={conflicts} corrections={corrections} capacityLimits={capacityLimits} />
         <MatchingWorkbench />
       <PendingIntakes requests={pendingRequests || []} snapshots={pendingSnapshots || []} />
         <section className="admin-table-wrap">

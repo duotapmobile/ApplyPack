@@ -186,6 +186,7 @@ export async function manualLaunchCanaryCheckoutGate(
   subject: CanaryCheckoutSubject,
   evaluated?: Awaited<ReturnType<typeof evaluateLaunchInfrastructure>>,
 ) {
+  if (process.env.APP_CANARY_CHECKOUT_ENABLED !== "true") return false;
   const infrastructure = evaluated || await evaluateLaunchInfrastructure(admin);
   if (!infrastructure.ready || !infrastructure.commerceConfigured
     || infrastructure.environmentAcceptingOrders || !infrastructure.deployedSha

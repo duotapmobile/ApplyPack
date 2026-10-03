@@ -336,7 +336,10 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
     releaseSha: safeReleaseSha(),
     readiness: {
       database,
-      payments: payment.ready && payment.searchReady && payment.boardReady,
+      // Provider/webhook integrity is independent of whether either checkout
+      // gate is currently accepting new orders. Dormant board prices are not a
+      // manual-launch dependency.
+      payments: payment.commerceConfigured,
       email: recentEmailVerification(process.env, now),
       fileSafety,
       encryption,

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -127,9 +127,12 @@ describe("October 2 manual-launch hardening", () => {
     const workers = source("src/lib/commerce/workers.ts");
     const board = source("src/lib/job-board/stripe-events.ts");
     const canary = source("src/app/api/admin/manual-launch/canary-refunds/route.ts");
-    const designation = source("src/app/api/admin/manual-launch/canary-designations/route.ts");
     const authorization = source("src/app/api/admin/manual-launch/canary-authorizations/route.ts");
+    const retry = source("src/app/api/admin/manual-launch/canary-retries/route.ts");
+    const activation = source("src/app/api/admin/manual-launch/activations/route.ts");
     const launchReadiness = source("src/lib/operations/launch-readiness.ts");
+    const operationsSummary = source("src/lib/operations/summary.ts");
+    const capacity = source("src/app/api/admin/capacity/[kind]/route.ts");
     const searchCheckout = source("src/app/api/checkout/search/route.ts");
     const materialsCheckout = source("src/app/api/checkout/apply-packs/route.ts");
     expect(webhook).toContain('rpc("ap_record_search_refund_result_verified"');
@@ -143,15 +146,24 @@ describe("October 2 manual-launch hardening", () => {
     expect(canary).toContain('rpc("ap_queue_manual_launch_canary_refund"');
     expect(canary).toContain('.select("state")');
     expect(canary).not.toContain("stripe.refunds");
-    expect(designation).toContain('rpc("ap_designate_manual_launch_canary_payment"');
-    expect(designation).toContain('access.role !== "admin"');
-    expect(designation).toContain("safeReleaseSha()");
+    expect(existsSync(resolve(process.cwd(), "src/app/api/admin/manual-launch/canary-designations/route.ts"))).toBe(false);
     expect(authorization).toContain('rpc("ap_authorize_manual_launch_canary_checkout"');
+    expect(authorization).toContain('rpc("ap_revoke_manual_launch_canary_checkout"');
     expect(authorization).toContain('access.role !== "admin"');
     expect(authorization).toContain("safeReleaseSha()");
+    expect(retry).toContain('rpc("ap_supersede_manual_launch_canary_designation"');
+    expect(retry).toContain('access.role !== "admin"');
+    expect(activation).toContain('rpc("ap_record_manual_launch_activation"');
+    expect(activation).toContain('z.enum(["CANARY", "PUBLIC"])');
     expect(launchReadiness).toContain('activation.activation_phase === "PUBLIC"');
     expect(launchReadiness).toContain('activation.activation_phase !== "CANARY"');
+    expect(launchReadiness).toContain('process.env.APP_CANARY_CHECKOUT_ENABLED !== "true"');
+    expect(source(".env.example")).toContain("APP_CANARY_CHECKOUT_ENABLED=false");
     expect(launchReadiness).toContain('rpc("ap_manual_launch_canary_checkout_authorized"');
+    expect(operationsSummary).toContain("payments: payment.commerceConfigured");
+    expect(operationsSummary).not.toContain("payment.boardReady");
+    expect(capacity).toContain('rpc("ap_set_manual_launch_capacity_state"');
+    expect(capacity).not.toContain('from("capacity_limits")');
     expect(searchCheckout).toContain('rpc("ap_bind_manual_launch_canary_payment"');
     expect(materialsCheckout).toContain('rpc("ap_bind_manual_launch_canary_payment"');
     expect(board).toContain("cancel_at_period_end: true");

@@ -86,7 +86,8 @@ npm run test:e2e
 
 - Customer and operator workflows: `docs/runbooks/OPERATIONS.md`
 - Provider connection: `docs/runbooks/PROVIDER_SETUP.md`
-- Railway release and rollback: `docs/runbooks/DEPLOYMENT.md`
+- Canonical October 2 release, canary, and rollback: `docs/runbooks/MANUAL_LAUNCH_RELEASE.md`
+- Historical Railway platform setup: `docs/runbooks/DEPLOYMENT.md` (its Release/Rollback sections are superseded)
 - Security, retention, backups, and key rotation: `docs/runbooks/SECURITY_AND_PRIVACY.md`
 - Incident response: `docs/runbooks/INCIDENT_RESPONSE.md`
 - Evidence required to launch: `docs/runbooks/SHIP_CHECKLIST.md`

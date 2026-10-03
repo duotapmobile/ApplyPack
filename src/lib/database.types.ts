@@ -3800,6 +3800,9 @@ export type Database = {
           id: string
           product_kind: string
           release_sha: string
+          revocation_evidence_reference: string | null
+          revoked_at: string | null
+          revoked_by: string | null
           search_draft_id: string | null
         }
         Insert: {
@@ -3811,6 +3814,9 @@ export type Database = {
           id?: string
           product_kind: string
           release_sha: string
+          revocation_evidence_reference?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
           search_draft_id?: string | null
         }
         Update: {
@@ -3822,6 +3828,9 @@ export type Database = {
           id?: string
           product_kind?: string
           release_sha?: string
+          revocation_evidence_reference?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
           search_draft_id?: string | null
         }
         Relationships: [
@@ -3840,6 +3849,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "ap_manual_launch_canary_authorizations_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "ap_manual_launch_canary_authorizations_search_draft_id_fkey"
             columns: ["search_draft_id"]
             isOneToOne: false
@@ -3850,6 +3866,7 @@ export type Database = {
       }
       ap_manual_launch_canary_designations: {
         Row: {
+          authorization_id: string | null
           designated_at: string
           designated_by: string
           evidence_reference: string
@@ -3859,8 +3876,12 @@ export type Database = {
           payment_attempt_id: string
           product_kind: string
           release_sha: string
+          superseded_at: string | null
+          superseded_by: string | null
+          supersession_evidence_reference: string | null
         }
         Insert: {
+          authorization_id?: string | null
           designated_at?: string
           designated_by: string
           evidence_reference: string
@@ -3870,8 +3891,12 @@ export type Database = {
           payment_attempt_id: string
           product_kind: string
           release_sha: string
+          superseded_at?: string | null
+          superseded_by?: string | null
+          supersession_evidence_reference?: string | null
         }
         Update: {
+          authorization_id?: string | null
           designated_at?: string
           designated_by?: string
           evidence_reference?: string
@@ -3881,8 +3906,18 @@ export type Database = {
           payment_attempt_id?: string
           product_kind?: string
           release_sha?: string
+          superseded_at?: string | null
+          superseded_by?: string | null
+          supersession_evidence_reference?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "ap_manual_launch_canary_designations_authorization_id_fkey"
+            columns: ["authorization_id"]
+            isOneToOne: false
+            referencedRelation: "ap_manual_launch_canary_authorizations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ap_manual_launch_canary_designations_designated_by_fkey"
             columns: ["designated_by"]
@@ -3917,6 +3952,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "ap_payment_refund_aggregates"
             referencedColumns: ["payment_attempt_id"]
+          },
+          {
+            foreignKeyName: "ap_manual_launch_canary_designations_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -11814,15 +11856,24 @@ export type Database = {
         }
         Returns: string
       }
-      ap_queue_manual_launch_canary_refund: {
-        Args: {
-          p_actor_id: string
-          p_evidence_reference: string
-          p_payment_attempt_id: string
-          p_release_sha: string
-        }
-        Returns: string
-      }
+      ap_queue_manual_launch_canary_refund:
+        | {
+            Args: {
+              p_actor_id: string
+              p_evidence_reference: string
+              p_payment_attempt_id: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_actor_id: string
+              p_evidence_reference: string
+              p_payment_attempt_id: string
+              p_release_sha: string
+            }
+            Returns: string
+          }
       ap_queue_material_line_refund: {
         Args: {
           p_customer_id: string
@@ -11903,6 +11954,15 @@ export type Database = {
           p_rationale: string
           p_reviewer_id: string
           p_search_service_id: string
+        }
+        Returns: string
+      }
+      ap_record_manual_launch_activation: {
+        Args: {
+          p_activation_phase: string
+          p_actor_id: string
+          p_evidence: Json
+          p_release_sha: string
         }
         Returns: string
       }
@@ -12176,6 +12236,15 @@ export type Database = {
         Args: { p_draft_id: string; p_secret_hash: string }
         Returns: boolean
       }
+      ap_revoke_manual_launch_canary_checkout: {
+        Args: {
+          p_actor_id: string
+          p_authorization_id: string
+          p_evidence_reference: string
+          p_release_sha: string
+        }
+        Returns: boolean
+      }
       ap_revoke_reference_permission: {
         Args: {
           p_customer_id: string
@@ -12239,6 +12308,15 @@ export type Database = {
         }
         Returns: number
       }
+      ap_set_manual_launch_capacity_state: {
+        Args: {
+          p_actor_id: string
+          p_enabled: boolean
+          p_reason: string
+          p_resource: Database["public"]["Enums"]["ap_capacity_resource"]
+        }
+        Returns: boolean
+      }
       ap_set_source_authorization_head: {
         Args: {
           p_actor_id: string
@@ -12269,6 +12347,15 @@ export type Database = {
           p_search_service_id: string
         }
         Returns: string
+      }
+      ap_supersede_manual_launch_canary_designation: {
+        Args: {
+          p_actor_id: string
+          p_designation_id: string
+          p_evidence_reference: string
+          p_release_sha: string
+        }
+        Returns: boolean
       }
       ap_unpaid_source_retention_eligible: {
         Args: { p_document_id: string }

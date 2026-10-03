@@ -45,27 +45,39 @@ select pg_temp.assert_true(not has_function_privilege('service_role','public.ap_
 select pg_temp.assert_true(has_function_privilege('service_role','public.ap_record_search_refund_result_verified(uuid,text,text,text,integer,text,uuid,text,text,text,timestamptz,text)','execute'), 'verified refund binding unavailable');
 select pg_temp.assert_true(
   has_function_privilege('service_role','public.ap_queue_manual_launch_canary_refund(uuid,uuid,text,text)','execute')
+  and has_function_privilege('service_role','public.ap_queue_manual_launch_canary_refund(uuid,uuid,text)','execute')
   and not has_function_privilege('authenticated','public.ap_queue_manual_launch_canary_refund(uuid,uuid,text,text)','execute')
-  and has_function_privilege('service_role','public.ap_designate_manual_launch_canary_payment(uuid,uuid,text,text,uuid,text)','execute')
+  and not has_function_privilege('service_role','public.ap_designate_manual_launch_canary_payment(uuid,uuid,text,text,uuid,text)','execute')
   and not has_function_privilege('authenticated','public.ap_designate_manual_launch_canary_payment(uuid,uuid,text,text,uuid,text)','execute')
   and has_function_privilege('service_role','public.ap_authorize_manual_launch_canary_checkout(text,text,uuid,uuid,uuid,text,timestamptz)','execute')
   and not has_function_privilege('authenticated','public.ap_authorize_manual_launch_canary_checkout(text,text,uuid,uuid,uuid,text,timestamptz)','execute')
   and has_function_privilege('service_role','public.ap_bind_manual_launch_canary_payment(uuid,text)','execute')
-  and not has_function_privilege('authenticated','public.ap_bind_manual_launch_canary_payment(uuid,text)','execute'),
-  'manual-launch canary refunds must remain service-only'
+  and not has_function_privilege('authenticated','public.ap_bind_manual_launch_canary_payment(uuid,text)','execute')
+  and has_function_privilege('service_role','public.ap_revoke_manual_launch_canary_checkout(uuid,text,uuid,text)','execute')
+  and has_function_privilege('service_role','public.ap_supersede_manual_launch_canary_designation(uuid,text,uuid,text)','execute')
+  and has_function_privilege('service_role','public.ap_set_manual_launch_capacity_state(public.ap_capacity_resource,boolean,uuid,text)','execute')
+  and has_function_privilege('service_role','public.ap_record_manual_launch_activation(text,text,jsonb,uuid)','execute')
+  and not has_function_privilege('authenticated','public.ap_record_manual_launch_activation(text,text,jsonb,uuid)','execute'),
+  'manual-launch canary mutations must be service-only and direct designation must be unavailable'
 );
 select pg_temp.assert_true(
   (select relrowsecurity from pg_class where oid='public.ap_manual_launch_canary_designations'::regclass)
   and exists(select 1 from pg_trigger
     where tgrelid='public.ap_manual_launch_canary_designations'::regclass
-      and tgname='ap_manual_launch_canary_designation_immutable' and not tgisinternal),
-  'pre-charge canary designations must be private and immutable'
+      and tgname='ap_manual_launch_canary_designation_immutable' and not tgisinternal)
+  and exists(select 1 from pg_indexes where schemaname='public'
+    and indexname='ap_manual_launch_canary_active_release_product_unique'
+    and indexdef like '%WHERE (superseded_at IS NULL)%'),
+  'pre-charge canary designations must be private and permit only audited terminal supersession'
 );
 select pg_temp.assert_true(
   (select relrowsecurity from pg_class where oid='public.ap_manual_launch_canary_authorizations'::regclass)
   and exists(select 1 from pg_trigger
     where tgrelid='public.ap_manual_launch_canary_authorizations'::regclass
       and tgname='ap_manual_launch_canary_authorization_immutable' and not tgisinternal)
+  and exists(select 1 from information_schema.columns
+    where table_schema='public' and table_name='ap_manual_launch_canary_authorizations'
+      and column_name='revoked_at')
   and exists(select 1 from information_schema.columns
     where table_schema='public' and table_name='ap_manual_launch_activations'
       and column_name='activation_phase'),

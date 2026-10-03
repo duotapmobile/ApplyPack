@@ -15,6 +15,7 @@ const serverSchema = z.object({
   STRIPE_APPLY_PACK_PRICE_ID: z.string().optional(),
   APP_PAYMENT_MODE: z.enum(["disabled", "test", "live"]).default("disabled"),
   APP_CHECKOUT_ENABLED: z.enum(["true", "false"]).default("false"),
+  APP_CANARY_CHECKOUT_ENABLED: z.enum(["true", "false"]).default("false"),
   APP_LIVE_PAYMENTS_ENABLED: z.enum(["true", "false"]).default("false"),
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM_ADDRESS: z.string().email().default("orders@applypack.work"),
