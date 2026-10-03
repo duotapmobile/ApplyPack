@@ -79,7 +79,7 @@ export async function POST(request: Request) {
     || view.state !== "COMPLETE" || view.outcome !== "LIKELY" || view.checkoutEligible !== true) {
     return NextResponse.json({ error: "This search is not currently eligible for Checkout. No payment was started." }, { status: 409 });
   }
-  if (!await manualLaunchCheckoutGate(context.admin).catch(() => false)) {
+  if (!await manualLaunchCheckoutGate(context.admin, undefined, "SEARCH").catch(() => false)) {
     return NextResponse.json({ error: "Checkout remains locked until the exact release and launch evidence are healthy." }, { status: 503 });
   }
 

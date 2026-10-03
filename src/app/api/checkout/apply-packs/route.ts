@@ -127,7 +127,7 @@ export async function POST(request: Request) {
   });
   if (!rate.configured) return NextResponse.json({ error: "Secure checkout controls are unavailable." }, { status: 503 });
   if (!rate.allowed) return NextResponse.json({ error: "Too many checkout attempts. Try again later." }, { status: 429 });
-  if (!await manualLaunchCheckoutGate(admin).catch(() => false)) {
+  if (!await manualLaunchCheckoutGate(admin, undefined, "MATERIALS").catch(() => false)) {
     return NextResponse.json({ error: "Checkout remains locked until the exact release and launch evidence are healthy." }, { status: 503 });
   }
 

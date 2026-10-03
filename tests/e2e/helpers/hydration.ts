@@ -1,6 +1,6 @@
 import { expect, type Page, type Response } from "@playwright/test";
 
-const TRANSIENT_NAVIGATION_ERROR = /NS_BINDING_ABORTED|interrupted by another navigation|execution context was destroyed/i;
+const TRANSIENT_NAVIGATION_ERROR = /NS_BINDING_ABORTED|frame load interrupted|interrupted by another navigation|execution context was destroyed/i;
 
 export async function gotoStable(page: Page, url: string): Promise<Response | null> {
   let lastError: unknown;
@@ -25,5 +25,11 @@ export async function gotoStable(page: Page, url: string): Promise<Response | nu
 export async function waitForHydration(page: Page) {
   // Next dev may replace a WebKit document while restoring its debug channel.
   // Server HTML being visible does not prove keyboard handlers are attached.
-  await expect(page.locator("html")).toHaveAttribute("data-hydrated", "true", { timeout: 30_000 });
+  try {
+    await expect(page.locator("html")).toHaveAttribute("data-hydrated", "true", { timeout: 15_000 });
+  } catch (error) {
+    if (page.isClosed()) throw error;
+    await gotoStable(page, page.url());
+    await expect(page.locator("html")).toHaveAttribute("data-hydrated", "true", { timeout: 30_000 });
+  }
 }

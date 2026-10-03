@@ -97,7 +97,7 @@ update public.ap_commerce_configuration set
   launch_activation_id='a4200000-0000-4000-8000-000000000001',launch_release_sha=repeat('a',40),
   document_worker_network_attestation_sha256=repeat('b',64),
   pricing_version='manual-launch-pricing-2026-10-02-v2',tax_version='tax-inclusive-v1',
-  terms_version='terms-v1',privacy_version='privacy-v1',canonical_site_url='https://applypack.work',
+  terms_version='manual-launch-terms-2026-10-02-v2',privacy_version='privacy-v1',canonical_site_url='https://applypack.work',
   access_callback_url='https://applypack.work/auth/callback',provider_idempotent_email_approved=true,
   provider_email_approval_reference='rollback-only-integration-fixture',payment_provider='stripe',
   payment_api_version='2026-08-27.basil',immediate_payment_methods=array['card'],release_verification_ttl_seconds=3600
@@ -210,7 +210,7 @@ insert into public.ap_feasibility_requests(
 
 select public.ap_record_snapshot_legal_acceptance(
   '34000000-0000-4000-8000-000000000001',repeat('a',64),
-  '54000000-0000-4000-8000-000000000001','terms-v1','privacy-v1',repeat('7',64)
+  '54000000-0000-4000-8000-000000000001','manual-launch-terms-2026-10-02-v2','privacy-v1',repeat('7',64)
 );
 select pg_temp.assert_true(
   (public.ap_read_current_feasibility('34000000-0000-4000-8000-000000000001',repeat('a',64))->>'checkoutEligible')='false',
@@ -1303,6 +1303,29 @@ select pg_temp.assert_true((select status='delivered' and delivered_at is not nu
 select pg_temp.assert_true((select lifecycle='COMPLETED' and debit_disposition='SPENT' from public.ap_capacity_allocations where id=(select capacity_allocation_id from public.ap_search_services where id='a4600000-0000-4000-8000-000000000001')), 'release did not complete spent capacity');
 select pg_temp.assert_true((select count(*)=10 and bool_and(release_explanation ?& array['whatJobInvolves','whyMadeList','howExperienceConnects','whatMayBeNew','whatToKnow']) from public.job_matches where search_order_id='94000000-0000-4000-8000-000000000001'), 'five-section customer explanations missing');
 select pg_temp.assert_true((select count(*)=1 from public.ap_outbox_messages where id='a4900000-0000-4000-8000-000000000010' and state='QUEUED' and message_kind='SEARCH_EXACT_TEN_DELIVERED'), 'delivery outbox message missing');
+
+savepoint before_manual_launch_search_canary_refund;
+do $$
+declare refund_id uuid;
+begin
+  refund_id:=public.ap_queue_manual_launch_canary_refund(
+    'a4500000-0000-4000-8000-000000000001','14000000-0000-4000-8000-000000000003',
+    'staging-canary-search-delivery-and-download-verified'
+  );
+  perform pg_temp.assert_true((select amount_cents=1899 and scope='FULL_SEARCH'
+    and state='PENDING' and reason_code='MANUAL_LAUNCH_CANARY'
+    from public.ap_refund_operations where id=refund_id),
+    'delivered current search canary refund was not queued at the exact paid amount');
+  perform pg_temp.assert_true(exists(select 1 from public.ap_scheduled_jobs
+    where reference_id=refund_id and job_kind='REFUND_SUBMIT'),
+    'search canary refund worker job was not scheduled');
+  perform pg_temp.assert_true(exists(select 1 from public.ap_audit_events
+    where entity_id=refund_id and action='MANUAL_LAUNCH_CANARY_REFUND_QUEUED'
+      and actor_id='14000000-0000-4000-8000-000000000003'),
+    'search canary refund evidence was not audited');
+end;
+$$;
+rollback to savepoint before_manual_launch_search_canary_refund;
 
 savepoint before_search_postdelivery_dispute;
 select public.ap_apply_search_dispute(

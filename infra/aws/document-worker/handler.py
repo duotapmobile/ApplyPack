@@ -92,19 +92,41 @@ def _pdf_text(data, limits):
         return text, pages
 
 
-def _render_probe(data, limits):
-    with tempfile.TemporaryDirectory(prefix="applypack-render-") as work:
-        source = Path(work) / "probe.html"
-        source.write_text("<html lang='en'><body><h1>ApplyPack readiness</h1><p>" + data.decode("utf-8", "replace") + "</p></body></html>", encoding="utf-8")
+def _probe_document(data, limits):
+    token = "ApplyPack synthetic extraction and render probe"
+    extracted = _docx_text(data, limits["expanded"])
+    if token not in extracted:
+        raise ValueError("probe_docx_extraction_invalid")
+    with tempfile.TemporaryDirectory(prefix="applypack-probe-") as work:
+        source = Path(work) / "probe.docx"
+        pdf = Path(work) / "probe.pdf"
+        source.write_bytes(data)
         subprocess.run([
             os.environ.get("LIBREOFFICE_BIN", "libreoffice"), "--headless", "--nologo", "--nodefault", "--nofirststartwizard",
             "--convert-to", "pdf", "--outdir", work, str(source)
         ], capture_output=True, timeout=max(1, limits["milliseconds"] / 1000), check=True,
             env={**os.environ, "HOME": work})
-        rendered = (Path(work) / "probe.pdf").read_bytes()
+        rendered = pdf.read_bytes()
         if len(rendered) < 5 or rendered[:5] != b"%PDF-":
             raise ValueError("render_invalid")
-        return rendered[:5].decode("ascii")
+        info = subprocess.run(["pdfinfo", str(pdf)], capture_output=True, text=True,
+                              timeout=max(1, limits["milliseconds"] / 1000), check=True)
+        pages_match = re.search(r"^Pages:\s+(\d+)\s*$", info.stdout, re.MULTILINE)
+        pages = int(pages_match.group(1)) if pages_match else 0
+        if pages < 1 or pages > min(limits["pages"], 2):
+            raise ValueError("page_bound")
+        rendered_text = subprocess.run(
+            ["pdftotext", "-layout", "-nopgbrk", str(pdf), "-"], capture_output=True, text=True,
+            timeout=max(1, limits["milliseconds"] / 1000), check=True
+        ).stdout
+        if token not in rendered_text:
+            raise ValueError("probe_rendered_text_invalid")
+        return {
+            "renderedPdfHeader": rendered[:5].decode("ascii"),
+            "pageCount": pages,
+            "docxExtractionVerified": True,
+            "renderedTextVerified": True,
+        }
 
 
 def _font_sha256():
@@ -196,8 +218,8 @@ def lambda_handler(event, context):
     data = _read(event)
     operation = event.get("operation")
     attestation = _runtime_attestation(context)
-    if operation == "probe-render":
-        return {"ok": True, "renderedPdfHeader": _render_probe(data, limits),
+    if operation == "probe-document":
+        return {"ok": True, **_probe_document(data, limits),
                 "documentFontSha256": _font_sha256(), **attestation}
     if operation == "render-docx":
         return {**_render_docx(data, event, limits), **attestation}

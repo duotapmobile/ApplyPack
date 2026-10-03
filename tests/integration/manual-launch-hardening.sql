@@ -43,6 +43,18 @@ select pg_temp.assert_true(not has_function_privilege('service_role','public.ap_
 select pg_temp.assert_true(has_function_privilege('service_role','public.ap_begin_invited_search_checkout(uuid,text,uuid,text,uuid,uuid,text,uuid,text,uuid,text,uuid,uuid,text,text,uuid)','execute'), 'service role cannot call invitation wrapper');
 select pg_temp.assert_true(not has_function_privilege('service_role','public.ap_record_search_refund_result(uuid,text,text,text,text,text,timestamptz,text)','execute'), 'service role can bypass verified refund binding');
 select pg_temp.assert_true(has_function_privilege('service_role','public.ap_record_search_refund_result_verified(uuid,text,text,text,integer,text,uuid,text,text,text,timestamptz,text)','execute'), 'verified refund binding unavailable');
+select pg_temp.assert_true(
+  has_function_privilege('service_role','public.ap_queue_manual_launch_canary_refund(uuid,uuid,text)','execute')
+  and not has_function_privilege('authenticated','public.ap_queue_manual_launch_canary_refund(uuid,uuid,text)','execute'),
+  'manual-launch canary refunds must remain service-only'
+);
+select pg_temp.assert_true(
+  exists(select 1 from pg_trigger where tgrelid='public.ap_search_checkout_invitations'::regclass
+    and tgname='ap_release_revoked_search_invitation_capacity' and not tgisinternal)
+  and position('INVITATION_REVOKED' in pg_get_functiondef(
+    'public.ap_release_revoked_search_invitation_capacity()'::regprocedure))>0,
+  'revoked or expired invitations must return their held search capacity'
+);
 
 select pg_temp.assert_true(
   (select relrowsecurity from pg_class where oid='public.ap_manual_launch_activations'::regclass)
@@ -93,6 +105,10 @@ select pg_temp.assert_true(
     '''available'''
     in pg_get_functiondef('public.ap_manual_launch_capacity_readiness()'::regprocedure)
   ) > 0
+  and position(
+    'reserved_search_invitation_units'
+    in pg_get_functiondef('public.ap_manual_launch_capacity_readiness()'::regprocedure)
+  ) > 0
   and not has_function_privilege('service_role','public.ap_reserve_capacity(uuid,public.ap_capacity_resource,integer,text,timestamptz,jsonb,uuid)','execute'),
   'authoritative capacity must enforce and report the rolling 1/2 manual launch limits'
 );
@@ -124,8 +140,52 @@ select public.ap_reserve_capacity(
 );
 select pg_temp.assert_true(
   public.ap_manual_launch_capacity_readiness()->>'ready'='true'
-  and public.ap_manual_launch_capacity_readiness()->>'available'='false',
-  'full rolling capacity must keep health true while blocking a new checkout'
+  and public.ap_manual_launch_capacity_readiness()->>'available'='true'
+  and public.ap_manual_launch_capacity_readiness()->'resources'
+    @> '[{"resource":"SEARCH","newCapacityAvailable":false,"checkoutAvailable":true}]'::jsonb
+  and public.ap_manual_launch_capacity_readiness()->'resources'
+    @> '[{"resource":"MATERIALS","newCapacityAvailable":true,"checkoutAvailable":true}]'::jsonb,
+  'a held search invitation must remain checkout eligible without cross-blocking materials'
+);
+do $$ begin
+  perform public.ap_reserve_capacity(
+    'f1000000-0000-4000-8000-000000000001','SEARCH',1,
+    'search-invitation:f4000000-0000-4000-8000-000000000002',
+    clock_timestamp()+interval '30 minutes','[]'
+  );
+  raise exception 'second rolling search reservation was accepted';
+exception when others then
+  if sqlerrm='second rolling search reservation was accepted' then raise; end if;
+  if sqlerrm<>'manual_launch_rolling_capacity_unavailable' then raise; end if;
+end $$;
+insert into public.ap_capacity_allocations(
+  id,bucket_id,customer_id,units,lifecycle,debit_disposition,request_key,staffing_version,
+  reserved_at,expires_at,audit_version
+) values (
+  'f5000000-0000-4000-8000-000000000001','f3000000-0000-4000-8000-000000000002',
+  'f1000000-0000-4000-8000-000000000001',2,'RESERVED','HELD',
+  'materials-checkout:f6000000-0000-4000-8000-000000000001','manual-launch-readiness-v1',
+  clock_timestamp(),clock_timestamp()+interval '30 minutes','manual-launch-readiness-v1'
+);
+select pg_temp.assert_true(
+  public.ap_manual_launch_capacity_readiness()->>'available'='true'
+  and public.ap_manual_launch_capacity_readiness()->'resources'
+    @> '[{"resource":"SEARCH","checkoutAvailable":true}]'::jsonb
+  and public.ap_manual_launch_capacity_readiness()->'resources'
+    @> '[{"resource":"MATERIALS","checkoutAvailable":false}]'::jsonb,
+  'full materials capacity must not block the customer whose search invitation is already held'
+);
+update public.ap_capacity_allocations
+set lifecycle='CONSUMED',debit_disposition='SPENT',consumed_at=clock_timestamp()
+where request_key='search-invitation:f4000000-0000-4000-8000-000000000001';
+select pg_temp.assert_true(
+  public.ap_manual_launch_capacity_readiness()->>'available'='false'
+  and
+  public.ap_manual_launch_capacity_readiness()->'resources'
+    @> '[{"resource":"SEARCH","newCapacityAvailable":false,"checkoutAvailable":false}]'::jsonb
+  and public.ap_manual_launch_capacity_readiness()->'resources'
+    @> '[{"resource":"MATERIALS","newCapacityAvailable":false,"checkoutAvailable":false}]'::jsonb,
+  'spent search capacity and full materials capacity must report no checkout admission'
 );
 
 select pg_temp.assert_true(
@@ -170,6 +230,13 @@ select pg_temp.assert_true(
   (select pg_get_functiondef('public.ap_queue_search_refund(uuid,uuid,public.ap_refund_scope,text)'::regprocedure)
      like '%payment_row.amount_cents%'),
   'refunds must use the immutable historical or current paid amount'
+);
+select pg_temp.assert_true(
+  (select pg_get_functiondef('public.ap_queue_manual_launch_canary_refund(uuid,uuid,text)'::regprocedure)
+    like '%fulfillment<>''DELIVERED''%SEARCH_EXACT_TEN%MATERIAL_PAIR%MATERIAL_TRIPLE%'
+    and pg_get_functiondef('public.ap_queue_manual_launch_canary_refund(uuid,uuid,text)'::regprocedure)
+    like '%payment.amount_cents=1899%payment.amount_cents=799%MANUAL_LAUNCH_CANARY%'),
+  'canary refunds must be limited to delivered current-price manual-launch products'
 );
 
 rollback;

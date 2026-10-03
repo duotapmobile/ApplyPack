@@ -40,6 +40,7 @@ with tempfile.TemporaryDirectory(prefix="applypack-worker-smoke-") as work:
     <text:p>Operations coordinator</text:p>
     <text:h text:outline-level="1">Experience</text:h>
     <text:p>Coordinated accurate records and customer follow-up. This document contains synthetic test data only.</text:p>
+    <text:p>ApplyPack synthetic extraction and render probe</text:p>
   </office:text></office:body>
 </office:document-content>""", compress_type=zipfile.ZIP_DEFLATED)
     profile = Path(work) / "profile"
@@ -75,5 +76,15 @@ with tempfile.TemporaryDirectory(prefix="applypack-worker-smoke-") as work:
     assert result["pageCount"] == 1
     assert "LiberationSans" in result["fontInfo"]
     assert len(result["documentFontSha256"]) == 64
+    probe = handler._probe_document(
+        docx,
+        {"expanded": 2_097_152, "pages": 2, "milliseconds": 30_000},
+    )
+    assert probe == {
+        "renderedPdfHeader": "%PDF-",
+        "pageCount": 1,
+        "docxExtractionVerified": True,
+        "renderedTextVerified": True,
+    }
     print("OFFLINE_RENDER_OK")
     print("FONT_SHA256=" + result["documentFontSha256"])

@@ -11,6 +11,7 @@ import { APPLY_PACK_PRICE_CENTS, SEARCH_PRICE_CENTS } from "@/lib/domain/applypa
 import { documentWorkerConfiguration } from "@/lib/files/aws-document-worker";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
+type LaunchCapacityResource = "SEARCH" | "MATERIALS";
 
 let stripeCache: { checkedAt: number; healthy: boolean } | null = null;
 
@@ -87,6 +88,7 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
   };
   const deployedSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.APP_RELEASE_SHA || "";
   let capacityAvailable = false;
+  const capacityByResource: Record<LaunchCapacityResource, boolean> = { SEARCH: false, MATERIALS: false };
   checks.releaseSha = Boolean(deployedSha && process.env.APP_EXPECTED_RELEASE_SHA === deployedSha);
   if (supabaseConfigured) {
     const admin = adminClient || createSupabaseAdminClient();
@@ -116,10 +118,19 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
         && (unresolvedOperationalAlerts || 0) === 0
         && (unresolvedCriticalAlerts || 0) === 0,
       );
-      checks.database = !capacityError && Boolean(capacity && typeof capacity === "object" && !Array.isArray(capacity)
-        && (capacity as Record<string, unknown>).ready === true);
-      capacityAvailable = !capacityError && Boolean(capacity && typeof capacity === "object" && !Array.isArray(capacity)
-        && (capacity as Record<string, unknown>).available === true);
+      const capacityRecord = capacity && typeof capacity === "object" && !Array.isArray(capacity)
+        ? capacity as Record<string, unknown> : null;
+      checks.database = !capacityError && capacityRecord?.ready === true;
+      if (!capacityError && capacityRecord && Array.isArray(capacityRecord.resources)) {
+        for (const entry of capacityRecord.resources) {
+          if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+          const row = entry as Record<string, unknown>;
+          if ((row.resource === "SEARCH" || row.resource === "MATERIALS") && row.checkoutAvailable === true) {
+            capacityByResource[row.resource] = true;
+          }
+        }
+      }
+      capacityAvailable = Object.values(capacityByResource).some(Boolean);
       checks.manualInventoryReady = !sourceError && sourceReadiness?.manualReady === true;
     }
   }
@@ -129,6 +140,7 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
     deployedSha,
     commerceConfigured,
     capacityAvailable,
+    capacityByResource,
     environmentAcceptingOrders: checkout.acceptingOrders,
     checks,
   };
@@ -137,10 +149,12 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
 export async function manualLaunchCheckoutGate(
   admin: AdminClient,
   evaluated?: Awaited<ReturnType<typeof evaluateLaunchInfrastructure>>,
+  resource?: LaunchCapacityResource,
 ) {
   const infrastructure = evaluated || await evaluateLaunchInfrastructure(admin);
   if (!infrastructure.ready || !infrastructure.capacityAvailable
     || !infrastructure.environmentAcceptingOrders || !infrastructure.deployedSha) return false;
+  if (resource && !infrastructure.capacityByResource[resource]) return false;
   const { data: configuration, error: configurationError } = await admin.from("ap_commerce_configuration")
     .select("checkout_enabled,launch_activation_id,launch_release_sha,tax_approval_reference,document_worker_network_attestation_sha256")
     .eq("singleton", true).maybeSingle();

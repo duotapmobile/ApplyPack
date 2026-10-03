@@ -11644,6 +11644,14 @@ export type Database = {
         }
         Returns: string
       }
+      ap_queue_manual_launch_canary_refund: {
+        Args: {
+          p_actor_id: string
+          p_evidence_reference: string
+          p_payment_attempt_id: string
+        }
+        Returns: string
+      }
       ap_queue_material_line_refund: {
         Args: {
           p_customer_id: string

@@ -3,6 +3,7 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { Document, Packer, Paragraph, TextRun } from "docx";
 import { pdfFontTableUsesApprovedFont } from "@/lib/documents/font-validation";
 import { pdfTextBoundsAreValid } from "@/lib/documents/pdf-bounds";
 import { pdfCatalogLanguageMatches, pdfStructureIsValid } from "@/lib/documents/pdf-validation";
@@ -11,7 +12,7 @@ import type { ArtifactProvenance, DocumentMetadata } from "@/lib/documents/gener
 import type { ParserLimits } from "./secure-pipeline";
 
 type Environment = Partial<NodeJS.ProcessEnv>;
-type WorkerOperation = "extract" | "probe-render" | "render-docx";
+type WorkerOperation = "extract" | "probe-document" | "render-docx";
 const SHA256 = /^[0-9a-f]{64}$/i;
 const VERSION_ARN = /^arn:aws:lambda:us-east-1:[0-9]{12}:function:[A-Za-z0-9-_]+:[1-9][0-9]*$/;
 
@@ -174,10 +175,20 @@ export async function renderWithDocumentWorker(input: {
 }
 
 export async function probeDocumentWorker() {
-  const probe = Buffer.from("ApplyPack isolated render probe", "utf8");
-  const result = await invokeWorker({ operation: "probe-render", bytes: probe, mimeType: "text/plain" });
+  const token = "ApplyPack synthetic extraction and render probe";
+  const probe = await Packer.toBuffer(new Document({
+    sections: [{ children: [new Paragraph({ children: [new TextRun(token)] })] }],
+  }));
+  const result = await invokeWorker({
+    operation: "probe-document",
+    bytes: probe,
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    limits: { maxExpandedBytes: 2_097_152, maxPages: 2, maxMilliseconds: 30_000, maxMemoryBytes: 536_870_912 },
+  });
   const configuration = documentWorkerConfiguration();
   return result.renderedPdfHeader === "%PDF-" && result.networkIsolationVerified === true
+    && result.docxExtractionVerified === true && result.renderedTextVerified === true
+    && Number(result.pageCount) >= 1 && Number(result.pageCount) <= 2
     && result.functionVersionArn === configuration.functionArn
     && result.imageDigest === configuration.imageDigest
     && result.documentFontSha256 === configuration.fontSha256;
