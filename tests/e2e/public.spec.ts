@@ -24,7 +24,7 @@ test("homepage has no serious automated accessibility violations", async ({ page
   await gotoStable(page, "/");
   await waitForHydration(page);
   const results = await new AxeBuilder({ page }).exclude("script").analyze();
-  expect(results.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
+  expect(results.violations.filter((item) => ["moderate", "serious", "critical"].includes(item.impact || ""))).toEqual([]);
 });
 
 test("sign-in starts with the six-digit email-code flow", async ({ page }) => {
@@ -67,7 +67,7 @@ test("the anonymous four-step intake is accessible and starts no checkout", asyn
   expect(await findOverflow(page)).toEqual([]);
   await waitForHydration(page);
   const axe = await new AxeBuilder({ page }).exclude("script").analyze();
-  expect(axe.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
+  expect(axe.violations.filter((item) => ["moderate", "serious", "critical"].includes(item.impact || ""))).toEqual([]);
 });
 
 for (const width of [320, 360, 390, 430, 768, 1024, 1440]) {
@@ -93,7 +93,9 @@ test("security headers are present", async ({ request }) => {
 });
 
 test("320px layout has no horizontal page overflow", async ({ page }) => {
-  test.setTimeout(120_000);
+  // This intentionally visits every public route. Cold Next.js dev compilation
+  // can take longer than two minutes on Windows even when each route is healthy.
+  test.setTimeout(240_000);
   await page.setViewportSize({ width: 320, height: 760 });
   for (const route of routes) {
     await gotoStable(page, route);

@@ -18,6 +18,7 @@ import {
 } from "@/lib/security/sensitive-payload";
 import { assertConfiguredPrice, createStripeMaterialsClient } from "@/lib/stripe/server";
 import { APPLY_PACK_CONTRACT_VERSION } from "@/lib/domain/applypack";
+import { manualLaunchCheckoutGate } from "@/lib/operations/launch-readiness";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -126,6 +127,9 @@ export async function POST(request: Request) {
   });
   if (!rate.configured) return NextResponse.json({ error: "Secure checkout controls are unavailable." }, { status: 503 });
   if (!rate.allowed) return NextResponse.json({ error: "Too many checkout attempts. Try again later." }, { status: 429 });
+  if (!await manualLaunchCheckoutGate(admin).catch(() => false)) {
+    return NextResponse.json({ error: "Checkout remains locked until the exact release and launch evidence are healthy." }, { status: 503 });
+  }
 
   let applicationOrigin: string;
   try {

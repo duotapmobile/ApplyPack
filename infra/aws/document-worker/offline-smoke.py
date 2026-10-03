@@ -1,8 +1,17 @@
 import os
 import subprocess
+import sys
 import tempfile
+import types
 import zipfile
 from pathlib import Path
+
+# The container includes boto3, but this offline render check never contacts AWS.
+# Keep the local smoke independent of a developer-machine SDK installation.
+sys.modules.setdefault("boto3", types.SimpleNamespace(client=lambda _service: None))
+if os.name == "nt":
+    os.environ.setdefault("LIBREOFFICE_BIN", r"C:\Program Files\LibreOffice\program\soffice.exe")
+    os.environ.setdefault("LIBERATION_SANS_FONT_PATH", r"C:\Windows\Fonts\LiberationSans-Regular.ttf")
 
 import handler
 
@@ -36,10 +45,10 @@ with tempfile.TemporaryDirectory(prefix="applypack-worker-smoke-") as work:
     profile = Path(work) / "profile"
     profile.mkdir()
     conversion = subprocess.run(
-        ["libreoffice", "--headless", "--convert-to", "docx", "--outdir", work, str(odt)],
+        [os.environ.get("LIBREOFFICE_BIN", "libreoffice"), "--headless", "--convert-to", "docx", "--outdir", work, str(odt)],
         check=True,
         capture_output=True,
-        env={"HOME": str(profile), "PATH": os.environ.get("PATH", "")},
+        env={**os.environ, "HOME": str(profile)},
     )
     source = Path(work) / "synthetic.docx"
     if not source.is_file():
@@ -61,7 +70,9 @@ with tempfile.TemporaryDirectory(prefix="applypack-worker-smoke-") as work:
     pdf = memory.objects["ephemeral/00000000-0000-4000-8000-000000000001.render.pdf"]
     assert pdf.startswith(b"%PDF-")
     assert memory.objects["ephemeral/00000000-0000-4000-8000-000000000001.page-1.png"].startswith(b"\x89PNG")
-    assert result["outboundNetwork"] is False and result["pageCount"] == 1
+    # Offline rendering validates output determinism only. Network isolation and
+    # immutable Lambda identity require the deployed provider-backed probe.
+    assert result["pageCount"] == 1
     assert "LiberationSans" in result["fontInfo"]
     assert len(result["documentFontSha256"]) == 64
     print("OFFLINE_RENDER_OK")

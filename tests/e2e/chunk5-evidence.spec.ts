@@ -47,7 +47,7 @@ async function installSyntheticApis(page: Page) {
 async function assertAxe(page: Page) {
   await waitForHydration(page);
   const results = await new AxeBuilder({ page }).exclude("script").analyze();
-  expect(results.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
+  expect(results.violations.filter((item) => ["moderate", "serious", "critical"].includes(item.impact || ""))).toEqual([]);
 }
 
 async function capture(page: Page, name: string) {

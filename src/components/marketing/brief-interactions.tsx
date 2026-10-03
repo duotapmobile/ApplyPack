@@ -153,7 +153,7 @@ export function TailoringExample() {
 const homepageFaqs = [
   ["What if I do not know what kind of job I want?", "You do not need a job title to begin. Tell us what kind of work fits your life, what you want to avoid, and what experience you bring. We use that information to identify credible directions."],
   ["What if my resume is old or incomplete?", "Upload the best version you have. The intake lets you confirm experience, responsibilities, tools, training, and other information that may be missing or outdated."],
-  ["When does the 24-hour period begin?", "The 24-clock-hour period begins after your intake and payment are complete and current capacity is confirmed."],
+  ["When does the 24-hour period begin?", "Capacity is verified before your invitation is issued. The 24-clock-hour search period begins when your $18.99 payment succeeds after your intake is complete."],
   ["Does ApplyPack apply to jobs for me?", "No. ApplyPack researches opportunities and prepares application materials. You choose where to apply and submit each application yourself."],
 ];
 
@@ -185,7 +185,7 @@ const processSteps = [
     summary: "We research current openings and deliver 10 focused opportunities within 24 hours.",
     details: [
       "Use the single-use invitation to complete the one-time $18.99 payment after a person verifies ten suitable opportunities and capacity.",
-      "The 24-clock-hour search period begins after intake and payment are complete and capacity is confirmed.",
+      "Capacity is reserved before payment. The 24-clock-hour search period begins when the $18.99 payment succeeds after intake is complete.",
       "A person reads the listings, researches the employers, and compares each role with your approved criteria.",
     ],
   },

@@ -13,16 +13,20 @@ import type { ParserLimits } from "./secure-pipeline";
 type Environment = Partial<NodeJS.ProcessEnv>;
 type WorkerOperation = "extract" | "probe-render" | "render-docx";
 const SHA256 = /^[0-9a-f]{64}$/i;
+const VERSION_ARN = /^arn:aws:lambda:us-east-1:[0-9]{12}:function:[A-Za-z0-9-_]+:[1-9][0-9]*$/;
 
 export function documentWorkerConfiguration(environment: Environment = process.env) {
   const region = environment.AWS_REGION?.trim();
-  const functionName = environment.APP_DOCUMENT_WORKER_FUNCTION_NAME?.trim();
+  const functionArn = environment.APP_DOCUMENT_WORKER_FUNCTION_ARN?.trim();
   const bucket = environment.APP_DOCUMENT_WORKER_BUCKET?.trim();
   const identity = environment.APP_DOCUMENT_WORKER_IDENTITY?.trim();
   const fontSha256 = environment.APP_DOCUMENT_WORKER_FONT_SHA256?.trim().toLowerCase();
-  const ready = Boolean(region === "us-east-1" && functionName && bucket
-    && identity === "applypack-document-worker-v1" && fontSha256 && SHA256.test(fontSha256));
-  return { region, functionName, bucket, identity, fontSha256, ready };
+  const imageDigest = environment.APP_DOCUMENT_WORKER_IMAGE_DIGEST?.trim().toLowerCase();
+  const networkAttestationSha256 = environment.APP_DOCUMENT_WORKER_NETWORK_ATTESTATION_SHA256?.trim().toLowerCase();
+  const ready = Boolean(region === "us-east-1" && functionArn && VERSION_ARN.test(functionArn) && bucket
+    && identity === "applypack-document-worker-v1" && fontSha256 && SHA256.test(fontSha256)
+    && imageDigest && SHA256.test(imageDigest) && networkAttestationSha256 && SHA256.test(networkAttestationSha256));
+  return { region, functionArn, bucket, identity, fontSha256, imageDigest, networkAttestationSha256, ready };
 }
 
 function boundedLimits(limits?: ParserLimits) {
@@ -57,7 +61,7 @@ async function invokeWorker(input: {
       Metadata: { purpose: "document-worker" },
     }), { abortSignal: AbortSignal.timeout(15_000) });
     const response = await lambda.send(new InvokeCommand({
-      FunctionName: configuration.functionName!, InvocationType: "RequestResponse", LogType: "None",
+      FunctionName: configuration.functionArn!, InvocationType: "RequestResponse", LogType: "None",
       Payload: Buffer.from(JSON.stringify({
         schemaVersion: 1, operation: input.operation, bucket: configuration.bucket, key,
         mimeType: input.mimeType, limits: boundedLimits(input.limits), ...input.payload,
@@ -67,7 +71,10 @@ async function invokeWorker(input: {
       throw new Error("document_worker_failed");
     }
     const body = JSON.parse(Buffer.from(response.Payload).toString("utf8")) as Record<string, unknown>;
-    if (body.identity !== configuration.identity || body.ok !== true) throw new Error("document_worker_response_invalid");
+    if (body.identity !== configuration.identity || body.ok !== true
+      || body.functionVersionArn !== configuration.functionArn
+      || body.imageDigest !== configuration.imageDigest
+      || body.networkIsolationVerified !== true) throw new Error("document_worker_response_invalid");
     if (input.operation === "render-docx") {
       const pageCount = Number(body.pageCount);
       if (pageCount !== 1 && pageCount !== 2) throw new Error("document_worker_response_invalid");
@@ -133,7 +140,9 @@ export async function renderWithDocumentWorker(input: {
   const fontSha256 = stringField(result, "documentFontSha256").toLowerCase();
   if (!pdf || !images || pageCount !== input.expectedPages || images.length !== pageCount
     || !pdf.subarray(0, 5).equals(Buffer.from("%PDF-"))
-    || result.outboundNetwork !== false
+    || result.networkIsolationVerified !== true
+    || result.functionVersionArn !== configuration.functionArn
+    || result.imageDigest !== configuration.imageDigest
     || fontSha256 !== configuration.fontSha256
     || !pdfFontTableUsesApprovedFont(fontInfo)
     || !pdfTextBoundsAreValid(boundingXml, pageCount)
@@ -168,7 +177,9 @@ export async function probeDocumentWorker() {
   const probe = Buffer.from("ApplyPack isolated render probe", "utf8");
   const result = await invokeWorker({ operation: "probe-render", bytes: probe, mimeType: "text/plain" });
   const configuration = documentWorkerConfiguration();
-  return result.renderedPdfHeader === "%PDF-" && result.outboundNetwork === false
+  return result.renderedPdfHeader === "%PDF-" && result.networkIsolationVerified === true
+    && result.functionVersionArn === configuration.functionArn
+    && result.imageDigest === configuration.imageDigest
     && result.documentFontSha256 === configuration.fontSha256;
 }
 

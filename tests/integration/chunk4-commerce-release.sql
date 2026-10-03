@@ -64,25 +64,6 @@ select pg_temp.assert_true(not has_table_privilege('anon','public.ap_order_acces
 select pg_temp.assert_true(not has_table_privilege('authenticated','public.ap_order_access_capabilities','select'), 'customer access capabilities exposed');
 select pg_temp.assert_true(not has_table_privilege('authenticated','public.ap_staff_queue','select'), 'staff queue exposed to customers');
 
-update public.ap_commerce_configuration set
-  tax_configuration_approved=true,
-  tax_approval_reference='rollback-only-tax-approval',
-  sales_activation_approved=true,
-  sales_activation_reference='test-only-sales-approval',
-  pricing_version='manual-launch-pricing-2026-10-02-v2',
-  tax_version='tax-inclusive-v1',
-  terms_version='terms-v1',
-  privacy_version='privacy-v1',
-  canonical_site_url='https://applypack.work',
-  access_callback_url='https://applypack.work/auth/callback',
-  provider_idempotent_email_approved=true,
-  provider_email_approval_reference='rollback-only-integration-fixture',
-  payment_provider='stripe',
-  payment_api_version='2026-08-27.basil',
-  immediate_payment_methods=array['card'],
-  release_verification_ttl_seconds=3600
-where singleton;
-select pg_temp.assert_true((select count(*)=1 from public.ap_commerce_configuration where singleton and checkout_enabled), 'commerce singleton unavailable');
 select set_config('applypack.checkout_invitation_id','a4000000-0000-4000-8000-000000000099',true);
 
 insert into auth.users(
@@ -93,6 +74,35 @@ insert into auth.users(
   ('14000000-0000-4000-8000-000000000002','00000000-0000-0000-0000-000000000000','authenticated','authenticated','chunk4-other@example.invalid','',now(),'{}','{}',now(),now()),
   ('14000000-0000-4000-8000-000000000003','00000000-0000-0000-0000-000000000000','authenticated','authenticated','chunk4-reviewer@example.invalid','',now(),'{}','{}',now(),now());
 update public.profiles set role='operator' where id='14000000-0000-4000-8000-000000000003';
+
+insert into public.ap_manual_launch_activations(
+  id,release_sha,health_evidence_reference,database_evidence_reference,payment_evidence_reference,
+  email_evidence_reference,kms_evidence_reference,worker_evidence_reference,maintenance_evidence_reference,
+  backup_restore_evidence_reference,inventory_evidence_reference,accessibility_evidence_reference,
+  product_supervisor_reference,security_supervisor_reference,operations_supervisor_reference,
+  tenth_man_supervisor_reference,accepted_p2_disposition_reference,unresolved_p0_count,unresolved_p1_count,
+  canary_reconciliation_reference,canary_reconciled_amount_cents,tax_approval_reference,
+  worker_network_attestation_sha256,evidence_bundle_sha256,approved_by
+) values(
+  'a4200000-0000-4000-8000-000000000001',repeat('a',40),'fixture-health-evidence','fixture-database-evidence','fixture-payment-evidence',
+  'fixture-email-evidence','fixture-kms-evidence','fixture-worker-evidence','fixture-maintenance-evidence',
+  'fixture-backup-restore','fixture-inventory-evidence','fixture-accessibility-evidence',
+  'fixture-product-supervisor','fixture-security-supervisor','fixture-operations-supervisor',
+  'fixture-tenth-man-supervisor','fixture-p2-disposition',0,0,'fixture-canary-reconciliation',2698,
+  'fixture-tax-approval-reference',repeat('b',64),repeat('c',64),'14000000-0000-4000-8000-000000000003'
+);
+update public.ap_commerce_configuration set
+  tax_configuration_approved=true,tax_approval_reference='fixture-tax-approval-reference',
+  sales_activation_approved=true,sales_activation_reference='manual-launch-activation:a4200000-0000-4000-8000-000000000001',
+  launch_activation_id='a4200000-0000-4000-8000-000000000001',launch_release_sha=repeat('a',40),
+  document_worker_network_attestation_sha256=repeat('b',64),
+  pricing_version='manual-launch-pricing-2026-10-02-v2',tax_version='tax-inclusive-v1',
+  terms_version='terms-v1',privacy_version='privacy-v1',canonical_site_url='https://applypack.work',
+  access_callback_url='https://applypack.work/auth/callback',provider_idempotent_email_approved=true,
+  provider_email_approval_reference='rollback-only-integration-fixture',payment_provider='stripe',
+  payment_api_version='2026-08-27.basil',immediate_payment_methods=array['card'],release_verification_ttl_seconds=3600
+where singleton;
+select pg_temp.assert_true((select count(*)=1 from public.ap_commerce_configuration where singleton and checkout_enabled), 'commerce singleton unavailable');
 
 select * from public.ap_create_anonymous_draft(
   '34000000-0000-4000-8000-000000000001',repeat('a',64),now()+interval '1 day'

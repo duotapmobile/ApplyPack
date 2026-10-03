@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import re
+import socket
 import subprocess
 import tempfile
 import time
@@ -15,6 +16,28 @@ import boto3
 IDENTITY = "applypack-document-worker-v1"
 MAX_SOURCE = 10 * 1024 * 1024
 s3 = boto3.client("s3")
+
+
+def _runtime_attestation(context):
+    image_uri = os.environ.get("APPLYPACK_WORKER_IMAGE_URI", "")
+    digest = re.search(r"@sha256:([0-9a-f]{64})$", image_uri)
+    function_arn = getattr(context, "invoked_function_arn", "")
+    if not digest or not re.fullmatch(r"arn:aws:lambda:us-east-1:[0-9]{12}:function:[A-Za-z0-9-_]+:[1-9][0-9]*", function_arn):
+        raise ValueError("worker_attestation_missing")
+    network_isolation_verified = False
+    try:
+        connection = socket.create_connection(("1.1.1.1", 443), timeout=0.5)
+        connection.close()
+    except OSError:
+        network_isolation_verified = True
+    if not network_isolation_verified:
+        raise ValueError("worker_outbound_network_available")
+    return {
+        "identity": IDENTITY,
+        "functionVersionArn": function_arn,
+        "imageDigest": digest.group(1),
+        "networkIsolationVerified": True,
+    }
 
 
 def _bounded(event):
@@ -74,9 +97,10 @@ def _render_probe(data, limits):
         source = Path(work) / "probe.html"
         source.write_text("<html lang='en'><body><h1>ApplyPack readiness</h1><p>" + data.decode("utf-8", "replace") + "</p></body></html>", encoding="utf-8")
         subprocess.run([
-            "libreoffice", "--headless", "--nologo", "--nodefault", "--nofirststartwizard",
+            os.environ.get("LIBREOFFICE_BIN", "libreoffice"), "--headless", "--nologo", "--nodefault", "--nofirststartwizard",
             "--convert-to", "pdf", "--outdir", work, str(source)
-        ], capture_output=True, timeout=max(1, limits["milliseconds"] / 1000), check=True, env={"HOME": work, "PATH": os.environ.get("PATH", "")})
+        ], capture_output=True, timeout=max(1, limits["milliseconds"] / 1000), check=True,
+            env={**os.environ, "HOME": work})
         rendered = (Path(work) / "probe.pdf").read_bytes()
         if len(rendered) < 5 or rendered[:5] != b"%PDF-":
             raise ValueError("render_invalid")
@@ -84,6 +108,12 @@ def _render_probe(data, limits):
 
 
 def _font_sha256():
+    configured = os.environ.get("LIBERATION_SANS_FONT_PATH")
+    if configured:
+        path = Path(configured)
+        if not path.is_file():
+            raise ValueError("font_unavailable")
+        return hashlib.sha256(path.read_bytes()).hexdigest()
     match = subprocess.run(
         ["fc-match", "--format=%{file}", "Liberation Sans"],
         capture_output=True, text=True, timeout=5, check=True,
@@ -113,13 +143,10 @@ def _render_docx(data, event, limits):
         pdf = Path(work) / "artifact.pdf"
         image_prefix = Path(work) / "page"
         source.write_bytes(data)
-        environment = {
-            "HOME": work,
-            "PATH": os.environ.get("PATH", ""),
-        }
+        environment = {**os.environ, "HOME": work}
         remaining = deadline - time.monotonic()
         subprocess.run([
-            "libreoffice", "--headless", "--nologo", "--nodefault", "--nolockcheck", "--norestore",
+            os.environ.get("LIBREOFFICE_BIN", "libreoffice"), "--headless", "--nologo", "--nodefault", "--nolockcheck", "--norestore",
             "--convert-to", 'pdf:writer_pdf_Export:{"UseTaggedPDF":{"type":"boolean","value":"true"}}',
             "--outdir", work, str(source),
         ], capture_output=True, text=True, timeout=max(0.1, remaining), check=True, env=environment)
@@ -151,8 +178,6 @@ def _render_docx(data, event, limits):
                           ContentType="image/png", ServerSideEncryption="AES256")
         return {
             "ok": True,
-            "identity": IDENTITY,
-            "outboundNetwork": False,
             "pageCount": pages,
             "documentFontSha256": _font_sha256(),
             "pdfInfo": info.stdout + "\n" + info.stderr,
@@ -164,17 +189,18 @@ def _render_docx(data, event, limits):
         }
 
 
-def lambda_handler(event, _context):
+def lambda_handler(event, context):
     if event.get("schemaVersion") != 1:
         raise ValueError("schema_version")
     limits = _bounded(event)
     data = _read(event)
     operation = event.get("operation")
+    attestation = _runtime_attestation(context)
     if operation == "probe-render":
-        return {"ok": True, "identity": IDENTITY, "renderedPdfHeader": _render_probe(data, limits),
-                "documentFontSha256": _font_sha256(), "outboundNetwork": False}
+        return {"ok": True, "renderedPdfHeader": _render_probe(data, limits),
+                "documentFontSha256": _font_sha256(), **attestation}
     if operation == "render-docx":
-        return _render_docx(data, event, limits)
+        return {**_render_docx(data, event, limits), **attestation}
     if operation != "extract":
         raise ValueError("operation")
     mime = event.get("mimeType")
@@ -186,4 +212,4 @@ def lambda_handler(event, _context):
         pagination = "MEASURED"
     else:
         raise ValueError("mime_type")
-    return {"ok": True, "identity": IDENTITY, "text": text, "pageCount": pages, "paginationStatus": pagination}
+    return {"ok": True, "text": text, "pageCount": pages, "paginationStatus": pagination, **attestation}

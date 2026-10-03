@@ -80,11 +80,11 @@ export const publicPages: Record<string, PublicPage> = {
     description: "ApplyPack's accessibility target and support contact.", intro: ["DuoTap LLC d/b/a ApplyPack is committed to a website and service usable by as many people as possible."],
     sections: [
       { title: "Our target", body: ["We aim to conform to WCAG 2.2 Level AA."], bullets: ["Keyboard access", "Visible focus", "Clear structure and labels", "Sufficient contrast", "Reflow and reduced motion", "Manual and automated testing"] },
-      { title: "Need help or another format?", body: ["Email accessibility@applypack.work with the page or service step, what happened, the accommodation or alternative you need, and how you prefer us to respond."] },
+      { title: "Need help or another format?", body: ["Email help@applypack.work with the page or service step, what happened, the accommodation or alternative you need, and how you prefer us to respond."] },
       { title: "Ongoing work", body: ["Accessibility is reviewed during design, development, content changes, and major releases. Automated checks support, but do not replace, keyboard, reflow, screen-reader, and human review."] },
       { title: "Known limitations", body: ["Manual assistive-technology verification for the current staging release is still pending. If a barrier prevents use, contact us for an alternative path while it is corrected."] },
       { title: "Last reviewed", body: ["October 2, 2026."] },
-    ], ctaLabel: "Email Accessibility Help", ctaHref: "mailto:accessibility@applypack.work",
+    ], ctaLabel: "Email Accessibility Help", ctaHref: "mailto:help@applypack.work",
   },
   privacy: {
     slug: "privacy", eyebrow: "PRIVACY POLICY", title: "Your information is for providing your service.", seoTitle: "Privacy Policy | ApplyPack",

@@ -1487,9 +1487,12 @@ export type Database = {
           document_font_sha256: string | null
           document_renderer_identity: string | null
           document_safety_policy: string | null
+          document_worker_network_attestation_sha256: string | null
           download_ttl_seconds: number | null
           immediate_payment_methods: string[]
+          launch_activation_id: string | null
           launch_product_scope: string
+          launch_release_sha: string | null
           malware_scanner_identity: string | null
           material_line_price_cents: number
           material_output_formats: string[]
@@ -1526,9 +1529,12 @@ export type Database = {
           document_font_sha256?: string | null
           document_renderer_identity?: string | null
           document_safety_policy?: string | null
+          document_worker_network_attestation_sha256?: string | null
           download_ttl_seconds?: number | null
           immediate_payment_methods?: string[]
+          launch_activation_id?: string | null
           launch_product_scope?: string
+          launch_release_sha?: string | null
           malware_scanner_identity?: string | null
           material_line_price_cents?: number
           material_output_formats?: string[]
@@ -1565,9 +1571,12 @@ export type Database = {
           document_font_sha256?: string | null
           document_renderer_identity?: string | null
           document_safety_policy?: string | null
+          document_worker_network_attestation_sha256?: string | null
           download_ttl_seconds?: number | null
           immediate_payment_methods?: string[]
+          launch_activation_id?: string | null
           launch_product_scope?: string
+          launch_release_sha?: string | null
           malware_scanner_identity?: string | null
           material_line_price_cents?: number
           material_output_formats?: string[]
@@ -1594,7 +1603,15 @@ export type Database = {
           terms_version?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ap_commerce_configuration_launch_activation_id_fkey"
+            columns: ["launch_activation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_manual_launch_activations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ap_criteria_amendments: {
         Row: {
@@ -3668,6 +3685,101 @@ export type Database = {
             columns: ["supersedes_job_snapshot_id"]
             isOneToOne: false
             referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_manual_launch_activations: {
+        Row: {
+          accepted_p2_disposition_reference: string
+          accessibility_evidence_reference: string
+          approved_by: string
+          backup_restore_evidence_reference: string
+          canary_reconciled_amount_cents: number
+          canary_reconciliation_reference: string
+          created_at: string
+          database_evidence_reference: string
+          email_evidence_reference: string
+          evidence_bundle_sha256: string
+          health_evidence_reference: string
+          id: string
+          inventory_evidence_reference: string
+          kms_evidence_reference: string
+          maintenance_evidence_reference: string
+          operations_supervisor_reference: string
+          payment_evidence_reference: string
+          product_supervisor_reference: string
+          release_sha: string
+          security_supervisor_reference: string
+          tax_approval_reference: string
+          tenth_man_supervisor_reference: string
+          unresolved_p0_count: number
+          unresolved_p1_count: number
+          worker_evidence_reference: string
+          worker_network_attestation_sha256: string
+        }
+        Insert: {
+          accepted_p2_disposition_reference: string
+          accessibility_evidence_reference: string
+          approved_by: string
+          backup_restore_evidence_reference: string
+          canary_reconciled_amount_cents: number
+          canary_reconciliation_reference: string
+          created_at?: string
+          database_evidence_reference: string
+          email_evidence_reference: string
+          evidence_bundle_sha256: string
+          health_evidence_reference: string
+          id?: string
+          inventory_evidence_reference: string
+          kms_evidence_reference: string
+          maintenance_evidence_reference: string
+          operations_supervisor_reference: string
+          payment_evidence_reference: string
+          product_supervisor_reference: string
+          release_sha: string
+          security_supervisor_reference: string
+          tax_approval_reference: string
+          tenth_man_supervisor_reference: string
+          unresolved_p0_count: number
+          unresolved_p1_count: number
+          worker_evidence_reference: string
+          worker_network_attestation_sha256: string
+        }
+        Update: {
+          accepted_p2_disposition_reference?: string
+          accessibility_evidence_reference?: string
+          approved_by?: string
+          backup_restore_evidence_reference?: string
+          canary_reconciled_amount_cents?: number
+          canary_reconciliation_reference?: string
+          created_at?: string
+          database_evidence_reference?: string
+          email_evidence_reference?: string
+          evidence_bundle_sha256?: string
+          health_evidence_reference?: string
+          id?: string
+          inventory_evidence_reference?: string
+          kms_evidence_reference?: string
+          maintenance_evidence_reference?: string
+          operations_supervisor_reference?: string
+          payment_evidence_reference?: string
+          product_supervisor_reference?: string
+          release_sha?: string
+          security_supervisor_reference?: string
+          tax_approval_reference?: string
+          tenth_man_supervisor_reference?: string
+          unresolved_p0_count?: number
+          unresolved_p1_count?: number
+          worker_evidence_reference?: string
+          worker_network_attestation_sha256?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_manual_launch_activations_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -11404,6 +11516,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_manual_launch_capacity_readiness: { Args: never; Returns: Json }
       ap_offer_material_substitution: {
         Args: {
           p_estimate_seconds: number
@@ -11661,6 +11774,23 @@ export type Database = {
           p_event_type?: string
           p_payload_sha256?: string
           p_provider_event_id?: string
+          p_provider_refund_id: string
+          p_provider_status: string
+          p_refund_id: string
+          p_signature_verified_at?: string
+        }
+        Returns: Json
+      }
+      ap_record_search_refund_result_verified: {
+        Args: {
+          p_amount_cents: number
+          p_currency: string
+          p_error_code?: string
+          p_event_type?: string
+          p_metadata_refund_id: string
+          p_payload_sha256?: string
+          p_provider_event_id?: string
+          p_provider_payment_id: string
           p_provider_refund_id: string
           p_provider_status: string
           p_refund_id: string

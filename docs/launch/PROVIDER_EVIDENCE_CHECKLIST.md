@@ -2,6 +2,8 @@
 
 Secrets, personal addresses, full DNS token values, customer content, and payment details do not belong in this file.
 
+For the October 2 manual launch, this checklist and the governing amendment supersede conflicting historical price, subscription-board, canary, and rollback instructions. New checkout and document intake are disabled first during rollback; webhooks, refunds, retained customer access, maintenance, and audit evidence remain available.
+
 ## DNS and email
 
 - [ ] Export the complete current Namecheap zone before mutation.
@@ -17,8 +19,8 @@ Secrets, personal addresses, full DNS token values, customer content, and paymen
 
 ## Stripe test mode
 
-- [ ] Product Job Match Search, one-time USD price 2000 cents.
-- [ ] Product Apply Pack, one-time USD price 800 cents.
+- [ ] Product Job Match Search, one-time USD price 1899 cents.
+- [ ] Product Apply Pack, one-time USD price 799 cents per selected job.
 - [ ] Account statement descriptor APPLYPACK.
 - [ ] Public business name and support email are correct; no residential address is exposed in a test receipt.
 - [ ] Webhook signs and delivers checkout completion/expiration, refund updates, and disputes.
@@ -26,6 +28,14 @@ Secrets, personal addresses, full DNS token values, customer content, and paymen
 - [ ] Cancelled and expired sessions do not become paid work.
 - [ ] Duplicate/incorrect and eligible unfinished-item refunds reconcile locally and in Stripe.
 - [ ] Customer-dependent email tests use only a founder-authenticated synthetic test identity.
+- [ ] Run one authorized live 1899-cent search charge and one authorized live 799-cent Apply Pack charge, deliver both, then reconcile full refunds totaling 2698 cents before public activation.
+
+## AWS production worker
+
+- [ ] Confirm both AWS Budget notification recipients accepted their verification emails; a configured but unverified subscriber is not alert proof.
+- [ ] Record the $5 monthly budget ID and an alert-delivery test without exposing account identifiers or email addresses.
+- [ ] Record the KMS key ARN, least-privilege policy review, immutable Lambda version ARN, ECR image digest, VPC/subnet/route/security-group attestation, S3 endpoint policy, and successful synthetic render evidence.
+- [ ] Hash the sanitized network attestation packet and store that hash in the immutable launch activation record.
 
 ## Supabase
 

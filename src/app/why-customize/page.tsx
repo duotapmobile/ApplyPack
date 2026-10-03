@@ -75,17 +75,18 @@ const questions = [
 ];
 
 function ChoiceLinks({ compact = false }: { compact?: boolean }) {
+  const Heading = compact ? "h2" : "h3";
   return (
     <div className={`${styles.choiceLinks} ${compact ? styles.choiceLinksCompact : ""}`}>
       <article>
         <p className={styles.choiceKicker}>Start with opportunities</p>
-        <h3>Request 10 Job Matches</h3>
+        <Heading>Request 10 Job Matches</Heading>
         <p>Tell us what fits your experience and life so a person can verify whether the search can support ten current opportunities.</p>
         <ButtonLink href="/get-started">Start My Intake</ButtonLink>
       </article>
       <article>
         <p className={styles.choiceKicker}>Matches already delivered?</p>
-        <h3>Customize My Résumé</h3>
+        <Heading>Customize My Résumé</Heading>
         <p>Choose an eligible job from your delivered Top 10 for a tailored résumé and cover letter.</p>
         <ButtonLink href="/my-applypack" variant="secondary">Choose a Delivered Job</ButtonLink>
       </article>

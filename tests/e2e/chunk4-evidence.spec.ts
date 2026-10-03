@@ -33,7 +33,7 @@ async function capture(page: Page, path: string) {
   await page.screenshot({ path, fullPage: true, animations: "disabled", scale: "css" });
   await waitForHydration(page);
   const accessibility = await new AxeBuilder({ page }).exclude("script").analyze();
-  expect(accessibility.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
+  expect(accessibility.violations.filter((item) => ["moderate", "serious", "critical"].includes(item.impact || ""))).toEqual([]);
 }
 
 async function clickHydratedCheckout(page: Page) {

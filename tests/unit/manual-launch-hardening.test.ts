@@ -69,8 +69,8 @@ describe("October 2 manual-launch hardening", () => {
 
   it("separates healthy infrastructure from accepting orders and excludes dormant board commerce", () => {
     const health = source("src/app/api/health/route.ts");
-    expect(health).toContain("commerceConfigured: configured.commerceConfigured");
-    expect(health).toContain("acceptingOrders: configured.acceptingOrders");
+    expect(health).toContain("commerceConfigured: infrastructure.commerceConfigured");
+    expect(health).toContain("manualLaunchCheckoutGate(admin, infrastructure)");
     expect(health).not.toContain("STRIPE_JOB_BOARD");
     expect(health).not.toContain("boardSubscriptions");
     expect(source("src/app/api/live/route.ts")).toContain('status: "ok"');
@@ -83,21 +83,41 @@ describe("October 2 manual-launch hardening", () => {
     const kms = source("src/lib/security/remote-kms.ts");
     const worker = source("src/lib/files/aws-document-worker.ts");
     const readiness = source("src/lib/operations/renderer-readiness.ts");
+    const launchReadiness = source("src/lib/operations/launch-readiness.ts");
     expect(kms).toContain('environment.APP_DEPLOYMENT_ENV === "production"');
     expect(kms).toContain('environment.APP_KMS_PROVIDER !== "aws"');
     expect(worker).toContain('region === "us-east-1"');
+    expect(worker).toContain("VERSION_ARN");
+    expect(worker).toContain("APP_DOCUMENT_WORKER_IMAGE_DIGEST");
+    expect(worker).toContain("APP_DOCUMENT_WORKER_NETWORK_ATTESTATION_SHA256");
     expect(worker).toContain('InvocationType: "RequestResponse"');
     expect(worker).toContain('LogType: "None"');
     expect(worker).toContain("probe-render");
     expect(worker).toContain('operation: "render-docx"');
     expect(worker).toContain("pdfTextBoundsAreValid");
     expect(readiness).toContain("probeDocumentWorker");
+    expect(launchReadiness).toContain('rpc("ap_manual_launch_capacity_readiness")');
+    expect(launchReadiness).toContain('from("ap_manual_launch_activations")');
     const generation = source("src/app/api/admin/material-lines/[id]/generate/route.ts");
     expect(generation).toContain("renderDocumentForQa");
     expect(generation).not.toContain("renderDocumentLocallyForQa");
     const handler = source("infra/aws/document-worker/handler.py");
     expect(handler).toContain('operation == "render-docx"');
     expect(handler).toContain("pdftoppm");
+    expect(handler).toContain("network_isolation_verified");
+    expect(handler).toContain("functionVersionArn");
     expect(handler).toContain('ServerSideEncryption="AES256"');
+  });
+
+  it("binds refunds to immutable provider payment semantics and retires subscription renewals", () => {
+    const webhook = source("src/app/api/stripe/webhook/route.ts");
+    const workers = source("src/lib/commerce/workers.ts");
+    const board = source("src/lib/job-board/stripe-events.ts");
+    expect(webhook).toContain('rpc("ap_record_search_refund_result_verified"');
+    expect(webhook).toContain("p_provider_payment_id: paymentIntentId");
+    expect(webhook).toContain("p_amount_cents: refund.amount");
+    expect(workers).toContain('rpc("ap_record_search_refund_result_verified"');
+    expect(board).toContain("cancel_at_period_end: true");
+    expect(board).toContain('state: "CANCELED"');
   });
 });

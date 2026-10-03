@@ -3,6 +3,8 @@ Description: ApplyPack bounded no-internet document extraction and render worker
 Parameters:
   WorkerImageUri:
     Type: String
+    AllowedPattern: "^.+@sha256:[0-9a-f]{64}$"
+    Description: Immutable ECR image URI including its sha256 digest
   VpcId:
     Type: AWS::EC2::VPC::Id
   PrivateSubnetIds:
@@ -108,6 +110,12 @@ Resources:
       Environment:
         Variables:
           PYTHONUNBUFFERED: "1"
+          APPLYPACK_WORKER_IMAGE_URI: !Ref WorkerImageUri
+  WorkerVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref Worker
+      Description: !Sub "ApplyPack immutable document worker ${WorkerImageUri}"
   WebRuntimePolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
@@ -117,7 +125,7 @@ Resources:
         Statement:
           - Effect: Allow
             Action: lambda:InvokeFunction
-            Resource: !GetAtt Worker.Arn
+            Resource: !Ref WorkerVersion
           - Effect: Allow
             Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
             Resource: !Sub "${TemporaryBucket.Arn}/ephemeral/*"
@@ -160,5 +168,6 @@ Resources:
               SubscriptionType: EMAIL
 Outputs:
   BucketName: { Value: !Ref TemporaryBucket }
-  FunctionName: { Value: !Ref Worker }
+  FunctionVersionArn: { Value: !Ref WorkerVersion }
+  WorkerImageUri: { Value: !Ref WorkerImageUri }
   WebRuntimePolicyArn: { Value: !Ref WebRuntimePolicy }

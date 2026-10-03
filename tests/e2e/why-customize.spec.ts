@@ -172,7 +172,7 @@ test("why-customize passes focused accessibility and reduced-motion checks", asy
   await gotoStable(page, "/why-customize");
   await waitForHydration(page);
   const results = await new AxeBuilder({ page }).exclude("script").analyze();
-  expect(results.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
+  expect(results.violations.filter((item) => ["moderate", "serious", "critical"].includes(item.impact || ""))).toEqual([]);
   const questionControl = page.locator("details summary span").first();
   expect(Number.parseFloat(await questionControl.evaluate((element) => getComputedStyle(element).transitionDuration))).toBeLessThanOrEqual(0.001);
 });

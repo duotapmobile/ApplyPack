@@ -94,7 +94,7 @@ export async function POST(request: Request) {
     } else if (["refund.created", "refund.updated", "refund.failed"].includes(event.type)) {
       const refund = event.data.object as Stripe.Refund;
       if (refund.metadata?.refund_operation_id) {
-        await recordCorrectedRefund(admin, refund, event, payloadSha256, signatureVerifiedAt);
+        await recordCorrectedRefund(stripe, admin, refund, event, payloadSha256, signatureVerifiedAt);
       } else await recordRefund(refund);
     } else if (["charge.dispute.created", "charge.dispute.updated", "charge.dispute.closed"].includes(event.type)) {
       const handled = await recordCorrectedDispute(admin, stripe, event, payloadSha256, signatureVerifiedAt);
@@ -342,6 +342,7 @@ async function expireCorrectedSearch(admin: AdminClient, session: Stripe.Checkou
 }
 
 async function recordCorrectedRefund(
+  stripe: Stripe,
   admin: AdminClient,
   refund: Stripe.Refund,
   event: Stripe.Event,
@@ -350,10 +351,23 @@ async function recordCorrectedRefund(
 ) {
   const refundId = refund.metadata?.refund_operation_id;
   if (!refundId || !/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(refundId)) throw new Error("Corrected refund binding is invalid");
-  const { error } = await admin.rpc("ap_record_search_refund_result", {
+  let paymentIntentId = typeof refund.payment_intent === "string" ? refund.payment_intent : refund.payment_intent?.id;
+  if (!paymentIntentId && refund.charge) {
+    const charge = typeof refund.charge === "string" ? await stripe.charges.retrieve(refund.charge) : refund.charge;
+    const paymentIntent = "deleted" in charge && charge.deleted ? null : charge.payment_intent;
+    paymentIntentId = typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;
+  }
+  if (!paymentIntentId || !Number.isSafeInteger(refund.amount) || refund.amount < 1 || !refund.currency) {
+    throw new Error("Corrected refund payment semantics are missing");
+  }
+  const { error } = await admin.rpc("ap_record_search_refund_result_verified", {
     p_refund_id: refundId,
     p_provider_refund_id: refund.id,
     p_provider_status: refund.status || "pending",
+    p_provider_payment_id: paymentIntentId,
+    p_amount_cents: refund.amount,
+    p_currency: refund.currency.toUpperCase(),
+    p_metadata_refund_id: refundId,
     p_provider_event_id: event.id,
     p_error_code: refund.failure_reason || null,
     p_payload_sha256: payloadSha256,

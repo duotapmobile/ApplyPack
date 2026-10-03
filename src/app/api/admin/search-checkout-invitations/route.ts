@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
-import { createCapabilitySecret, hashCapabilitySecret } from "@/lib/commerce/server";
+import { canonicalApplicationOrigin, createCapabilitySecret, hashCapabilitySecret } from "@/lib/commerce/server";
 import { isSameOriginRequest } from "@/lib/security/origin";
 
 const schema = z.object({
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
   if (result.error) {
     return NextResponse.json({ error: "The invitation could not be issued. Capacity remains unavailable." }, { status: 409, headers });
   }
-  const origin = new URL(request.url).origin;
+  const origin = canonicalApplicationOrigin();
   const url = new URL("/get-started", origin);
   // Keep the capability out of request logs, analytics, referrers, and the
   // server-rendered URL. The customer page consumes and immediately removes it.

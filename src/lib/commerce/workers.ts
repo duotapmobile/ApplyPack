@@ -76,10 +76,26 @@ async function handleRefund(admin: AdminClient, job: ScheduledJob, owner: string
       },
     }, { idempotencyKey: command.provider_idempotency_key });
   }
-  const recorded = await admin.rpc("ap_record_search_refund_result", {
+  let paymentIntentId = typeof providerRefund.payment_intent === "string"
+    ? providerRefund.payment_intent : providerRefund.payment_intent?.id;
+  if (!paymentIntentId && providerRefund.charge) {
+    const charge = typeof providerRefund.charge === "string"
+      ? await stripe.charges.retrieve(providerRefund.charge) : providerRefund.charge;
+    const paymentIntent = "deleted" in charge && charge.deleted ? null : charge.payment_intent;
+    paymentIntentId = typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;
+  }
+  if (!paymentIntentId || providerRefund.metadata?.refund_operation_id !== refund.id
+    || !Number.isSafeInteger(providerRefund.amount) || providerRefund.amount < 1 || !providerRefund.currency) {
+    throw new Error("refund_provider_semantics_missing");
+  }
+  const recorded = await admin.rpc("ap_record_search_refund_result_verified", {
     p_refund_id: refund.id,
     p_provider_refund_id: providerRefund.id,
     p_provider_status: providerRefund.status || "pending",
+    p_provider_payment_id: paymentIntentId,
+    p_amount_cents: providerRefund.amount,
+    p_currency: providerRefund.currency.toUpperCase(),
+    p_metadata_refund_id: refund.id,
     p_provider_event_id: null,
     p_error_code: providerRefund.failure_reason || null,
     p_payload_sha256: null,

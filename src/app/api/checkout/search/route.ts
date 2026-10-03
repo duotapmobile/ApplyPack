@@ -10,6 +10,7 @@ import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { isSameOriginRequest } from "@/lib/security/origin";
 import { assertConfiguredPrice, createStripeSearchClient } from "@/lib/stripe/server";
 import { SEARCH_CONTRACT_VERSION, SEARCH_PRICE_CENTS } from "@/lib/domain/applypack";
+import { manualLaunchCheckoutGate } from "@/lib/operations/launch-readiness";
 
 const schema = z.object({
   snapshotId: z.uuid(),
@@ -77,6 +78,9 @@ export async function POST(request: Request) {
   if (!view || view.snapshotId !== parsed.data.snapshotId || view.assessmentId !== parsed.data.assessmentId
     || view.state !== "COMPLETE" || view.outcome !== "LIKELY" || view.checkoutEligible !== true) {
     return NextResponse.json({ error: "This search is not currently eligible for Checkout. No payment was started." }, { status: 409 });
+  }
+  if (!await manualLaunchCheckoutGate(context.admin).catch(() => false)) {
+    return NextResponse.json({ error: "Checkout remains locked until the exact release and launch evidence are healthy." }, { status: 503 });
   }
 
   const { data: configuration, error: configurationError } = await context.admin.from("ap_commerce_configuration")

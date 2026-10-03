@@ -1,7 +1,6 @@
 import "server-only";
 import type Stripe from "stripe";
-import { boardPlanPriceId, boardPlans, isBoardPlanId } from "./plans";
-import { assertConfiguredRecurringPrice } from "@/lib/stripe/server";
+import { isBoardPlanId } from "./plans";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { boardSubscriptionStateFromProvider } from "./entitlements";
 
@@ -142,10 +141,8 @@ async function processBoardDispute(stripe: Stripe, admin: AdminClient, event: St
   const won = event.type === "charge.dispute.closed" && dispute.status === "won";
   const item = binding.subscription.items.data[0];
   const paidPeriodActive = binding.invoice.status === "paid" && Boolean(item) && item.current_period_end * 1_000 > Date.now();
-  const recoveredState = binding.subscription.cancel_at_period_end ? "CANCEL_AT_PERIOD_END" : "ACTIVE";
-  const nextState = won && paidPeriodActive ? recoveredState : "DISPUTED";
-  const accessEndsAt = nextState === "ACTIVE" || nextState === "CANCEL_AT_PERIOD_END"
-    ? new Date(item.current_period_end * 1_000).toISOString() : null;
+  const nextState = won && paidPeriodActive ? "CANCELED" : "DISPUTED";
+  const accessEndsAt = null;
   const update = await admin.from("ap_board_subscriptions").update({
     state: nextState, access_ends_at: accessEndsAt, provider_dispute_id: dispute.id,
     last_provider_event_created: event.created, last_provider_event_id: event.id, updated_at: new Date().toISOString(),
@@ -167,35 +164,26 @@ async function persistSubscription(
   const planId = subscription.metadata.plan_id;
   if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(customerId || "") || !isBoardPlanId(planId)) throw new Error("invalid_board_subscription_binding");
   const item = subscription.items.data[0];
-  const priceId = item?.price.id;
-  const expectedPriceId = boardPlanPriceId(planId);
-  if (!item || !priceId || !expectedPriceId || priceId !== expectedPriceId || subscription.items.data.length !== 1 || item.quantity !== 1) throw new Error("invalid_board_subscription_price");
-  const plan = boardPlans[planId];
-  await assertConfiguredRecurringPrice(stripe, priceId, { unitAmount: plan.amountCents, interval: plan.interval, intervalCount: plan.intervalCount });
+  if (!item || subscription.items.data.length !== 1 || item.quantity !== 1) throw new Error("invalid_board_subscription_shape");
+  if (!["canceled", "incomplete_expired"].includes(subscription.status) && !subscription.cancel_at_period_end) {
+    subscription = await stripe.subscriptions.update(subscription.id, { cancel_at_period_end: true });
+  }
   const providerCustomerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
-  const periodEnd = new Date(item.current_period_end * 1_000).toISOString();
   const periodStart = new Date(item.current_period_start * 1_000).toISOString();
   const { data: current, error: currentError } = await admin.from("ap_board_subscriptions")
     .select("id,last_provider_event_created,state,access_ends_at").eq("provider_subscription_id", subscription.id).maybeSingle();
   if (currentError) throw currentError;
   if (current && Number(current.last_provider_event_created) > event.created) return;
-  if (current && Number(current.last_provider_event_created) === event.created && requestedState === "PENDING"
-    && current.state !== "PENDING") return;
-  if (current && Number(current.last_provider_event_created) === event.created && requestedState === "ACTIVE"
-    && !["PENDING", "ACTIVE", "CANCEL_AT_PERIOD_END"].includes(current.state)) return;
-  const state = requestedState === "CANCEL_AT_PERIOD_END" && (!current || !["ACTIVE", "CANCEL_AT_PERIOD_END"].includes(current.state))
-    ? "PAST_DUE"
-    : requestedState === "ACTIVE" && subscription.status !== "active" ? "PAST_DUE" : requestedState;
-  const accessEndsAt = state === "ACTIVE" || state === "CANCEL_AT_PERIOD_END" ? periodEnd : null;
+  void requestedState;
   const record = {
     customer_id: customerId,
     plan_id: planId,
-    state,
+    state: "CANCELED",
     provider_customer_id: providerCustomerId,
     provider_subscription_id: subscription.id,
     current_period_starts_at: periodStart,
-    access_ends_at: accessEndsAt,
-    cancel_at_period_end: subscription.cancel_at_period_end,
+    access_ends_at: null,
+    cancel_at_period_end: true,
     last_provider_event_created: event.created,
     last_provider_event_id: event.id,
     updated_at: new Date().toISOString(),

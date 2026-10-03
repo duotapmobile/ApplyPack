@@ -13,6 +13,8 @@ select pg_temp.assert_true(
     and launch_product_scope='MANUAL_ONLY'
     and not sales_activation_approved and sales_activation_reference is null
     and not tax_configuration_approved and tax_approval_reference is null
+    and launch_activation_id is null and launch_release_sha is null
+    and document_worker_network_attestation_sha256 is null
     and not checkout_enabled
    from public.ap_commerce_configuration where singleton),
   'manual launch must migrate to current prices while remaining locked'
@@ -39,6 +41,56 @@ select pg_temp.assert_true(not has_function_privilege('anon','public.ap_issue_se
 select pg_temp.assert_true(not has_function_privilege('authenticated','public.ap_begin_invited_search_checkout(uuid,text,uuid,text,uuid,uuid,text,uuid,text,uuid,text,uuid,uuid,text,text,uuid)','execute'), 'customer invitation checkout exposed');
 select pg_temp.assert_true(not has_function_privilege('service_role','public.ap_begin_search_checkout(uuid,text,uuid,uuid,text,uuid,text,uuid,text,uuid,uuid,text,text,uuid)','execute'), 'service role can bypass invitation wrapper');
 select pg_temp.assert_true(has_function_privilege('service_role','public.ap_begin_invited_search_checkout(uuid,text,uuid,text,uuid,uuid,text,uuid,text,uuid,text,uuid,uuid,text,text,uuid)','execute'), 'service role cannot call invitation wrapper');
+select pg_temp.assert_true(not has_function_privilege('service_role','public.ap_record_search_refund_result(uuid,text,text,text,text,text,timestamptz,text)','execute'), 'service role can bypass verified refund binding');
+select pg_temp.assert_true(has_function_privilege('service_role','public.ap_record_search_refund_result_verified(uuid,text,text,text,integer,text,uuid,text,text,text,timestamptz,text)','execute'), 'verified refund binding unavailable');
+
+select pg_temp.assert_true(
+  (select relrowsecurity from pg_class where oid='public.ap_manual_launch_activations'::regclass)
+  and has_table_privilege('service_role','public.ap_manual_launch_activations','select')
+  and has_table_privilege('service_role','public.ap_manual_launch_activations','insert')
+  and not has_table_privilege('service_role','public.ap_manual_launch_activations','update')
+  and not has_table_privilege('service_role','public.ap_manual_launch_activations','delete'),
+  'manual launch activation evidence must be immutable and private'
+);
+
+select pg_temp.assert_true(
+  position(
+    'manual_launch_rolling_capacity_unavailable'
+    in pg_get_functiondef('public.ap_reserve_capacity(uuid,public.ap_capacity_resource,integer,text,timestamptz,jsonb,uuid)'::regprocedure)
+  ) > 0
+  and position(
+    'search-invitation:'
+    in pg_get_functiondef('public.ap_reserve_capacity(uuid,public.ap_capacity_resource,integer,text,timestamptz,jsonb,uuid)'::regprocedure)
+  ) > 0
+  and position(
+    'materials-checkout:'
+    in pg_get_functiondef('public.ap_reserve_capacity(uuid,public.ap_capacity_resource,integer,text,timestamptz,jsonb,uuid)'::regprocedure)
+  ) > 0
+  and position(
+    '24 hours'
+    in pg_get_functiondef('public.ap_reserve_capacity(uuid,public.ap_capacity_resource,integer,text,timestamptz,jsonb,uuid)'::regprocedure)
+  ) > 0
+  and position(
+    'search-invitation:'
+    in pg_get_functiondef('public.ap_manual_launch_capacity_readiness()'::regprocedure)
+  ) > 0
+  and position(
+    'materials-checkout:'
+    in pg_get_functiondef('public.ap_manual_launch_capacity_readiness()'::regprocedure)
+  ) > 0
+  and position(
+    'rollingUnits'
+    in pg_get_functiondef('public.ap_manual_launch_capacity_readiness()'::regprocedure)
+  ) > 0
+  and not has_function_privilege('service_role','public.ap_reserve_capacity(uuid,public.ap_capacity_resource,integer,text,timestamptz,jsonb,uuid)','execute'),
+  'authoritative capacity must enforce and report the rolling 1/2 manual launch limits'
+);
+
+select pg_temp.assert_true(
+  exists(select 1 from pg_trigger where tgrelid='public.ap_board_subscriptions'::regclass
+    and tgname='ap_retire_board_subscription_state' and not tgisinternal),
+  'retired board access requires a fail-closed database trigger'
+);
 
 select pg_temp.assert_true(
   (select pg_get_functiondef('public.ap_issue_search_checkout_invitation(uuid,uuid,uuid,uuid,text,timestamptz,uuid,text)'::regprocedure)

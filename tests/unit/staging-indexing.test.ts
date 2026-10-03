@@ -18,7 +18,11 @@ describe("staging indexing safety", () => {
     const { default: robots } = await import("@/app/robots");
 
     expect(robots()).toMatchObject({
-      rules: [{ userAgent: "*", allow: "/", disallow: ["/admin", "/api"] }],
+      rules: [{
+        userAgent: "*",
+        allow: "/",
+        disallow: ["/admin", "/api", "/checkout", "/my-applypack", "/sign-in"],
+      }],
     });
   });
 });
