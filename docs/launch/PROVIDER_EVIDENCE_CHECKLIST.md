@@ -20,7 +20,7 @@ For the October 2 manual launch, this checklist and the governing amendment supe
 ## Stripe test mode
 
 - [ ] Product Job Match Search, one-time USD price 1899 cents.
-- [ ] Product Apply Pack, one-time USD price 799 cents per selected job.
+- [ ] Product Tailored Resume + Cover Letter, one-time USD price 799 cents per selected job.
 - [ ] Account statement descriptor APPLYPACK.
 - [ ] Public business name and support email are correct; no residential address is exposed in a test receipt.
 - [ ] Webhook signs and delivers checkout completion/expiration, refund updates, and disputes.

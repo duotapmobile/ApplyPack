@@ -14,7 +14,7 @@
 ## Stripe
 
 1. Use test mode first.
-2. Create active one-time USD products and prices named Job Match Search at 1899 cents and Apply Pack at 799 cents. Preserve the historical 2000/800-cent objects for reconciliation and refunds only; never reuse them for a new checkout. The server verifies names, amounts, currency, recurrence, product status, and price status.
+2. Create active one-time USD products and prices named Job Match Search at 1899 cents and Tailored Resume + Cover Letter at 799 cents. Preserve the historical 2000/800-cent objects for reconciliation and refunds only; never reuse them for a new checkout. The server verifies names, amounts, currency, recurrence, product status, and price status.
 3. Add the environment-specific /api/stripe/webhook endpoint.
 4. Subscribe to checkout.session.completed, checkout.session.expired, refund.created, refund.updated, refund.failed, and charge.dispute.created.
 5. Set the signing secret and server key in Railway.

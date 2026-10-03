@@ -23,6 +23,12 @@ describe("October 2 manual-launch hardening", () => {
       LEGACY_SEARCH_CONTRACT_VERSION: "chunk4-v1",
       LEGACY_APPLY_PACK_CONTRACT_VERSION: "chunk5-v1",
     });
+    expect(source("docs/runbooks/PROVIDER_SETUP.md")).toContain(
+      "Tailored Resume + Cover Letter at 799 cents",
+    );
+    expect(source("docs/launch/PROVIDER_EVIDENCE_CHECKLIST.md")).toContain(
+      "Product Tailored Resume + Cover Letter, one-time USD price 799 cents",
+    );
   });
 
   it("keeps every new subscription-board checkout path hard disabled and unadvertised", () => {
