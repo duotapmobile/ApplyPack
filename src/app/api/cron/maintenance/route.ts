@@ -18,6 +18,7 @@ import {
   recordMaintenanceDiagnosis,
   recordMaintenanceFailure,
   recordMaintenanceOutcome,
+  maintenanceActionsSucceeded,
   type DiagnosticCode,
   type MaintenanceActionCode,
   type MaintenanceActionEvidence,
@@ -303,20 +304,24 @@ export async function POST(request: Request) {
   if (!afterSummary) {
     return fail("MAINTENANCE_VERIFICATION_FAILED", null, "Maintenance verification unavailable.");
   }
-  const diagnostics = await recordMaintenanceOutcome(admin, beforeSummary, afterSummary, actions, now).catch(() => null);
-  if (!diagnostics) {
-    return response({ error: "Maintenance evidence could not be recorded.", code: "MAINTENANCE_VERIFICATION_FAILED" }, 503);
-  }
   const intentionallyDormantBoardActions = new Set<MaintenanceActionCode>([
     "STRIPE_RECONCILIATION",
     "BOARD_RECOMPUTATION",
   ]);
-  const healthy = diagnostics.unresolvedCodes.length === 0 && actions.every((action) =>
-    action.status === "SUCCEEDED" || (
-      !legacyBoardMaintenanceEnabled
-      && action.status === "SKIPPED"
-      && intentionallyDormantBoardActions.has(action.code)
-    ));
+  const allowedSkippedActions = legacyBoardMaintenanceEnabled ? [] : [...intentionallyDormantBoardActions];
+  const diagnostics = await recordMaintenanceOutcome(
+    admin,
+    beforeSummary,
+    afterSummary,
+    actions,
+    now,
+    allowedSkippedActions,
+  ).catch(() => null);
+  if (!diagnostics) {
+    return response({ error: "Maintenance evidence could not be recorded.", code: "MAINTENANCE_VERIFICATION_FAILED" }, 503);
+  }
+  const healthy = diagnostics.unresolvedCodes.length === 0
+    && maintenanceActionsSucceeded(actions, allowedSkippedActions);
   return NextResponse.json({
     ok: healthy,
     capacityRollovers: Number(capacityRollovers || 0),

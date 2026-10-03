@@ -21,9 +21,11 @@ import {
 } from "@/lib/operations/summary";
 import {
   diagnoseOperations,
+  maintenanceActionsSucceeded,
   maintenanceOutcome,
   recordMaintenanceDiagnosis,
   recordMaintenanceFailure,
+  recordMaintenanceOutcome,
   recoveryEmailIdempotencyKey,
 } from "@/lib/operations/maintenance-observability";
 
@@ -284,6 +286,75 @@ describe("maintenance policy", () => {
     expect(outcome.actionCodes).toEqual([]);
     expect(outcome.failedActionCodes).toEqual(["STRIPE_RECONCILIATION"]);
     expect(outcome.unresolvedCodes).toEqual(["STRIPE_RECONCILIATION_FAILED"]);
+  });
+
+  it("refreshes the heartbeat when only explicitly dormant board actions are skipped", async () => {
+    const alertIn = vi.fn().mockResolvedValue({ error: null });
+    const alertEq = vi.fn().mockReturnValue({ in: alertIn });
+    const alertUpdate = vi.fn().mockReturnValue({ eq: alertEq });
+    const heartbeatUpsert = vi.fn().mockResolvedValue({ error: null });
+    const admin = {
+      from: vi.fn((table: string) => table === "ap_operational_alerts"
+        ? { update: alertUpdate }
+        : { upsert: heartbeatUpsert }),
+    };
+    const actions = [
+      { code: "CAPACITY_ROLLOVER", status: "SUCCEEDED" },
+      { code: "STRIPE_RECONCILIATION", status: "SKIPPED" },
+      { code: "BOARD_RECOMPUTATION", status: "SKIPPED" },
+    ] as const;
+    const allowedSkippedActions = ["STRIPE_RECONCILIATION", "BOARD_RECOMPUTATION"] as const;
+
+    expect(maintenanceActionsSucceeded(actions, allowedSkippedActions)).toBe(true);
+    await recordMaintenanceOutcome(
+      admin as never,
+      summary(),
+      summary(),
+      actions,
+      new Date("2026-10-03T12:00:00.000Z"),
+      allowedSkippedActions,
+    );
+
+    expect(heartbeatUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      task_name: "maintenance",
+      last_succeeded_at: "2026-10-03T12:00:00.000Z",
+      summary: expect.objectContaining({
+        phase: "VERIFIED",
+        actions: expect.arrayContaining([
+          { code: "STRIPE_RECONCILIATION", status: "SKIPPED" },
+          { code: "BOARD_RECOMPUTATION", status: "SKIPPED" },
+        ]),
+      }),
+    }), { onConflict: "task_name" });
+  });
+
+  it("does not refresh the heartbeat for an unapproved skipped action", async () => {
+    const alertIn = vi.fn().mockResolvedValue({ error: null });
+    const alertEq = vi.fn().mockReturnValue({ in: alertIn });
+    const alertUpdate = vi.fn().mockReturnValue({ eq: alertEq });
+    const heartbeatEq = vi.fn().mockResolvedValue({ error: null });
+    const heartbeatUpdate = vi.fn().mockReturnValue({ eq: heartbeatEq });
+    const heartbeatUpsert = vi.fn();
+    const admin = {
+      from: vi.fn((table: string) => table === "ap_operational_alerts"
+        ? { update: alertUpdate }
+        : { update: heartbeatUpdate, upsert: heartbeatUpsert }),
+    };
+    const actions = [{ code: "DOCUMENT_PROCESSING", status: "SKIPPED" }] as const;
+
+    expect(maintenanceActionsSucceeded(actions)).toBe(false);
+    await recordMaintenanceOutcome(
+      admin as never,
+      summary(),
+      summary(),
+      actions,
+      new Date("2026-10-03T12:00:00.000Z"),
+    );
+
+    expect(heartbeatUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      summary: expect.objectContaining({ phase: "FAILED" }),
+    }));
+    expect(heartbeatUpsert).not.toHaveBeenCalled();
   });
 
   it("derives a stable recovery-email key from the condition episode rather than invocation time", () => {

@@ -28,6 +28,15 @@ export type MaintenanceActionEvidence = {
   status: MaintenanceActionStatus;
 };
 
+export function maintenanceActionsSucceeded(
+  actions: readonly MaintenanceActionEvidence[],
+  allowedSkippedActions: readonly MaintenanceActionCode[] = [],
+) {
+  const allowedSkipped = new Set(allowedSkippedActions);
+  return actions.every((action) => action.status === "SUCCEEDED"
+    || (action.status === "SKIPPED" && allowedSkipped.has(action.code)));
+}
+
 export type DiagnosticCode =
   | "DATABASE_NOT_READY"
   | "PAYMENT_INTEGRITY_NOT_READY"
@@ -282,6 +291,7 @@ export async function recordMaintenanceOutcome(
   after: OperationsSummary,
   actions: readonly MaintenanceActionEvidence[],
   now = new Date(),
+  allowedSkippedActions: readonly MaintenanceActionCode[] = [],
 ) {
   const outcome = maintenanceOutcome(before, after, actions);
   const nowIso = now.toISOString();
@@ -289,7 +299,7 @@ export async function recordMaintenanceOutcome(
 
   // Alert reconciliation must succeed before a success heartbeat can be refreshed.
   await reconcileMaintenanceAlerts(admin, outcome.unresolvedCodes, after.environment, after.releaseSha, nowIso);
-  if (outcome.unresolvedCodes.length || actions.some((action) => action.status !== "SUCCEEDED")) {
+  if (outcome.unresolvedCodes.length || !maintenanceActionsSucceeded(actions, allowedSkippedActions)) {
     await updateFailureEvidence(admin, { schemaVersion: 2, phase: "FAILED", ...outcome }, nowIso);
     return { ...outcome, recoveryEmail: "not_needed" as const };
   }

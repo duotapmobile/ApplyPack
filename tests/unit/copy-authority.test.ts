@@ -32,6 +32,29 @@ describe("controlling public copy and navigation", () => {
     }
   });
 
+  it("publishes the complete October 2 manual-launch Terms contract", () => {
+    const terms = publicPages.terms;
+    expect(terms.intro).toContain("Effective October 2, 2026. Version manual-launch-terms-2026-10-02-v2. ApplyPack is operated by DuoTap LLC d/b/a ApplyPack.");
+    const sectionTitles = terms.sections.map((section) => section.title);
+    for (const required of [
+      "Service description",
+      "Eligibility",
+      "10 Current Human-Reviewed Job Matches",
+      "Tailored Resume + Cover Letter",
+      "24-hour turnaround",
+      "Your accuracy and review responsibility",
+      "No application submission",
+      "Job availability, match review, and corrections",
+      "Payments, cancellations, and refunds",
+      "Acceptable use",
+      "Intellectual property",
+      "Disclaimers and no hiring guarantee",
+      "Limitation of liability",
+      "Changes to these Terms",
+      "Contact",
+    ]) expect(sectionTitles).toContain(required);
+  });
+
   it("keeps the approved seven-section homepage offer and boundaries", () => {
     const home = readFileSync("src/app/page.tsx", "utf8");
     expect(home.match(/<section\b/g)).toHaveLength(7);

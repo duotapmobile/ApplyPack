@@ -11681,6 +11681,27 @@ export type Database = {
           snapshot_id: string
         }[]
       }
+      ap_finalize_four_step_intake_with_legal_acceptance: {
+        Args: {
+          p_acceptance_sha256: string
+          p_content_sha256: string
+          p_draft_id: string
+          p_expected_version: number
+          p_fact_reviews: Json
+          p_privacy_version: string
+          p_secret_hash: string
+          p_sensitive_payload_id: string
+          p_snapshot: Json
+          p_snapshot_id: string
+          p_terms_version: string
+        }
+        Returns: {
+          draft_version: number
+          feasibility_request_id: string
+          legal_acceptance_id: string
+          snapshot_id: string
+        }[]
+      }
       ap_finalize_job_source_run: {
         Args: { p_lease_epoch: number; p_owner: string; p_run_id: string }
         Returns: Json

@@ -87,6 +87,17 @@ describe("October 2 manual-launch hardening", () => {
     expect(source(".env.example")).toContain("APP_LEGACY_BOARD_MAINTENANCE_ENABLED=false");
   });
 
+  it("finalizes intake and current legal acceptance through one atomic database command", () => {
+    const finalize = source("src/app/api/intake/anonymous-draft/finalize/route.ts");
+    const migration = source("supabase/migrations/202610030063_atomic_intake_legal_acceptance.sql");
+    expect(finalize).toContain('rpc("ap_finalize_four_step_intake_with_legal_acceptance"');
+    expect(finalize).not.toContain('rpc("ap_record_snapshot_legal_acceptance"');
+    expect(finalize.indexOf('select("terms_version,privacy_version")')).toBeLessThan(finalize.indexOf('from("ap_sensitive_payloads").insert'));
+    expect(migration).toContain("public.ap_finalize_four_step_intake(");
+    expect(migration).toContain("public.ap_record_snapshot_legal_acceptance(");
+    expect(migration).toContain("join public.ap_snapshot_legal_acceptances acceptance");
+  });
+
   it("forces production envelope encryption through AWS KMS and probes the isolated renderer", () => {
     const kms = source("src/lib/security/remote-kms.ts");
     const worker = source("src/lib/files/aws-document-worker.ts");

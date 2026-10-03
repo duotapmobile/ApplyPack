@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const dependencies = vi.hoisted(() => Object.fromEntries([
-  "adminClient", "collectOperationsSummary", "recordMaintenanceDiagnosis", "recordMaintenanceFailure", "recordMaintenanceOutcome",
+  "adminClient", "collectOperationsSummary", "recordMaintenanceDiagnosis", "recordMaintenanceFailure", "recordMaintenanceOutcome", "maintenanceActionsSucceeded",
   "processUnpaidSourceRetention", "processPendingFileScans", "processPendingDocumentExtractions", "processPendingFeasibilityRequests", "processWorkflowTasks",
   "retryFailedEmails", "processChunk4Workers", "reconcileBoardSubscriptions", "processBoardRecomputeJobs", "stripeClient", "sendTransactionalEmail",
 ].map(name => [name, vi.fn()])) as Record<string, ReturnType<typeof vi.fn>>);
@@ -10,6 +10,7 @@ vi.mock("@/lib/operations/summary", () => ({ collectOperationsSummary: dependenc
 vi.mock("@/lib/operations/maintenance-observability", () => ({
   recordMaintenanceDiagnosis: dependencies.recordMaintenanceDiagnosis, recordMaintenanceFailure: dependencies.recordMaintenanceFailure,
   recordMaintenanceOutcome: dependencies.recordMaintenanceOutcome,
+  maintenanceActionsSucceeded: dependencies.maintenanceActionsSucceeded,
 }));
 vi.mock("@/lib/files/unpaid-retention", () => ({ processUnpaidSourceRetention: dependencies.processUnpaidSourceRetention }));
 vi.mock("@/lib/files/process-scans", () => ({ processPendingFileScans: dependencies.processPendingFileScans }));
@@ -45,6 +46,14 @@ describe("maintenance authorization and independent queues", () => {
     dependencies.recordMaintenanceOutcome.mockImplementation(async (_admin, _before, _after, actions) => ({
       unresolvedCodes: actions.filter((action: {status: string}) => action.status === "FAILED").map((action: {code: string}) => action.code + "_FAILED"),
     }));
+    dependencies.maintenanceActionsSucceeded.mockImplementation((
+      actions: Array<{ code: string; status: string }>,
+      allowedSkippedActions: string[] = [],
+    ) => {
+      const allowed = new Set(allowedSkippedActions);
+      return actions.every((action: { code: string; status: string }) => action.status === "SUCCEEDED"
+        || (action.status === "SKIPPED" && allowed.has(action.code)));
+    });
     dependencies.processUnpaidSourceRetention.mockResolvedValue({ processed: 0, deleted: 0, failed: 0, skipped: 0 });
     dependencies.processPendingDocumentExtractions.mockResolvedValue({ processed: 0, succeeded: 0 });
     dependencies.processPendingFileScans.mockResolvedValue({ processed: 0 });
@@ -79,6 +88,7 @@ describe("maintenance authorization and independent queues", () => {
         { code: "BOARD_RECOMPUTATION", status: "SKIPPED" },
       ]),
       expect.any(Date),
+      ["STRIPE_RECONCILIATION", "BOARD_RECOMPUTATION"],
     );
   });
   it.each(["DATABASE_NOT_READY", "CRITICAL_SECURITY_OR_INTEGRITY_ALERT_OPEN"])("stops every processor for %s", async code => {
@@ -115,7 +125,7 @@ describe("maintenance authorization and independent queues", () => {
     expect(dependencies.processWorkflowTasks).toHaveBeenCalledOnce();
     expect(dependencies.processBoardRecomputeJobs).toHaveBeenCalledOnce();
     expect(dependencies.recordMaintenanceOutcome).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(),
-      expect.arrayContaining([{ code: "DOCUMENT_PROCESSING", status: "FAILED" }]), expect.any(Date));
+      expect.arrayContaining([{ code: "DOCUMENT_PROCESSING", status: "FAILED" }]), expect.any(Date), []);
   });
   it.each(["processChunk4Workers", "processBoardRecomputeJobs"])("records disabled %s without aborting other maintenance", async name => {
     dependencies[name].mockResolvedValue({ status: "disabled", processed: 0 });

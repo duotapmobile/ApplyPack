@@ -13,6 +13,7 @@ const fixtures = [
   "../tests/integration/employer-first-aggregation.sql",
   "../tests/integration/matching-fulfillment.sql",
   "../tests/integration/manual-launch-hardening.sql",
+  "../tests/integration/atomic-intake-legal-acceptance.sql",
 ];
 for (const fixture of fixtures) {
   const sqlPath = fileURLToPath(new URL(fixture, import.meta.url));
