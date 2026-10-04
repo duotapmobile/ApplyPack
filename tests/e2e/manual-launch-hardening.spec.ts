@@ -21,14 +21,30 @@ for (const path of ["/", "/pricing", "/why-customize", "/get-started"]) {
     await page.setViewportSize({ width: 320, height: 900 });
     await gotoStable(page, path);
     await page.locator("main").waitFor({ state: "visible" });
-    const dimensions = await page.evaluate(() => ({
-      documentClientWidth: document.documentElement.clientWidth,
-      documentScrollWidth: document.documentElement.scrollWidth,
-      bodyScrollWidth: document.body.scrollWidth,
-    }));
+    const dimensions = await page.evaluate(() => {
+      const documentClientWidth = document.documentElement.clientWidth;
+      const overflowingElements = Array.from(document.querySelectorAll<HTMLElement>("body *"))
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            element: `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}${element.className && typeof element.className === "string" ? `.${element.className.trim().replace(/\s+/g, ".")}` : ""}`,
+            left: Math.round(rect.left),
+            right: Math.round(rect.right),
+            scrollWidth: element.scrollWidth,
+          };
+        })
+        .filter(({ right }) => right > documentClientWidth)
+        .slice(0, 20);
+      return {
+        documentClientWidth,
+        documentScrollWidth: document.documentElement.scrollWidth,
+        bodyScrollWidth: document.body.scrollWidth,
+        overflowingElements,
+      };
+    });
     expect(dimensions.documentClientWidth).toBe(320);
-    expect(dimensions.documentScrollWidth).toBeLessThanOrEqual(dimensions.documentClientWidth);
-    expect(dimensions.bodyScrollWidth).toBeLessThanOrEqual(dimensions.documentClientWidth);
+    expect(dimensions.documentScrollWidth, JSON.stringify(dimensions.overflowingElements, null, 2)).toBeLessThanOrEqual(dimensions.documentClientWidth);
+    expect(dimensions.bodyScrollWidth, JSON.stringify(dimensions.overflowingElements, null, 2)).toBeLessThanOrEqual(dimensions.documentClientWidth);
   });
 }
 
