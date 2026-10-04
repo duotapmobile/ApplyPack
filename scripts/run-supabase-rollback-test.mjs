@@ -59,10 +59,15 @@ const requiredCleanupSignals = [
   'reason: "material_sensitive_upload_intent"',
   "p_claim_provenance: { ...input.artifact.provenance, editableSource, uploadCleanup }",
 ];
+const materialIntentIndex = generationAtTarget.stdout.indexOf('const cleanupIntent = await input.admin.from("storage_cleanup_queue").upsert');
+const materialUploadIndex = generationAtTarget.stdout.indexOf("const sourceUpload = await input.admin.storage");
 if (
   generationAtTarget.error
   || generationAtTarget.status !== 0
   || requiredCleanupSignals.some((signal) => !generationAtTarget.stdout.includes(signal))
+  || materialIntentIndex < 0
+  || materialUploadIndex < 0
+  || materialIntentIndex >= materialUploadIndex
 ) {
   if (generationAtTarget.stderr) process.stderr.write(generationAtTarget.stderr);
   console.error(

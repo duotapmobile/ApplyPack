@@ -215,6 +215,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(rollbackCheck).toContain('storageBucket: "operator-drafts"');
     expect(rollbackCheck).toContain('storageBucket: "operator-render-previews"');
     expect(rollbackCheck).toContain('storageBucket: "customer-deliveries"');
+    expect(rollbackCheck).toContain("materialIntentIndex >= materialUploadIndex");
     expect(rollbackCheck).toContain('"anonymous_source_upload_intent"');
     expect(rollbackCheck).toContain('"draft_source_upload_intent"');
     expect(rollbackCheck).toContain('"intake_source_upload_intent"');
