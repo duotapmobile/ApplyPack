@@ -72,6 +72,15 @@ fails acceptance.
 - The isolated worker is capped at 512 MiB in both infrastructure and runtime
   validation. The AWS budget defaults on and requires both launch-alert email
   recipients.
+- Customer and operator access accepts the locked Arial contract and the
+  immediately preceding immutable Liberation Sans contract, with exact
+  version-to-font matching. New approval and release actions still require the
+  current locked contract. Commit
+  `d61331eb951a34a7a23fb33e51d319d0ed2283fc` is the minimum rollback target
+  after migrations 066 or 067.
+- Failed deletion of a private editable source is inserted into the existing
+  maintenance cleanup queue; a queueing failure is surfaced instead of being
+  silently discarded.
 
 ## Local acceptance evidence
 
@@ -101,6 +110,9 @@ fails acceptance.
   artifact hashes and toolchain to source commit
   `91469cd8920670aa80f6cbb717ceef21f9322ba7`. The binary evidence remains local
   and ignored by Git.
+- The later access/cleanup compatibility commits do not change generated
+  document bytes; the manifest remains bound to the render-producing source
+  commit named above.
 
 ## Required human and hosted proof
 
