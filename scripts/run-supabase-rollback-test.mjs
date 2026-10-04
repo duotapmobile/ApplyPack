@@ -71,32 +71,44 @@ if (
   process.exit(generationAtTarget.status || 1);
 }
 
-const sourceUploadFiles = [
-  "src/lib/files/source-upload-cleanup.ts",
-  "src/app/api/intake/anonymous-draft/document/route.ts",
-  "src/app/api/intake/draft/document/route.ts",
-  "src/app/api/intake/route.ts",
+const sourceUploadContracts = [
+  {
+    path: "src/lib/files/source-upload-cleanup.ts",
+    required: ["INTENT_GRACE_MILLISECONDS", "source_upload_cleanup_queue_failed"],
+  },
+  {
+    path: "src/app/api/intake/anonymous-draft/document/route.ts",
+    required: ['"anonymous_source_upload_intent"', "removeSourceUploadOrQueue"],
+    ordered: ["await createSourceUploadCleanupIntent", '.storage.from("customer-source-documents").upload(path, bytes'],
+  },
+  {
+    path: "src/app/api/intake/draft/document/route.ts",
+    required: ['"draft_source_upload_intent"', 'rpc("ap_register_intake_draft_document"', "removeSourceUploadOrQueue"],
+    ordered: ["await createSourceUploadCleanupIntent", '.storage.from("customer-source-documents").upload(path, file'],
+  },
+  {
+    path: "src/app/api/intake/route.ts",
+    required: ['"intake_source_upload_intent"', "removeSourceUploadOrQueue"],
+    ordered: ["await createSourceUploadCleanupIntent", '.storage.from("customer-source-documents").upload(path, file'],
+  },
 ];
-const sourceUploadAtTarget = sourceUploadFiles.map((path) => ({
-  path,
-  result: capture("git", ["show", `${resolvedRollbackTarget}:${path}`]),
-}));
-const failedSourceRead = sourceUploadAtTarget.find(({ result }) => result.error || result.status !== 0);
-const sourceUploadContract = sourceUploadAtTarget.map(({ result }) => result.stdout).join("\n");
-const requiredSourceUploadSignals = [
-  "await createSourceUploadCleanupIntent",
-  '"anonymous_source_upload_intent"',
-  '"draft_source_upload_intent"',
-  '"intake_source_upload_intent"',
-  'rpc("ap_register_intake_draft_document"',
-  "source_upload_cleanup_queue_failed",
-];
-if (failedSourceRead || requiredSourceUploadSignals.some((signal) => !sourceUploadContract.includes(signal))) {
-  if (failedSourceRead?.result.stderr) process.stderr.write(failedSourceRead.result.stderr);
-  console.error(
-    `Rollback target ${resolvedRollbackTarget} does not retain durable cleanup intents for every customer source upload path.`,
-  );
-  process.exit(failedSourceRead?.result.status || 1);
+for (const contract of sourceUploadContracts) {
+  const result = capture("git", ["show", `${resolvedRollbackTarget}:${contract.path}`]);
+  const missingSignal = contract.required.find((signal) => !result.stdout.includes(signal));
+  const intentIndex = contract.ordered ? result.stdout.indexOf(contract.ordered[0]) : -1;
+  const uploadIndex = contract.ordered ? result.stdout.indexOf(contract.ordered[1]) : -1;
+  if (
+    result.error
+    || result.status !== 0
+    || missingSignal
+    || (contract.ordered && (intentIndex < 0 || uploadIndex < 0 || intentIndex >= uploadIndex))
+  ) {
+    if (result.stderr) process.stderr.write(result.stderr);
+    console.error(
+      `Rollback target ${resolvedRollbackTarget} does not retain the ordered cleanup contract in ${contract.path}.`,
+    );
+    process.exit(result.status || 1);
+  }
 }
 
 console.log(

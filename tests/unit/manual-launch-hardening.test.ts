@@ -218,6 +218,8 @@ describe("October 2 manual-launch hardening", () => {
     expect(rollbackCheck).toContain('"anonymous_source_upload_intent"');
     expect(rollbackCheck).toContain('"draft_source_upload_intent"');
     expect(rollbackCheck).toContain('"intake_source_upload_intent"');
+    expect(rollbackCheck).toContain("for (const contract of sourceUploadContracts)");
+    expect(rollbackCheck).toContain("intentIndex >= uploadIndex");
     expect(rollbackRunbook).toContain("minimum compatible application rollback commit is `5b38407a4e8023e00ebee625f6925c265bdaee1a`");
     expect(rollbackRunbook).toContain("set `AP_ROLLBACK_TARGET_SHA` to the exact intended deployment commit");
     expect(documentCompatibility.indexOf("pg_advisory_xact_lock"))
