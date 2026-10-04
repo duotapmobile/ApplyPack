@@ -122,4 +122,12 @@ insert into public.ap_quotes(
   1899,'USD',true,repeat('2',64),clock_timestamp()+interval '20 minutes'
 );
 
+do $$
+begin
+  if to_regprocedure('public.ap_manual_launch_schema_readiness()') is not null then
+    raise exception 'runtime_launch_schema_readiness_exists_before_identity_cutover';
+  end if;
+end;
+$$;
+
 select 'ATOMIC_INVENTORY_077_FIXTURE_OK' as case;

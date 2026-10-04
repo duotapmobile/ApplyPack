@@ -1,5 +1,12 @@
 do $$
 begin
+  if public.ap_manual_launch_schema_readiness()->>'ready' is distinct from 'true' then
+    raise exception 'runtime_launch_schema_readiness_not_current';
+  end if;
+  if not exists(
+    select 1 from public.ap_migration_checkpoints
+    where migration_id='202610040079' and checkpoint='RUNTIME_LAUNCH_SCHEMA_READINESS'
+  ) then raise exception 'migration_079_checkpoint_missing'; end if;
   if not exists(
     select 1 from public.ap_migration_checkpoints
     where migration_id='202610040077' and checkpoint='ATOMIC_INVENTORY_IDENTITY_ENFORCEMENT'

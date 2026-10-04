@@ -12,6 +12,11 @@ import {
 import { currentLegalContentBinding } from "@/lib/legal/content-hash";
 import { hasDatabaseErrorCode } from "@/lib/matching/persistence-error";
 import {
+  launchSchemaReadinessIsCurrent,
+  REQUIRED_LAUNCH_MIGRATIONS,
+  REQUIRED_LAUNCH_SCHEMA_VERSION,
+} from "@/lib/operations/launch-schema";
+import {
   APPROVED_ROLLBACK_LEGAL_CONTRACT,
   verifyRollbackLegalSource,
 } from "../../scripts/rollback-legal-contract.mjs";
@@ -190,12 +195,38 @@ describe("October 2 manual-launch hardening", () => {
     expect(readiness).toContain("currentLegalContentBinding");
     expect(readiness).toContain("checks.legalContent");
     expect(readiness).toContain("legal_acceptance_copy_sha256");
+    expect(readiness).toContain('rpc("ap_manual_launch_schema_readiness")');
+    expect(readiness).toContain("launchSchemaReadinessIsCurrent(schemaReadiness)");
+    expect(readiness.match(/!infrastructure\.ready/g)).toHaveLength(2);
+    expect(health).toContain("{ status: infrastructure.ready ? 200 : 503");
     expect(source("src/app/api/live/route.ts")).toContain('status: "ok"');
     const maintenance = source("src/app/api/cron/maintenance/route.ts");
     expect(maintenance).toContain('APP_LEGACY_BOARD_MAINTENANCE_ENABLED === "true"');
     expect(maintenance).toContain('rpc("ap_ensure_manual_launch_capacity_rollover")');
     expect(maintenance).toContain('"CAPACITY_ROLLOVER"');
     expect(source(".env.example")).toContain("APP_LEGACY_BOARD_MAINTENANCE_ENABLED=false");
+  });
+
+  it("fails launch readiness closed unless the exact runtime schema floor is active", () => {
+    expect(launchSchemaReadinessIsCurrent(null)).toBe(false);
+    expect(launchSchemaReadinessIsCurrent({
+      ready: true,
+      requiredSchemaVersion: "202610040078",
+      requiredMigrations: ["202610040077", "202610040078"],
+    })).toBe(false);
+    expect(launchSchemaReadinessIsCurrent({
+      ready: true,
+      requiredSchemaVersion: REQUIRED_LAUNCH_SCHEMA_VERSION,
+      requiredMigrations: [...REQUIRED_LAUNCH_MIGRATIONS],
+    })).toBe(true);
+
+    const migration = source("supabase/migrations/202610040079_runtime_launch_schema_readiness.sql");
+    expect(migration).toContain("lock table public.ap_inventory_members in share row exclusive mode");
+    expect(migration).toContain("selected_inventory_identity_conflict_requires_successor_inventory");
+    expect(migration).toContain("public.ap_manual_launch_schema_readiness()");
+    expect(migration).toContain("RUNTIME_LAUNCH_SCHEMA_READINESS");
+    expect(source("scripts/run-supabase-inventory-upgrade-test.mjs")).toContain("CUTOVER_WRITER_READY");
+    expect(source("scripts/run-supabase-inventory-upgrade-test.mjs")).toContain("MIGRATION_077_CONFLICT_ROLLBACK_OK");
   });
 
   it("finalizes encrypted intake and current legal acceptance through one retry-safe atomic command", () => {

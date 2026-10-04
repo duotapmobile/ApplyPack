@@ -21,6 +21,22 @@ select pg_temp.assert_true(
 );
 
 select pg_temp.assert_true(
+  public.ap_manual_launch_schema_readiness()->>'ready'='true'
+  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610040079'
+  and not has_function_privilege('anon','public.ap_manual_launch_schema_readiness()','execute')
+  and not has_function_privilege('authenticated','public.ap_manual_launch_schema_readiness()','execute')
+  and has_function_privilege('service_role','public.ap_manual_launch_schema_readiness()','execute'),
+  'launch schema readiness must bind service-only runtime health to migrations 077 through 079'
+);
+savepoint before_schema_floor_checkpoint_removal;
+delete from public.ap_migration_checkpoints where migration_id='202610040078';
+select pg_temp.assert_true(
+  public.ap_manual_launch_schema_readiness()->>'ready'='false',
+  'launch schema readiness must fail when an identity-policy checkpoint is absent'
+);
+rollback to savepoint before_schema_floor_checkpoint_removal;
+
+select pg_temp.assert_true(
   (select pg_get_constraintdef(oid) like '%1899%2000%'
    from pg_constraint where conrelid='public.ap_quotes'::regclass and conname='ap_quotes_price_cents_check'),
   'search quote constraint must preserve only current and historical prices'

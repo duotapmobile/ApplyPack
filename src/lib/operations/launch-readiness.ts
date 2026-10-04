@@ -10,6 +10,7 @@ import { checkoutConfiguration } from "@/lib/stripe/mode";
 import { APPLY_PACK_PRICE_CENTS, SEARCH_PRICE_CENTS } from "@/lib/domain/applypack";
 import { documentWorkerConfiguration } from "@/lib/files/aws-document-worker";
 import { currentLegalContentBinding } from "@/lib/legal/content-hash";
+import { launchSchemaReadinessIsCurrent } from "@/lib/operations/launch-schema";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 type LaunchCapacityResource = "SEARCH" | "MATERIALS";
@@ -106,6 +107,7 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
         { count: unresolvedCriticalAlerts, error: criticalAlertError },
         { count: exhaustedStorageCleanup, error: storageCleanupError },
         { data: capacity, error: capacityError },
+        { data: schemaReadiness, error: schemaReadinessError },
         { data: sourceReadiness, error: sourceError },
         { data: legalConfiguration, error: legalConfigurationError },
       ] = await Promise.all([
@@ -117,6 +119,7 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
         admin.from("storage_cleanup_queue").select("id", { count: "exact", head: true })
           .gte("attempts", 20),
         admin.rpc("ap_manual_launch_capacity_readiness"),
+        admin.rpc("ap_manual_launch_schema_readiness"),
         admin.rpc("ap_current_source_readiness"),
         admin.from("ap_commerce_configuration")
           .select("terms_version,terms_content_sha256,privacy_version,privacy_content_sha256,legal_acceptance_copy_version,legal_acceptance_copy_sha256,legal_content_canonicalization_version,legal_receipt_schema_version")
@@ -135,7 +138,10 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
       );
       const capacityRecord = capacity && typeof capacity === "object" && !Array.isArray(capacity)
         ? capacity as Record<string, unknown> : null;
-      checks.database = !capacityError && capacityRecord?.ready === true;
+      checks.database = !capacityError
+        && capacityRecord?.ready === true
+        && !schemaReadinessError
+        && launchSchemaReadinessIsCurrent(schemaReadiness);
       if (!capacityError && capacityRecord && Array.isArray(capacityRecord.resources)) {
         for (const entry of capacityRecord.resources) {
           if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;

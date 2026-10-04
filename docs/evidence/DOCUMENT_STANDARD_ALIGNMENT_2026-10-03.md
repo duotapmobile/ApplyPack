@@ -98,7 +98,7 @@ fails acceptance.
   current locked contract. The operator queue labels historical files as
   access-only and disables their approval and release actions. Commit
   `5b38407a4e8023e00ebee625f6925c265bdaee1a` is the minimum rollback target
-  after migrations 066 through 078, provided migrations 068 through 078 remain
+  after migrations 066 through 079, provided migrations 068 through 079 remain
   applied. `npm run test:rollback` rejects an `AP_ROLLBACK_TARGET_SHA` before
   that floor, missing any material-upload cleanup contract, or missing any
   customer source-upload cleanup path.
@@ -126,7 +126,7 @@ fails acceptance.
 
 - Lint: passed.
 - Type checking: passed.
-- Unit/integration suite: 86 files, 616 tests passed.
+- Unit/integration suite: 86 files, 617 tests passed.
 - Production build: passed on Next.js 16.3.8.
 - Production dependency audit: zero vulnerabilities.
 - Database contract fixtures: 14 passed.
@@ -137,11 +137,14 @@ fails acceptance.
   checkout. Migration 077 refuses a historical selected-inventory conflict and
   invalidates every pre-policy feasibility assessment and quote; migration 078
   revokes affected invitations, returns held capacity, and requeues their
-  completed feasibility requests for a fresh assessment.
+  completed feasibility requests for a fresh assessment. Migration 079 waits
+  out in-flight inventory writers with an insert-conflicting table lock,
+  rescans selected inventory before commit, and makes runtime health and both
+  checkout gates depend on the exact schema floor and identity contracts.
 - Database types: match the local migrated schema.
 - Historical-data upgrade fixture: passed.
 - Rollback-compatibility fixture: passed; the local schema replay and database
-  contract suite completed through all 83 migrations, including the
+  contract suite completed through all 84 migrations, including the
   content-bound legal receipt, rollback-compatibility, append-only legal-revision,
   and migration-074 reconciliation migrations. A dedicated forward-upgrade
   fixture proves an immutable 074 receipt reconciles and replays idempotently

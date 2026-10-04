@@ -12022,6 +12022,7 @@ export type Database = {
         Returns: boolean
       }
       ap_manual_launch_capacity_readiness: { Args: never; Returns: Json }
+      ap_manual_launch_schema_readiness: { Args: never; Returns: Json }
       ap_offer_material_substitution: {
         Args: {
           p_estimate_seconds: number
