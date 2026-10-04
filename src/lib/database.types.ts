@@ -3707,6 +3707,52 @@ export type Database = {
           },
         ]
       }
+      ap_legal_receipt_acceptance_reconciliations: {
+        Row: {
+          matching_legal_acceptance_id: string
+          original_legal_acceptance_id: string
+          reason: string
+          receipt_id: string
+          reconciled_at: string
+        }
+        Insert: {
+          matching_legal_acceptance_id: string
+          original_legal_acceptance_id: string
+          reason: string
+          receipt_id: string
+          reconciled_at?: string
+        }
+        Update: {
+          matching_legal_acceptance_id?: string
+          original_legal_acceptance_id?: string
+          reason?: string
+          receipt_id?: string
+          reconciled_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_legal_receipt_acceptance_r_matching_legal_acceptance_id_fkey"
+            columns: ["matching_legal_acceptance_id"]
+            isOneToOne: true
+            referencedRelation: "ap_snapshot_legal_acceptances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_legal_receipt_acceptance_r_original_legal_acceptance_id_fkey"
+            columns: ["original_legal_acceptance_id"]
+            isOneToOne: false
+            referencedRelation: "ap_snapshot_legal_acceptances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_legal_receipt_acceptance_reconciliations_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_snapshot_legal_content_receipts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_manual_launch_activations: {
         Row: {
           accepted_p2_disposition_reference: string

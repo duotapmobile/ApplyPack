@@ -204,6 +204,17 @@ select case when
     where conrelid='public.ap_snapshot_legal_content_receipts'::regclass
       and conname='ap_snapshot_legal_content_receipts_snapshot_hash_key'
   )
+  and to_regclass('public.ap_legal_receipt_acceptance_reconciliations') is not null
+  and exists (
+    select 1 from pg_trigger
+    where tgrelid='public.ap_legal_receipt_acceptance_reconciliations'::regclass
+      and tgname='ap_legal_receipt_acceptance_reconciliations_immutable'
+      and not tgisinternal
+  )
+  and position(
+    'on conflict(snapshot_id,acceptance_sha256)'
+    in pg_get_functiondef('public.ap_record_snapshot_legal_content_receipt(uuid,text,uuid,uuid,text,text,text,text,text,text,text,text,text)'::regprocedure)
+  ) > 0
   and position(
     'pg_advisory_xact_lock'
     in pg_get_functiondef('public.ap_upgrade_completed_intake_legal_acceptance(uuid,text,text,text,text,text,text,text,text,text,text)'::regprocedure)

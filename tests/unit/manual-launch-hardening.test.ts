@@ -47,8 +47,20 @@ describe("October 2 manual-launch hardening", () => {
       wizardSource: wizard,
       presentationSource: presentation,
     })).toEqual({ ok: false, failures: ["legal_pages_source_mismatch"] });
+    const spoofedPresentation = presentation
+      .replace('prefix: "I agree to the "', 'prefix: "Different disclosure: "')
+      .concat('\n// prefix: "I agree to the "\n');
+    expect(verifyRollbackLegalSource({
+      publicPagesSource: legalPages,
+      wizardSource: wizard,
+      presentationSource: spoofedPresentation,
+    })).toEqual({ ok: false, failures: ["legal_acceptance_copy_mismatch"] });
+    expect(APPROVED_ROLLBACK_LEGAL_CONTRACT.presentationSourceSha256).toHaveLength(64);
+    expect(APPROVED_ROLLBACK_LEGAL_CONTRACT.wizardSourceSha256).toHaveLength(64);
+    expect(APPROVED_ROLLBACK_LEGAL_CONTRACT.legacyWizardSourceSha256).toHaveLength(64);
 
     const migration = source("supabase/migrations/202610040075_append_only_legal_acceptance_episodes.sql");
+    const reconciliation = source("supabase/migrations/202610040076_reconcile_legacy_legal_acceptance_episodes.sql");
     expect(migration).toContain("drop constraint ap_snapshot_legal_acceptances_snapshot_id_key");
     expect(migration).toContain("drop constraint ap_snapshot_legal_content_receipts_snapshot_id_key");
     expect(migration).toContain("unique(snapshot_id,acceptance_sha256)");
@@ -57,6 +69,15 @@ describe("October 2 manual-launch hardening", () => {
     expect(migration).toContain("anchor_count<>2");
     expect(migration).toContain("from public,anon,authenticated");
     expect(migration).toContain("to service_role");
+    expect(reconciliation).toContain("public.ap_legal_receipt_acceptance_reconciliations");
+    expect(reconciliation).toContain("MIGRATION_074_CONTENT_HASH_LINK");
+    expect(reconciliation).toContain("on conflict(snapshot_id,acceptance_sha256) do nothing");
+    expect(reconciliation).toContain("ap_legal_receipt_acceptance_reconciliations_immutable");
+    expect(source("scripts/run-supabase-legal-upgrade-test.mjs"))
+      .toContain('"--version", "202610040074"');
+    expect(source("tests/integration/legal-receipt-076-verify.sql"))
+      .toContain("LEGAL_ACCEPTANCE_FORWARD_UPGRADE_OK");
+    expect(source("package.json")).toContain("run-supabase-legal-upgrade-test.mjs");
 
     const rollback = source("scripts/run-supabase-rollback-test.mjs");
     expect(rollback).toContain("verifyRollbackLegalSource");
@@ -162,6 +183,7 @@ describe("October 2 manual-launch hardening", () => {
     const legalContentMigration = source("supabase/migrations/202610040073_immutable_legal_content_receipts.sql");
     const legalRollbackCompatibility = source("supabase/migrations/202610040074_legal_receipt_rollback_compatibility.sql");
     const appendOnlyLegalEpisodes = source("supabase/migrations/202610040075_append_only_legal_acceptance_episodes.sql");
+    const reconciledLegalEpisodes = source("supabase/migrations/202610040076_reconcile_legacy_legal_acceptance_episodes.sql");
     const rollbackCompatibility = source("supabase/migrations/202610030065_preserve_intake_rollback_compatibility.sql");
     expect(finalize).toContain('rpc("ap_finalize_four_step_intake_with_legal_acceptance_v3"');
     expect(finalize).toContain("currentLegalContentBinding");
@@ -189,6 +211,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(legalRollbackCompatibility).toContain("draft.state in ('COMPLETE','LOCKED_TO_CHECKOUT')");
     expect(appendOnlyLegalEpisodes).toContain("public.ap_upgrade_completed_intake_legal_acceptance");
     expect(appendOnlyLegalEpisodes).toContain("public.ap_record_snapshot_legal_acceptance");
+    expect(reconciledLegalEpisodes).toContain("LEGACY_LEGAL_ACCEPTANCE_EPISODE_RECONCILIATION");
     expect(source("src/app/api/intake/anonymous-draft/legal-acceptance/route.ts"))
       .toContain('rpc("ap_upgrade_completed_intake_legal_acceptance"');
     expect(wizard).toContain("Confirm current Terms");

@@ -98,7 +98,7 @@ fails acceptance.
   current locked contract. The operator queue labels historical files as
   access-only and disables their approval and release actions. Commit
   `5b38407a4e8023e00ebee625f6925c265bdaee1a` is the minimum rollback target
-  after migrations 066 through 075, provided migrations 068 through 075 remain
+  after migrations 066 through 076, provided migrations 068 through 076 remain
   applied. `npm run test:rollback` rejects an `AP_ROLLBACK_TARGET_SHA` before
   that floor, missing any material-upload cleanup contract, or missing any
   customer source-upload cleanup path.
@@ -133,13 +133,18 @@ fails acceptance.
 - Database types: match the local migrated schema.
 - Historical-data upgrade fixture: passed.
 - Rollback-compatibility fixture: passed; the local schema replay and database
-  contract suite completed through all 80 migrations, including the
-  content-bound legal receipt, rollback-compatibility, and append-only legal-revision migrations.
-- Browser matrix on the preceding document-alignment commit: 301 passed, 24
-  intentional project-specific skips, zero failures across desktop Chromium,
-  Firefox, desktop WebKit, mobile WebKit, and mobile Chromium. The corrective
-  delta covered server-side provenance, validation, infrastructure, and SQL; it
-  did not change the customer interface.
+  contract suite completed through all 81 migrations, including the
+  content-bound legal receipt, rollback-compatibility, append-only legal-revision,
+  and migration-074 reconciliation migrations. A dedicated forward-upgrade
+  fixture proves an immutable 074 receipt reconciles and replays idempotently
+  after migrations 075 and 076.
+- Historical browser matrix on the preceding document-alignment commit: 301
+  passed, 24 intentional project-specific skips, and zero failures across
+  desktop Chromium, Firefox, desktop WebKit, mobile WebKit, and mobile
+  Chromium. Later commits added the legal re-consent interface and its browser
+  cases, so that historical run is not launch evidence for the current tree.
+  The release packet must record a zero-failure matrix tied to the exact final
+  commit; this document does not substitute the historical run for that gate.
 - Real local render QA: seven artifacts across eight pages; searchable tagged
   PDFs, exact extracted text, metadata, structure trees, and visual page review
   passed. Arial file SHA-256:

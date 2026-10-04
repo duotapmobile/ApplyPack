@@ -332,6 +332,12 @@ select pg_temp.assert_true(
     where namespace.nspname='public'
       and procedure.proname='ap_finalize_four_step_intake_with_legal_acceptance_v3'
       and pg_get_functiondef(procedure.oid) like '%acceptance.acceptance_sha256=p_acceptance_sha256%'
+  )
+  and exists(
+    select 1 from pg_trigger
+    where tgrelid='public.ap_legal_receipt_acceptance_reconciliations'::regclass
+      and tgname='ap_legal_receipt_acceptance_reconciliations_immutable'
+      and not tgisinternal
   ),
   'legal re-consent is missing serialized, append-only idempotency controls'
 );
