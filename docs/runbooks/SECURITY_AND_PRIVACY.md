@@ -42,7 +42,7 @@
 
 - Enable Supabase production backups before launch and record the provider retention window.
 - Before a migration, confirm the latest backup completed and test the migration in the separate test project.
-- Run a restore drill into a non-production project before launch and at least quarterly. Verify orders, capacity, RLS, private buckets, signed download behavior, and the immutable `ap_snapshot_legal_content_receipts` trigger. Confirm that the configured Terms, Privacy Policy, and acceptance-copy hashes match the release; the legal receipt and re-consent functions remain service-role-only; and the supported v2 finalizer routes through the v3 content-bound contract.
+- Run a restore drill into a non-production project before launch and at least quarterly. Verify orders, capacity, RLS, private buckets, signed download behavior, and the immutable `ap_snapshot_legal_content_receipts` trigger. Confirm that the configured Terms, Privacy Policy, and acceptance-copy hashes match the release; the legal receipt and re-consent functions remain service-role-only; the supported v2 finalizer routes through the v3 content-bound contract; and each later legal revision appends one hash-bound acceptance and receipt without changing or duplicating earlier episodes.
 - A backup is not proven until a restore has been completed and documented.
 
 ## Security incident

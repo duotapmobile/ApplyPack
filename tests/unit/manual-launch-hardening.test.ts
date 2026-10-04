@@ -10,6 +10,10 @@ import {
   SEARCH_PRICE_CENTS,
 } from "@/lib/domain/applypack";
 import { currentLegalContentBinding } from "@/lib/legal/content-hash";
+import {
+  APPROVED_ROLLBACK_LEGAL_CONTRACT,
+  verifyRollbackLegalSource,
+} from "../../scripts/rollback-legal-contract.mjs";
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
@@ -25,6 +29,40 @@ describe("October 2 manual-launch hardening", () => {
       contentCanonicalizationVersion: "applypack-c14n-v1",
       receiptSchemaVersion: "applypack-legal-content-receipt-v1",
     });
+  });
+
+  it("keeps later legal revisions append-only and rejects a rollback with altered legal text", () => {
+    const binding = currentLegalContentBinding();
+    expect(APPROVED_ROLLBACK_LEGAL_CONTRACT).toMatchObject(binding);
+    const legalPages = source("src/content/public-pages.ts");
+    const wizard = source("src/app/get-started/wizard-v3.tsx");
+    const presentation = source("src/lib/legal/presentation.ts");
+    expect(verifyRollbackLegalSource({
+      publicPagesSource: legalPages,
+      wizardSource: wizard,
+      presentationSource: presentation,
+    })).toEqual({ ok: true, failures: [] });
+    expect(verifyRollbackLegalSource({
+      publicPagesSource: legalPages.replace("Effective October 2, 2026", "Effective October 3, 2026"),
+      wizardSource: wizard,
+      presentationSource: presentation,
+    })).toEqual({ ok: false, failures: ["legal_pages_source_mismatch"] });
+
+    const migration = source("supabase/migrations/202610040075_append_only_legal_acceptance_episodes.sql");
+    expect(migration).toContain("drop constraint ap_snapshot_legal_acceptances_snapshot_id_key");
+    expect(migration).toContain("drop constraint ap_snapshot_legal_content_receipts_snapshot_id_key");
+    expect(migration).toContain("unique(snapshot_id,acceptance_sha256)");
+    expect(migration).toContain("pg_advisory_xact_lock");
+    expect(migration).toContain("acceptance.acceptance_sha256=p_acceptance_sha256");
+    expect(migration).toContain("anchor_count<>2");
+    expect(migration).toContain("from public,anon,authenticated");
+    expect(migration).toContain("to service_role");
+
+    const rollback = source("scripts/run-supabase-rollback-test.mjs");
+    expect(rollback).toContain("verifyRollbackLegalSource");
+    expect(rollback).toContain("APPROVED_ROLLBACK_LEGAL_CONTRACT.termsContentSha256");
+    expect(rollback).toContain("APPROVED_ROLLBACK_LEGAL_CONTRACT.privacyContentSha256");
+    expect(rollback).toContain("APPROVED_ROLLBACK_LEGAL_CONTRACT.acceptanceCopySha256");
   });
 
   it("uses new immutable price contracts while naming the historical contracts", () => {
@@ -123,6 +161,7 @@ describe("October 2 manual-launch hardening", () => {
     const migration = source("supabase/migrations/202610030064_atomic_sensitive_intake_finalization.sql");
     const legalContentMigration = source("supabase/migrations/202610040073_immutable_legal_content_receipts.sql");
     const legalRollbackCompatibility = source("supabase/migrations/202610040074_legal_receipt_rollback_compatibility.sql");
+    const appendOnlyLegalEpisodes = source("supabase/migrations/202610040075_append_only_legal_acceptance_episodes.sql");
     const rollbackCompatibility = source("supabase/migrations/202610030065_preserve_intake_rollback_compatibility.sql");
     expect(finalize).toContain('rpc("ap_finalize_four_step_intake_with_legal_acceptance_v3"');
     expect(finalize).toContain("currentLegalContentBinding");
@@ -148,6 +187,8 @@ describe("October 2 manual-launch hardening", () => {
     expect(legalRollbackCompatibility).toContain("public.ap_upgrade_completed_intake_legal_acceptance");
     expect(legalRollbackCompatibility).toContain("Completed or checkout-locked drafts created by a rolling v2 process are not silently");
     expect(legalRollbackCompatibility).toContain("draft.state in ('COMPLETE','LOCKED_TO_CHECKOUT')");
+    expect(appendOnlyLegalEpisodes).toContain("public.ap_upgrade_completed_intake_legal_acceptance");
+    expect(appendOnlyLegalEpisodes).toContain("public.ap_record_snapshot_legal_acceptance");
     expect(source("src/app/api/intake/anonymous-draft/legal-acceptance/route.ts"))
       .toContain('rpc("ap_upgrade_completed_intake_legal_acceptance"');
     expect(wizard).toContain("Confirm current Terms");
@@ -256,7 +297,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(rollbackCheck).toContain('"intake_source_upload_intent"');
     expect(rollbackCheck).toContain("for (const contract of sourceUploadContracts)");
     expect(rollbackCheck).toContain("intentIndex >= uploadIndex");
-    expect(rollbackCheck).toContain("approved content-bound legal acceptance copy");
+    expect(rollbackCheck).toContain("exact approved legal content");
     expect(rollbackCheck).toContain("ap_upgrade_completed_intake_legal_acceptance");
     expect(rollbackRunbook).toContain("minimum compatible application rollback commit is `5b38407a4e8023e00ebee625f6925c265bdaee1a`");
     expect(rollbackRunbook).toContain("set `AP_ROLLBACK_TARGET_SHA` to the exact intended deployment commit");

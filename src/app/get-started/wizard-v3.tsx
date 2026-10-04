@@ -49,6 +49,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   const presentingFacts = useRef<Set<string>>(new Set());
   const pendingEditFocus = useRef<string | null>(null);
   const pendingFinalization = useRef<PendingFinalization | null>(null);
+  const fixtureLegalFailureConsumed = useRef(false);
 
   const hydrate = useCallback((value: ServerDraft, restored = false) => {
     const completed = ["COMPLETE", "LOCKED_TO_CHECKOUT"].includes(value.state);
@@ -67,8 +68,20 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
 
   const load = useCallback(async () => {
     setSaveState("LOADING");
-    if (fixtureMode) { hydrate({ id: "23000000-0000-0000-0000-000000000099", version: 1, state: "IN_PROGRESS", currentStep: 0,
-      answers: emptyFourStepDraft, documents: [], facts: [], presentedFactIds: [] }); return; }
+    if (fixtureMode) {
+      const legalFixture = new URLSearchParams(window.location.search).get("legal");
+      if (legalFixture?.startsWith("legacy")) {
+        hydrate({ id: "23000000-0000-0000-0000-000000000099", version: 2,
+          state: legalFixture === "legacy-locked" ? "LOCKED_TO_CHECKOUT" : "COMPLETE", currentStep: 3,
+          answers: { ...emptyFourStepDraft, termsAccepted: true },
+          finalizedSnapshotId: "23000000-0000-4000-8000-000000000101", legalContentAccepted: false,
+          documents: [], facts: [], presentedFactIds: [] });
+        return;
+      }
+      hydrate({ id: "23000000-0000-0000-0000-000000000099", version: 1, state: "IN_PROGRESS", currentStep: 0,
+        answers: emptyFourStepDraft, documents: [], facts: [], presentedFactIds: [] });
+      return;
+    }
     try {
       let response = await fetch("/api/intake/anonymous-draft", { cache: "no-store" });
       let result = await response.json();
@@ -334,6 +347,18 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     }
     setLegalAcceptanceBusy(true); setSaveState("SAVING");
     try {
+      if (fixtureMode) {
+        const requested = new URLSearchParams(window.location.search).get("legal");
+        if (requested === "legacy-error" && !fixtureLegalFailureConsumed.current) {
+          fixtureLegalFailureConsumed.current = true;
+          throw new Error("The current legal terms could not be confirmed. Please try again.");
+        }
+        setLegalContentAccepted(true);
+        setFeasibility({ state: "PENDING", outcome: null, checkoutEligible: false,
+          snapshotId: serverDraft?.finalizedSnapshotId || undefined });
+        setSaveState("SAVED"); setNotice("The current Terms and Privacy Policy were confirmed. No payment was started.");
+        return;
+      }
       const response = await fetch("/api/intake/anonymous-draft/legal-acceptance", {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ accepted: true }),
       });

@@ -7401,7 +7401,7 @@ export type Database = {
           {
             foreignKeyName: "ap_snapshot_legal_acceptances_snapshot_id_fkey"
             columns: ["snapshot_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "ap_intake_snapshots"
             referencedColumns: ["id"]
           },
@@ -7474,7 +7474,7 @@ export type Database = {
           {
             foreignKeyName: "ap_snapshot_legal_content_receipts_snapshot_id_fkey"
             columns: ["snapshot_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "ap_intake_snapshots"
             referencedColumns: ["id"]
           },
