@@ -134,6 +134,8 @@ describe("October 2 manual-launch hardening", () => {
     const accessOnlyCompatibility = source("supabase/migrations/202610030068_historical_document_access_only.sql");
     const durableDocumentAccess = source("supabase/migrations/202610030069_durable_delivered_document_access.sql");
     const sensitiveUploadCleanup = source("supabase/migrations/202610030070_all_sensitive_upload_cleanup_intents.sql");
+    const rollbackCheck = source("scripts/run-supabase-rollback-test.mjs");
+    const rollbackRunbook = source("docs/runbooks/MANUAL_LAUNCH_RELEASE.md");
     expect(kms).toContain('environment.APP_DEPLOYMENT_ENV === "production"');
     expect(kms).toContain('environment.APP_KMS_PROVIDER !== "aws"');
     expect(worker).toContain('region === "us-east-1"');
@@ -206,6 +208,18 @@ describe("October 2 manual-launch hardening", () => {
     expect(sensitiveUploadCleanup).toContain("ap_invalidate_materials_for_job_content_change");
     expect(sensitiveUploadCleanup).toContain("ap_invalidate_materials_for_job_successor");
     expect(sensitiveUploadCleanup).toContain("not exists(select 1 from public.ap_release_members member");
+    expect(rollbackCheck).toContain('minimumCompatibleApplicationRollbackSha = "5b38407a4e8023e00ebee625f6925c265bdaee1a"');
+    expect(rollbackCheck).toContain("AP_ROLLBACK_TARGET_SHA");
+    expect(rollbackCheck).toContain('"merge-base"');
+    expect(rollbackCheck).toContain('"--is-ancestor"');
+    expect(rollbackCheck).toContain('storageBucket: "operator-drafts"');
+    expect(rollbackCheck).toContain('storageBucket: "operator-render-previews"');
+    expect(rollbackCheck).toContain('storageBucket: "customer-deliveries"');
+    expect(rollbackCheck).toContain('"anonymous_source_upload_intent"');
+    expect(rollbackCheck).toContain('"draft_source_upload_intent"');
+    expect(rollbackCheck).toContain('"intake_source_upload_intent"');
+    expect(rollbackRunbook).toContain("minimum compatible application rollback commit is `5b38407a4e8023e00ebee625f6925c265bdaee1a`");
+    expect(rollbackRunbook).toContain("set `AP_ROLLBACK_TARGET_SHA` to the exact intended deployment commit");
     expect(documentCompatibility.indexOf("pg_advisory_xact_lock"))
       .toBeLessThan(documentCompatibility.indexOf("where resource=resource_value and enabled for update"));
   });

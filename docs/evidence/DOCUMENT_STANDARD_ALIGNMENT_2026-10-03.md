@@ -82,6 +82,9 @@ fails acceptance.
   was already released. Both the canonical-content update and its immutable
   successor snapshot preserve delivered access. Listing changes still
   invalidate approval and block any new release against stale source evidence.
+  Forward migration `202610030071_customer_source_upload_cleanup_intents.sql`
+  extends the same pre-upload intent and transactional-clear invariant to the
+  anonymous, saved-draft, and direct completed-intake customer source paths.
 - The isolated worker is capped at 512 MiB in both infrastructure and runtime
   validation. The AWS budget defaults on and requires both launch-alert email
   recipients.
@@ -90,14 +93,17 @@ fails acceptance.
   version-to-font matching. New approval and release actions still require the
   current locked contract. The operator queue labels historical files as
   access-only and disables their approval and release actions. Commit
-  `d61331eb951a34a7a23fb33e51d319d0ed2283fc` is the minimum rollback target
-  after migrations 066, 067, 068, 069, or 070, provided migrations 068 through
-  070 remain applied.
+  `5b38407a4e8023e00ebee625f6925c265bdaee1a` is the minimum rollback target
+  after migrations 066 through 071, provided migrations 068 through 071 remain
+  applied. `npm run test:rollback` rejects an `AP_ROLLBACK_TARGET_SHA` before
+  that floor, missing any material-upload cleanup contract, or missing any
+  customer source-upload cleanup path.
 - Failed deletion of a private editable source is inserted into the existing
   maintenance cleanup queue; a queueing failure is surfaced instead of being
   silently discarded. A delayed cleanup intent is now written before upload and
   cleared transactionally by artifact registration, so a process crash cannot
-  leave an untracked editable DOCX, preview PDF, or delivery file indefinitely.
+  leave an untracked editable DOCX, preview PDF, delivery file, resume, or prior
+  cover letter indefinitely.
 
 ## Local acceptance evidence
 
