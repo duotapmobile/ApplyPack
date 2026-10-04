@@ -212,6 +212,15 @@ select public.ap_record_snapshot_legal_acceptance(
   '34000000-0000-4000-8000-000000000001',repeat('a',64),
   '54000000-0000-4000-8000-000000000001','manual-launch-terms-2026-10-02-v2','privacy-v1',repeat('7',64)
 );
+select public.ap_record_snapshot_legal_content_receipt(
+  '34000000-0000-4000-8000-000000000001',repeat('a',64),
+  '54000000-0000-4000-8000-000000000001',
+  (select id from public.ap_snapshot_legal_acceptances where snapshot_id='54000000-0000-4000-8000-000000000001'),
+  'manual-launch-terms-2026-10-02-v2','eeec6398df29e6bd831aa1130453762927a467ee1b7a8d98b3659e07b8069d8c',
+  'privacy-v1','9832a38d7fe5bbff04622a1e1a34e09febd44156dbf78eec4ea975283c1e92e9',
+  'applypack-legal-acceptance-copy-2026-10-04-v1','0d687e93a090a536b90b1508cf61746cb0167d464a951d9ae5cfe0739d7bd283',
+  'applypack-c14n-v1','applypack-legal-content-receipt-v1',repeat('7',64)
+);
 select pg_temp.assert_true(
   (public.ap_read_current_feasibility('34000000-0000-4000-8000-000000000001',repeat('a',64))->>'checkoutEligible')='false',
   'checkout became eligible without capacity'

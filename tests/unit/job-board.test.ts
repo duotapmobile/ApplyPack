@@ -77,6 +77,11 @@ describe("paid filtered job board", () => {
     expect(checkout).toContain("Subscription checkout is not offered in the manual launch.");
     expect(checkout).toContain("status: 410");
     expect(checkout).not.toContain("createStripeBoardClient");
+    const stripeMode = readFileSync("src/lib/stripe/mode.ts", "utf8");
+    const stripeServer = readFileSync("src/lib/stripe/server.ts", "utf8");
+    expect(stripeMode).toContain("boardReady: false");
+    expect(stripeServer).toContain("createStripeBoardClient()");
+    expect(stripeServer).toContain("return null");
     expect(events).toContain('event.type === "customer.subscription.created"');
     expect(events).toContain('expand: ["latest_invoice"]');
     expect(events).toContain("stripe.subscriptions.update(subscription.id, { cancel_at_period_end: true })");

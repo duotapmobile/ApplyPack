@@ -9,10 +9,24 @@ import {
   SEARCH_CONTRACT_VERSION,
   SEARCH_PRICE_CENTS,
 } from "@/lib/domain/applypack";
+import { currentLegalContentBinding } from "@/lib/legal/content-hash";
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
 describe("October 2 manual-launch hardening", () => {
+  it("binds legal acceptance to the exact displayed Terms, Privacy Policy, and acknowledgement copy", () => {
+    expect(currentLegalContentBinding()).toEqual({
+      termsVersion: "manual-launch-terms-2026-10-02-v2",
+      privacyVersion: "privacy-v1",
+      termsContentSha256: "eeec6398df29e6bd831aa1130453762927a467ee1b7a8d98b3659e07b8069d8c",
+      privacyContentSha256: "9832a38d7fe5bbff04622a1e1a34e09febd44156dbf78eec4ea975283c1e92e9",
+      acceptanceCopyVersion: "applypack-legal-acceptance-copy-2026-10-04-v1",
+      acceptanceCopySha256: "0d687e93a090a536b90b1508cf61746cb0167d464a951d9ae5cfe0739d7bd283",
+      contentCanonicalizationVersion: "applypack-c14n-v1",
+      receiptSchemaVersion: "applypack-legal-content-receipt-v1",
+    });
+  });
+
   it("uses new immutable price contracts while naming the historical contracts", () => {
     expect({ SEARCH_PRICE_CENTS, APPLY_PACK_PRICE_CENTS }).toEqual({ SEARCH_PRICE_CENTS: 1_899, APPLY_PACK_PRICE_CENTS: 799 });
     expect({ SEARCH_CONTRACT_VERSION, APPLY_PACK_CONTRACT_VERSION }).toEqual({
@@ -103,8 +117,11 @@ describe("October 2 manual-launch hardening", () => {
     const finalize = source("src/app/api/intake/anonymous-draft/finalize/route.ts");
     const wizard = source("src/app/get-started/wizard-v3.tsx");
     const migration = source("supabase/migrations/202610030064_atomic_sensitive_intake_finalization.sql");
+    const legalContentMigration = source("supabase/migrations/202610040073_immutable_legal_content_receipts.sql");
     const rollbackCompatibility = source("supabase/migrations/202610030065_preserve_intake_rollback_compatibility.sql");
-    expect(finalize).toContain('rpc("ap_finalize_four_step_intake_with_legal_acceptance_v2"');
+    expect(finalize).toContain('rpc("ap_finalize_four_step_intake_with_legal_acceptance_v3"');
+    expect(finalize).toContain("currentLegalContentBinding");
+    expect(finalize).toContain("LEGAL_CONTENT_CONFIGURATION_MISMATCH");
     expect(finalize).not.toContain('rpc("ap_record_snapshot_legal_acceptance"');
     expect(finalize).not.toContain('from("ap_sensitive_payloads").insert');
     expect(finalize).not.toContain("randomUUID");
@@ -118,6 +135,10 @@ describe("October 2 manual-launch hardening", () => {
     expect(migration).toContain("join public.ap_snapshot_legal_acceptances acceptance");
     expect(migration).toContain("revoke all on function public.ap_finalize_four_step_intake(");
     expect(migration).toContain("revoke all on function public.ap_record_snapshot_legal_acceptance(");
+    expect(legalContentMigration).toContain("public.ap_snapshot_legal_content_receipts");
+    expect(legalContentMigration).toContain("public.ap_finalize_four_step_intake_with_legal_acceptance_v3");
+    expect(legalContentMigration).toContain("public.ap_has_current_content_bound_legal_acceptance");
+    expect(legalContentMigration).toContain("ap_snapshot_legal_content_receipts_immutable");
     expect(rollbackCompatibility).toContain("from public,anon,authenticated");
     expect(rollbackCompatibility).toContain("to service_role");
     expect(rollbackCompatibility).toContain("INTAKE_ROLLBACK_COMPATIBILITY");

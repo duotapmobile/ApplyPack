@@ -5,6 +5,7 @@ import { anonymousDraftContext, anonymousDraftError } from "@/lib/drafts/anonymo
 import { canonicalSha256, CANONICALIZATION_VERSION } from "@/lib/domain/foundation";
 import { buildFourStepSnapshot, fourStepDraftSchema, normalizedFourStepDraft, validateFourStep, FOUR_STEP_SCHEMA_VERSION } from "@/lib/intake/four-step";
 import { fourStepPrivateState } from "@/lib/intake/four-step-server";
+import { currentLegalContentBinding } from "@/lib/legal/content.server";
 import { remoteKmsAdapter } from "@/lib/security/remote-kms";
 import { encryptSensitivePayload, sensitivePayloadConfiguration, sensitivePayloadEncryptionReady } from "@/lib/security/sensitive-payload";
 import { isSameOriginRequest } from "@/lib/security/origin";
@@ -29,11 +30,26 @@ export async function POST(request: Request) {
   if (errors.length) return NextResponse.json({ error: "Review the highlighted intake fields.", errors }, { status: 400 });
 
   const { data: commerce, error: commerceError } = await context.admin.from("ap_commerce_configuration")
-    .select("terms_version,privacy_version").eq("singleton", true).maybeSingle();
+    .select("terms_version,terms_content_sha256,privacy_version,privacy_content_sha256,legal_acceptance_copy_version,legal_acceptance_copy_sha256,legal_content_canonicalization_version,legal_receipt_schema_version")
+    .eq("singleton", true).maybeSingle();
+  const legalContent = currentLegalContentBinding();
   if (commerceError || !commerce?.terms_version || !commerce.privacy_version) {
     return NextResponse.json({
       error: "The current Terms and Privacy versions are unavailable. No intake was finalized and no payment was started.",
       code: "LEGAL_CONFIGURATION_UNAVAILABLE",
+    }, { status: 503, headers: { "cache-control": "no-store" } });
+  }
+  if (commerce.terms_version !== legalContent.termsVersion
+    || commerce.terms_content_sha256 !== legalContent.termsContentSha256
+    || commerce.privacy_version !== legalContent.privacyVersion
+    || commerce.privacy_content_sha256 !== legalContent.privacyContentSha256
+    || commerce.legal_acceptance_copy_version !== legalContent.acceptanceCopyVersion
+    || commerce.legal_acceptance_copy_sha256 !== legalContent.acceptanceCopySha256
+    || commerce.legal_content_canonicalization_version !== legalContent.contentCanonicalizationVersion
+    || commerce.legal_receipt_schema_version !== legalContent.receiptSchemaVersion) {
+    return NextResponse.json({
+      error: "The published legal content does not match the immutable acceptance configuration. No intake was finalized and no payment was started.",
+      code: "LEGAL_CONTENT_CONFIGURATION_MISMATCH",
     }, { status: 503, headers: { "cache-control": "no-store" } });
   }
 
@@ -73,9 +89,15 @@ export async function POST(request: Request) {
     draftId: context.capability.draftId,
     snapshotId,
     termsVersion: commerce.terms_version,
+    termsContentSha256: legalContent.termsContentSha256,
     privacyVersion: commerce.privacy_version,
+    privacyContentSha256: legalContent.privacyContentSha256,
+    acceptanceCopyVersion: legalContent.acceptanceCopyVersion,
+    acceptanceCopySha256: legalContent.acceptanceCopySha256,
+    contentCanonicalizationVersion: legalContent.contentCanonicalizationVersion,
+    receiptSchemaVersion: legalContent.receiptSchemaVersion,
   });
-  const { data, error } = await context.admin.rpc("ap_finalize_four_step_intake_with_legal_acceptance_v2", {
+  const { data, error } = await context.admin.rpc("ap_finalize_four_step_intake_with_legal_acceptance_v3", {
     p_draft_id: context.capability.draftId, p_secret_hash: context.secretHash, p_expected_version: parsed.data.expectedVersion,
     p_snapshot_id: snapshotId, p_snapshot: snapshot, p_content_sha256: canonicalSha256(snapshot),
     p_sensitive_payload_id: sensitivePayloadId, p_fact_reviews: reviews,
@@ -84,7 +106,12 @@ export async function POST(request: Request) {
     p_sensitive_authentication_tag: bytea(envelope.authenticationTag), p_sensitive_content_sha256: envelope.contentSha256,
     p_kms_key_identity: envelope.keyIdentity, p_kms_key_version: envelope.keyVersion,
     p_encryption_context_hash: envelope.encryptionContextHash,
-    p_terms_version: commerce.terms_version, p_privacy_version: commerce.privacy_version,
+    p_terms_version: commerce.terms_version, p_terms_content_sha256: legalContent.termsContentSha256,
+    p_privacy_version: commerce.privacy_version, p_privacy_content_sha256: legalContent.privacyContentSha256,
+    p_acceptance_copy_version: legalContent.acceptanceCopyVersion,
+    p_acceptance_copy_sha256: legalContent.acceptanceCopySha256,
+    p_content_canonicalization_version: legalContent.contentCanonicalizationVersion,
+    p_receipt_schema_version: legalContent.receiptSchemaVersion,
     p_acceptance_sha256: acceptanceSha256,
   });
   if (error || !Array.isArray(data) || !data[0]) {

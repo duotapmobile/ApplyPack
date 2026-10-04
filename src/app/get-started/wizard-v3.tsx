@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, LockKeyhole, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { feasibilityPresentation, SEARCH_CHECKOUT_CTA, type FeasibilityView } from "@/lib/commerce/presentation";
+import { LEGAL_ACCEPTANCE_PRESENTATION } from "@/lib/legal/presentation";
 import {
   activityCatalog, breadthChoices, businessSystemTasks, capabilityChoices, dealbreakerCatalog,
   emptyFactCorrection, emptyFourStepDraft, employmentTypes, excelTasks, experienceKindLabels,
@@ -382,7 +383,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
         {finalized && feasibility && <FeasibilityResult value={feasibility} checkoutBusy={checkoutBusy} invitationAvailable={checkoutInvitation !== null}
           onCheckout={() => void startCheckout()} onEdit={() => editSection(3, "work-modes", true)} />}
         <div className="deadline-note"><strong>Service boundary</strong><p>ApplyPack researches public listings and provides 10 matches after feasibility, capacity, and payment. We do not contact employers, submit applications, or guarantee interviews, offers, salary, employment, or continued listing availability.</p></div>
-        <ErrorFor errors={errors} fieldId="terms-accepted" /><label className="confirm legal-agreement"><input id="terms-accepted" type="checkbox" aria-invalid={hasError(errors, "terms-accepted") || undefined} aria-describedby={hasError(errors, "terms-accepted") ? errorId("terms-accepted") : undefined} checked={draft.termsAccepted} onChange={(e) => update("termsAccepted", e.target.checked)} /><span>I agree to the <Link href="/terms" target="_blank">Terms</Link> and <Link href="/privacy" target="_blank">Privacy Policy</Link>.</span></label>
+        <ErrorFor errors={errors} fieldId="terms-accepted" /><label className="confirm legal-agreement"><input id="terms-accepted" type="checkbox" aria-invalid={hasError(errors, "terms-accepted") || undefined} aria-describedby={hasError(errors, "terms-accepted") ? errorId("terms-accepted") : undefined} checked={draft.termsAccepted} onChange={(e) => update("termsAccepted", e.target.checked)} /><span>{LEGAL_ACCEPTANCE_PRESENTATION.prefix}<Link href={LEGAL_ACCEPTANCE_PRESENTATION.termsHref} target="_blank">{LEGAL_ACCEPTANCE_PRESENTATION.termsLabel}</Link>{LEGAL_ACCEPTANCE_PRESENTATION.conjunction}<Link href={LEGAL_ACCEPTANCE_PRESENTATION.privacyHref} target="_blank">{LEGAL_ACCEPTANCE_PRESENTATION.privacyLabel}</Link>{LEGAL_ACCEPTANCE_PRESENTATION.suffix}</span></label>
       </Step>}
 
       <div className="wizard-actions"><button className="wizard-back" type="button" disabled={step === 0 || saveState === "SAVING"} onClick={() => void move((step - 1) as 0 | 1 | 2)}><ArrowLeft aria-hidden="true" />Back</button>

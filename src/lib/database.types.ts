@@ -1493,6 +1493,10 @@ export type Database = {
           launch_activation_id: string | null
           launch_product_scope: string
           launch_release_sha: string | null
+          legal_acceptance_copy_sha256: string
+          legal_acceptance_copy_version: string
+          legal_content_canonicalization_version: string
+          legal_receipt_schema_version: string
           malware_scanner_identity: string | null
           material_line_price_cents: number
           material_output_formats: string[]
@@ -1502,7 +1506,8 @@ export type Database = {
           payment_api_version: string | null
           payment_provider: string | null
           pricing_version: string | null
-          privacy_version: string | null
+          privacy_content_sha256: string
+          privacy_version: string
           provider_email_approval_reference: string | null
           provider_idempotent_email_approved: boolean
           reauthentication_window_seconds: number | null
@@ -1516,7 +1521,8 @@ export type Database = {
           tax_inclusive: boolean
           tax_treatment: string
           tax_version: string | null
-          terms_version: string | null
+          terms_content_sha256: string
+          terms_version: string
           updated_at: string
         }
         Insert: {
@@ -1535,6 +1541,10 @@ export type Database = {
           launch_activation_id?: string | null
           launch_product_scope?: string
           launch_release_sha?: string | null
+          legal_acceptance_copy_sha256: string
+          legal_acceptance_copy_version: string
+          legal_content_canonicalization_version: string
+          legal_receipt_schema_version: string
           malware_scanner_identity?: string | null
           material_line_price_cents?: number
           material_output_formats?: string[]
@@ -1544,7 +1554,8 @@ export type Database = {
           payment_api_version?: string | null
           payment_provider?: string | null
           pricing_version?: string | null
-          privacy_version?: string | null
+          privacy_content_sha256: string
+          privacy_version: string
           provider_email_approval_reference?: string | null
           provider_idempotent_email_approved?: boolean
           reauthentication_window_seconds?: number | null
@@ -1558,7 +1569,8 @@ export type Database = {
           tax_inclusive?: boolean
           tax_treatment?: string
           tax_version?: string | null
-          terms_version?: string | null
+          terms_content_sha256: string
+          terms_version: string
           updated_at?: string
         }
         Update: {
@@ -1577,6 +1589,10 @@ export type Database = {
           launch_activation_id?: string | null
           launch_product_scope?: string
           launch_release_sha?: string | null
+          legal_acceptance_copy_sha256?: string
+          legal_acceptance_copy_version?: string
+          legal_content_canonicalization_version?: string
+          legal_receipt_schema_version?: string
           malware_scanner_identity?: string | null
           material_line_price_cents?: number
           material_output_formats?: string[]
@@ -1586,7 +1602,8 @@ export type Database = {
           payment_api_version?: string | null
           payment_provider?: string | null
           pricing_version?: string | null
-          privacy_version?: string | null
+          privacy_content_sha256?: string
+          privacy_version?: string
           provider_email_approval_reference?: string | null
           provider_idempotent_email_approved?: boolean
           reauthentication_window_seconds?: number | null
@@ -1600,7 +1617,8 @@ export type Database = {
           tax_inclusive?: boolean
           tax_treatment?: string
           tax_version?: string | null
-          terms_version?: string | null
+          terms_content_sha256?: string
+          terms_version?: string
           updated_at?: string
         }
         Relationships: [
@@ -7389,6 +7407,79 @@ export type Database = {
           },
         ]
       }
+      ap_snapshot_legal_content_receipts: {
+        Row: {
+          acceptance_copy_sha256: string
+          acceptance_copy_version: string
+          acceptance_sha256: string
+          accepted_at: string
+          content_canonicalization_version: string
+          draft_id: string
+          id: string
+          legal_acceptance_id: string
+          privacy_content_sha256: string
+          privacy_version: string
+          receipt_schema_version: string
+          snapshot_id: string
+          terms_content_sha256: string
+          terms_version: string
+        }
+        Insert: {
+          acceptance_copy_sha256: string
+          acceptance_copy_version: string
+          acceptance_sha256: string
+          accepted_at?: string
+          content_canonicalization_version: string
+          draft_id: string
+          id?: string
+          legal_acceptance_id: string
+          privacy_content_sha256: string
+          privacy_version: string
+          receipt_schema_version: string
+          snapshot_id: string
+          terms_content_sha256: string
+          terms_version: string
+        }
+        Update: {
+          acceptance_copy_sha256?: string
+          acceptance_copy_version?: string
+          acceptance_sha256?: string
+          accepted_at?: string
+          content_canonicalization_version?: string
+          draft_id?: string
+          id?: string
+          legal_acceptance_id?: string
+          privacy_content_sha256?: string
+          privacy_version?: string
+          receipt_schema_version?: string
+          snapshot_id?: string
+          terms_content_sha256?: string
+          terms_version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_snapshot_legal_content_receipts_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_snapshot_legal_content_receipts_legal_acceptance_id_fkey"
+            columns: ["legal_acceptance_id"]
+            isOneToOne: true
+            referencedRelation: "ap_snapshot_legal_acceptances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_snapshot_legal_content_receipts_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: true
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_source_attempt_payloads: {
         Row: {
           adapter_version: string
@@ -11739,6 +11830,42 @@ export type Database = {
           snapshot_id: string
         }[]
       }
+      ap_finalize_four_step_intake_with_legal_acceptance_v3: {
+        Args: {
+          p_acceptance_copy_sha256: string
+          p_acceptance_copy_version: string
+          p_acceptance_sha256: string
+          p_content_canonicalization_version: string
+          p_content_sha256: string
+          p_draft_id: string
+          p_encryption_context_hash: string
+          p_expected_version: number
+          p_fact_reviews: Json
+          p_kms_key_identity: string
+          p_kms_key_version: string
+          p_privacy_content_sha256: string
+          p_privacy_version: string
+          p_receipt_schema_version: string
+          p_secret_hash: string
+          p_sensitive_authentication_tag: string
+          p_sensitive_ciphertext: string
+          p_sensitive_content_sha256: string
+          p_sensitive_encrypted_data_key: string
+          p_sensitive_encryption_algorithm: string
+          p_sensitive_nonce: string
+          p_sensitive_payload_id: string
+          p_snapshot: Json
+          p_snapshot_id: string
+          p_terms_content_sha256: string
+          p_terms_version: string
+        }
+        Returns: {
+          draft_version: number
+          feasibility_request_id: string
+          legal_acceptance_id: string
+          snapshot_id: string
+        }[]
+      }
       ap_finalize_job_source_run: {
         Args: { p_lease_epoch: number; p_owner: string; p_run_id: string }
         Returns: Json
@@ -11780,6 +11907,10 @@ export type Database = {
           p_reference_version_id: string
         }
         Returns: string
+      }
+      ap_has_current_content_bound_legal_acceptance: {
+        Args: { p_draft_id: string; p_snapshot_id: string }
+        Returns: boolean
       }
       ap_increment_intake_event: {
         Args: { p_event: string; p_step: number }
@@ -12172,6 +12303,24 @@ export type Database = {
           p_privacy_version: string
           p_secret_hash: string
           p_snapshot_id: string
+          p_terms_version: string
+        }
+        Returns: string
+      }
+      ap_record_snapshot_legal_content_receipt: {
+        Args: {
+          p_acceptance_copy_sha256: string
+          p_acceptance_copy_version: string
+          p_acceptance_sha256: string
+          p_content_canonicalization_version: string
+          p_draft_id: string
+          p_legal_acceptance_id: string
+          p_privacy_content_sha256: string
+          p_privacy_version: string
+          p_receipt_schema_version: string
+          p_secret_hash: string
+          p_snapshot_id: string
+          p_terms_content_sha256: string
           p_terms_version: string
         }
         Returns: string

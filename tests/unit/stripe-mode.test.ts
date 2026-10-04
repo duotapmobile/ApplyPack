@@ -31,12 +31,9 @@ describe("Stripe payment-mode guard", () => {
       STRIPE_WEBHOOK_SECRET: "whsec_example",
       STRIPE_JOB_SEARCH_PRICE_ID: "price_search",
       STRIPE_APPLY_PACK_PRICE_ID: "price_apply",
-      STRIPE_JOB_BOARD_WEEKLY_PRICE_ID: "price_weekly",
-      STRIPE_JOB_BOARD_MONTHLY_PRICE_ID: "price_monthly",
-      STRIPE_JOB_BOARD_THREE_MONTH_PRICE_ID: "price_three_month",
     });
     expect(checkoutConfiguration().ready).toBe(true);
-    expect(checkoutConfiguration().boardReady).toBe(true);
+    expect(checkoutConfiguration().boardReady).toBe(false);
     expect(stripeEventMatchesConfiguredMode(false)).toBe(true);
     expect(stripeEventMatchesConfiguredMode(true)).toBe(false);
   });
@@ -50,24 +47,42 @@ describe("Stripe payment-mode guard", () => {
       STRIPE_WEBHOOK_SECRET: "whsec_example",
       STRIPE_JOB_SEARCH_PRICE_ID: "price_search",
       STRIPE_APPLY_PACK_PRICE_ID: "price_apply",
-      STRIPE_JOB_BOARD_WEEKLY_PRICE_ID: "price_weekly",
-      STRIPE_JOB_BOARD_MONTHLY_PRICE_ID: "price_monthly",
-      STRIPE_JOB_BOARD_THREE_MONTH_PRICE_ID: "price_three_month",
     });
     expect(checkoutConfiguration().ready).toBe(false);
     process.env.APP_LIVE_PAYMENTS_ENABLED = "true";
     expect(checkoutConfiguration().ready).toBe(true);
-    expect(checkoutConfiguration().boardReady).toBe(true);
+    expect(checkoutConfiguration().boardReady).toBe(false);
   });
 
   it("keeps the Stripe setup product names aligned with checkout validation", () => {
     const setupScript = fs.readFileSync(path.join(process.cwd(), "scripts/configure-stripe-test-prices.mjs"), "utf8");
     expect(setupScript).toContain('productName: "Job Match Search"');
     expect(setupScript).toContain('productName: "Tailored Resume + Cover Letter"');
-    expect(setupScript).toContain('lookupKey: "applypack_job_board_weekly_usd_699"');
-    expect(setupScript).toContain('lookupKey: "applypack_job_board_monthly_usd_1999"');
-    expect(setupScript).toContain('lookupKey: "applypack_job_board_three_month_usd_4499"');
+    expect(setupScript).toContain('lookupKey: "job_match_search_usd_1899_manual_launch_v2"');
+    expect(setupScript).toContain('lookupKey: "apply_pack_usd_799_manual_launch_v2"');
+    expect(setupScript).toContain("amount: 1_899");
+    expect(setupScript).toContain("amount: 799");
+    expect(setupScript).toContain("retireBoardProducts");
+    expect(setupScript).not.toContain("ensureRecurringPrice");
     expect(setupScript).toContain('expand: ["data.product"]');
     expect(setupScript).toContain("stripe.products.update");
+  });
+
+  it("keeps board checkout locked even when obsolete environment values are present", () => {
+    Object.assign(process.env, {
+      APP_PAYMENT_MODE: "test",
+      APP_CHECKOUT_ENABLED: "true",
+      APP_JOB_BOARD_CHECKOUT_ENABLED: "true",
+      STRIPE_SECRET_KEY: "rk_test_example",
+      STRIPE_WEBHOOK_SECRET: "whsec_example",
+      STRIPE_JOB_SEARCH_PRICE_ID: "price_search",
+      STRIPE_APPLY_PACK_PRICE_ID: "price_apply",
+      STRIPE_JOB_BOARD_WEEKLY_PRICE_ID: "price_weekly",
+      STRIPE_JOB_BOARD_MONTHLY_PRICE_ID: "price_monthly",
+      STRIPE_JOB_BOARD_THREE_MONTH_PRICE_ID: "price_three_month",
+    });
+    const configuration = checkoutConfiguration();
+    expect(configuration.boardPricesConfigured).toBe(false);
+    expect(configuration.boardReady).toBe(false);
   });
 });
