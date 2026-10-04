@@ -367,7 +367,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(sensitiveUploadCleanup).toContain("ap_invalidate_materials_for_job_content_change");
     expect(sensitiveUploadCleanup).toContain("ap_invalidate_materials_for_job_successor");
     expect(sensitiveUploadCleanup).toContain("not exists(select 1 from public.ap_release_members member");
-    expect(rollbackCheck).toContain('minimumCompatibleApplicationRollbackSha = "5b38407a4e8023e00ebee625f6925c265bdaee1a"');
+    expect(rollbackCheck).toContain('minimumCompatibleApplicationRollbackSha = "aeae1dee597e153602febd6adfea5644e4628d20"');
     expect(rollbackCheck).toContain("AP_ROLLBACK_TARGET_SHA");
     expect(rollbackCheck).toContain('"merge-base"');
     expect(rollbackCheck).toContain('"--is-ancestor"');
@@ -382,7 +382,10 @@ describe("October 2 manual-launch hardening", () => {
     expect(rollbackCheck).toContain("intentIndex >= uploadIndex");
     expect(rollbackCheck).toContain("exact approved legal content");
     expect(rollbackCheck).toContain("ap_upgrade_completed_intake_legal_acceptance");
-    expect(rollbackRunbook).toContain("binds health and checkout to the migration-080 schema floor");
+    expect(rollbackCheck).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610040080"');
+    expect(rollbackCheck).toContain('admin.rpc("ap_manual_launch_schema_readiness")');
+    expect(rollbackCheck).toContain("launchSchemaReadinessIsCurrent(schemaReadiness)");
+    expect(rollbackRunbook).toContain("minimum compatible application rollback commit is `aeae1dee597e153602febd6adfea5644e4628d20`");
     expect(rollbackRunbook).toContain("set `AP_ROLLBACK_TARGET_SHA` to the exact intended deployment commit");
     expect(documentCompatibility.indexOf("pg_advisory_xact_lock"))
       .toBeLessThan(documentCompatibility.indexOf("where resource=resource_value and enabled for update"));

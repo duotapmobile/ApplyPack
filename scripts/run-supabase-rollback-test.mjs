@@ -10,7 +10,7 @@ const sqlPath = fileURLToPath(new URL("../supabase/rollback/202609040022_correct
 const migrationDirectory = new URL("../supabase/migrations/", import.meta.url);
 const expectedMigrationCount = readdirSync(migrationDirectory).filter((name) => name.endsWith(".sql")).length;
 const input = readFileSync(sqlPath, "utf8") + "\nselect case when to_regclass('public.orders') is not null and to_regclass('public.ap_anonymous_drafts') is null then 'ROLLBACK_OK' else 'ROLLBACK_FAILED' end;\n";
-const minimumCompatibleApplicationRollbackSha = "5b38407a4e8023e00ebee625f6925c265bdaee1a";
+const minimumCompatibleApplicationRollbackSha = "aeae1dee597e153602febd6adfea5644e4628d20";
 const requestedRollbackTarget = process.env.AP_ROLLBACK_TARGET_SHA?.trim() || "HEAD";
 
 function run(command, args, stdin) {
@@ -50,6 +50,38 @@ if (ancestry.error || ancestry.status !== 0) {
     `Rollback target ${resolvedRollbackTarget} predates the minimum cleanup-compatible application ${minimumCompatibleApplicationRollbackSha}.`,
   );
   process.exit(ancestry.status || 1);
+}
+
+const rollbackSchemaBinding = capture("git", [
+  "show",
+  `${resolvedRollbackTarget}:src/lib/operations/launch-schema.ts`,
+]);
+const rollbackReadiness = capture("git", [
+  "show",
+  `${resolvedRollbackTarget}:src/lib/operations/launch-readiness.ts`,
+]);
+const requiredSchemaBindingSignals = [
+  'REQUIRED_LAUNCH_SCHEMA_VERSION = "202610040080"',
+  '"202610040077"',
+  '"202610040078"',
+  '"202610040079"',
+  "REQUIRED_LAUNCH_SCHEMA_VERSION",
+];
+if (
+  rollbackSchemaBinding.error
+  || rollbackSchemaBinding.status !== 0
+  || requiredSchemaBindingSignals.some((signal) => !rollbackSchemaBinding.stdout.includes(signal))
+  || rollbackReadiness.error
+  || rollbackReadiness.status !== 0
+  || !rollbackReadiness.stdout.includes('admin.rpc("ap_manual_launch_schema_readiness")')
+  || !rollbackReadiness.stdout.includes("launchSchemaReadinessIsCurrent(schemaReadiness)")
+) {
+  if (rollbackSchemaBinding.stderr) process.stderr.write(rollbackSchemaBinding.stderr);
+  if (rollbackReadiness.stderr) process.stderr.write(rollbackReadiness.stderr);
+  console.error(
+    `Rollback target ${resolvedRollbackTarget} does not bind runtime health and checkout to schema 202610040080.`,
+  );
+  process.exit(rollbackSchemaBinding.status || rollbackReadiness.status || 1);
 }
 
 const generationAtTarget = capture("git", [

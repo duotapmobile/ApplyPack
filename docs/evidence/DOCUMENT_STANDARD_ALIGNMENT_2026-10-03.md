@@ -97,11 +97,13 @@ fails acceptance.
   version-to-font matching. New approval and release actions still require the
   current locked contract. The operator queue labels historical files as
   access-only and disables their approval and release actions. After migrations
-  066 through 080, rollback requires a reviewed application descendant that
-  binds health and both checkout gates to the migration-080 schema floor while
-  migrations 068 through 080 remain applied. `npm run test:rollback` rejects an
-  incompatible `AP_ROLLBACK_TARGET_SHA`, a target missing any material-upload
-  cleanup contract, or one missing any customer source-upload cleanup path.
+  066 through 080, the minimum rollback target is
+  `aeae1dee597e153602febd6adfea5644e4628d20` or a reviewed descendant. That
+  target binds health and both checkout gates to the migration-080 schema floor
+  while migrations 068 through 080 remain applied. `npm run test:rollback`
+  rejects an incompatible `AP_ROLLBACK_TARGET_SHA`, a target missing the schema
+  binding, any material-upload cleanup contract, or any customer source-upload
+  cleanup path.
 - Failed deletion of a private editable source is inserted into the existing
   maintenance cleanup queue; a queueing failure is surfaced instead of being
   silently discarded. A delayed cleanup intent is now written before upload and
