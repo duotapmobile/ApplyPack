@@ -109,13 +109,13 @@ fails acceptance.
 
 - Lint: passed.
 - Type checking: passed.
-- Unit/integration suite: 85 files, 604 tests passed.
+- Unit/integration suite: 86 files, 606 tests passed.
 - Production build: passed on Next.js 16.3.8.
 - Production dependency audit: zero vulnerabilities.
-- Database contract fixtures: 12 passed.
+- Database contract fixtures: 13 passed.
 - Database types: match the local migrated schema.
 - Historical-data upgrade fixture: passed.
-- Rollback-compatibility fixture: passed; local schema restored through all 75
+- Rollback-compatibility fixture: passed; local schema restored through all 76
   migrations.
 - Browser matrix on the preceding document-alignment commit: 301 passed, 24
   intentional project-specific skips, zero failures across desktop Chromium,
