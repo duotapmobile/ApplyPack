@@ -22,14 +22,14 @@ select pg_temp.assert_true(
 
 select pg_temp.assert_true(
   public.ap_manual_launch_schema_readiness()->>'ready'='true'
-  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610040079'
+  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610040080'
   and not has_function_privilege('anon','public.ap_manual_launch_schema_readiness()','execute')
   and not has_function_privilege('authenticated','public.ap_manual_launch_schema_readiness()','execute')
   and has_function_privilege('service_role','public.ap_manual_launch_schema_readiness()','execute'),
-  'launch schema readiness must bind service-only runtime health to migrations 077 through 079'
+  'launch schema readiness must bind service-only runtime health to migrations 077 through 080'
 );
 savepoint before_schema_floor_checkpoint_removal;
-delete from public.ap_migration_checkpoints where migration_id='202610040078';
+delete from public.ap_migration_checkpoints where migration_id='202610040080';
 select pg_temp.assert_true(
   public.ap_manual_launch_schema_readiness()->>'ready'='false',
   'launch schema readiness must fail when an identity-policy checkpoint is absent'

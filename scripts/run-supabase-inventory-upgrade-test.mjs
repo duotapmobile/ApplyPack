@@ -72,9 +72,10 @@ then 'MIGRATION_077_CONFLICT_ROLLBACK_OK' else 'MIGRATION_077_CONFLICT_ROLLBACK_
 
 const raceRollbackVerification = `
 select case when
-  to_regprocedure('public.ap_manual_launch_schema_readiness()') is null
-  and not exists(select 1 from public.ap_migration_checkpoints where migration_id='202610040079')
-then 'MIGRATION_079_RACE_ROLLBACK_OK' else 'MIGRATION_079_RACE_ROLLBACK_FAILED' end;
+  public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610040079'
+  and to_regprocedure('public.ap_guard_inventory_member_identity()') is null
+  and not exists(select 1 from public.ap_migration_checkpoints where migration_id='202610040080')
+then 'MIGRATION_080_RACE_ROLLBACK_OK' else 'MIGRATION_080_RACE_ROLLBACK_FAILED' end;
 `;
 
 let failure;
@@ -95,36 +96,56 @@ try {
   }
   console.log("Migration 077 rejects a historical cross-field conflict and rolls back atomically.");
 
-  // Hold an uncommitted inventory insert while migration 079 starts. The
-  // migration must wait, see the committed conflict, and roll itself back.
-  run("supabase", ["db", "reset", "--local", "--no-seed", "--version", "202610040078"], undefined, false);
+  // Reproduce the old-build interleaving that migration 079 could miss: the
+  // writer performs its duplicate SELECT (ACCESS SHARE), pauses, then inserts.
+  // Migration 080 must wait for that transaction, rescan its committed row,
+  // and roll back without publishing the persistent guard checkpoint.
+  run("supabase", ["db", "reset", "--local", "--no-seed", "--version", "202610040079"], undefined, false);
   sql(fixture, false);
   sql(cutoverBase, false);
-  const writerSql = `begin;\n${readFileSync(cutoverConflict, "utf8")}\nselect 'CUTOVER_WRITER_READY';\nselect pg_sleep(6);\ncommit;\n`;
+  const writerSql = `begin;
+select count(*) from public.ap_inventory_members
+where inventory_version_id='f6300000-0000-4000-8000-000000000001';
+select 'CUTOVER_PRECHECK_READY';
+select pg_sleep(6);
+${readFileSync(cutoverConflict, "utf8")}
+commit;
+`;
   const writer = spawnCaptured("docker", psqlArgs, writerSql);
-  await waitForOutput(writer, "CUTOVER_WRITER_READY");
+  await waitForOutput(writer, "CUTOVER_PRECHECK_READY");
   const migration = spawnCaptured("supabase", ["migration", "up", "--local"], undefined);
   await new Promise((resolve) => setTimeout(resolve, 750));
-  if (migration.child.exitCode !== null) throw new Error("migration 079 did not wait for the in-flight inventory writer");
+  if (migration.child.exitCode !== null) throw new Error("migration 080 did not wait for the prechecked inventory writer");
   const writerResult = await writer.completion;
   if (writerResult.status !== 0) throw new Error(`cutover writer failed: ${writerResult.stdout}${writerResult.stderr}`);
   const migrationResult = await migration.completion;
   const migrationOutput = `${migrationResult.stdout}${migrationResult.stderr}`;
   if (migrationResult.status === 0 || !migrationOutput.includes("selected_inventory_identity_conflict_requires_successor_inventory")) {
-    throw new Error(`migration 079 did not refuse the committed in-flight conflict: ${migrationOutput}`);
+    throw new Error(`migration 080 did not refuse the committed prechecked conflict: ${migrationOutput}`);
   }
-  if (!sqlText(raceRollbackVerification, false).includes("MIGRATION_079_RACE_ROLLBACK_OK")) {
-    throw new Error("migration 079 race refusal did not roll back atomically");
+  if (!sqlText(raceRollbackVerification, false).includes("MIGRATION_080_RACE_ROLLBACK_OK")) {
+    throw new Error("migration 080 race refusal did not roll back atomically");
   }
-  console.log("Migration 079 waits out an in-flight writer, rescans, and refuses its conflict atomically.");
+  console.log("Migration 080 drains a prechecked old writer, rescans, and refuses its conflict atomically.");
 
   run("supabase", ["db", "reset", "--local", "--no-seed", "--version", "202610040076"], undefined, false);
   sql(fixture, false);
   sql(cutoverBase, false);
   run("supabase", ["migration", "up", "--local"], undefined, false);
-  if (!sql(verify).includes("ATOMIC_INVENTORY_078_RECOVERY_OK")) {
+  if (!sql(verify).includes("ATOMIC_INVENTORY_080_RECOVERY_OK")) {
     throw new Error("identity-policy recovery verification marker missing");
   }
+  const persistentGuard = execute(
+    "docker",
+    psqlArgs,
+    `begin;\n${readFileSync(cutoverConflict, "utf8")}\nrollback;\n`,
+    false,
+  );
+  const persistentGuardOutput = `${persistentGuard.stdout || ""}${persistentGuard.stderr || ""}`;
+  if (persistentGuard.status === 0 || !persistentGuardOutput.includes("duplicate_inventory_job")) {
+    throw new Error(`persistent inventory identity guard accepted a cross-field duplicate: ${persistentGuardOutput}`);
+  }
+  console.log("Migration 080 permanently rejects cross-field duplicates after cutover.");
 } catch (error) {
   failure = error;
 } finally {
@@ -133,4 +154,4 @@ try {
 }
 if (failure) throw failure;
 
-console.log("Migrations 077-079 reject unsafe cutovers and permit a fresh invitation after clean recovery.");
+console.log("Migrations 077-080 reject unsafe cutovers, persist the identity guard, and permit clean recovery.");

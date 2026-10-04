@@ -220,13 +220,20 @@ describe("October 2 manual-launch hardening", () => {
       requiredMigrations: [...REQUIRED_LAUNCH_MIGRATIONS],
     })).toBe(true);
 
-    const migration = source("supabase/migrations/202610040079_runtime_launch_schema_readiness.sql");
-    expect(migration).toContain("lock table public.ap_inventory_members in share row exclusive mode");
+    const priorMigration = source("supabase/migrations/202610040079_runtime_launch_schema_readiness.sql");
+    const migration = source("supabase/migrations/202610040080_persistent_inventory_identity_guard.sql");
+    expect(priorMigration).toContain("lock table public.ap_inventory_members in share row exclusive mode");
+    expect(migration).toContain("lock table public.ap_inventory_members in access exclusive mode");
+    expect(migration).toContain("create trigger ap_guard_inventory_member_identity");
+    expect(migration).toContain("pg_catalog.pg_advisory_xact_lock");
+    expect(migration).toContain("live_inventory as");
     expect(migration).toContain("selected_inventory_identity_conflict_requires_successor_inventory");
     expect(migration).toContain("public.ap_manual_launch_schema_readiness()");
-    expect(migration).toContain("RUNTIME_LAUNCH_SCHEMA_READINESS");
-    expect(source("scripts/run-supabase-inventory-upgrade-test.mjs")).toContain("CUTOVER_WRITER_READY");
+    expect(migration).toContain("PERSISTENT_INVENTORY_IDENTITY_GUARD");
+    expect(source("scripts/run-supabase-inventory-upgrade-test.mjs")).toContain("CUTOVER_PRECHECK_READY");
     expect(source("scripts/run-supabase-inventory-upgrade-test.mjs")).toContain("MIGRATION_077_CONFLICT_ROLLBACK_OK");
+    expect(source("scripts/run-supabase-inventory-upgrade-test.mjs")).toContain("MIGRATION_080_RACE_ROLLBACK_OK");
+    expect(source("scripts/run-supabase-inventory-upgrade-test.mjs")).toContain("duplicate_inventory_job");
   });
 
   it("finalizes encrypted intake and current legal acceptance through one retry-safe atomic command", () => {
@@ -375,7 +382,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(rollbackCheck).toContain("intentIndex >= uploadIndex");
     expect(rollbackCheck).toContain("exact approved legal content");
     expect(rollbackCheck).toContain("ap_upgrade_completed_intake_legal_acceptance");
-    expect(rollbackRunbook).toContain("minimum compatible application rollback commit is `5b38407a4e8023e00ebee625f6925c265bdaee1a`");
+    expect(rollbackRunbook).toContain("binds health and checkout to the migration-080 schema floor");
     expect(rollbackRunbook).toContain("set `AP_ROLLBACK_TARGET_SHA` to the exact intended deployment commit");
     expect(documentCompatibility.indexOf("pg_advisory_xact_lock"))
       .toBeLessThan(documentCompatibility.indexOf("where resource=resource_value and enabled for update"));

@@ -242,7 +242,20 @@ select case when
     where migration_id='202610040079'
       and checkpoint='RUNTIME_LAUNCH_SCHEMA_READINESS'
   )
+  and exists (
+    select 1 from public.ap_migration_checkpoints
+    where migration_id='202610040080'
+      and checkpoint='PERSISTENT_INVENTORY_IDENTITY_GUARD'
+  )
+  and exists (
+    select 1 from pg_trigger
+    where tgrelid='public.ap_inventory_members'::regclass
+      and tgname='ap_guard_inventory_member_identity'
+      and tgenabled='O'
+      and not tgisinternal
+  )
   and public.ap_manual_launch_schema_readiness()->>'ready'='true'
+  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610040080'
   and exists (
     select 1 from pg_proc procedure
     join pg_namespace namespace on namespace.oid=procedure.pronamespace

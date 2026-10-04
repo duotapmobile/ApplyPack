@@ -96,12 +96,12 @@ fails acceptance.
   immediately preceding immutable Liberation Sans contract, with exact
   version-to-font matching. New approval and release actions still require the
   current locked contract. The operator queue labels historical files as
-  access-only and disables their approval and release actions. Commit
-  `5b38407a4e8023e00ebee625f6925c265bdaee1a` is the minimum rollback target
-  after migrations 066 through 079, provided migrations 068 through 079 remain
-  applied. `npm run test:rollback` rejects an `AP_ROLLBACK_TARGET_SHA` before
-  that floor, missing any material-upload cleanup contract, or missing any
-  customer source-upload cleanup path.
+  access-only and disables their approval and release actions. After migrations
+  066 through 080, rollback requires a reviewed application descendant that
+  binds health and both checkout gates to the migration-080 schema floor while
+  migrations 068 through 080 remain applied. `npm run test:rollback` rejects an
+  incompatible `AP_ROLLBACK_TARGET_SHA`, a target missing any material-upload
+  cleanup contract, or one missing any customer source-upload cleanup path.
 - Failed deletion of a private editable source is inserted into the existing
   maintenance cleanup queue; a queueing failure is surfaced instead of being
   silently discarded. A delayed cleanup intent is now written before upload and
@@ -137,14 +137,17 @@ fails acceptance.
   checkout. Migration 077 refuses a historical selected-inventory conflict and
   invalidates every pre-policy feasibility assessment and quote; migration 078
   revokes affected invitations, returns held capacity, and requeues their
-  completed feasibility requests for a fresh assessment. Migration 079 waits
-  out in-flight inventory writers with an insert-conflicting table lock,
-  rescans selected inventory before commit, and makes runtime health and both
-  checkout gates depend on the exact schema floor and identity contracts.
+  completed feasibility requests for a fresh assessment. Migration 080 uses an
+  ACCESS EXCLUSIVE cutover drain, installs a permanent per-inventory identity
+  trigger, rescans selected inventory, and makes runtime health and both
+  checkout gates depend on the exact schema floor, enabled trigger, live-clean
+  inventory, and identity contracts. Its two-session fixture reproduces an old
+  writer that pauses after its duplicate precheck and proves the migration
+  waits, rescans, and refuses the committed conflict atomically.
 - Database types: match the local migrated schema.
 - Historical-data upgrade fixture: passed.
 - Rollback-compatibility fixture: passed; the local schema replay and database
-  contract suite completed through all 84 migrations, including the
+  contract suite completed through all 85 migrations, including the
   content-bound legal receipt, rollback-compatibility, append-only legal-revision,
   and migration-074 reconciliation migrations. A dedicated forward-upgrade
   fixture proves an immutable 074 receipt reconciles and replays idempotently

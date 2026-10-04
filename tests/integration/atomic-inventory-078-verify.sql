@@ -3,6 +3,13 @@ begin
   if public.ap_manual_launch_schema_readiness()->>'ready' is distinct from 'true' then
     raise exception 'runtime_launch_schema_readiness_not_current';
   end if;
+  if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610040080' then
+    raise exception 'runtime_launch_schema_version_not_current';
+  end if;
+  if not exists(
+    select 1 from public.ap_migration_checkpoints
+    where migration_id='202610040080' and checkpoint='PERSISTENT_INVENTORY_IDENTITY_GUARD'
+  ) then raise exception 'migration_080_checkpoint_missing'; end if;
   if not exists(
     select 1 from public.ap_migration_checkpoints
     where migration_id='202610040079' and checkpoint='RUNTIME_LAUNCH_SCHEMA_READINESS'
@@ -88,4 +95,4 @@ begin
 end;
 $$;
 
-select 'ATOMIC_INVENTORY_078_RECOVERY_OK' as case;
+select 'ATOMIC_INVENTORY_080_RECOVERY_OK' as case;

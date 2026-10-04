@@ -123,9 +123,14 @@ insert into public.ap_quotes(
 );
 
 do $$
+declare readiness_version text;
 begin
   if to_regprocedure('public.ap_manual_launch_schema_readiness()') is not null then
-    raise exception 'runtime_launch_schema_readiness_exists_before_identity_cutover';
+    execute $query$select public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'$query$
+      into readiness_version;
+    if readiness_version is distinct from '202610040079' then
+      raise exception 'unexpected_runtime_launch_schema_readiness_before_persistent_guard';
+    end if;
   end if;
 end;
 $$;
