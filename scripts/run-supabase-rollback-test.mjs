@@ -219,6 +219,19 @@ select case when
     'pg_advisory_xact_lock'
     in pg_get_functiondef('public.ap_upgrade_completed_intake_legal_acceptance(uuid,text,text,text,text,text,text,text,text,text,text)'::regprocedure)
   ) > 0
+  and position(
+    'array_remove(array[existing.canonical_employer_listing_url,existing.canonical_application_url],null)'
+    in pg_get_functiondef('public.ap_persist_parsed_inventory_job(uuid,uuid,text,jsonb,jsonb)'::regprocedure)
+  ) > 0
+  and position(
+    'array_remove(array[other.canonical_employer_listing_url,other.canonical_application_url],null)'
+    in pg_get_functiondef('public.ap_admit_verified_inventory_snapshot(uuid,uuid,uuid,text)'::regprocedure)
+  ) > 0
+  and exists (
+    select 1 from public.ap_migration_checkpoints
+    where migration_id='202610040077'
+      and checkpoint='ATOMIC_INVENTORY_IDENTITY_ENFORCEMENT'
+  )
   and exists (
     select 1 from pg_proc procedure
     join pg_namespace namespace on namespace.oid=procedure.pronamespace

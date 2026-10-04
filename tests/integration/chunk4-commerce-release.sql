@@ -585,6 +585,46 @@ from fixture_job_snapshot_input template;
 select pg_temp.assert_true((select count(*)=10 from public.ap_current_source_verifications(null)),
  'all ten fixture jobs require actual manual verification receipts');
 
+savepoint before_verified_admission_cross_field_duplicate;
+insert into public.ap_inventory_versions(
+  id,cutoff_at,source_registry_version,query_version,parser_version,content_sha256
+) values(
+  'b4c00000-0000-4000-8000-000000000001',clock_timestamp(),
+  'atomic-admission-v1','atomic-admission-v1','listing-requirements-v3',repeat('c',64)
+);
+insert into public.ap_feasibility_coverage_plans(
+  id,snapshot_id,inventory_version_id,plan_version,typed_inputs,
+  coverage_disposition,content_sha256
+) values(
+  'b4d00000-0000-4000-8000-000000000001','54000000-0000-4000-8000-000000000001',
+  'b4c00000-0000-4000-8000-000000000001','atomic-admission-v1','{}','REQUIRED',repeat('d',64)
+);
+select public.ap_admit_verified_inventory_snapshot(
+  '54000000-0000-4000-8000-000000000001','b4c00000-0000-4000-8000-000000000001',
+  'b4100000-0000-4000-8000-000000000001','requisition|fixture-reviewed-employer|REQ-1'
+);
+set local session_replication_role = replica;
+update public.ap_job_snapshots
+set canonical_application_url=(
+  select canonical_employer_listing_url from public.ap_job_snapshots
+  where id='b4100000-0000-4000-8000-000000000001'
+)
+where id='b4100000-0000-4000-8000-000000000002';
+set local session_replication_role = origin;
+do $$ begin
+  begin
+    perform public.ap_admit_verified_inventory_snapshot(
+      '54000000-0000-4000-8000-000000000001','b4c00000-0000-4000-8000-000000000001',
+      'b4100000-0000-4000-8000-000000000002','requisition|fixture-reviewed-employer|REQ-2'
+    );
+    raise exception 'verified_cross_field_duplicate_was_admitted';
+  exception when raise_exception then
+    if sqlerrm='verified_cross_field_duplicate_was_admitted' then raise; end if;
+    if sqlerrm<>'inventory_identity_snapshot_conflict' then raise; end if;
+  end;
+end $$;
+rollback to savepoint before_verified_admission_cross_field_duplicate;
+
 insert into public.ap_inventory_members(
   id,inventory_version_id,job_snapshot_id,stable_normalized_job_id,selected_by_deduplication
 )

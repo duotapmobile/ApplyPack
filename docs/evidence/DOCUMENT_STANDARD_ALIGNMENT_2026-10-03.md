@@ -98,7 +98,7 @@ fails acceptance.
   current locked contract. The operator queue labels historical files as
   access-only and disables their approval and release actions. Commit
   `5b38407a4e8023e00ebee625f6925c265bdaee1a` is the minimum rollback target
-  after migrations 066 through 076, provided migrations 068 through 076 remain
+  after migrations 066 through 077, provided migrations 068 through 077 remain
   applied. `npm run test:rollback` rejects an `AP_ROLLBACK_TARGET_SHA` before
   that floor, missing any material-upload cleanup contract, or missing any
   customer source-upload cleanup path.
@@ -132,12 +132,14 @@ fails acceptance.
 - Database contract fixtures: 14 passed.
 - Exact-ten duplicate fixtures: bidirectional listing/application URL
   intersections with distinct requisition identifiers are rejected at release;
-  the manual inventory admission path uses the same URL-set and strong-ID
-  fallback policy before feasibility can authorize checkout.
+  both atomic inventory admission RPCs use the same URL-set and strong-ID
+  fallback policy under their inventory lock before feasibility can authorize
+  checkout. Migration 077 refuses a historical selected-inventory conflict and
+  invalidates every pre-policy feasibility assessment and quote.
 - Database types: match the local migrated schema.
 - Historical-data upgrade fixture: passed.
 - Rollback-compatibility fixture: passed; the local schema replay and database
-  contract suite completed through all 81 migrations, including the
+  contract suite completed through all 82 migrations, including the
   content-bound legal receipt, rollback-compatibility, append-only legal-revision,
   and migration-074 reconciliation migrations. A dedicated forward-upgrade
   fixture proves an immutable 074 receipt reconciles and replays idempotently

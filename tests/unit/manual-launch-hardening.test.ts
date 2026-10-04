@@ -61,6 +61,7 @@ describe("October 2 manual-launch hardening", () => {
 
     const migration = source("supabase/migrations/202610040075_append_only_legal_acceptance_episodes.sql");
     const reconciliation = source("supabase/migrations/202610040076_reconcile_legacy_legal_acceptance_episodes.sql");
+    const atomicInventoryIdentity = source("supabase/migrations/202610040077_atomic_inventory_identity_enforcement.sql");
     expect(migration).toContain("drop constraint ap_snapshot_legal_acceptances_snapshot_id_key");
     expect(migration).toContain("drop constraint ap_snapshot_legal_content_receipts_snapshot_id_key");
     expect(migration).toContain("unique(snapshot_id,acceptance_sha256)");
@@ -73,6 +74,12 @@ describe("October 2 manual-launch hardening", () => {
     expect(reconciliation).toContain("MIGRATION_074_CONTENT_HASH_LINK");
     expect(reconciliation).toContain("on conflict(snapshot_id,acceptance_sha256) do nothing");
     expect(reconciliation).toContain("ap_legal_receipt_acceptance_reconciliations_immutable");
+    expect(atomicInventoryIdentity).toContain("ap_persist_parsed_inventory_job");
+    expect(atomicInventoryIdentity).toContain("ap_admit_verified_inventory_snapshot");
+    expect(atomicInventoryIdentity).toContain("pg_advisory_xact_lock");
+    expect(atomicInventoryIdentity).toContain("array_remove(array[existing.canonical_employer_listing_url,existing.canonical_application_url],null)");
+    expect(atomicInventoryIdentity).toContain("array_remove(array[other.canonical_employer_listing_url,other.canonical_application_url],null)");
+    expect(atomicInventoryIdentity).toContain("selected_inventory_identity_conflict_requires_successor_inventory");
     expect(source("scripts/run-supabase-legal-upgrade-test.mjs"))
       .toContain('"--version", "202610040074"');
     expect(source("tests/integration/legal-receipt-076-verify.sql"))
