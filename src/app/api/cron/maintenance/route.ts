@@ -178,8 +178,19 @@ export async function POST(request: Request) {
     else expirationCleanupFailed = true;
   }
 
+  const storageCleanupMaxAttempts = 20;
+  const { count: exhaustedCleanupRows, error: exhaustedCleanupError } = await admin.from("storage_cleanup_queue")
+    .select("id", { count: "exact", head: true })
+    .gte("attempts", storageCleanupMaxAttempts);
+  if (exhaustedCleanupError) {
+    return fail("EXPIRATION_CLEANUP_FAILED", "EXPIRATION_CLEANUP", "Storage cleanup dead-letter state could not be loaded.");
+  }
+  if ((exhaustedCleanupRows || 0) > 0) {
+    return fail("STORAGE_CLEANUP_DEAD_LETTER", "EXPIRATION_CLEANUP", "Sensitive storage cleanup requires operator intervention.");
+  }
+
   const { data: cleanupRows, error: cleanupQueryError } = await admin.from("storage_cleanup_queue")
-    .select("id,bucket,storage_path,attempts").lt("attempts", 20)
+    .select("id,bucket,storage_path,attempts").lt("attempts", storageCleanupMaxAttempts)
     .lte("not_before", nowIso).order("created_at").limit(50);
   if (cleanupQueryError) return fail("EXPIRATION_CLEANUP_FAILED", "EXPIRATION_CLEANUP", "Storage cleanup queue could not be loaded.");
   let recoveredStorageObjects = 0;
@@ -188,13 +199,19 @@ export async function POST(request: Request) {
     if (!removal.error) {
       const deletion = await admin.from("storage_cleanup_queue").delete().eq("id", row.id);
       if (!deletion.error) recoveredStorageObjects += 1;
+      else expirationCleanupFailed = true;
     } else {
       expirationCleanupFailed = true;
-      await admin.from("storage_cleanup_queue").update({
-        attempts: Number(row.attempts || 0) + 1,
+      const attempts = Number(row.attempts || 0) + 1;
+      const update = await admin.from("storage_cleanup_queue").update({
+        attempts,
         last_error: "storage_remove_failed",
         last_attempt_at: nowIso,
       }).eq("id", row.id);
+      if (update.error) expirationCleanupFailed = true;
+      if (!update.error && attempts >= storageCleanupMaxAttempts) {
+        return fail("STORAGE_CLEANUP_DEAD_LETTER", "EXPIRATION_CLEANUP", "Sensitive storage cleanup requires operator intervention.");
+      }
     }
   }
   if (expirationCleanupFailed) {

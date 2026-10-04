@@ -27,7 +27,7 @@ vi.mock("@/lib/email/send", () => ({ sendTransactionalEmail: dependencies.sendTr
 import { POST } from "@/app/api/cron/maintenance/route";
 function query() {
   const chain: Record<string, unknown> = {};
-  for (const method of ["select", "update", "delete", "eq", "not", "is", "lt", "lte", "in", "order", "limit"]) chain[method] = vi.fn(() => chain);
+  for (const method of ["select", "update", "delete", "eq", "not", "is", "lt", "lte", "gte", "in", "order", "limit"]) chain[method] = vi.fn(() => chain);
   chain.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ data: [], error: null, count: 0 }).then(resolve);
   return chain;
 }
@@ -148,6 +148,36 @@ describe("maintenance authorization and independent queues", () => {
     expect(await response.json()).toMatchObject({ queueStages: { unpaidSourceRetention: "FAILED" } });
     expect(dependencies.processWorkflowTasks).toHaveBeenCalledOnce();
     expect(dependencies.reconcileBoardSubscriptions).toHaveBeenCalledOnce();
+  });
+  it("keeps exhausted sensitive-storage cleanup visible as a critical maintenance failure", async () => {
+    const from = vi.fn((table: string) => {
+      const chain = query();
+      if (table === "storage_cleanup_queue") {
+        (chain.gte as ReturnType<typeof vi.fn>).mockImplementation(() => {
+          chain.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ data: null, error: null, count: 1 }).then(resolve);
+          return chain;
+        });
+      }
+      return chain;
+    });
+    dependencies.adminClient.mockReturnValue({
+      from,
+      rpc: vi.fn().mockResolvedValue({ data: 0, error: null }),
+      storage: { from: vi.fn(() => ({ remove: vi.fn().mockResolvedValue({ error: null }) })) },
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: "STORAGE_CLEANUP_DEAD_LETTER" });
+    expect(dependencies.recordMaintenanceFailure).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      "STORAGE_CLEANUP_DEAD_LETTER",
+      expect.arrayContaining([{ code: "EXPIRATION_CLEANUP", status: "FAILED" }]),
+      expect.any(Date),
+    );
+    expect(dependencies.processPendingDocumentExtractions).not.toHaveBeenCalled();
   });
   it("records a diagnosis failure without invoking processors", async () => {
     dependencies.collectOperationsSummary.mockRejectedValue(new Error("provider secret"));

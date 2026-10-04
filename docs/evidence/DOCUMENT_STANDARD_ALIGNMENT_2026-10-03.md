@@ -104,12 +104,17 @@ fails acceptance.
   cleared transactionally by artifact registration, so a process crash cannot
   leave an untracked editable DOCX, preview PDF, delivery file, resume, or prior
   cover letter indefinitely.
+- Cleanup items that reach the bounded 20-attempt retry limit are now exposed as
+  a persistent critical dead-letter condition. Maintenance returns HTTP 503,
+  launch health remains false, and the sanitized admin operations summary keeps
+  the pending and dead-letter counts visible until an operator removes the
+  object and resolves the queue row.
 
 ## Local acceptance evidence
 
 - Lint: passed.
 - Type checking: passed.
-- Unit/integration suite: 86 files, 606 tests passed.
+- Unit/integration suite: 86 files, 608 tests passed.
 - Production build: passed on Next.js 16.3.8.
 - Production dependency audit: zero vulnerabilities.
 - Database contract fixtures: 13 passed.

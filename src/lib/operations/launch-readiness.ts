@@ -102,6 +102,7 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
         { data: heartbeat, error: heartbeatError },
         { count: unresolvedOperationalAlerts, error: alertError },
         { count: unresolvedCriticalAlerts, error: criticalAlertError },
+        { count: exhaustedStorageCleanup, error: storageCleanupError },
         { data: capacity, error: capacityError },
         { data: sourceReadiness, error: sourceError },
       ] = await Promise.all([
@@ -110,6 +111,8 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
           .eq("state", "OPEN").in("category", ["WORKER", "OUTBOX", "WEBHOOK"]),
         admin.from("ap_operational_alerts").select("id", { count: "exact", head: true })
           .eq("state", "OPEN").eq("severity", "CRITICAL"),
+        admin.from("storage_cleanup_queue").select("id", { count: "exact", head: true })
+          .gte("attempts", 20),
         admin.rpc("ap_manual_launch_capacity_readiness"),
         admin.rpc("ap_current_source_readiness"),
       ]);
@@ -118,9 +121,11 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
         && !heartbeatError
         && !alertError
         && !criticalAlertError
+        && !storageCleanupError
         && maintenanceHeartbeatIsFresh(heartbeat?.last_succeeded_at)
         && (unresolvedOperationalAlerts || 0) === 0
-        && (unresolvedCriticalAlerts || 0) === 0,
+        && (unresolvedCriticalAlerts || 0) === 0
+        && (exhaustedStorageCleanup || 0) === 0,
       );
       const capacityRecord = capacity && typeof capacity === "object" && !Array.isArray(capacity)
         ? capacity as Record<string, unknown> : null;

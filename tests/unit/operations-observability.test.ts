@@ -51,6 +51,7 @@ function summary(change: Partial<OperationsSummary> = {}): OperationsSummary {
       workflow: { states: { queued: 0 }, oldestItemAgeSeconds: null, stale: false },
       outbox: { states: { queued: 0 }, oldestItemAgeSeconds: null, stale: false },
       commerceReconciliation: { states: { pending: 0 }, oldestItemAgeSeconds: null, stale: false },
+      storageCleanup: { states: { pending: 0, deadLetter: 0 }, oldestItemAgeSeconds: null, stale: false },
     },
     maintenance: { heartbeatAgeSeconds: 30, stale: false },
     alerts: { openWarnings: 0, openCritical: 0 },
@@ -189,7 +190,7 @@ describe("employer-first operations inventory", () => {
           else result.count += 1;
         }
         const query: Record<string, unknown> = {};
-        for (const method of ["select", "eq", "neq", "in", "lt", "lte", "order", "limit", "not", "is", "maybeSingle"]) query[method] = () => query;
+        for (const method of ["select", "eq", "neq", "in", "lt", "lte", "gte", "order", "limit", "not", "is", "maybeSingle"]) query[method] = () => query;
         query.then = (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve);
         return query;
       },
@@ -286,6 +287,17 @@ describe("maintenance policy", () => {
     expect(outcome.actionCodes).toEqual([]);
     expect(outcome.failedActionCodes).toEqual(["STRIPE_RECONCILIATION"]);
     expect(outcome.unresolvedCodes).toEqual(["STRIPE_RECONCILIATION_FAILED"]);
+  });
+
+  it("fails closed while a sensitive storage cleanup item is dead-lettered", () => {
+    const diagnostic = diagnoseOperations(summary({
+      queues: {
+        ...summary().queues,
+        storageCleanup: { states: { pending: 0, deadLetter: 1 }, oldestItemAgeSeconds: null, stale: true },
+      },
+    }));
+    expect(diagnostic.codes).toContain("STORAGE_CLEANUP_DEAD_LETTER");
+    expect(diagnostic.failClosedCodes).toContain("STORAGE_CLEANUP_DEAD_LETTER");
   });
 
   it("refreshes the heartbeat when only explicitly dormant board actions are skipped", async () => {
@@ -445,6 +457,8 @@ describe("operations route contract", () => {
     expect(operations).toContain(`.select("available_at").in("state", ["PENDING", "RETRY"])`);
     expect(operations).toContain(`.select("not_before").in("status", ["queued", "failed"])`);
     expect(operations).toContain(`.lte("not_before", nowIso)`);
+    expect(operations).toContain(`count("storage_cleanup_queue").gte("attempts", 20)`);
+    expect(cron).toContain('return fail("STORAGE_CLEANUP_DEAD_LETTER"');
     expect(operations).not.toContain(`.select("created_at").in("status", ["queued", "processing", "awaiting_review"`);
   });
 });

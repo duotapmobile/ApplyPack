@@ -151,6 +151,8 @@ describe("October 2 manual-launch hardening", () => {
     expect(worker).toContain("pdfTextBoundsAreValid");
     expect(readiness).toContain("probeDocumentWorker");
     expect(launchReadiness).toContain('rpc("ap_manual_launch_capacity_readiness")');
+    expect(launchReadiness).toContain('from("storage_cleanup_queue")');
+    expect(launchReadiness).toContain('.gte("attempts", 20)');
     expect(launchReadiness).toContain('from("ap_manual_launch_activations")');
     expect(launchReadiness).toContain("capacityAvailable");
     expect(launchReadiness).toContain("capacityByResource");
