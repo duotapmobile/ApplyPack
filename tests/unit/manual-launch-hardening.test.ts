@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -254,6 +255,35 @@ describe("October 2 manual-launch hardening", () => {
     expect(upgradeTest).toContain("MIGRATION_080_RACE_ROLLBACK_OK");
     expect(upgradeTest).toContain("duplicate_inventory_job");
   });
+
+  it("rejects remote inventory preflight URLs without hostname-verified TLS and never prints credentials", () => {
+    const password = "preflight-super-secret";
+    const weakUrls = [
+      `postgresql://operator:${password}@db.example.test/postgres`,
+      `postgresql://operator:${password}@db.example.test/postgres?sslmode=disable`,
+      `postgresql://operator:${password}@db.example.test/postgres?sslmode=allow`,
+      `postgresql://operator:${password}@db.example.test/postgres?sslmode=prefer`,
+      `postgresql://operator:${password}@db.example.test/postgres?sslmode=require`,
+      `postgresql://operator:${password}@db.example.test/postgres?sslmode=verify-ca`,
+      `postgresql://operator:${password}@db.example.test/postgres?sslmode=verify-full&sslmode=disable`,
+    ];
+    for (const databaseUrl of weakUrls) {
+      const result = spawnSync(
+        process.execPath,
+        [resolve(process.cwd(), "scripts/check-inventory-identity-conflicts.mjs"), "--remote"],
+        {
+          cwd: process.cwd(),
+          encoding: "utf8",
+          env: { ...process.env, AP_PREMIGRATION_DATABASE_URL: databaseUrl },
+        },
+      );
+      const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+      expect(result.status).toBe(2);
+      expect(output).toContain("sslmode=verify-full");
+      expect(output).not.toContain(databaseUrl);
+      expect(output).not.toContain(password);
+    }
+  }, 30_000);
 
   it("finalizes encrypted intake and current legal acceptance through one retry-safe atomic command", () => {
     const finalize = source("src/app/api/intake/anonymous-draft/finalize/route.ts");

@@ -128,7 +128,7 @@ fails acceptance.
 
 - Lint: passed.
 - Type checking: passed.
-- Unit/integration suite: 86 files, 617 tests passed.
+- Unit/integration suite: 86 files, 618 tests passed.
 - Production build: passed on Next.js 16.3.8.
 - Production dependency audit: zero vulnerabilities.
 - Database contract fixtures: 14 passed.
@@ -152,6 +152,11 @@ fails acceptance.
   that preflight through migration 080 readiness. The published successor
   wording cannot repair an immutable historical conflict; such a target needs
   separately reviewed forward remediation.
+- The remote inventory preflight refuses missing, weaker, or duplicate SSL
+  modes and requires `sslmode=verify-full`. Executable negative cases prove
+  that rejected connection URIs and passwords do not appear in output. Hosted
+  use still requires the provider-trusted root certificate and independent
+  provider-side SSL enforcement evidence.
 - Database types: match the local migrated schema.
 - Historical-data upgrade fixture: passed.
 - Rollback-compatibility fixture: passed; the local schema replay and database

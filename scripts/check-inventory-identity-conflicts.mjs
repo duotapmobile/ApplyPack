@@ -19,8 +19,22 @@ if (mode === "--remote") {
     console.error("AP_PREMIGRATION_DATABASE_URL is required for --remote and must be injected securely.");
     process.exit(2);
   }
-  if (!/^postgres(?:ql)?:\/\//i.test(secret) || /[\r\n']/.test(secret)) {
-    console.error("AP_PREMIGRATION_DATABASE_URL must be a single-line PostgreSQL URI with reserved characters percent-encoded.");
+  let parsed;
+  try {
+    parsed = new URL(secret);
+  } catch {
+    parsed = null;
+  }
+  const sslModes = parsed?.searchParams.getAll("sslmode").map((value) => value.toLowerCase()) ?? [];
+  if (
+    !parsed
+    || !["postgres:", "postgresql:"].includes(parsed.protocol)
+    || !parsed.hostname
+    || /[\r\n']/.test(secret)
+    || sslModes.length !== 1
+    || sslModes[0] !== "verify-full"
+  ) {
+    console.error("AP_PREMIGRATION_DATABASE_URL must be a single-line PostgreSQL URI using exactly sslmode=verify-full; reserved characters must be percent-encoded.");
     process.exit(2);
   }
   input = `\\connect '${secret}'\n${sql}`;
