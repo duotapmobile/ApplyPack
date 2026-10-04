@@ -42,4 +42,13 @@ describe("customer source upload cleanup", () => {
     expect(migration).toContain("draft_source_upload_intent_missing");
     expect(migration).toContain("CUSTOMER_SOURCE_UPLOAD_CLEANUP_INTENTS");
   });
+
+  it("keeps an explicit employer delivery filename distinct from the preview bucket", () => {
+    const migration = source("supabase/migrations/202610040072_material_delivery_filename_cleanup_compatibility.sql");
+
+    expect(migration).toContain("MATERIAL_DELIVERY_FILENAME_CLEANUP_COMPATIBILITY");
+    expect(migration).toContain("when 'operator-render-previews' then value->>'storagePath' is distinct from base_path||'/render-preview.pdf'");
+    expect(migration).toContain("when 'customer-deliveries' then value->>'storagePath' not like base_path||'/%'");
+    expect(migration).not.toContain("value->>'storagePath'=base_path||'/render-preview.pdf'");
+  });
 });

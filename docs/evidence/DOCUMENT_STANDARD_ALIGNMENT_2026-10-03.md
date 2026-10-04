@@ -85,6 +85,10 @@ fails acceptance.
   Forward migration `202610030071_customer_source_upload_cleanup_intents.sql`
   extends the same pre-upload intent and transactional-clear invariant to the
   anonymous, saved-draft, and direct completed-intake customer source paths.
+  Forward migration
+  `202610040072_material_delivery_filename_cleanup_compatibility.sql` preserves
+  that cleanup invariant while allowing an explicit employer delivery filename
+  that matches the separately bucketed render-preview basename.
 - The isolated worker is capped at 512 MiB in both infrastructure and runtime
   validation. The AWS budget defaults on and requires both launch-alert email
   recipients.
@@ -94,7 +98,7 @@ fails acceptance.
   current locked contract. The operator queue labels historical files as
   access-only and disables their approval and release actions. Commit
   `5b38407a4e8023e00ebee625f6925c265bdaee1a` is the minimum rollback target
-  after migrations 066 through 071, provided migrations 068 through 071 remain
+  after migrations 066 through 072, provided migrations 068 through 072 remain
   applied. `npm run test:rollback` rejects an `AP_ROLLBACK_TARGET_SHA` before
   that floor, missing any material-upload cleanup contract, or missing any
   customer source-upload cleanup path.
@@ -116,13 +120,13 @@ fails acceptance.
 
 - Lint: passed.
 - Type checking: passed.
-- Unit/integration suite: 86 files, 608 tests passed.
+- Unit/integration suite: 86 files, 609 tests passed.
 - Production build: passed on Next.js 16.3.8.
 - Production dependency audit: zero vulnerabilities.
-- Database contract fixtures: 13 passed.
+- Database contract fixtures: 14 passed.
 - Database types: match the local migrated schema.
 - Historical-data upgrade fixture: passed.
-- Rollback-compatibility fixture: passed; local schema restored through all 76
+- Rollback-compatibility fixture: passed; local schema restored through all 77
   migrations.
 - Browser matrix on the preceding document-alignment commit: 301 passed, 24
   intentional project-specific skips, zero failures across desktop Chromium,
