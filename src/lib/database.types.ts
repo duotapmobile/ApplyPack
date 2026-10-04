@@ -12196,6 +12196,15 @@ export type Database = {
           draft_version: number
         }[]
       }
+      ap_register_intake_draft_document: {
+        Args: {
+          p_customer_id: string
+          p_document: Json
+          p_draft_id: string
+          p_kind: string
+        }
+        Returns: string
+      }
       ap_register_material_artifact_version: {
         Args: {
           p_arial_font_sha256: string

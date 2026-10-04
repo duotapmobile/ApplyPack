@@ -15,6 +15,7 @@ const fixtures = [
   "../tests/integration/manual-launch-hardening.sql",
   "../tests/integration/atomic-intake-legal-acceptance.sql",
   "../tests/integration/document-standard-compatibility.sql",
+  "../tests/integration/source-upload-cleanup.sql",
 ];
 for (const fixture of fixtures) {
   const sqlPath = fileURLToPath(new URL(fixture, import.meta.url));

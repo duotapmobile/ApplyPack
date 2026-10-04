@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { anonymousDraftContext, anonymousDraftError } from "@/lib/drafts/anonymous-server";
 import { validateDocumentSafety } from "@/lib/files/document-safety";
 import { hasExpectedFileSignature } from "@/lib/files/signatures";
+import { createSourceUploadCleanupIntent, removeSourceUploadOrQueue } from "@/lib/files/source-upload-cleanup";
 import { MAX_SOURCE_DOCUMENT_BYTES, validateSourceDocumentMetadata } from "@/lib/files/upload-policy";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { isSameOriginRequest } from "@/lib/security/origin";
@@ -42,8 +43,20 @@ export async function POST(request: Request) {
   const documentId = randomUUID();
   const extension = file.type === "application/pdf" ? "pdf" : "docx";
   const path = `anonymous/${context.capability.draftId}/${documentKind.toLowerCase()}/${documentId}.${extension}`;
+  try {
+    await createSourceUploadCleanupIntent(context.admin, path, "anonymous_source_upload_intent");
+  } catch {
+    return NextResponse.json({ error: "The private upload could not be prepared safely." }, { status: 500 });
+  }
   const upload = await context.admin.storage.from("customer-source-documents").upload(path, bytes, { cacheControl: "no-cache", contentType: file.type, upsert: false });
-  if (upload.error) return NextResponse.json({ error: "The private upload could not be saved." }, { status: 502 });
+  if (upload.error) {
+    try {
+      await removeSourceUploadOrQueue(context.admin, path, "anonymous_source_upload_failed");
+    } catch {
+      return NextResponse.json({ error: "The upload failed and its private cleanup could not be confirmed." }, { status: 500 });
+    }
+    return NextResponse.json({ error: "The private upload could not be saved." }, { status: 502 });
+  }
   const registered = await context.admin.rpc("ap_register_anonymous_document", {
     p_draft_id: context.capability.draftId,
     p_secret_hash: context.secretHash,
@@ -58,7 +71,11 @@ export async function POST(request: Request) {
     p_sha256: createHash("sha256").update(bytes).digest("hex"),
   });
   if (registered.error || !Array.isArray(registered.data) || !registered.data[0]) {
-    await context.admin.storage.from("customer-source-documents").remove([path]);
+    try {
+      await removeSourceUploadOrQueue(context.admin, path, "anonymous_source_registration_failed");
+    } catch {
+      return NextResponse.json({ error: "The document record failed and its private cleanup could not be confirmed." }, { status: 500 });
+    }
     const mapped = anonymousDraftError(registered.error);
     return NextResponse.json(mapped.body, { status: mapped.status });
   }
