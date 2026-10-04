@@ -126,10 +126,14 @@ fails acceptance.
 
 - Lint: passed.
 - Type checking: passed.
-- Unit/integration suite: 86 files, 614 tests passed.
+- Unit/integration suite: 86 files, 615 tests passed.
 - Production build: passed on Next.js 16.3.8.
 - Production dependency audit: zero vulnerabilities.
 - Database contract fixtures: 14 passed.
+- Exact-ten duplicate fixtures: bidirectional listing/application URL
+  intersections with distinct requisition identifiers are rejected at release;
+  the manual inventory admission path uses the same URL-set and strong-ID
+  fallback policy before feasibility can authorize checkout.
 - Database types: match the local migrated schema.
 - Historical-data upgrade fixture: passed.
 - Rollback-compatibility fixture: passed; the local schema replay and database

@@ -1315,6 +1315,32 @@ select
   g,g,jsonb_build_object('rank',g),jsonb_build_object('selected',true,'rank',g)
 from generate_series(1,10) g;
 
+-- Distinct requisitions and same-field URLs cannot mask a listing/application
+-- cross-field collision. Both directions must fail at the authoritative release.
+savepoint before_listing_to_application_duplicate;
+set local session_replication_role = replica;
+update public.ap_job_snapshots
+set canonical_application_url=(
+  select canonical_employer_listing_url from public.ap_job_snapshots
+  where id='b4100000-0000-4000-8000-000000000001'
+)
+where id='b4100000-0000-4000-8000-000000000002';
+set local session_replication_role = origin;
+select pg_temp.assert_chunk4_release_rejected('release_jobs_not_pairwise_unique',pg_temp.chunk4_release_members());
+rollback to savepoint before_listing_to_application_duplicate;
+
+savepoint before_application_to_listing_duplicate;
+set local session_replication_role = replica;
+update public.ap_job_snapshots
+set canonical_employer_listing_url=(
+  select canonical_application_url from public.ap_job_snapshots
+  where id='b4100000-0000-4000-8000-000000000002'
+)
+where id='b4100000-0000-4000-8000-000000000001';
+set local session_replication_role = origin;
+select pg_temp.assert_chunk4_release_rejected('release_jobs_not_pairwise_unique',pg_temp.chunk4_release_members());
+rollback to savepoint before_application_to_listing_duplicate;
+
 -- Release is fail-closed against every material freshness, evidence, policy,
 -- and provenance gate. Trigger bypass below is test-only synthetic mutation;
 -- release itself always executes again with normal trigger behavior.
