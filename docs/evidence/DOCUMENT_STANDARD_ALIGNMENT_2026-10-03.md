@@ -145,7 +145,13 @@ fails acceptance.
   checkout gates depend on the exact schema floor, enabled trigger, live-clean
   inventory, and identity contracts. Its two-session fixture reproduces an old
   writer that pauses after its duplicate precheck and proves the migration
-  waits, rescans, and refuses the committed conflict atomically.
+  waits, rescans, and refuses the committed conflict atomically. A separate
+  read-only preflight uses the same pairwise predicate and its fixture proves a
+  clean historical inventory succeeds while a conflict exits nonzero before
+  migration. Hosted operators must keep every inventory writer quiesced from
+  that preflight through migration 080 readiness. The published successor
+  wording cannot repair an immutable historical conflict; such a target needs
+  separately reviewed forward remediation.
 - Database types: match the local migrated schema.
 - Historical-data upgrade fixture: passed.
 - Rollback-compatibility fixture: passed; the local schema replay and database
@@ -188,7 +194,8 @@ the local LibreOffice render.
 Production AWS KMS and isolated-renderer attestation, hosted staging journeys,
 three-account isolation, real payment/refund canaries, maintenance and alert
 evidence, backup restoration, manual accessibility testing, permitted real-job
-inventory rehearsal, tax approval, production migration/deployment, exact-SHA
+inventory rehearsal, a sanitized clean production inventory preflight under
+continuous writer quiescence, tax approval, production migration/deployment, exact-SHA
 health, and supervisor signatures remain separate launch gates. Until those
 gates pass, the only accurate launch verdict is `NOT READY` and checkout must
 remain locked.

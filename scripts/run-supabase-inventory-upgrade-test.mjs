@@ -7,6 +7,7 @@ const cutoverBase = fileURLToPath(new URL("../tests/integration/atomic-inventory
 const cutoverConflict = fileURLToPath(new URL("../tests/integration/atomic-inventory-cutover-conflict.sql", import.meta.url));
 const verify = fileURLToPath(new URL("../tests/integration/atomic-inventory-078-verify.sql", import.meta.url));
 const migration077 = fileURLToPath(new URL("../supabase/migrations/202610040077_atomic_inventory_identity_enforcement.sql", import.meta.url));
+const inventoryPreflight = fileURLToPath(new URL("./check-inventory-identity-conflicts.mjs", import.meta.url));
 const psqlArgs = ["exec", "-i", "supabase_db_applypack", "psql", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"];
 
 function execute(command, args, input, echo = true) {
@@ -58,6 +59,16 @@ async function waitForOutput(process, marker, timeoutMs = 10_000) {
   }
 }
 
+async function waitForDatabaseMarker(process, statement, marker, timeoutMs = 10_000) {
+  const startedAt = Date.now();
+  while (true) {
+    if (process.child.exitCode !== null) throw new Error(`process exited before ${marker}: ${process.output()}`);
+    if (sqlText(statement, false).includes(marker)) return;
+    if (Date.now() - startedAt > timeoutMs) throw new Error(`timed out waiting for database marker ${marker}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 const conflictRollbackVerification = `
 select case when
   not exists(select 1 from public.ap_migration_checkpoints where migration_id='202610040077')
@@ -85,7 +96,18 @@ try {
   run("supabase", ["db", "reset", "--local", "--no-seed", "--version", "202610040076"], undefined, false);
   sql(fixture, false);
   sql(cutoverBase, false);
+  const cleanPreflight = execute(process.execPath, [inventoryPreflight, "--local"], undefined, false);
+  const cleanPreflightOutput = `${cleanPreflight.stdout || ""}${cleanPreflight.stderr || ""}`;
+  if (cleanPreflight.status !== 0 || !cleanPreflightOutput.includes("INVENTORY_IDENTITY_PREFLIGHT_CLEAN")) {
+    throw new Error(`inventory identity preflight rejected clean history: ${cleanPreflightOutput}`);
+  }
   sql(cutoverConflict, false);
+  const conflictPreflight = execute(process.execPath, [inventoryPreflight, "--local"], undefined, false);
+  const conflictPreflightOutput = `${conflictPreflight.stdout || ""}${conflictPreflight.stderr || ""}`;
+  if (conflictPreflight.status === 0 || !conflictPreflightOutput.includes("INVENTORY_IDENTITY_PREFLIGHT_CONFLICT")) {
+    throw new Error(`inventory identity preflight accepted conflicting history: ${conflictPreflightOutput}`);
+  }
+  console.log("Read-only inventory identity preflight accepts clean history and rejects a historical conflict.");
   const rejected077 = execute("docker", psqlArgs, readFileSync(migration077, "utf8"), false);
   const rejected077Output = `${rejected077.stdout || ""}${rejected077.stderr || ""}`;
   if (rejected077.status === 0 || !rejected077Output.includes("selected_inventory_identity_conflict_requires_successor_inventory")) {
@@ -107,15 +129,22 @@ try {
 select count(*) from public.ap_inventory_members
 where inventory_version_id='f6300000-0000-4000-8000-000000000001';
 select 'CUTOVER_PRECHECK_READY';
-select pg_sleep(6);
+select pg_sleep(15);
 ${readFileSync(cutoverConflict, "utf8")}
 commit;
 `;
   const writer = spawnCaptured("docker", psqlArgs, writerSql);
   await waitForOutput(writer, "CUTOVER_PRECHECK_READY");
   const migration = spawnCaptured("supabase", ["migration", "up", "--local"], undefined);
-  await new Promise((resolve) => setTimeout(resolve, 750));
-  if (migration.child.exitCode !== null) throw new Error("migration 080 did not wait for the prechecked inventory writer");
+  await waitForDatabaseMarker(
+    migration,
+    `select case when exists(
+      select 1 from pg_catalog.pg_locks
+      where relation='public.ap_inventory_members'::regclass
+        and mode='AccessExclusiveLock' and not granted
+    ) then 'CUTOVER_ACCESS_EXCLUSIVE_WAITING' else 'CUTOVER_LOCK_NOT_WAITING' end;`,
+    "CUTOVER_ACCESS_EXCLUSIVE_WAITING",
+  );
   const writerResult = await writer.completion;
   if (writerResult.status !== 0) throw new Error(`cutover writer failed: ${writerResult.stdout}${writerResult.stderr}`);
   const migrationResult = await migration.completion;

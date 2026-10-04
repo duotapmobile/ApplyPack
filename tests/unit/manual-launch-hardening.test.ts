@@ -230,10 +230,29 @@ describe("October 2 manual-launch hardening", () => {
     expect(migration).toContain("selected_inventory_identity_conflict_requires_successor_inventory");
     expect(migration).toContain("public.ap_manual_launch_schema_readiness()");
     expect(migration).toContain("PERSISTENT_INVENTORY_IDENTITY_GUARD");
-    expect(source("scripts/run-supabase-inventory-upgrade-test.mjs")).toContain("CUTOVER_PRECHECK_READY");
-    expect(source("scripts/run-supabase-inventory-upgrade-test.mjs")).toContain("MIGRATION_077_CONFLICT_ROLLBACK_OK");
-    expect(source("scripts/run-supabase-inventory-upgrade-test.mjs")).toContain("MIGRATION_080_RACE_ROLLBACK_OK");
-    expect(source("scripts/run-supabase-inventory-upgrade-test.mjs")).toContain("duplicate_inventory_job");
+    const preflight = source("scripts/preflight-inventory-identity-conflicts.sql");
+    expect(preflight).toContain("begin transaction isolation level repeatable read read only");
+    expect(preflight).toContain("left_member.stable_normalized_job_id=right_member.stable_normalized_job_id");
+    expect(preflight).toContain("left_job.external_job_id=right_job.external_job_id");
+    expect(preflight).toContain("left_job.canonical_employer_domain is not distinct from right_job.canonical_employer_domain");
+    expect(preflight).toContain("array_remove(array[left_job.canonical_employer_listing_url,left_job.canonical_application_url],null)");
+    expect(preflight).toContain("array_remove(array[right_job.canonical_employer_listing_url,right_job.canonical_application_url],null)");
+    expect(preflight).toContain("left_job.normalized_fingerprint=right_job.normalized_fingerprint");
+    expect(preflight).toContain("INVENTORY_IDENTITY_PREFLIGHT_CONFLICT");
+    expect(preflight).toContain("INVENTORY_IDENTITY_PREFLIGHT_CLEAN");
+    const preflightRunner = source("scripts/check-inventory-identity-conflicts.mjs");
+    expect(preflightRunner).toContain("AP_PREMIGRATION_DATABASE_URL");
+    expect(preflightRunner).toContain("[REDACTED_DATABASE_URL]");
+    expect(preflightRunner).toContain('process.argv.length !== 3');
+    const upgradeTest = source("scripts/run-supabase-inventory-upgrade-test.mjs");
+    expect(upgradeTest).toContain("INVENTORY_IDENTITY_PREFLIGHT_CLEAN");
+    expect(upgradeTest).toContain("INVENTORY_IDENTITY_PREFLIGHT_CONFLICT");
+    expect(upgradeTest).toContain("CUTOVER_PRECHECK_READY");
+    expect(upgradeTest).toContain("CUTOVER_ACCESS_EXCLUSIVE_WAITING");
+    expect(upgradeTest).toContain("mode='AccessExclusiveLock' and not granted");
+    expect(upgradeTest).toContain("MIGRATION_077_CONFLICT_ROLLBACK_OK");
+    expect(upgradeTest).toContain("MIGRATION_080_RACE_ROLLBACK_OK");
+    expect(upgradeTest).toContain("duplicate_inventory_job");
   });
 
   it("finalizes encrypted intake and current legal acceptance through one retry-safe atomic command", () => {
