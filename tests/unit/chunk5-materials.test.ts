@@ -113,6 +113,23 @@ function fixture(): EvidenceBoundMaterialInput {
   return input;
 }
 
+function normalizeKnownTruth(value: string) {
+  return value
+    .normalize("NFC")
+    .replace(/[‐‑‒–—−]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function assertKnownTruth(extractedText: string, expectedPhrases: string[]) {
+  const normalized = normalizeKnownTruth(extractedText);
+  for (const phrase of expectedPhrases) {
+    if (!normalized.includes(normalizeKnownTruth(phrase))) {
+      throw new Error(`known_truth_missing:${phrase}`);
+    }
+  }
+}
+
 describe("Chunk 5 materials contract", () => {
   it("prices every permitted subset in integer cents with no bundle or added amount", () => {
     expect(materialTotalCents(["one"])).toBe(799);
@@ -350,5 +367,133 @@ describe("Chunk 5 evidence-bound DOCX generation", () => {
     expect(materialFilename({ displayName: "José Núñez", artifact: "Resume", company: "Compañía Uno",
       position: "Operations", extension: "docx" }))
       .toBe("José_Núñez_Resume_Compañía_Uno.docx");
+  });
+
+  it("recovers long and accented identity, wrapped content, promotions, concurrent roles, year-only dates, and unknown fields", async () => {
+    const input = fixture();
+    input.contact.displayName = "Alexandría Noëlle del Rosario-Montgomery";
+    input.contact.email = "alexandria.rosario-montgomery@example.invalid";
+    input.job.employer = "International Community Resource and Family Support Collaborative";
+    input.job.location = null;
+    input.job.postedOn = null;
+    input.professionalSummary = {
+      text: "Client operations professional who coordinates complex service records and communicates careful handoffs across community programs.",
+      candidateFactIds: [FACT_ONE],
+      jobEvidenceIds: [JOB_EVIDENCE],
+    };
+    input.coreSkills = [
+      { text: "Customer relationship management system administration", candidateFactIds: [FACT_ONE], priority: 1, essential: true },
+      { text: "Multi-channel customer service documentation and escalation follow-through", candidateFactIds: [FACT_TWO], priority: 2 },
+    ];
+    const longEmployer = "Coastal Community Resource and Family Support Collaborative";
+    input.experiences = [
+      {
+        historicalTitle: "Senior Client Operations Lead",
+        employer: longEmployer,
+        dates: "2024 to Present",
+        headerCandidateFactIds: [FACT_HEADER],
+        bullets: [{
+          text: "Coordinated multi-channel service records, reviewed complex handoffs, and documented the next responsible action for customers and partner teams.",
+          candidateFactIds: [FACT_ONE],
+          priority: 1,
+          essential: true,
+        }],
+      },
+      {
+        historicalTitle: "Client Operations Coordinator",
+        employer: longEmployer,
+        dates: "2022 to 2024",
+        headerCandidateFactIds: [FACT_HEADER],
+        bullets: [{
+          text: "Maintained customer relationship management records and resolved routine documentation discrepancies before team handoffs.",
+          candidateFactIds: [FACT_TWO],
+          priority: 1,
+          essential: true,
+        }],
+      },
+      {
+        historicalTitle: "Community Program Specialist",
+        employer: "Neighborhood Access Partnership",
+        dates: "2023 to 2025",
+        headerCandidateFactIds: [FACT_HEADER],
+        bullets: [{
+          text: "Supported a concurrent community program assignment with verified scheduling, referral tracking, and participant communication duties.",
+          candidateFactIds: [FACT_ONE],
+          priority: 1,
+          essential: true,
+        }],
+      },
+      {
+        historicalTitle: "Seasonal Records Assistant",
+        employer: "Riverton Public Services",
+        dates: "2019",
+        headerCandidateFactIds: [FACT_HEADER],
+        bullets: [{
+          text: "Reviewed archived records for completeness during a verified seasonal assignment.",
+          candidateFactIds: [FACT_TWO],
+          priority: 2,
+        }],
+      },
+    ];
+    input.references = undefined;
+    input.rules.resumePageLimit = 2;
+    input.coverLetterParagraphs = realisticCoverLetter(input.job.exactTitle, input.job.employer);
+
+    const generated = await generateEvidenceBoundMaterials(input);
+    const resume = await inspectDocxPackage(generated.resume.buffer, "RESUME");
+    const expected = [
+      input.contact.displayName,
+      "Customer relationship management system administration",
+      "Multi-channel customer service documentation and escalation follow-through",
+      "Senior Client Operations Lead",
+      "Client Operations Coordinator",
+      "Community Program Specialist",
+      "Seasonal Records Assistant",
+      longEmployer,
+      "2024-Present",
+      "2022-2024",
+      "2023-2025",
+      "2019",
+    ];
+
+    expect(() => assertKnownTruth(resume.extractedText, expected)).not.toThrow();
+    expect(() => assertKnownTruth(resume.extractedText.normalize("NFD"), expected)).not.toThrow();
+    expect(resume.extractedText).not.toMatch(/undefined|\[unknown\]/i);
+    expect(resume.checks).toMatchObject({ semanticSectionHeadings: true, nativeBullets: true });
+
+    expect(() => assertKnownTruth(
+      resume.extractedText.replace("Community Program Specialist", ""), expected,
+    )).toThrow("known_truth_missing:Community Program Specialist");
+    expect(() => assertKnownTruth(
+      resume.extractedText.replace("relationship management", "relationshipmanagement"), expected,
+    )).toThrow("known_truth_missing:Customer relationship management system administration");
+    expect(() => assertKnownTruth(
+      resume.extractedText.replace("2022-2024", "2021-2024"), expected,
+    )).toThrow("known_truth_missing:2022-2024");
+    const accentsRemoved = resume.extractedText.normalize("NFD").replace(/\p{M}/gu, "").normalize("NFC");
+    expect(() => assertKnownTruth(accentsRemoved, expected)).toThrow(`known_truth_missing:${input.contact.displayName}`);
+  });
+
+  it("keeps a sparse verified document usable without padding or fabricated fields", async () => {
+    const input = fixture();
+    input.coreSkills = [input.coreSkills[0]];
+    input.experiences = [{
+      ...input.experiences[0],
+      location: undefined,
+      bullets: [input.experiences[0].bullets[0]],
+    }];
+    input.educationAndCertifications = undefined;
+    input.references = undefined;
+
+    const generated = await generateEvidenceBoundMaterials(input);
+    const resume = await inspectDocxPackage(generated.resume.buffer, "RESUME");
+    expect(generated.resume.expectedPageCount).toBe(1);
+    expect(() => assertKnownTruth(resume.extractedText, [
+      "Jamie Rivera",
+      "Document coordination",
+      "Administrative Specialist",
+      "Coordinated customer records and reviewed documents for accuracy.",
+    ])).not.toThrow();
+    expect(resume.extractedText).not.toMatch(/placeholder|needs metric|references available upon request/i);
   });
 });

@@ -115,12 +115,18 @@ fails acceptance.
   object and resolves the queue row. The maintenance pass still runs independent
   document, workflow, payment, webhook, and refund reconciliation so a cleanup
   dead letter cannot starve existing paid obligations.
+- The DOCX regression suite now exercises a long accented name, long employers,
+  wrapped multiword skills and bullets, same-employer promotions, overlapping
+  concurrent work, year-only dates, omitted/unknown optional fields, a career
+  break, sparse verified content, and a multi-page boundary. Its known-truth
+  oracle accepts canonically equivalent Unicode while negative controls prove
+  that missing jobs, merged words, altered dates, and lost accents fail.
 
 ## Local acceptance evidence
 
 - Lint: passed.
 - Type checking: passed.
-- Unit/integration suite: 86 files, 609 tests passed.
+- Unit/integration suite: 86 files, 611 tests passed.
 - Production build: passed on Next.js 16.3.8.
 - Production dependency audit: zero vulnerabilities.
 - Database contract fixtures: 14 passed.
