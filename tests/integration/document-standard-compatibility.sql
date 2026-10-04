@@ -5,8 +5,8 @@ language plpgsql as $$ begin if value is distinct from true then raise exception
 
 select pg_temp.assert_true(exists(
   select 1 from public.ap_migration_checkpoints
-  where migration_id='202610030068' and checkpoint='HISTORICAL_DOCUMENT_ACCESS_ONLY'
-),'historical document access-only checkpoint missing');
+  where migration_id='202610030069' and checkpoint='DURABLE_DELIVERED_DOCUMENT_ACCESS'
+),'durable delivered document access checkpoint missing');
 
 do $$
 declare registration text; source_guard_definition text; current_definition text; supported_definition text;
@@ -36,9 +36,17 @@ begin
     position('applypack-content-2026-09-22.1' in supported_definition)>0
       and position('applypack-universal-document-standard-2026-10-03.1' in supported_definition)>0
       and position('cross join public.ap_commerce_configuration' in supported_definition)=0
+      and position('ap_current_source_verifications' in supported_definition)=0
+      and position('listing_status' in supported_definition)=0
+      and position('supersedes_job_snapshot_id' in supported_definition)=0
+      and position('fact.superseded_at' in supported_definition)=0
       and position('applypack-content-2026-09-22.1' in current_definition)=0
-      and position('ap_assert_supported_artifact_facts' in current_definition)>0,
-    'delivered-file authorization is not portable across the preceding and locked contracts'
+      and position('ap_assert_supported_artifact_facts' in current_definition)>0
+      and position('ap_current_source_verifications' in current_definition)>0
+      and position('listing_status' in current_definition)>0
+      and position('supersedes_job_snapshot_id' in current_definition)>0
+      and position('fact.superseded_at' in current_definition)>0,
+    'delivered access was not separated from release-time source freshness'
   );
   perform pg_temp.assert_true(
     position('ap_assert_supported_artifact_facts' in download_definition)>0

@@ -72,7 +72,10 @@ fails acceptance.
   migration `202610030068_historical_document_access_only.sql` carries the
   nullable editable-source guard correction and separates supported historical
   download access from current-only approval and release validation. No
-  published migration is rewritten by the final change.
+  published migration is rewritten by the final change. Forward migration
+  `202610030069_durable_delivered_document_access.sql` keeps the 24-hour source
+  freshness rule on approval and release without turning it into an implicit
+  expiration clock for an otherwise valid paid delivery.
 - The isolated worker is capped at 512 MiB in both infrastructure and runtime
   validation. The AWS budget defaults on and requires both launch-alert email
   recipients.
@@ -82,10 +85,13 @@ fails acceptance.
   current locked contract. The operator queue labels historical files as
   access-only and disables their approval and release actions. Commit
   `d61331eb951a34a7a23fb33e51d319d0ed2283fc` is the minimum rollback target
-  after migrations 066, 067, or 068, provided migration 068 remains applied.
+  after migrations 066, 067, 068, or 069, provided migrations 068 and 069
+  remain applied.
 - Failed deletion of a private editable source is inserted into the existing
   maintenance cleanup queue; a queueing failure is surfaced instead of being
-  silently discarded.
+  silently discarded. A delayed cleanup intent is now written before upload and
+  cleared transactionally by artifact registration, so a process crash cannot
+  leave an untracked private DOCX indefinitely.
 
 ## Local acceptance evidence
 
@@ -97,7 +103,7 @@ fails acceptance.
 - Database contract fixtures: 12 passed.
 - Database types: match the local migrated schema.
 - Historical-data upgrade fixture: passed.
-- Rollback-compatibility fixture: passed; local schema restored through all 73
+- Rollback-compatibility fixture: passed; local schema restored through all 74
   migrations.
 - Browser matrix on the preceding document-alignment commit: 301 passed, 24
   intentional project-specific skips, zero failures across desktop Chromium,

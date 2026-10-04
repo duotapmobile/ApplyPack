@@ -77,6 +77,7 @@ export async function loadMaterialStaffLines(admin: AdminClient): Promise<Materi
         fontResolved: Boolean(expectedFontFamily && quality.document_font_resolved
           && quality.document_font_family === expectedFontFamily),
         currentStandard: isCurrentDocumentGeneratorVersion(artifact.generator_version),
+        referenceRegenerationId: artifact.reference_regeneration_id,
       }];
     });
     return {

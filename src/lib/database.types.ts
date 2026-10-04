@@ -10568,6 +10568,7 @@ export type Database = {
           id: string
           last_attempt_at: string | null
           last_error: string | null
+          not_before: string
           reason: string
           storage_path: string
         }
@@ -10578,6 +10579,7 @@ export type Database = {
           id?: string
           last_attempt_at?: string | null
           last_error?: string | null
+          not_before?: string
           reason: string
           storage_path: string
         }
@@ -10588,6 +10590,7 @@ export type Database = {
           id?: string
           last_attempt_at?: string | null
           last_error?: string | null
+          not_before?: string
           reason?: string
           storage_path?: string
         }

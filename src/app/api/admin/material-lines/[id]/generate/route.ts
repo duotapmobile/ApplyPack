@@ -480,6 +480,16 @@ async function validateUploadAndRegister(input: {
     sizeBytes: input.artifact.buffer.byteLength,
     mimeType: DOCX_MIME,
   };
+  const cleanupIntent = await input.admin.from("storage_cleanup_queue").upsert({
+    bucket: editableSource.storageBucket,
+    storage_path: editableSource.storagePath,
+    reason: "material_editable_source_upload_intent",
+    attempts: 0,
+    last_error: null,
+    last_attempt_at: null,
+    not_before: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
+  }, { onConflict: "bucket,storage_path" });
+  if (cleanupIntent.error) throw new Error("editable_source_cleanup_intent_failed");
   const sourceUpload = await input.admin.storage.from(editableSource.storageBucket).upload(
     editableSource.storagePath,
     input.artifact.buffer,
@@ -608,6 +618,7 @@ async function removeEditableSourceOrQueue(admin: AdminClient, storagePath: stri
     storage_path: storagePath,
     reason,
     last_error: "storage_remove_failed",
+    not_before: new Date().toISOString(),
   }, { onConflict: "bucket,storage_path" });
   if (queued.error) throw new Error("editable_source_cleanup_queue_failed");
 }

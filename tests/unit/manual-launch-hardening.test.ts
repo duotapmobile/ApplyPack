@@ -77,7 +77,8 @@ describe("October 2 manual-launch hardening", () => {
     expect(source("src/lib/materials/admin.ts")).toContain("currentStandard: isCurrentDocumentGeneratorVersion");
     expect(source("src/components/admin/chunk5-material-staff-queue.tsx")).toContain("Historical document: access only.");
     expect(source("src/components/admin/chunk5-material-staff-queue.tsx")).toContain("!file.currentStandard");
-    expect(source("src/components/admin/chunk5-material-staff-queue.tsx")).toContain('!currentFilesOnly || line.regeneration.state !== "HUMAN_REVIEW"');
+    expect(source("src/components/admin/chunk5-material-staff-queue.tsx")).toContain('file.referenceRegenerationId === line.regeneration!.id');
+    expect(source("src/components/admin/chunk5-material-staff-queue.tsx")).toContain('!currentRegenerationFilesOnly || line.regeneration.state !== "HUMAN_REVIEW"');
     expect(source("src/app/api/admin/material-files/[id]/render-preview/route.ts")).toContain("supportedDocumentFontFamily");
     const releaseActions = source("src/app/api/admin/material-lines/[id]/route.ts");
     expect(releaseActions).toContain("isCurrentDocumentGeneratorVersion");
@@ -131,6 +132,7 @@ describe("October 2 manual-launch hardening", () => {
     const documentPolicy = source("supabase/migrations/202610030066_locked_document_generation_standard.sql");
     const documentCompatibility = source("supabase/migrations/202610030067_document_source_and_rollback_compatibility.sql");
     const accessOnlyCompatibility = source("supabase/migrations/202610030068_historical_document_access_only.sql");
+    const durableDocumentAccess = source("supabase/migrations/202610030069_durable_delivered_document_access.sql");
     expect(kms).toContain('environment.APP_DEPLOYMENT_ENV === "production"');
     expect(kms).toContain('environment.APP_KMS_PROVIDER !== "aws"');
     expect(worker).toContain('region === "us-east-1"');
@@ -160,6 +162,8 @@ describe("October 2 manual-launch hardening", () => {
     expect(generation).toContain("p_claim_provenance: { ...input.artifact.provenance, editableSource }");
     expect(generation).toContain('admin.from("storage_cleanup_queue").upsert');
     expect(generation).toContain('bucket: "operator-drafts"');
+    expect(generation).toContain('reason: "material_editable_source_upload_intent"');
+    expect(generation).toContain("editable_source_cleanup_intent_failed");
     expect(generation).toContain("editable_source_cleanup_queue_failed");
     const handler = source("infra/aws/document-worker/handler.py");
     expect(handler).toContain('operation == "render-docx"');
@@ -188,6 +192,11 @@ describe("October 2 manual-launch hardening", () => {
     expect(accessOnlyCompatibility).toContain("ap_assert_supported_artifact_facts");
     expect(accessOnlyCompatibility).toContain("material_download_current_guard_anchor_missing");
     expect(accessOnlyCompatibility).toContain("HISTORICAL_DOCUMENT_ACCESS_ONLY");
+    expect(durableDocumentAccess).toContain("DURABLE_DELIVERED_DOCUMENT_ACCESS");
+    expect(durableDocumentAccess).toContain("Source freshness is a release-time");
+    expect(durableDocumentAccess).toContain("ap_current_source_verifications(artifact.job_snapshot_id)");
+    expect(durableDocumentAccess).toContain("not exists(select 1 from public.ap_release_members member");
+    expect(durableDocumentAccess).toContain("ap_registered_editable_source_cleanup");
     expect(documentCompatibility.indexOf("pg_advisory_xact_lock"))
       .toBeLessThan(documentCompatibility.indexOf("where resource=resource_value and enabled for update"));
   });

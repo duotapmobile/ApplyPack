@@ -248,6 +248,7 @@ function staffLine(): MaterialStaffLine {
       fontFamily: "Arial",
       fontResolved: true,
       currentStandard: true,
+      referenceRegenerationId: null,
     }],
     openProposalKind: null,
     openSupportCases: 0,

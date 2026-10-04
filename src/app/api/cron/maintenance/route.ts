@@ -179,7 +179,8 @@ export async function POST(request: Request) {
   }
 
   const { data: cleanupRows, error: cleanupQueryError } = await admin.from("storage_cleanup_queue")
-    .select("id,bucket,storage_path,attempts").lt("attempts", 20).order("created_at").limit(50);
+    .select("id,bucket,storage_path,attempts").lt("attempts", 20)
+    .lte("not_before", nowIso).order("created_at").limit(50);
   if (cleanupQueryError) return fail("EXPIRATION_CLEANUP_FAILED", "EXPIRATION_CLEANUP", "Storage cleanup queue could not be loaded.");
   let recoveredStorageObjects = 0;
   for (const row of cleanupRows || []) {
