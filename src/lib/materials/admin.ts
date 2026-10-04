@@ -1,7 +1,11 @@
 import "server-only";
 
 import type { MaterialStaffLine } from "@/components/admin/chunk5-material-staff-queue";
-import { isSupportedDocumentGeneratorVersion } from "@/lib/documents/requirements";
+import {
+  isCurrentDocumentGeneratorVersion,
+  isSupportedDocumentGeneratorVersion,
+  supportedDocumentFontFamily,
+} from "@/lib/documents/requirements";
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -59,6 +63,7 @@ export async function loadMaterialStaffLines(admin: AdminClient): Promise<Materi
       const file = files.find((candidate) => candidate.artifact_id === artifact.id && Number(candidate.version) === Number(artifact.current_file_version));
       const quality = file ? qualities.get(file.id) : null;
       if (!file || !quality || file.superseded_at || file.downloads_revoked_at || quality.invalidated_at) return [];
+      const expectedFontFamily = supportedDocumentFontFamily(artifact.generator_version);
       return [{
         artifactType: artifact.artifact_type,
         fileVersionId: file.id,
@@ -68,7 +73,10 @@ export async function loadMaterialStaffLines(admin: AdminClient): Promise<Materi
         contentApproved: Boolean(quality.content_approved_at),
         visualApproved: Boolean(quality.visual_approved_at),
         rendererIdentity: quality.renderer_identity,
-        arialResolved: quality.document_font_family === "Arial" && Boolean(quality.document_font_resolved),
+        fontFamily: quality.document_font_family || "Unverified",
+        fontResolved: Boolean(expectedFontFamily && quality.document_font_resolved
+          && quality.document_font_family === expectedFontFamily),
+        currentStandard: isCurrentDocumentGeneratorVersion(artifact.generator_version),
       }];
     });
     return {

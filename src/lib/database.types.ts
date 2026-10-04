@@ -11022,6 +11022,10 @@ export type Database = {
         Args: { p_artifact_id: string }
         Returns: undefined
       }
+      ap_assert_supported_artifact_facts: {
+        Args: { p_artifact_id: string }
+        Returns: undefined
+      }
       ap_authorize_manual_launch_canary_checkout: {
         Args: {
           p_actor_id: string

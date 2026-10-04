@@ -306,6 +306,22 @@ insert into public.ap_artifact_quality_reviews(
   '15000000-0000-4000-8000-000000000003',clock_timestamp()-interval '4 minutes',
   'The rendered document has no clipping, overlap, or font substitution.'
 );
+savepoint historical_document_access_only;
+update public.ap_generated_artifacts
+set generator_version='applypack-documents|content=applypack-content-2026-09-22.1|template=applypack-template-2026-09-22.1|exporter=libreoffice-tagged-pdf-2026-09-22.1'
+where id='e5000000-0000-4000-8000-000000000001';
+update public.ap_artifact_quality_reviews
+set document_font_family='Liberation Sans'
+where id='aa500000-0000-4000-8000-000000000001';
+select public.ap_assert_supported_artifact_facts('e5000000-0000-4000-8000-000000000001');
+do $$ begin
+  perform public.ap_assert_current_artifact_facts('e5000000-0000-4000-8000-000000000001');
+  raise exception 'historical_artifact_accepted_for_current_approval';
+exception when raise_exception then
+  if sqlerrm='historical_artifact_accepted_for_current_approval' then raise; end if;
+  if sqlerrm<>'document_policy_regeneration_required' then raise; end if;
+end $$;
+rollback to savepoint historical_document_access_only;
 insert into public.ap_releases(
   id,customer_id,order_id,material_line_id,release_kind,committed_at,active_due_at,
   version_bundle,human_approved_by

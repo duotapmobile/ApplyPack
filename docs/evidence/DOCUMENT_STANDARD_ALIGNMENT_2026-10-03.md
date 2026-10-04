@@ -68,16 +68,21 @@ fails acceptance.
   prior compatible renderer contract for forward-fix rollback, requires the
   private editable source for newly generated artifacts, enforces only explicit
   employer page limits, and restores advisory-lock-first capacity rollover.
-  No published migration was edited.
+  Migration 067 is preserved byte-for-byte as first committed. Forward
+  migration `202610030068_historical_document_access_only.sql` carries the
+  nullable editable-source guard correction and separates supported historical
+  download access from current-only approval and release validation. No
+  published migration is rewritten by the final change.
 - The isolated worker is capped at 512 MiB in both infrastructure and runtime
   validation. The AWS budget defaults on and requires both launch-alert email
   recipients.
 - Customer and operator access accepts the locked Arial contract and the
   immediately preceding immutable Liberation Sans contract, with exact
   version-to-font matching. New approval and release actions still require the
-  current locked contract. Commit
+  current locked contract. The operator queue labels historical files as
+  access-only and disables their approval and release actions. Commit
   `d61331eb951a34a7a23fb33e51d319d0ed2283fc` is the minimum rollback target
-  after migrations 066 or 067.
+  after migrations 066, 067, or 068, provided migration 068 remains applied.
 - Failed deletion of a private editable source is inserted into the existing
   maintenance cleanup queue; a queueing failure is surfaced instead of being
   silently discarded.
@@ -92,7 +97,7 @@ fails acceptance.
 - Database contract fixtures: 12 passed.
 - Database types: match the local migrated schema.
 - Historical-data upgrade fixture: passed.
-- Rollback-compatibility fixture: passed; local schema restored through all 72
+- Rollback-compatibility fixture: passed; local schema restored through all 73
   migrations.
 - Browser matrix on the preceding document-alignment commit: 301 passed, 24
   intentional project-specific skips, zero failures across desktop Chromium,

@@ -74,6 +74,9 @@ describe("October 2 manual-launch hardening", () => {
     expect(download).toContain("isSupportedDocumentGeneratorVersion");
     expect(portal).toContain("isSupportedDocumentGeneratorVersion");
     expect(source("src/lib/materials/admin.ts")).toContain("isSupportedDocumentGeneratorVersion");
+    expect(source("src/lib/materials/admin.ts")).toContain("currentStandard: isCurrentDocumentGeneratorVersion");
+    expect(source("src/components/admin/chunk5-material-staff-queue.tsx")).toContain("Historical document: access only.");
+    expect(source("src/components/admin/chunk5-material-staff-queue.tsx")).toContain("!file.currentStandard");
     expect(source("src/app/api/admin/material-files/[id]/render-preview/route.ts")).toContain("supportedDocumentFontFamily");
     const releaseActions = source("src/app/api/admin/material-lines/[id]/route.ts");
     expect(releaseActions).toContain("isCurrentDocumentGeneratorVersion");
@@ -126,6 +129,7 @@ describe("October 2 manual-launch hardening", () => {
     const workerTemplate = source("infra/aws/document-worker/template.yaml");
     const documentPolicy = source("supabase/migrations/202610030066_locked_document_generation_standard.sql");
     const documentCompatibility = source("supabase/migrations/202610030067_document_source_and_rollback_compatibility.sql");
+    const accessOnlyCompatibility = source("supabase/migrations/202610030068_historical_document_access_only.sql");
     expect(kms).toContain('environment.APP_DEPLOYMENT_ENV === "production"');
     expect(kms).toContain('environment.APP_KMS_PROVIDER !== "aws"');
     expect(worker).toContain('region === "us-east-1"');
@@ -180,6 +184,9 @@ describe("October 2 manual-launch hardening", () => {
     expect(documentCompatibility).toContain("resume_content_exceeds_employer_page_limit");
     expect(documentCompatibility).toContain("DOCUMENT_SOURCE_AND_ROLLBACK_COMPATIBILITY");
     expect(documentCompatibility).toContain("Liberation Sans");
+    expect(accessOnlyCompatibility).toContain("ap_assert_supported_artifact_facts");
+    expect(accessOnlyCompatibility).toContain("material_download_current_guard_anchor_missing");
+    expect(accessOnlyCompatibility).toContain("HISTORICAL_DOCUMENT_ACCESS_ONLY");
     expect(documentCompatibility.indexOf("pg_advisory_xact_lock"))
       .toBeLessThan(documentCompatibility.indexOf("where resource=resource_value and enabled for update"));
   });

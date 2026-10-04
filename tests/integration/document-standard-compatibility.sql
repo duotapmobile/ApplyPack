@@ -5,26 +5,49 @@ language plpgsql as $$ begin if value is distinct from true then raise exception
 
 select pg_temp.assert_true(exists(
   select 1 from public.ap_migration_checkpoints
-  where migration_id='202610030067' and checkpoint='DOCUMENT_SOURCE_AND_ROLLBACK_COMPATIBILITY'
-),'document source and rollback compatibility checkpoint missing');
+  where migration_id='202610030068' and checkpoint='HISTORICAL_DOCUMENT_ACCESS_ONLY'
+),'historical document access-only checkpoint missing');
 
 do $$
-declare registration text; auth_definition text; rollover text;
+declare registration text; source_guard_definition text; current_definition text; supported_definition text;
+  download_definition text; approval_definition text; release_definition text; rollover text;
 begin
   registration:=pg_get_functiondef(
     'public.ap_register_material_artifact_version(uuid,uuid,uuid,uuid,public.ap_artifact_type,uuid,uuid,uuid,uuid,uuid[],jsonb,text,text,text,text,text,text,integer,text,text,jsonb,jsonb,text,integer,text,text,text,text,text,text,text[],boolean)'::regprocedure
   );
-  auth_definition:=pg_get_functiondef('public.ap_assert_current_artifact_facts(uuid)'::regprocedure);
+  source_guard_definition:=pg_get_functiondef('public.ap_guard_locked_editable_document_source()'::regprocedure);
+  current_definition:=pg_get_functiondef('public.ap_assert_current_artifact_facts(uuid)'::regprocedure);
+  supported_definition:=pg_get_functiondef('public.ap_assert_supported_artifact_facts(uuid)'::regprocedure);
+  download_definition:=pg_get_functiondef('public.ap_authorize_material_download(uuid,uuid,uuid,timestamptz)'::regprocedure);
+  approval_definition:=pg_get_functiondef('public.ap_record_material_human_approval(uuid,uuid,text,text)'::regprocedure);
+  release_definition:=pg_get_functiondef('public.ap_commit_material_release_v2(uuid,uuid,uuid,jsonb,text,uuid)'::regprocedure);
   rollover:=pg_get_functiondef('public.ap_ensure_manual_launch_capacity_rollover()'::regprocedure);
   perform pg_temp.assert_true(
     position('config.document_font_family in (''Arial'',''Liberation Sans'')' in registration)>0,
     'preceding renderer approval contract is not accepted by registration'
   );
   perform pg_temp.assert_true(
-    position('applypack-content-2026-09-22.1' in auth_definition)>0
-      and position('applypack-universal-document-standard-2026-10-03.1' in auth_definition)>0
-      and position('cross join public.ap_commerce_configuration' in auth_definition)=0,
+    position('is distinct from ''operator-drafts''' in source_guard_definition)>0
+      and position('coalesce(source->>''safeFilename''' in source_guard_definition)>0
+      and position('coalesce(source->>''sizeBytes''' in source_guard_definition)>0,
+    'editable-source malformed-json forward fix is not installed'
+  );
+  perform pg_temp.assert_true(
+    position('applypack-content-2026-09-22.1' in supported_definition)>0
+      and position('applypack-universal-document-standard-2026-10-03.1' in supported_definition)>0
+      and position('cross join public.ap_commerce_configuration' in supported_definition)=0
+      and position('applypack-content-2026-09-22.1' in current_definition)=0
+      and position('ap_assert_supported_artifact_facts' in current_definition)>0,
     'delivered-file authorization is not portable across the preceding and locked contracts'
+  );
+  perform pg_temp.assert_true(
+    position('ap_assert_supported_artifact_facts' in download_definition)>0
+      and position('ap_assert_current_artifact_facts' in download_definition)=0
+      and position('ap_assert_current_artifact_facts' in approval_definition)>0
+      and position('ap_assert_supported_artifact_facts' in approval_definition)=0
+      and position('ap_assert_current_artifact_facts' in release_definition)>0
+      and position('ap_assert_supported_artifact_facts' in release_definition)=0,
+    'historical access was not separated from current-only approval and release'
   );
   perform pg_temp.assert_true(
     position('pg_advisory_xact_lock' in rollover)>0
