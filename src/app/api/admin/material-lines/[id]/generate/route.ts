@@ -492,7 +492,7 @@ async function validateUploadAndRegister(input: {
     upsert: false,
   });
   if (previewUpload.error) {
-    await input.admin.storage.from(editableSource.storageBucket).remove([editableSource.storagePath]);
+    await removeEditableSourceOrQueue(input.admin, editableSource.storagePath, "material_preview_upload_failed");
     throw previewUpload.error;
   }
   const artifactUpload = await input.admin.storage.from("customer-deliveries").upload(storagePath, bytes, {
@@ -503,7 +503,7 @@ async function validateUploadAndRegister(input: {
   if (artifactUpload.error) {
     await Promise.all([
       input.admin.storage.from("operator-render-previews").remove([previewPath]),
-      input.admin.storage.from(editableSource.storageBucket).remove([editableSource.storagePath]),
+      removeEditableSourceOrQueue(input.admin, editableSource.storagePath, "material_delivery_upload_failed"),
     ]);
     throw artifactUpload.error;
   }
@@ -590,7 +590,7 @@ async function validateUploadAndRegister(input: {
     await Promise.all([
       input.admin.storage.from("operator-render-previews").remove([previewPath]),
       input.admin.storage.from("customer-deliveries").remove([storagePath]),
-      input.admin.storage.from(editableSource.storageBucket).remove([editableSource.storagePath]),
+      removeEditableSourceOrQueue(input.admin, editableSource.storagePath, "material_registration_failed"),
     ]);
     throw registered.error || new Error("artifact_registration_failed");
   }
@@ -598,6 +598,18 @@ async function validateUploadAndRegister(input: {
   render.searchablePdf.fill(0);
   render.pageImages.forEach((page) => page.bytes.fill(0));
   return registered.data;
+}
+
+async function removeEditableSourceOrQueue(admin: AdminClient, storagePath: string, reason: string) {
+  const removal = await admin.storage.from("operator-drafts").remove([storagePath]);
+  if (!removal.error) return;
+  const queued = await admin.from("storage_cleanup_queue").upsert({
+    bucket: "operator-drafts",
+    storage_path: storagePath,
+    reason,
+    last_error: "storage_remove_failed",
+  }, { onConflict: "bucket,storage_path" });
+  if (queued.error) throw new Error("editable_source_cleanup_queue_failed");
 }
 
 function sentenceFactIds(value: { candidateFactIds: string[]; jobEvidenceIds: string[] }, key: "candidateFactIds" | "jobEvidenceIds") {

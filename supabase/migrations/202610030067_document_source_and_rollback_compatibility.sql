@@ -126,13 +126,13 @@ declare source jsonb;
 begin
   if new.generator_version='applypack-documents|instructions=applypack-universal-document-standard-2026-10-03.1|standardSha256=1d85789d434c0252d1797e366cd732931756fd4baa74bc36045fdeb2547786cf|content=applypack-content-2026-10-03.1|template=applypack-template-2026-10-03.1|exporter=libreoffice-tagged-pdf-2026-10-03.1' then
     source:=new.claim_provenance->'editableSource';
-    if jsonb_typeof(source)<>'object'
-      or source->>'storageBucket'<>'operator-drafts'
-      or source->>'storagePath' not like new.customer_id::text||'/materials/'||new.material_line_id::text||'/%/editable-source/%'
-      or source->>'safeFilename'!~'^[^/\\]{1,180}\.docx$'
-      or source->>'checksumSha256'!~'^[0-9a-f]{64}$'
-      or coalesce((source->>'sizeBytes')::bigint,0)<=0
-      or source->>'mimeType'<>'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    if jsonb_typeof(source) is distinct from 'object'
+      or source->>'storageBucket' is distinct from 'operator-drafts'
+      or coalesce(source->>'storagePath','') not like new.customer_id::text||'/materials/'||new.material_line_id::text||'/%/editable-source/%'
+      or coalesce(source->>'safeFilename','')!~'^[^/\\]{1,180}\.docx$'
+      or coalesce(source->>'checksumSha256','')!~'^[0-9a-f]{64}$'
+      or coalesce(source->>'sizeBytes','')!~'^[1-9][0-9]{0,12}$'
+      or source->>'mimeType' is distinct from 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       then raise exception 'locked_editable_document_source_required'; end if;
   end if;
   return new;

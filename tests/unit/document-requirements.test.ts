@@ -9,8 +9,11 @@ import {
   DOCUMENT_REQUIREMENTS,
   DOCUMENT_STANDARD_SHA256,
   DOCUMENT_VERSIONS,
+  LEGACY_DOCUMENT_GENERATOR_VERSION,
   isCurrentDocumentGeneratorVersion,
+  isSupportedDocumentGeneratorVersion,
   selectDocumentOutputFormat,
+  supportedDocumentFontFamily,
 } from "@/lib/documents/requirements";
 
 describe("versioned document requirements", () => {
@@ -28,6 +31,13 @@ describe("versioned document requirements", () => {
     expect(DOCUMENT_GENERATOR_VERSION).toContain(`exporter=${DOCUMENT_VERSIONS.exporter}`);
     expect(isCurrentDocumentGeneratorVersion(DOCUMENT_GENERATOR_VERSION)).toBe(true);
     expect(isCurrentDocumentGeneratorVersion("applypack-evidence-bound-v2")).toBe(false);
+    expect(isCurrentDocumentGeneratorVersion(LEGACY_DOCUMENT_GENERATOR_VERSION)).toBe(false);
+    expect(isSupportedDocumentGeneratorVersion(DOCUMENT_GENERATOR_VERSION)).toBe(true);
+    expect(isSupportedDocumentGeneratorVersion(LEGACY_DOCUMENT_GENERATOR_VERSION)).toBe(true);
+    expect(isSupportedDocumentGeneratorVersion("applypack-evidence-bound-v2")).toBe(false);
+    expect(supportedDocumentFontFamily(DOCUMENT_GENERATOR_VERSION)).toBe("Arial");
+    expect(supportedDocumentFontFamily(LEGACY_DOCUMENT_GENERATOR_VERSION)).toBe("Liberation Sans");
+    expect(supportedDocumentFontFamily("applypack-evidence-bound-v2")).toBeNull();
   });
 
   it("pins the exact tracked October 3 authority bytes", () => {

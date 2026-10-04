@@ -24,6 +24,21 @@ export const DOCUMENT_GENERATOR_VERSION = [
   `exporter=${DOCUMENT_VERSIONS.exporter}`,
 ].join("|");
 
+// Previously released files remain customer-accessible by their immutable
+// quality evidence. This compatibility allowlist must never be used to approve
+// or release new work under an older contract.
+export const LEGACY_DOCUMENT_GENERATOR_VERSION = [
+  "applypack-documents",
+  "content=applypack-content-2026-09-22.1",
+  "template=applypack-template-2026-09-22.1",
+  "exporter=libreoffice-tagged-pdf-2026-09-22.1",
+].join("|");
+
+export const SUPPORTED_DOCUMENT_GENERATOR_VERSIONS = Object.freeze([
+  DOCUMENT_GENERATOR_VERSION,
+  LEGACY_DOCUMENT_GENERATOR_VERSION,
+]);
+
 export const DOCUMENT_REQUIREMENTS = Object.freeze({
   language: "en-US",
   font: "Arial",
@@ -82,6 +97,16 @@ export const DOCUMENT_REQUIREMENTS = Object.freeze({
 
 export function isCurrentDocumentGeneratorVersion(value: unknown) {
   return value === DOCUMENT_GENERATOR_VERSION;
+}
+
+export function supportedDocumentFontFamily(value: unknown): "Arial" | "Liberation Sans" | null {
+  if (value === DOCUMENT_GENERATOR_VERSION) return "Arial";
+  if (value === LEGACY_DOCUMENT_GENERATOR_VERSION) return "Liberation Sans";
+  return null;
+}
+
+export function isSupportedDocumentGeneratorVersion(value: unknown) {
+  return supportedDocumentFontFamily(value) !== null;
 }
 
 export function selectDocumentOutputFormat(allowed: unknown, approved: unknown): "PDF" | "DOCX" | null {

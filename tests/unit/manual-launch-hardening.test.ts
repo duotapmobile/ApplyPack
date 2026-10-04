@@ -71,6 +71,13 @@ describe("October 2 manual-launch hardening", () => {
     expect(deliveries).toContain("fileVersionId=${encodeURIComponent(artifact.fileVersionId)}");
     expect(download).toContain("p_file_version_id: fileVersionId.data");
     expect(download).toContain('rpc("ap_authorize_material_download"');
+    expect(download).toContain("isSupportedDocumentGeneratorVersion");
+    expect(portal).toContain("isSupportedDocumentGeneratorVersion");
+    expect(source("src/lib/materials/admin.ts")).toContain("isSupportedDocumentGeneratorVersion");
+    expect(source("src/app/api/admin/material-files/[id]/render-preview/route.ts")).toContain("supportedDocumentFontFamily");
+    const releaseActions = source("src/app/api/admin/material-lines/[id]/route.ts");
+    expect(releaseActions).toContain("isCurrentDocumentGeneratorVersion");
+    expect(releaseActions).not.toContain("isSupportedDocumentGeneratorVersion");
   });
 
   it("separates healthy infrastructure from accepting orders and excludes dormant board commerce", () => {
@@ -146,6 +153,9 @@ describe("October 2 manual-launch hardening", () => {
     expect(generation).toContain('storageBucket: "operator-drafts"');
     expect(generation).toContain("editableSourcePath");
     expect(generation).toContain("p_claim_provenance: { ...input.artifact.provenance, editableSource }");
+    expect(generation).toContain('admin.from("storage_cleanup_queue").upsert');
+    expect(generation).toContain('bucket: "operator-drafts"');
+    expect(generation).toContain("editable_source_cleanup_queue_failed");
     const handler = source("infra/aws/document-worker/handler.py");
     expect(handler).toContain('operation == "render-docx"');
     expect(handler).toContain('operation == "probe-document"');

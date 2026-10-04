@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { isCurrentDocumentGeneratorVersion } from "@/lib/documents/requirements";
+import { isSupportedDocumentGeneratorVersion } from "@/lib/documents/requirements";
 import { MATERIAL_DOWNLOAD_SECONDS } from "@/lib/materials/contract";
 import { verifiedAuthenticationAt, isFreshAuthentication } from "@/lib/materials/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -46,9 +46,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   }
   const { data: artifact } = await admin.from("ap_generated_artifacts")
     .select("generator_version").eq("id", artifactId.data).maybeSingle();
-  if (!artifact || !isCurrentDocumentGeneratorVersion(artifact.generator_version)) {
+  if (!artifact || !isSupportedDocumentGeneratorVersion(artifact.generator_version)) {
     return NextResponse.json({
-      error: "This file was created under an older document standard and must be regenerated before download.",
+      error: "This file was created under an unsupported document standard and is unavailable.",
     }, { status: 409 });
   }
   const signed = await admin.storage.from(String(file.bucket)).createSignedUrl(
