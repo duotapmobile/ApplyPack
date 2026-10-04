@@ -77,6 +77,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(source("src/lib/materials/admin.ts")).toContain("currentStandard: isCurrentDocumentGeneratorVersion");
     expect(source("src/components/admin/chunk5-material-staff-queue.tsx")).toContain("Historical document: access only.");
     expect(source("src/components/admin/chunk5-material-staff-queue.tsx")).toContain("!file.currentStandard");
+    expect(source("src/components/admin/chunk5-material-staff-queue.tsx")).toContain('!currentFilesOnly || line.regeneration.state !== "HUMAN_REVIEW"');
     expect(source("src/app/api/admin/material-files/[id]/render-preview/route.ts")).toContain("supportedDocumentFontFamily");
     const releaseActions = source("src/app/api/admin/material-lines/[id]/route.ts");
     expect(releaseActions).toContain("isCurrentDocumentGeneratorVersion");
