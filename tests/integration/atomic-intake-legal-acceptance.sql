@@ -124,9 +124,9 @@ select pg_temp.assert_true(
   'exact replay did not preserve one content-bound immutable legal receipt'
 );
 
--- A rolling v2 instance may commit the historical version-only receipt just
--- before the v3 route is live. Re-presenting the same finalized intake through
--- v3 must append the immutable content receipt without rewriting history.
+-- The supported rollback build still calls v2. Migration 074 must route that
+-- signature through v3 so every newly finalized rollback intake receives the
+-- current immutable content receipt in the same transaction.
 select * from public.ap_create_anonymous_draft(
   'e4000000-0000-4000-8000-000000000001',repeat('b',64),now()+interval '1 day'
 );
@@ -153,9 +153,9 @@ select * from public.ap_finalize_four_step_intake_with_legal_acceptance_v2(
 );
 
 select pg_temp.assert_true(
-  not public.ap_has_current_content_bound_legal_acceptance(
+  public.ap_has_current_content_bound_legal_acceptance(
     'e4000000-0000-4000-8000-000000000001','e4300000-0000-4000-8000-000000000001'),
-  'historical version-only receipt unexpectedly passed the content-bound gate'
+  'supported v2 rollback finalization did not create the content-bound receipt'
 );
 
 select * from public.ap_finalize_four_step_intake_with_legal_acceptance_v3(
@@ -168,7 +168,7 @@ select * from public.ap_finalize_four_step_intake_with_legal_acceptance_v3(
   'manual-launch-terms-2026-10-02-v2','eeec6398df29e6bd831aa1130453762927a467ee1b7a8d98b3659e07b8069d8c',
   'privacy-v1','9832a38d7fe5bbff04622a1e1a34e09febd44156dbf78eec4ea975283c1e92e9',
   'applypack-legal-acceptance-copy-2026-10-04-v1','0d687e93a090a536b90b1508cf61746cb0167d464a951d9ae5cfe0739d7bd283',
-  'applypack-c14n-v1','applypack-legal-content-receipt-v1',repeat('2',64)
+  'applypack-c14n-v1','applypack-legal-content-receipt-v1',repeat('1',64)
 );
 
 select pg_temp.assert_true(
@@ -178,7 +178,66 @@ select pg_temp.assert_true(
        where snapshot_id='e4300000-0000-4000-8000-000000000001')
   and (select count(*)=1 from public.ap_snapshot_legal_content_receipts
        where snapshot_id='e4300000-0000-4000-8000-000000000001'),
-  'v3 did not append exactly one immutable content receipt to the v2 receipt'
+  'v3 replay did not preserve exactly one immutable content receipt created through v2'
+);
+
+-- Simulate a draft completed immediately before migration 074 by using the
+-- preserved base helpers. It must remain blocked until the customer explicitly
+-- re-confirms the current legal copy through the upgrade RPC.
+select * from public.ap_create_anonymous_draft(
+  'e5000000-0000-4000-8000-000000000001',repeat('c',64),now()+interval '1 day'
+);
+select * from public.ap_register_anonymous_document(
+  'e5000000-0000-4000-8000-000000000001',repeat('c',64),1,
+  'e5100000-0000-4000-8000-000000000001','RESUME','resume.pdf',
+  'anonymous/e5000000-0000-4000-8000-000000000001/resume/v1.pdf',128,
+  'application/pdf','application/pdf',repeat('1',64)
+);
+select public.ap_record_isolated_document_review(
+  'e5000000-0000-4000-8000-000000000001',
+  'e5100000-0000-4000-8000-000000000001',repeat('1',64),
+  'isolated-extractor-v1','["Maintained records."]'
+);
+insert into public.ap_sensitive_payloads(
+  id,draft_id,ciphertext,encryption_algorithm,encrypted_data_key,nonce,
+  authentication_tag,content_sha256,kms_key_identity,kms_key_version,encryption_context_hash
+) values(
+  'e5200000-0000-4000-8000-000000000001','e5000000-0000-4000-8000-000000000001',
+  decode('01','hex'),'AES-256-GCM',decode('02','hex'),decode(repeat('03',12),'hex'),
+  decode(repeat('04',16),'hex'),repeat('5',64),'fixture-kms','1',repeat('6',64)
+);
+select * from public.ap_finalize_four_step_intake(
+  'e5000000-0000-4000-8000-000000000001',repeat('c',64),2,
+  'e5300000-0000-4000-8000-000000000001',
+  '{"accessEmailNormalized":"upgrade@example.invalid","documentContactEmail":"upgrade@example.invalid","desiredActivities":["COORDINATING_PROJECTS"],"avoidedActivities":[],"optionalTitles":[],"confirmedTitleRestriction":null,"optionalIndustries":[],"blockedIndustries":[],"searchBreadth":"ADJACENT_OPPORTUNITIES","guidanceRequested":false,"workModes":["REMOTE"],"preferredWorkMode":null,"stateOrDc":"VA","employmentTypes":["FULL_TIME"],"preferredEmploymentType":null,"schedules":[],"travel":{},"benefits":{},"workConditionPreferences":{},"dealbreakers":[],"salaryTargetCents":null,"salaryHardMinimumCents":null,"salaryMinimumFlexible":false,"salaryPeriod":null,"salaryBasis":null,"salaryOverlapPolicy":"EXCLUDE","salaryUnpublishedPolicy":"EXCLUDE","salaryNoncomparablePolicy":"EXCLUDE","salaryVariablePayPolicy":"EXCLUDE","employerUnknownPolicies":{},"priorCoverLetterUse":"NEITHER","experienceAdditions":[],"capabilities":{},"sensitivePayloadSha256":"5555555555555555555555555555555555555555555555555555555555555555","canonicalizationVersion":"applypack-c14n-v1","schemaVersion":"applypack-intake-v3"}',
+  repeat('a',64),'e5200000-0000-4000-8000-000000000001','{}'
+);
+select public.ap_record_snapshot_legal_acceptance(
+  'e5000000-0000-4000-8000-000000000001',repeat('c',64),
+  'e5300000-0000-4000-8000-000000000001',
+  'manual-launch-terms-2026-10-02-v2','privacy-v1',repeat('b',64)
+);
+select pg_temp.assert_true(
+  not public.ap_has_current_content_bound_legal_acceptance(
+    'e5000000-0000-4000-8000-000000000001','e5300000-0000-4000-8000-000000000001'),
+  'pre-074 version-only receipt unexpectedly passed without explicit re-consent'
+);
+update public.ap_anonymous_drafts
+set state='LOCKED_TO_CHECKOUT'
+where id='e5000000-0000-4000-8000-000000000001';
+select public.ap_upgrade_completed_intake_legal_acceptance(
+  'e5000000-0000-4000-8000-000000000001',repeat('c',64),
+  'manual-launch-terms-2026-10-02-v2','eeec6398df29e6bd831aa1130453762927a467ee1b7a8d98b3659e07b8069d8c',
+  'privacy-v1','9832a38d7fe5bbff04622a1e1a34e09febd44156dbf78eec4ea975283c1e92e9',
+  'applypack-legal-acceptance-copy-2026-10-04-v1','0d687e93a090a536b90b1508cf61746cb0167d464a951d9ae5cfe0739d7bd283',
+  'applypack-c14n-v1','applypack-legal-content-receipt-v1',repeat('c',64)
+);
+select pg_temp.assert_true(
+  public.ap_has_current_content_bound_legal_acceptance(
+    'e5000000-0000-4000-8000-000000000001','e5300000-0000-4000-8000-000000000001')
+  and (select count(*)=1 from public.ap_snapshot_legal_content_receipts
+       where snapshot_id='e5300000-0000-4000-8000-000000000001'),
+  'explicit customer re-consent on a checkout-locked draft did not append exactly one content-bound receipt'
 );
 
 select pg_temp.assert_true(
@@ -199,6 +258,9 @@ select pg_temp.assert_true(
   and not has_function_privilege('anon','public.ap_record_snapshot_legal_content_receipt(uuid,text,uuid,uuid,text,text,text,text,text,text,text,text,text)','EXECUTE')
   and not has_function_privilege('authenticated','public.ap_record_snapshot_legal_content_receipt(uuid,text,uuid,uuid,text,text,text,text,text,text,text,text,text)','EXECUTE')
   and has_function_privilege('service_role','public.ap_record_snapshot_legal_content_receipt(uuid,text,uuid,uuid,text,text,text,text,text,text,text,text,text)','EXECUTE')
+  and not has_function_privilege('anon','public.ap_upgrade_completed_intake_legal_acceptance(uuid,text,text,text,text,text,text,text,text,text,text)','EXECUTE')
+  and not has_function_privilege('authenticated','public.ap_upgrade_completed_intake_legal_acceptance(uuid,text,text,text,text,text,text,text,text,text,text)','EXECUTE')
+  and has_function_privilege('service_role','public.ap_upgrade_completed_intake_legal_acceptance(uuid,text,text,text,text,text,text,text,text,text,text)','EXECUTE')
   and has_function_privilege('service_role','public.ap_finalize_four_step_intake_with_legal_acceptance_v3(uuid,text,bigint,uuid,jsonb,text,uuid,bytea,text,bytea,bytea,bytea,text,text,text,text,jsonb,text,text,text,text,text,text,text,text,text)','EXECUTE'),
   'intake finalization function privileges are not fail closed'
 );

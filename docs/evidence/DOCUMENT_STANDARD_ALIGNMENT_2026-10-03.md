@@ -98,7 +98,7 @@ fails acceptance.
   current locked contract. The operator queue labels historical files as
   access-only and disables their approval and release actions. Commit
   `5b38407a4e8023e00ebee625f6925c265bdaee1a` is the minimum rollback target
-  after migrations 066 through 072, provided migrations 068 through 072 remain
+  after migrations 066 through 074, provided migrations 068 through 074 remain
   applied. `npm run test:rollback` rejects an `AP_ROLLBACK_TARGET_SHA` before
   that floor, missing any material-upload cleanup contract, or missing any
   customer source-upload cleanup path.
@@ -132,8 +132,9 @@ fails acceptance.
 - Database contract fixtures: 14 passed.
 - Database types: match the local migrated schema.
 - Historical-data upgrade fixture: passed.
-- Rollback-compatibility fixture: passed; local schema restored through all 77
-  migrations.
+- Rollback-compatibility fixture: passed; the local schema replay and database
+  contract suite completed through all 79 migrations, including the
+  content-bound legal receipt and rollback-compatibility migrations.
 - Browser matrix on the preceding document-alignment commit: 301 passed, 24
   intentional project-specific skips, zero failures across desktop Chromium,
   Firefox, desktop WebKit, mobile WebKit, and mobile Chromium. The corrective

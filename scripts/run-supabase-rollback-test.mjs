@@ -116,6 +116,28 @@ for (const contract of sourceUploadContracts) {
   }
 }
 
+const rollbackWizard = capture("git", [
+  "show",
+  `${resolvedRollbackTarget}:src/app/get-started/wizard-v3.tsx`,
+]);
+const legacyLegalCopy = '<span>I agree to the <Link href="/terms" target="_blank">Terms</Link> and <Link href="/privacy" target="_blank">Privacy Policy</Link>.</span>';
+let legalCopyCompatible = rollbackWizard.status === 0 && rollbackWizard.stdout.includes(legacyLegalCopy);
+if (!legalCopyCompatible && rollbackWizard.stdout.includes("LEGAL_ACCEPTANCE_PRESENTATION")) {
+  const presentation = capture("git", [
+    "show",
+    `${resolvedRollbackTarget}:src/lib/legal/presentation.ts`,
+  ]);
+  legalCopyCompatible = presentation.status === 0 && [
+    'prefix: "I agree to the "', 'termsLabel: "Terms"', 'termsHref: "/terms"',
+    'conjunction: " and "', 'privacyLabel: "Privacy Policy"', 'privacyHref: "/privacy"', 'suffix: "."',
+  ].every((signal) => presentation.stdout.includes(signal));
+}
+if (rollbackWizard.error || !legalCopyCompatible) {
+  if (rollbackWizard.stderr) process.stderr.write(rollbackWizard.stderr);
+  console.error(`Rollback target ${resolvedRollbackTarget} does not display the approved content-bound legal acceptance copy.`);
+  process.exit(rollbackWizard.status || 1);
+}
+
 console.log(
   `Application rollback target ${resolvedRollbackTarget} satisfies minimum ${minimumCompatibleApplicationRollbackSha}.`,
 );
@@ -140,6 +162,23 @@ select case when
     join pg_namespace namespace on namespace.oid = procedure.pronamespace
     where namespace.nspname = 'public'
       and procedure.proname = 'ap_create_anonymous_draft'
+  )
+  and to_regclass('public.ap_snapshot_legal_content_receipts') is not null
+  and exists (
+    select 1 from pg_proc procedure
+    join pg_namespace namespace on namespace.oid = procedure.pronamespace
+    where namespace.nspname='public'
+      and procedure.proname='ap_upgrade_completed_intake_legal_acceptance'
+  )
+  and position(
+    'ap_finalize_four_step_intake_with_legal_acceptance_v3'
+    in pg_get_functiondef('public.ap_finalize_four_step_intake_with_legal_acceptance_v2(uuid,text,bigint,uuid,jsonb,text,uuid,bytea,text,bytea,bytea,bytea,text,text,text,text,jsonb,text,text,text)'::regprocedure)
+  ) > 0
+  and exists (
+    select 1 from public.ap_commerce_configuration
+    where singleton and terms_content_sha256 is not null
+      and privacy_content_sha256 is not null
+      and legal_acceptance_copy_sha256 is not null
   )
   and (select count(*) from supabase_migrations.schema_migrations) = ${expectedMigrationCount}
 then 'RESTORE_OK' else 'RESTORE_FAILED' end;

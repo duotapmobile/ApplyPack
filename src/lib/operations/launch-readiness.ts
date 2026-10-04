@@ -9,6 +9,7 @@ import { assertConfiguredPrice, createStripeOperationalClient } from "@/lib/stri
 import { checkoutConfiguration } from "@/lib/stripe/mode";
 import { APPLY_PACK_PRICE_CENTS, SEARCH_PRICE_CENTS } from "@/lib/domain/applypack";
 import { documentWorkerConfiguration } from "@/lib/files/aws-document-worker";
+import { currentLegalContentBinding } from "@/lib/legal/content-hash";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 type LaunchCapacityResource = "SEARCH" | "MATERIALS";
@@ -89,6 +90,7 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
     database: false,
     manualInventoryReady: false,
     releaseSha: false,
+    legalContent: false,
   };
   const deployedSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.APP_RELEASE_SHA || "";
   let capacityAvailable = false;
@@ -105,6 +107,7 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
         { count: exhaustedStorageCleanup, error: storageCleanupError },
         { data: capacity, error: capacityError },
         { data: sourceReadiness, error: sourceError },
+        { data: legalConfiguration, error: legalConfigurationError },
       ] = await Promise.all([
         admin.from("operational_heartbeats").select("last_succeeded_at").eq("task_name", "maintenance").maybeSingle(),
         admin.from("ap_operational_alerts").select("id", { count: "exact", head: true })
@@ -115,6 +118,9 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
           .gte("attempts", 20),
         admin.rpc("ap_manual_launch_capacity_readiness"),
         admin.rpc("ap_current_source_readiness"),
+        admin.from("ap_commerce_configuration")
+          .select("terms_version,terms_content_sha256,privacy_version,privacy_content_sha256,legal_acceptance_copy_version,legal_acceptance_copy_sha256,legal_content_canonicalization_version,legal_receipt_schema_version")
+          .eq("singleton", true).maybeSingle(),
       ]);
       checks.maintenance = Boolean(
         process.env.CRON_SECRET
@@ -141,6 +147,16 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
       }
       capacityAvailable = Object.values(capacityByResource).some(Boolean);
       checks.manualInventoryReady = !sourceError && sourceReadiness?.manualReady === true;
+      const legalContent = currentLegalContentBinding();
+      checks.legalContent = !legalConfigurationError
+        && legalConfiguration?.terms_version === legalContent.termsVersion
+        && legalConfiguration.terms_content_sha256 === legalContent.termsContentSha256
+        && legalConfiguration.privacy_version === legalContent.privacyVersion
+        && legalConfiguration.privacy_content_sha256 === legalContent.privacyContentSha256
+        && legalConfiguration.legal_acceptance_copy_version === legalContent.acceptanceCopyVersion
+        && legalConfiguration.legal_acceptance_copy_sha256 === legalContent.acceptanceCopySha256
+        && legalConfiguration.legal_content_canonicalization_version === legalContent.contentCanonicalizationVersion
+        && legalConfiguration.legal_receipt_schema_version === legalContent.receiptSchemaVersion;
     }
   }
   const ready = Object.values(checks).every(Boolean);

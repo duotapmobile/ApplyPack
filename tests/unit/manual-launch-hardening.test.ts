@@ -101,10 +101,14 @@ describe("October 2 manual-launch hardening", () => {
 
   it("separates healthy infrastructure from accepting orders and excludes dormant board commerce", () => {
     const health = source("src/app/api/health/route.ts");
+    const readiness = source("src/lib/operations/launch-readiness.ts");
     expect(health).toContain("commerceConfigured: infrastructure.commerceConfigured");
     expect(health).toContain("manualLaunchCheckoutGate(admin, infrastructure)");
     expect(health).not.toContain("STRIPE_JOB_BOARD");
     expect(health).not.toContain("boardSubscriptions");
+    expect(readiness).toContain("currentLegalContentBinding");
+    expect(readiness).toContain("checks.legalContent");
+    expect(readiness).toContain("legal_acceptance_copy_sha256");
     expect(source("src/app/api/live/route.ts")).toContain('status: "ok"');
     const maintenance = source("src/app/api/cron/maintenance/route.ts");
     expect(maintenance).toContain('APP_LEGACY_BOARD_MAINTENANCE_ENABLED === "true"');
@@ -118,6 +122,7 @@ describe("October 2 manual-launch hardening", () => {
     const wizard = source("src/app/get-started/wizard-v3.tsx");
     const migration = source("supabase/migrations/202610030064_atomic_sensitive_intake_finalization.sql");
     const legalContentMigration = source("supabase/migrations/202610040073_immutable_legal_content_receipts.sql");
+    const legalRollbackCompatibility = source("supabase/migrations/202610040074_legal_receipt_rollback_compatibility.sql");
     const rollbackCompatibility = source("supabase/migrations/202610030065_preserve_intake_rollback_compatibility.sql");
     expect(finalize).toContain('rpc("ap_finalize_four_step_intake_with_legal_acceptance_v3"');
     expect(finalize).toContain("currentLegalContentBinding");
@@ -139,6 +144,13 @@ describe("October 2 manual-launch hardening", () => {
     expect(legalContentMigration).toContain("public.ap_finalize_four_step_intake_with_legal_acceptance_v3");
     expect(legalContentMigration).toContain("public.ap_has_current_content_bound_legal_acceptance");
     expect(legalContentMigration).toContain("ap_snapshot_legal_content_receipts_immutable");
+    expect(legalRollbackCompatibility).toContain("public.ap_finalize_four_step_intake_with_legal_acceptance_v3(");
+    expect(legalRollbackCompatibility).toContain("public.ap_upgrade_completed_intake_legal_acceptance");
+    expect(legalRollbackCompatibility).toContain("Completed or checkout-locked drafts created by a rolling v2 process are not silently");
+    expect(legalRollbackCompatibility).toContain("draft.state in ('COMPLETE','LOCKED_TO_CHECKOUT')");
+    expect(source("src/app/api/intake/anonymous-draft/legal-acceptance/route.ts"))
+      .toContain('rpc("ap_upgrade_completed_intake_legal_acceptance"');
+    expect(wizard).toContain("Confirm current Terms");
     expect(rollbackCompatibility).toContain("from public,anon,authenticated");
     expect(rollbackCompatibility).toContain("to service_role");
     expect(rollbackCompatibility).toContain("INTAKE_ROLLBACK_COMPATIBILITY");
@@ -244,6 +256,8 @@ describe("October 2 manual-launch hardening", () => {
     expect(rollbackCheck).toContain('"intake_source_upload_intent"');
     expect(rollbackCheck).toContain("for (const contract of sourceUploadContracts)");
     expect(rollbackCheck).toContain("intentIndex >= uploadIndex");
+    expect(rollbackCheck).toContain("approved content-bound legal acceptance copy");
+    expect(rollbackCheck).toContain("ap_upgrade_completed_intake_legal_acceptance");
     expect(rollbackRunbook).toContain("minimum compatible application rollback commit is `5b38407a4e8023e00ebee625f6925c265bdaee1a`");
     expect(rollbackRunbook).toContain("set `AP_ROLLBACK_TARGET_SHA` to the exact intended deployment commit");
     expect(documentCompatibility.indexOf("pg_advisory_xact_lock"))

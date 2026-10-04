@@ -12644,6 +12644,22 @@ export type Database = {
         Args: { p_document_id: string }
         Returns: boolean
       }
+      ap_upgrade_completed_intake_legal_acceptance: {
+        Args: {
+          p_acceptance_copy_sha256: string
+          p_acceptance_copy_version: string
+          p_acceptance_sha256: string
+          p_content_canonicalization_version: string
+          p_draft_id: string
+          p_privacy_content_sha256: string
+          p_privacy_version: string
+          p_receipt_schema_version: string
+          p_secret_hash: string
+          p_terms_content_sha256: string
+          p_terms_version: string
+        }
+        Returns: string
+      }
       ap_upsert_employer_submission_rules: {
         Args: {
           p_allowed_formats: string[]

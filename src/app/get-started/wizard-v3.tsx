@@ -17,6 +17,7 @@ import {
 } from "@/lib/intake/four-step";
 
 type ServerDraft = { id: string; version: number; state: string; currentStep: number; answers: FourStepDraft;
+  finalizedSnapshotId?: string | null; legalContentAccepted?: boolean;
   documents: IntakeDocument[]; facts: FactSuggestion[]; presentedFactIds: string[] };
 type SaveState = "LOADING" | "SAVING" | "SAVED" | "ERROR" | "CONFLICT" | "READY";
 type PendingFinalization = { expectedVersion: number; answers: FourStepDraft };
@@ -34,6 +35,8 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   const [busyDocument, setBusyDocument] = useState<"RESUME" | "PRIOR_COVER_LETTER" | null>(null);
   const [presented, setPresented] = useState<Set<string>>(new Set());
   const [finalized, setFinalized] = useState(false);
+  const [legalContentAccepted, setLegalContentAccepted] = useState(true);
+  const [legalAcceptanceBusy, setLegalAcceptanceBusy] = useState(false);
   const [feasibility, setFeasibility] = useState<FeasibilityView | null>(null);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutInvitation, setCheckoutInvitation] = useState<{ id: string; secret: string } | null>(null);
@@ -48,11 +51,14 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   const pendingFinalization = useRef<PendingFinalization | null>(null);
 
   const hydrate = useCallback((value: ServerDraft, restored = false) => {
-    const nextDraft = normalizedFourStepDraft({ ...emptyFourStepDraft, ...value.answers });
+    const completed = ["COMPLETE", "LOCKED_TO_CHECKOUT"].includes(value.state);
+    const contentAccepted = !completed || value.legalContentAccepted === true;
+    const nextDraft = normalizedFourStepDraft({ ...emptyFourStepDraft, ...value.answers,
+      termsAccepted: contentAccepted ? value.answers.termsAccepted : false });
     const nextStep = Math.max(0, Math.min(3, value.currentStep)) as 0 | 1 | 2 | 3;
     setServerDraft(value); setDraft(nextDraft); setStep(nextStep);
     setPresented(new Set(value.presentedFactIds || [])); setSaveState("READY");
-    setFinalized(["COMPLETE", "LOCKED_TO_CHECKOUT"].includes(value.state));
+    setFinalized(completed); setLegalContentAccepted(contentAccepted);
     pendingFinalization.current = null;
     lastPersisted.current = draftSignature(nextDraft, nextStep);
     if (restored) setNotice("Your saved intake was restored on this device session.");
@@ -88,7 +94,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     return () => window.clearTimeout(timer);
   }, []);
   useEffect(() => {
-    if (!finalized) return;
+    if (!finalized || !legalContentAccepted) return;
     if (fixtureMode) {
       const requested = new URLSearchParams(window.location.search).get("feasibility") || "pending";
       const fixture: Record<string, FeasibilityView> = {
@@ -118,7 +124,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     }
     void read();
     return () => { active = false; if (timer) window.clearTimeout(timer); };
-  }, [finalized, fixtureMode]);
+  }, [finalized, fixtureMode, legalContentAccepted]);
   useEffect(() => {
     const controlId = pendingEditFocus.current;
     pendingEditFocus.current = null;
@@ -295,7 +301,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
       pendingFinalization.current = null;
       setServerDraft((current) => current && ({ ...current, version: result.draftVersion, state: "COMPLETE", currentStep: 3 }));
       setFeasibility({ state: "PENDING", outcome: null, checkoutEligible: false, snapshotId: result.snapshotId });
-      setFinalized(true); setSaveState("SAVED"); setNotice(result.feasibility.message + " No payment was started.");
+      setFinalized(true); setLegalContentAccepted(true); setSaveState("SAVED"); setNotice(result.feasibility.message + " No payment was started.");
     } catch {
       setSaveState("ERROR");
       setNotice("Finalization was interrupted. Select Finish intake again to safely check the same request.");
@@ -319,6 +325,27 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
       return;
     }
     window.location.assign(result.url);
+  }
+
+  async function confirmCurrentLegalContent() {
+    if (!finalized || legalContentAccepted || !draft.termsAccepted) {
+      setNotice("Confirm the current Terms and Privacy Policy before continuing.");
+      return;
+    }
+    setLegalAcceptanceBusy(true); setSaveState("SAVING");
+    try {
+      const response = await fetch("/api/intake/anonymous-draft/legal-acceptance", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ accepted: true }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "The current legal terms could not be confirmed.");
+      setLegalContentAccepted(true);
+      setFeasibility({ state: "PENDING", outcome: null, checkoutEligible: false,
+        snapshotId: typeof result.snapshotId === "string" ? result.snapshotId : serverDraft?.finalizedSnapshotId || undefined });
+      setSaveState("SAVED"); setNotice("The current Terms and Privacy Policy were confirmed. No payment was started.");
+    } catch (error) {
+      setSaveState("ERROR"); setNotice(error instanceof Error ? error.message : "The current legal terms could not be confirmed.");
+    } finally { setLegalAcceptanceBusy(false); }
   }
 
   if (saveState === "LOADING") return <main id="main-content" className="wizard-page"><section className="wizard-loading" aria-live="polite"><p className="eyebrow">SECURE INTAKE</p><h1>Loading your saved intake…</h1></section></main>;
@@ -380,7 +407,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
         {draft.dealbreakers.includes("SOMETHING_ELSE") && <><Field id="custom-dealbreaker" label="What else should we leave out?" required errors={errors}><textarea id="custom-dealbreaker" value={draft.customDealbreaker} onChange={(e) => update("customDealbreaker", e.target.value)} /></Field><ErrorFor errors={errors} fieldId="custom-dealbreaker" /></>}
         {unknownCriteria.map((criterion) => { const fieldId = unknownPolicyFieldId(criterion.key); return <fieldset key={criterion.key} id={fieldId} tabIndex={-1} aria-invalid={hasError(errors, fieldId) || undefined} aria-describedby={hasError(errors, fieldId) ? errorId(fieldId) : undefined}><legend>If an employer does not state {criterion.label.toLowerCase()}, what should we do?</legend><Radio name={`unknown-${criterion.key}`} value="EXCLUDE_IF_UNKNOWN" checked={draft.employerUnknownPolicies[criterion.key] || ""} onChange={(next) => update("employerUnknownPolicies", { ...draft.employerUnknownPolicies, [criterion.key]: next })} label="Exclude it if unknown" /><Radio name={`unknown-${criterion.key}`} value="ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING" checked={draft.employerUnknownPolicies[criterion.key] || ""} onChange={(next) => update("employerUnknownPolicies", { ...draft.employerUnknownPolicies, [criterion.key]: next })} label="Include it with an unknown warning" /><ErrorFor errors={errors} fieldId={fieldId} /></fieldset>; })}
         <Review draft={draft} resume={resume} cover={cover} onEdit={editSection} />
-        {finalized && feasibility && <FeasibilityResult value={feasibility} checkoutBusy={checkoutBusy} invitationAvailable={checkoutInvitation !== null}
+        {finalized && legalContentAccepted && feasibility && <FeasibilityResult value={feasibility} checkoutBusy={checkoutBusy} invitationAvailable={checkoutInvitation !== null}
           onCheckout={() => void startCheckout()} onEdit={() => editSection(3, "work-modes", true)} />}
         <div className="deadline-note"><strong>Service boundary</strong><p>ApplyPack researches public listings and provides 10 matches after feasibility, capacity, and payment. We do not contact employers, submit applications, or guarantee interviews, offers, salary, employment, or continued listing availability.</p></div>
         <ErrorFor errors={errors} fieldId="terms-accepted" /><label className="confirm legal-agreement"><input id="terms-accepted" type="checkbox" aria-invalid={hasError(errors, "terms-accepted") || undefined} aria-describedby={hasError(errors, "terms-accepted") ? errorId("terms-accepted") : undefined} checked={draft.termsAccepted} onChange={(e) => update("termsAccepted", e.target.checked)} /><span>{LEGAL_ACCEPTANCE_PRESENTATION.prefix}<Link href={LEGAL_ACCEPTANCE_PRESENTATION.termsHref} target="_blank">{LEGAL_ACCEPTANCE_PRESENTATION.termsLabel}</Link>{LEGAL_ACCEPTANCE_PRESENTATION.conjunction}<Link href={LEGAL_ACCEPTANCE_PRESENTATION.privacyHref} target="_blank">{LEGAL_ACCEPTANCE_PRESENTATION.privacyLabel}</Link>{LEGAL_ACCEPTANCE_PRESENTATION.suffix}</span></label>
@@ -388,7 +415,9 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
 
       <div className="wizard-actions"><button className="wizard-back" type="button" disabled={step === 0 || saveState === "SAVING"} onClick={() => void move((step - 1) as 0 | 1 | 2)}><ArrowLeft aria-hidden="true" />Back</button>
         {step < 3 ? <button className="wizard-next" type="button" disabled={saveState === "SAVING"} onClick={() => void move((step + 1) as 1 | 2 | 3)}>{saveState === "SAVING" ? "Saving…" : returnToReview ? "Save and return to review" : "Save and continue"}<ArrowRight aria-hidden="true" /></button>
-          : <button className="wizard-next" type="button" disabled={saveState === "SAVING" || finalized} onClick={() => void finalize()}>{finalized ? "Intake finalized" : saveState === "SAVING" ? "Saving…" : "Finish intake"}<ArrowRight aria-hidden="true" /></button>}</div>
+          : finalized && !legalContentAccepted
+            ? <button className="wizard-next" type="button" disabled={legalAcceptanceBusy || !draft.termsAccepted} onClick={() => void confirmCurrentLegalContent()}>{legalAcceptanceBusy ? "Confirming…" : "Confirm current Terms"}<ArrowRight aria-hidden="true" /></button>
+            : <button className="wizard-next" type="button" disabled={saveState === "SAVING" || finalized} onClick={() => void finalize()}>{finalized ? "Intake finalized" : saveState === "SAVING" ? "Saving…" : "Finish intake"}<ArrowRight aria-hidden="true" /></button>}</div>
     </section></div></main>;
 }
 
