@@ -21,6 +21,7 @@ import {
   APPROVED_ROLLBACK_LEGAL_CONTRACT,
   verifyRollbackLegalSource,
 } from "../../scripts/rollback-legal-contract.mjs";
+import { validateAndCanonicalizePreflightConnection } from "../../scripts/inventory-preflight-connection.mjs";
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
@@ -243,7 +244,13 @@ describe("October 2 manual-launch hardening", () => {
     expect(preflight).toContain("INVENTORY_IDENTITY_PREFLIGHT_CLEAN");
     const preflightRunner = source("scripts/check-inventory-identity-conflicts.mjs");
     expect(preflightRunner).toContain("AP_PREMIGRATION_DATABASE_URL");
-    expect(preflightRunner).toContain("[REDACTED_DATABASE_URL]");
+    expect(preflightRunner).toContain("AP_PREMIGRATION_EXPECTED_HOST");
+    expect(preflightRunner).toContain("AP_PREMIGRATION_EXPECTED_PORT");
+    expect(preflightRunner).toContain("AP_PREMIGRATION_EXPECTED_DATABASE");
+    expect(preflightRunner).toContain("AP_PREMIGRATION_EXPECTED_USER");
+    expect(preflightRunner).toContain("pg_catalog.pg_stat_ssl");
+    expect(preflightRunner).toContain("INVENTORY_IDENTITY_PREFLIGHT_CONNECTION_ATTESTED");
+    expect(preflightRunner).toContain("[REDACTED_DATABASE_CREDENTIAL]");
     expect(preflightRunner).toContain('process.argv.length !== 3');
     const upgradeTest = source("scripts/run-supabase-inventory-upgrade-test.mjs");
     expect(upgradeTest).toContain("INVENTORY_IDENTITY_PREFLIGHT_CLEAN");
@@ -256,34 +263,93 @@ describe("October 2 manual-launch hardening", () => {
     expect(upgradeTest).toContain("duplicate_inventory_job");
   });
 
-  it("rejects remote inventory preflight URLs without hostname-verified TLS and never prints credentials", () => {
-    const password = "preflight-super-secret";
+  it("strictly canonicalizes only the authorized remote inventory preflight target", () => {
+    const password = "p@ss:word";
+    const encodedPassword = "p%40ss%3Aword";
+    const expectedTarget = {
+      expectedHost: "db.example.test",
+      expectedPort: "5432",
+      expectedDatabase: "postgres",
+      expectedUser: "operator",
+    };
+    expect(validateAndCanonicalizePreflightConnection({
+      uri: `postgresql://operator:${encodedPassword}@DB.Example.Test:5432/postgres?sslmode=VERIFY-FULL`,
+      ...expectedTarget,
+    })).toEqual({
+      canonicalUri: `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full`,
+      password: encodedPassword,
+      decodedPassword: password,
+      ...expectedTarget,
+    });
+
     const weakUrls = [
-      `postgresql://operator:${password}@db.example.test/postgres`,
-      `postgresql://operator:${password}@db.example.test/postgres?sslmode=disable`,
-      `postgresql://operator:${password}@db.example.test/postgres?sslmode=allow`,
-      `postgresql://operator:${password}@db.example.test/postgres?sslmode=prefer`,
-      `postgresql://operator:${password}@db.example.test/postgres?sslmode=require`,
-      `postgresql://operator:${password}@db.example.test/postgres?sslmode=verify-ca`,
-      `postgresql://operator:${password}@db.example.test/postgres?sslmode=verify-full&sslmode=disable`,
+      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres`,
+      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=disable`,
+      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=allow`,
+      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=prefer`,
+      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=require`,
+      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-ca`,
+      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full&sslmode=disable`,
+      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?host=%2Fvar%2Frun%2Fpostgresql&sslmode=verify-full`,
+      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?hostaddr=127.0.0.1&sslmode=verify-full`,
+      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?service=wrong-target&sslmode=verify-full`,
+      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?servicefile=wrong-target&sslmode=verify-full`,
+      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?gssencmode=prefer&sslmode=verify-full`,
+      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslrootcert=system&sslmode=verify-full`,
+      `postgresql://operator:${encodedPassword}@%2Fvar%2Frun%2Fpostgresql:5432/postgres?sslmode=verify-full`,
+      `postgresql://operator:${encodedPassword}@db.example.test,other.example.test:5432/postgres?sslmode=verify-full`,
+      `postgresql://operator:${encodedPassword}@other.example.test:5432/postgres?sslmode=verify-full`,
+      `postgresql://operator:${encodedPassword}@db.example.test:6543/postgres?sslmode=verify-full`,
+      `postgresql://operator:${encodedPassword}@db.example.test:5432/wrong_database?sslmode=verify-full`,
+      `postgresql://wrong_user:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full`,
+      "postgresql://operator@db.example.test:5432/postgres?sslmode=verify-full",
+      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full#ignored`,
     ];
     for (const databaseUrl of weakUrls) {
-      const result = spawnSync(
-        process.execPath,
-        [resolve(process.cwd(), "scripts/check-inventory-identity-conflicts.mjs"), "--remote"],
-        {
-          cwd: process.cwd(),
-          encoding: "utf8",
-          env: { ...process.env, AP_PREMIGRATION_DATABASE_URL: databaseUrl },
-        },
-      );
-      const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
-      expect(result.status).toBe(2);
-      expect(output).toContain("sslmode=verify-full");
-      expect(output).not.toContain(databaseUrl);
-      expect(output).not.toContain(password);
+      expect(() => validateAndCanonicalizePreflightConnection({ uri: databaseUrl, ...expectedTarget }))
+        .toThrow("expected host, port, database, and user");
     }
-  }, 30_000);
+
+    for (const badExpectedTarget of [
+      { ...expectedTarget, expectedHost: "localhost" },
+      { ...expectedTarget, expectedHost: "127.0.0.1" },
+      { ...expectedTarget, expectedPort: "0" },
+      { ...expectedTarget, expectedPort: "65536" },
+      { ...expectedTarget, expectedDatabase: "postgres/other" },
+      { ...expectedTarget, expectedUser: "operator other" },
+    ]) {
+      expect(() => validateAndCanonicalizePreflightConnection({
+        uri: `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full`,
+        ...badExpectedTarget,
+      })).toThrow("expected-target identifiers");
+    }
+  });
+
+  it("rejects a representative wrapper query override without printing credentials", () => {
+    const password = "preflight-super-secret";
+    const databaseUrl = `postgresql://operator:${password}@db.example.test:5432/postgres?host=%2Fvar%2Frun%2Fpostgresql&sslmode=verify-full`;
+    const result = spawnSync(
+      process.execPath,
+      [resolve(process.cwd(), "scripts/check-inventory-identity-conflicts.mjs"), "--remote"],
+      {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          AP_PREMIGRATION_DATABASE_URL: databaseUrl,
+          AP_PREMIGRATION_EXPECTED_HOST: "db.example.test",
+          AP_PREMIGRATION_EXPECTED_PORT: "5432",
+          AP_PREMIGRATION_EXPECTED_DATABASE: "postgres",
+          AP_PREMIGRATION_EXPECTED_USER: "operator",
+        },
+      },
+    );
+    const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+    expect(result.status).toBe(2);
+    expect(output).toContain("expected host, port, database, and user");
+    expect(output).not.toContain(databaseUrl);
+    expect(output).not.toContain(password);
+  });
 
   it("finalizes encrypted intake and current legal acceptance through one retry-safe atomic command", () => {
     const finalize = source("src/app/api/intake/anonymous-draft/finalize/route.ts");

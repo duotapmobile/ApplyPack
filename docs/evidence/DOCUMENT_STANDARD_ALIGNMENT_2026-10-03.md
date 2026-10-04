@@ -128,7 +128,7 @@ fails acceptance.
 
 - Lint: passed.
 - Type checking: passed.
-- Unit/integration suite: 86 files, 618 tests passed.
+- Unit/integration suite: 86 files, 619 tests passed.
 - Production build: passed on Next.js 16.3.8.
 - Production dependency audit: zero vulnerabilities.
 - Database contract fixtures: 14 passed.
@@ -153,9 +153,14 @@ fails acceptance.
   wording cannot repair an immutable historical conflict; such a target needs
   separately reviewed forward remediation.
 - The remote inventory preflight refuses missing, weaker, or duplicate SSL
-  modes and requires `sslmode=verify-full`. Executable negative cases prove
-  that rejected connection URIs and passwords do not appear in output. Hosted
-  use still requires the provider-trusted root certificate and independent
+  modes and requires `sslmode=verify-full`. It rejects every additional libpq
+  connection parameter, multi-host/socket forms, and mismatches against the
+  independently supplied expected host, port, database, or user. The connected
+  session must prove active SSL through `pg_stat_ssl` and exact database/user
+  identity before inventory is queried. Executable negative cases cover the
+  socket/host/service/GSS override paths and prove rejected connection URIs and
+  passwords do not appear in output. Hosted use still requires a positive
+  attestation with the provider-trusted root certificate and independent
   provider-side SSL enforcement evidence.
 - Database types: match the local migrated schema.
 - Historical-data upgrade fixture: passed.
