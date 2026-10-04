@@ -435,6 +435,13 @@ describe("Chunk 5 evidence-bound DOCX generation", () => {
         }],
       },
     ];
+    input.careerBreak = {
+      choice: "CAREER_BREAK",
+      start: "2020",
+      end: "2021",
+      mentionInCoverLetter: false,
+      candidateFactIds: [FACT_ONE],
+    };
     input.references = undefined;
     input.rules.resumePageLimit = 2;
     input.coverLetterParagraphs = realisticCoverLetter(input.job.exactTitle, input.job.employer);
@@ -454,12 +461,17 @@ describe("Chunk 5 evidence-bound DOCX generation", () => {
       "2022-2024",
       "2023-2025",
       "2019",
+      "Career Break | 2020-2021",
+      ...input.experiences.flatMap(({ bullets }) => bullets.map(({ text }) => text)),
     ];
 
     expect(() => assertKnownTruth(resume.extractedText, expected)).not.toThrow();
     expect(() => assertKnownTruth(resume.extractedText.normalize("NFD"), expected)).not.toThrow();
     expect(resume.extractedText).not.toMatch(/undefined|\[unknown\]/i);
     expect(resume.checks).toMatchObject({ semanticSectionHeadings: true, nativeBullets: true });
+    expect(generated.resume.provenance.claims).toEqual(expect.arrayContaining([
+      expect.objectContaining({ placement: "resume.careerBreak", candidateFactIds: [FACT_ONE] }),
+    ]));
 
     expect(() => assertKnownTruth(
       resume.extractedText.replace("Community Program Specialist", ""), expected,
