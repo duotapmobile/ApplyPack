@@ -9,6 +9,7 @@ import { LISTING_PARSER_VERSION, parseListingRequirements, requirementPersistenc
 import { normalizeJob } from "@/lib/jobs/normalize";
 import { persistNormalizedJob } from "@/lib/jobs/persistence";
 import { persistedDuplicateEdgeReason, stableNormalizedJobId } from "@/lib/matching/deduplication";
+import { hasDatabaseErrorCode } from "@/lib/matching/persistence-error";
 import { isSameOriginRequest } from "@/lib/security/origin";
 
 export const dynamic = "force-dynamic";
@@ -175,7 +176,10 @@ export async function POST(request: Request) {
     const { data: memberId, error: memberError } = await auth.admin.rpc("ap_persist_parsed_inventory_job", { p_criteria_snapshot_id: parsed.data.snapshotId, p_inventory_version_id: coveragePlan.inventory_version_id, p_stable_normalized_job_id: stableJobId, p_job_snapshot: snapshotRow, p_requirement_nodes: requirementNodes });
     if (memberError || !memberId) throw memberError || new Error("inventory_member_not_persisted");
     return NextResponse.json({ jobSnapshotId, inventoryMemberId: memberId, legacyJobId, parserStatus: parser.status, issues: parser.issues }, { status: parser.status === "COMPLETE" ? 201 : 202 });
-  } catch {
+  } catch (error) {
+    if (hasDatabaseErrorCode(error, "duplicate_inventory_job")) {
+      return NextResponse.json({ error: "The listing duplicates a current inventory member under the strong-identifier-or-fingerprint rule." }, { status: 409 });
+    }
     return NextResponse.json({ error: "The parsed listing snapshot could not be persisted." }, { status: 502 });
   }
 }

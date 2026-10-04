@@ -98,7 +98,7 @@ fails acceptance.
   current locked contract. The operator queue labels historical files as
   access-only and disables their approval and release actions. Commit
   `5b38407a4e8023e00ebee625f6925c265bdaee1a` is the minimum rollback target
-  after migrations 066 through 077, provided migrations 068 through 077 remain
+  after migrations 066 through 078, provided migrations 068 through 078 remain
   applied. `npm run test:rollback` rejects an `AP_ROLLBACK_TARGET_SHA` before
   that floor, missing any material-upload cleanup contract, or missing any
   customer source-upload cleanup path.
@@ -126,7 +126,7 @@ fails acceptance.
 
 - Lint: passed.
 - Type checking: passed.
-- Unit/integration suite: 86 files, 615 tests passed.
+- Unit/integration suite: 86 files, 616 tests passed.
 - Production build: passed on Next.js 16.3.8.
 - Production dependency audit: zero vulnerabilities.
 - Database contract fixtures: 14 passed.
@@ -135,11 +135,13 @@ fails acceptance.
   both atomic inventory admission RPCs use the same URL-set and strong-ID
   fallback policy under their inventory lock before feasibility can authorize
   checkout. Migration 077 refuses a historical selected-inventory conflict and
-  invalidates every pre-policy feasibility assessment and quote.
+  invalidates every pre-policy feasibility assessment and quote; migration 078
+  revokes affected invitations, returns held capacity, and requeues their
+  completed feasibility requests for a fresh assessment.
 - Database types: match the local migrated schema.
 - Historical-data upgrade fixture: passed.
 - Rollback-compatibility fixture: passed; the local schema replay and database
-  contract suite completed through all 82 migrations, including the
+  contract suite completed through all 83 migrations, including the
   content-bound legal receipt, rollback-compatibility, append-only legal-revision,
   and migration-074 reconciliation migrations. A dedicated forward-upgrade
   fixture proves an immutable 074 receipt reconciles and replays idempotently

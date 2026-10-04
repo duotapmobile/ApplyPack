@@ -10,6 +10,7 @@ import {
   SEARCH_PRICE_CENTS,
 } from "@/lib/domain/applypack";
 import { currentLegalContentBinding } from "@/lib/legal/content-hash";
+import { hasDatabaseErrorCode } from "@/lib/matching/persistence-error";
 import {
   APPROVED_ROLLBACK_LEGAL_CONTRACT,
   verifyRollbackLegalSource,
@@ -62,6 +63,7 @@ describe("October 2 manual-launch hardening", () => {
     const migration = source("supabase/migrations/202610040075_append_only_legal_acceptance_episodes.sql");
     const reconciliation = source("supabase/migrations/202610040076_reconcile_legacy_legal_acceptance_episodes.sql");
     const atomicInventoryIdentity = source("supabase/migrations/202610040077_atomic_inventory_identity_enforcement.sql");
+    const feasibilityRecovery = source("supabase/migrations/202610040078_requeue_identity_policy_feasibility.sql");
     expect(migration).toContain("drop constraint ap_snapshot_legal_acceptances_snapshot_id_key");
     expect(migration).toContain("drop constraint ap_snapshot_legal_content_receipts_snapshot_id_key");
     expect(migration).toContain("unique(snapshot_id,acceptance_sha256)");
@@ -80,6 +82,10 @@ describe("October 2 manual-launch hardening", () => {
     expect(atomicInventoryIdentity).toContain("array_remove(array[existing.canonical_employer_listing_url,existing.canonical_application_url],null)");
     expect(atomicInventoryIdentity).toContain("array_remove(array[other.canonical_employer_listing_url,other.canonical_application_url],null)");
     expect(atomicInventoryIdentity).toContain("selected_inventory_identity_conflict_requires_successor_inventory");
+    expect(feasibilityRecovery).toContain("set revoked_at=policy_at");
+    expect(feasibilityRecovery).toContain("set state='PENDING'");
+    expect(feasibilityRecovery).toContain("completed_assessment_id=null");
+    expect(feasibilityRecovery).toContain("REQUEUE_IDENTITY_POLICY_FEASIBILITY");
     expect(source("scripts/run-supabase-legal-upgrade-test.mjs"))
       .toContain('"--version", "202610040074"');
     expect(source("tests/integration/legal-receipt-076-verify.sql"))
@@ -91,6 +97,15 @@ describe("October 2 manual-launch hardening", () => {
     expect(rollback).toContain("APPROVED_ROLLBACK_LEGAL_CONTRACT.termsContentSha256");
     expect(rollback).toContain("APPROVED_ROLLBACK_LEGAL_CONTRACT.privacyContentSha256");
     expect(rollback).toContain("APPROVED_ROLLBACK_LEGAL_CONTRACT.acceptanceCopySha256");
+  });
+
+  it("maps an atomic duplicate race to an operator conflict without exposing other database errors", () => {
+    expect(hasDatabaseErrorCode({ message: "duplicate_inventory_job" }, "duplicate_inventory_job")).toBe(true);
+    expect(hasDatabaseErrorCode(new Error("duplicate_inventory_job"), "duplicate_inventory_job")).toBe(true);
+    expect(hasDatabaseErrorCode({ message: "connection failed" }, "duplicate_inventory_job")).toBe(false);
+    const route = source("src/app/api/admin/jobs/route.ts");
+    expect(route).toContain('hasDatabaseErrorCode(error, "duplicate_inventory_job")');
+    expect(route).toContain("{ status: 409 }");
   });
 
   it("uses new immutable price contracts while naming the historical contracts", () => {

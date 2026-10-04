@@ -233,6 +233,11 @@ select case when
       and checkpoint='ATOMIC_INVENTORY_IDENTITY_ENFORCEMENT'
   )
   and exists (
+    select 1 from public.ap_migration_checkpoints
+    where migration_id='202610040078'
+      and checkpoint='REQUEUE_IDENTITY_POLICY_FEASIBILITY'
+  )
+  and exists (
     select 1 from pg_proc procedure
     join pg_namespace namespace on namespace.oid=procedure.pronamespace
     where namespace.nspname='public'
