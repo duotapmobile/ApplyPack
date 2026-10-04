@@ -480,16 +480,21 @@ async function validateUploadAndRegister(input: {
     sizeBytes: input.artifact.buffer.byteLength,
     mimeType: DOCX_MIME,
   };
-  const cleanupIntent = await input.admin.from("storage_cleanup_queue").upsert({
-    bucket: editableSource.storageBucket,
-    storage_path: editableSource.storagePath,
-    reason: "material_editable_source_upload_intent",
+  const uploadCleanup = [
+    { storageBucket: editableSource.storageBucket, storagePath: editableSource.storagePath },
+    { storageBucket: "operator-render-previews" as const, storagePath: previewPath },
+    { storageBucket: "customer-deliveries" as const, storagePath },
+  ];
+  const cleanupIntent = await input.admin.from("storage_cleanup_queue").upsert(uploadCleanup.map((upload) => ({
+    bucket: upload.storageBucket,
+    storage_path: upload.storagePath,
+    reason: "material_sensitive_upload_intent",
     attempts: 0,
     last_error: null,
     last_attempt_at: null,
     not_before: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
-  }, { onConflict: "bucket,storage_path" });
-  if (cleanupIntent.error) throw new Error("editable_source_cleanup_intent_failed");
+  })), { onConflict: "bucket,storage_path" });
+  if (cleanupIntent.error) throw new Error("sensitive_upload_cleanup_intent_failed");
   const sourceUpload = await input.admin.storage.from(editableSource.storageBucket).upload(
     editableSource.storagePath,
     input.artifact.buffer,
@@ -502,7 +507,9 @@ async function validateUploadAndRegister(input: {
     upsert: false,
   });
   if (previewUpload.error) {
-    await removeEditableSourceOrQueue(input.admin, editableSource.storagePath, "material_preview_upload_failed");
+    await Promise.all(uploadCleanup.map((upload) => removeSensitiveUploadOrQueue(
+      input.admin, upload, "material_preview_upload_failed",
+    )));
     throw previewUpload.error;
   }
   const artifactUpload = await input.admin.storage.from("customer-deliveries").upload(storagePath, bytes, {
@@ -511,10 +518,9 @@ async function validateUploadAndRegister(input: {
     upsert: false,
   });
   if (artifactUpload.error) {
-    await Promise.all([
-      input.admin.storage.from("operator-render-previews").remove([previewPath]),
-      removeEditableSourceOrQueue(input.admin, editableSource.storagePath, "material_delivery_upload_failed"),
-    ]);
+    await Promise.all(uploadCleanup.map((upload) => removeSensitiveUploadOrQueue(
+      input.admin, upload, "material_delivery_upload_failed",
+    )));
     throw artifactUpload.error;
   }
   const structuralChecks = {
@@ -573,7 +579,7 @@ async function validateUploadAndRegister(input: {
     p_job_snapshot_id: input.jobSnapshotId,
     p_reference_regeneration_id: input.regenerationId,
     p_reference_permission_ids: input.permissionIds,
-    p_claim_provenance: { ...input.artifact.provenance, editableSource },
+    p_claim_provenance: { ...input.artifact.provenance, editableSource, uploadCleanup },
     p_generator_version: input.artifact.provenance.generatorVersion,
     p_storage_bucket: "customer-deliveries",
     p_storage_path: storagePath,
@@ -597,11 +603,9 @@ async function validateUploadAndRegister(input: {
     p_arial_resolved: render.documentFontResolved,
   });
   if (registered.error || !registered.data) {
-    await Promise.all([
-      input.admin.storage.from("operator-render-previews").remove([previewPath]),
-      input.admin.storage.from("customer-deliveries").remove([storagePath]),
-      removeEditableSourceOrQueue(input.admin, editableSource.storagePath, "material_registration_failed"),
-    ]);
+    await Promise.all(uploadCleanup.map((upload) => removeSensitiveUploadOrQueue(
+      input.admin, upload, "material_registration_failed",
+    )));
     throw registered.error || new Error("artifact_registration_failed");
   }
   if (bytes !== input.artifact.buffer) bytes.fill(0);
@@ -610,17 +614,26 @@ async function validateUploadAndRegister(input: {
   return registered.data;
 }
 
-async function removeEditableSourceOrQueue(admin: AdminClient, storagePath: string, reason: string) {
-  const removal = await admin.storage.from("operator-drafts").remove([storagePath]);
-  if (!removal.error) return;
+async function removeSensitiveUploadOrQueue(
+  admin: AdminClient,
+  upload: { storageBucket: "operator-drafts" | "operator-render-previews" | "customer-deliveries"; storagePath: string },
+  reason: string,
+) {
+  const removal = await admin.storage.from(upload.storageBucket).remove([upload.storagePath]);
+  if (!removal.error) {
+    const cleared = await admin.from("storage_cleanup_queue").delete()
+      .eq("bucket", upload.storageBucket).eq("storage_path", upload.storagePath);
+    if (cleared.error) throw new Error("sensitive_upload_cleanup_intent_clear_failed");
+    return;
+  }
   const queued = await admin.from("storage_cleanup_queue").upsert({
-    bucket: "operator-drafts",
-    storage_path: storagePath,
+    bucket: upload.storageBucket,
+    storage_path: upload.storagePath,
     reason,
     last_error: "storage_remove_failed",
     not_before: new Date().toISOString(),
   }, { onConflict: "bucket,storage_path" });
-  if (queued.error) throw new Error("editable_source_cleanup_queue_failed");
+  if (queued.error) throw new Error("sensitive_upload_cleanup_queue_failed");
 }
 
 function sentenceFactIds(value: { candidateFactIds: string[]; jobEvidenceIds: string[] }, key: "candidateFactIds" | "jobEvidenceIds") {

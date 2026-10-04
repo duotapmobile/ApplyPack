@@ -7,6 +7,25 @@ select pg_temp.assert_true(exists(
   select 1 from public.ap_migration_checkpoints
   where migration_id='202610030069' and checkpoint='DURABLE_DELIVERED_DOCUMENT_ACCESS'
 ),'durable delivered document access checkpoint missing');
+select pg_temp.assert_true(exists(
+  select 1 from public.ap_migration_checkpoints
+  where migration_id='202610030070' and checkpoint='ALL_SENSITIVE_UPLOAD_CLEANUP_INTENTS'
+),'all-sensitive-upload cleanup checkpoint missing');
+select pg_temp.assert_true(
+  exists(
+    select 1
+    from pg_constraint constraint_record
+    join pg_class table_record on table_record.oid = constraint_record.conrelid
+    join pg_namespace schema_record on schema_record.oid = table_record.relnamespace
+    where schema_record.nspname = 'public'
+      and table_record.relname = 'storage_cleanup_queue'
+      and constraint_record.conname = 'storage_cleanup_queue_bucket_check'
+      and position(
+        'operator-render-previews' in pg_get_constraintdef(constraint_record.oid)
+      ) > 0
+  ),
+  'render-preview cleanup bucket is not allowed'
+);
 
 do $$
 declare registration text; source_guard_definition text; current_definition text; supported_definition text;

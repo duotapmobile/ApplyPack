@@ -133,6 +133,7 @@ describe("October 2 manual-launch hardening", () => {
     const documentCompatibility = source("supabase/migrations/202610030067_document_source_and_rollback_compatibility.sql");
     const accessOnlyCompatibility = source("supabase/migrations/202610030068_historical_document_access_only.sql");
     const durableDocumentAccess = source("supabase/migrations/202610030069_durable_delivered_document_access.sql");
+    const sensitiveUploadCleanup = source("supabase/migrations/202610030070_all_sensitive_upload_cleanup_intents.sql");
     expect(kms).toContain('environment.APP_DEPLOYMENT_ENV === "production"');
     expect(kms).toContain('environment.APP_KMS_PROVIDER !== "aws"');
     expect(worker).toContain('region === "us-east-1"');
@@ -159,12 +160,14 @@ describe("October 2 manual-launch hardening", () => {
     expect(generation).not.toContain("renderDocumentLocallyForQa");
     expect(generation).toContain('storageBucket: "operator-drafts"');
     expect(generation).toContain("editableSourcePath");
-    expect(generation).toContain("p_claim_provenance: { ...input.artifact.provenance, editableSource }");
+    expect(generation).toContain("p_claim_provenance: { ...input.artifact.provenance, editableSource, uploadCleanup }");
     expect(generation).toContain('admin.from("storage_cleanup_queue").upsert');
-    expect(generation).toContain('bucket: "operator-drafts"');
-    expect(generation).toContain('reason: "material_editable_source_upload_intent"');
-    expect(generation).toContain("editable_source_cleanup_intent_failed");
-    expect(generation).toContain("editable_source_cleanup_queue_failed");
+    expect(generation).toContain("bucket: upload.storageBucket");
+    expect(generation).toContain('reason: "material_sensitive_upload_intent"');
+    expect(generation).toContain('storageBucket: "operator-render-previews"');
+    expect(generation).toContain('storageBucket: "customer-deliveries"');
+    expect(generation).toContain("sensitive_upload_cleanup_intent_failed");
+    expect(generation).toContain("sensitive_upload_cleanup_queue_failed");
     const handler = source("infra/aws/document-worker/handler.py");
     expect(handler).toContain('operation == "render-docx"');
     expect(handler).toContain('operation == "probe-document"');
@@ -197,6 +200,12 @@ describe("October 2 manual-launch hardening", () => {
     expect(durableDocumentAccess).toContain("ap_current_source_verifications(artifact.job_snapshot_id)");
     expect(durableDocumentAccess).toContain("not exists(select 1 from public.ap_release_members member");
     expect(durableDocumentAccess).toContain("ap_registered_editable_source_cleanup");
+    expect(sensitiveUploadCleanup).toContain("ALL_SENSITIVE_UPLOAD_CLEANUP_INTENTS");
+    expect(sensitiveUploadCleanup).toContain("'operator-render-previews'");
+    expect(sensitiveUploadCleanup).toContain("claim_provenance->'uploadCleanup'");
+    expect(sensitiveUploadCleanup).toContain("ap_invalidate_materials_for_job_content_change");
+    expect(sensitiveUploadCleanup).toContain("ap_invalidate_materials_for_job_successor");
+    expect(sensitiveUploadCleanup).toContain("not exists(select 1 from public.ap_release_members member");
     expect(documentCompatibility.indexOf("pg_advisory_xact_lock"))
       .toBeLessThan(documentCompatibility.indexOf("where resource=resource_value and enabled for update"));
   });

@@ -75,7 +75,13 @@ fails acceptance.
   published migration is rewritten by the final change. Forward migration
   `202610030069_durable_delivered_document_access.sql` keeps the 24-hour source
   freshness rule on approval and release without turning it into an implicit
-  expiration clock for an otherwise valid paid delivery.
+  expiration clock for an otherwise valid paid delivery. Forward migration
+  `202610030070_all_sensitive_upload_cleanup_intents.sql` extends crash-safe
+  cleanup to the editable DOCX, rendered preview PDF, and final delivery upload,
+  and keeps an ordinary employer listing edit from clawing back a paid file that
+  was already released. Both the canonical-content update and its immutable
+  successor snapshot preserve delivered access. Listing changes still
+  invalidate approval and block any new release against stale source evidence.
 - The isolated worker is capped at 512 MiB in both infrastructure and runtime
   validation. The AWS budget defaults on and requires both launch-alert email
   recipients.
@@ -85,13 +91,13 @@ fails acceptance.
   current locked contract. The operator queue labels historical files as
   access-only and disables their approval and release actions. Commit
   `d61331eb951a34a7a23fb33e51d319d0ed2283fc` is the minimum rollback target
-  after migrations 066, 067, 068, or 069, provided migrations 068 and 069
-  remain applied.
+  after migrations 066, 067, 068, 069, or 070, provided migrations 068 through
+  070 remain applied.
 - Failed deletion of a private editable source is inserted into the existing
   maintenance cleanup queue; a queueing failure is surfaced instead of being
   silently discarded. A delayed cleanup intent is now written before upload and
   cleared transactionally by artifact registration, so a process crash cannot
-  leave an untracked private DOCX indefinitely.
+  leave an untracked editable DOCX, preview PDF, or delivery file indefinitely.
 
 ## Local acceptance evidence
 
@@ -103,7 +109,7 @@ fails acceptance.
 - Database contract fixtures: 12 passed.
 - Database types: match the local migrated schema.
 - Historical-data upgrade fixture: passed.
-- Rollback-compatibility fixture: passed; local schema restored through all 74
+- Rollback-compatibility fixture: passed; local schema restored through all 75
   migrations.
 - Browser matrix on the preceding document-alignment commit: 301 passed, 24
   intentional project-specific skips, zero failures across desktop Chromium,

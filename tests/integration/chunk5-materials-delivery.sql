@@ -256,9 +256,16 @@ values('65000000-0000-4000-8000-000000000001','15000000-0000-4000-8000-000000000
   '45000000-0000-4000-8000-000000000001','fixture.responsibility','RESPONSIBILITY','{"activity":"Maintained records"}',
   'CUSTOMER_ASSERTION','45000000-0000-4000-8000-000000000001','fixture','fixture','CUSTOMER_CONFIRMED','fixture-v1','fixture-v1');
 insert into public.storage_cleanup_queue(bucket,storage_path,reason,not_before)
-values('operator-drafts',
-  '15000000-0000-4000-8000-000000000001/materials/b5000000-0000-4000-8000-000000000001/f5000000-0000-4000-8000-000000000001/editable-source/Chunk_5_Fixture_Employer_Operations_Specialist_Resume.docx',
-  'material_editable_source_upload_intent',clock_timestamp()+interval '1 hour');
+values
+  ('operator-drafts',
+    '15000000-0000-4000-8000-000000000001/materials/b5000000-0000-4000-8000-000000000001/f5000000-0000-4000-8000-000000000001/editable-source/Chunk_5_Fixture_Employer_Operations_Specialist_Resume.docx',
+    'material_sensitive_upload_intent',clock_timestamp()+interval '1 hour'),
+  ('operator-render-previews',
+    '15000000-0000-4000-8000-000000000001/materials/b5000000-0000-4000-8000-000000000001/f5000000-0000-4000-8000-000000000001/render-preview.pdf',
+    'material_sensitive_upload_intent',clock_timestamp()+interval '1 hour'),
+  ('customer-deliveries',
+    '15000000-0000-4000-8000-000000000001/materials/b5000000-0000-4000-8000-000000000001/f5000000-0000-4000-8000-000000000001/resume.pdf',
+    'material_sensitive_upload_intent',clock_timestamp()+interval '1 hour');
 insert into public.ap_generated_artifacts(
   id,customer_id,order_id,material_line_id,job_snapshot_id,artifact_type,source_snapshot_id,
   source_line_revision_id,claim_provenance,generator_version,current_file_version
@@ -267,11 +274,11 @@ insert into public.ap_generated_artifacts(
   '25000000-0000-4000-8000-000000000001','b5000000-0000-4000-8000-000000000001',
   '75000000-0000-4000-8000-000000000001','RESUME',
   '45000000-0000-4000-8000-000000000001','c5000000-0000-4000-8000-000000000001',
-  '{"sourceBinding":{"candidateFactIds":["65000000-0000-4000-8000-000000000001"]},"claims":[{"source":"customer-confirmed"}],"editableSource":{"storageBucket":"operator-drafts","storagePath":"15000000-0000-4000-8000-000000000001/materials/b5000000-0000-4000-8000-000000000001/f5000000-0000-4000-8000-000000000001/editable-source/Chunk_5_Fixture_Employer_Operations_Specialist_Resume.docx","safeFilename":"Chunk_5_Fixture_Employer_Operations_Specialist_Resume.docx","checksumSha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","sizeBytes":4096,"mimeType":"application/vnd.openxmlformats-officedocument.wordprocessingml.document"}}','applypack-documents|instructions=applypack-universal-document-standard-2026-10-03.1|standardSha256=1d85789d434c0252d1797e366cd732931756fd4baa74bc36045fdeb2547786cf|content=applypack-content-2026-10-03.1|template=applypack-template-2026-10-03.1|exporter=libreoffice-tagged-pdf-2026-10-03.1',1
+  '{"sourceBinding":{"candidateFactIds":["65000000-0000-4000-8000-000000000001"]},"claims":[{"source":"customer-confirmed"}],"editableSource":{"storageBucket":"operator-drafts","storagePath":"15000000-0000-4000-8000-000000000001/materials/b5000000-0000-4000-8000-000000000001/f5000000-0000-4000-8000-000000000001/editable-source/Chunk_5_Fixture_Employer_Operations_Specialist_Resume.docx","safeFilename":"Chunk_5_Fixture_Employer_Operations_Specialist_Resume.docx","checksumSha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","sizeBytes":4096,"mimeType":"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},"uploadCleanup":[{"storageBucket":"operator-drafts","storagePath":"15000000-0000-4000-8000-000000000001/materials/b5000000-0000-4000-8000-000000000001/f5000000-0000-4000-8000-000000000001/editable-source/Chunk_5_Fixture_Employer_Operations_Specialist_Resume.docx"},{"storageBucket":"operator-render-previews","storagePath":"15000000-0000-4000-8000-000000000001/materials/b5000000-0000-4000-8000-000000000001/f5000000-0000-4000-8000-000000000001/render-preview.pdf"},{"storageBucket":"customer-deliveries","storagePath":"15000000-0000-4000-8000-000000000001/materials/b5000000-0000-4000-8000-000000000001/f5000000-0000-4000-8000-000000000001/resume.pdf"}]}','applypack-documents|instructions=applypack-universal-document-standard-2026-10-03.1|standardSha256=1d85789d434c0252d1797e366cd732931756fd4baa74bc36045fdeb2547786cf|content=applypack-content-2026-10-03.1|template=applypack-template-2026-10-03.1|exporter=libreoffice-tagged-pdf-2026-10-03.1',1
 );
 select pg_temp.assert_true(not exists(select 1 from public.storage_cleanup_queue
-  where bucket='operator-drafts' and reason='material_editable_source_upload_intent'),
-  'registered editable source retained a crash-recovery cleanup intent');
+  where reason='material_sensitive_upload_intent'),
+  'registered material retained a sensitive-upload crash-recovery cleanup intent');
 do $$
 begin
   begin
@@ -282,6 +289,19 @@ begin
   exception when others then
     if sqlerrm='malformed_editable_source_accepted' then raise; end if;
     if sqlerrm not like '%locked_editable_document_source_required%' then raise; end if;
+  end;
+end $$;
+do $$
+begin
+  begin
+    update public.ap_generated_artifacts
+    set claim_provenance=jsonb_set(claim_provenance,'{uploadCleanup,2,storagePath}',
+      '"25000000-0000-4000-8000-000000000001/materials/b5000000-0000-4000-8000-000000000001/f5000000-0000-4000-8000-000000000001/resume.pdf"'::jsonb)
+    where id='e5000000-0000-4000-8000-000000000001';
+    raise exception 'cross_tenant_cleanup_path_accepted';
+  exception when others then
+    if sqlerrm='cross_tenant_cleanup_path_accepted' then raise; end if;
+    if sqlerrm not like '%material_upload_cleanup_path_invalid%' then raise; end if;
   end;
 end $$;
 insert into public.ap_generated_file_versions(
@@ -559,17 +579,19 @@ select pg_temp.assert_true(
 update public.jobs set content_hash=repeat('f',64)
 where id='65000000-0000-4000-8000-000000000001';
 select pg_temp.assert_true(
-  (select downloads_revoked_at is not null from public.ap_generated_file_versions where id='f5000000-0000-4000-8000-000000000001')
+  (select downloads_revoked_at is null from public.ap_generated_file_versions where id='f5000000-0000-4000-8000-000000000001')
     and (select invalidated_at is not null from public.ap_artifact_quality_reviews where id='aa500000-0000-4000-8000-000000000001')
     and exists(select 1 from public.ap_releases where id='ab500000-0000-4000-8000-000000000001'),
-  'changed job content must revoke all linked file approvals while preserving release history');
-do $$ begin
-  perform public.ap_authorize_material_download('15000000-0000-4000-8000-000000000001',
+  'changed job content must preserve delivered download while invalidating approval');
+do $$
+declare result_value jsonb;
+begin
+  result_value:=public.ap_authorize_material_download('15000000-0000-4000-8000-000000000001',
     'e5000000-0000-4000-8000-000000000001','f5000000-0000-4000-8000-000000000001',clock_timestamp()-interval '1 second');
-  raise exception 'changed_job_content_download_accepted';
-exception when raise_exception then
-  if sqlerrm<>'material_download_unavailable' then raise; end if;
-end $$;
+  perform pg_temp.assert_true(result_value->>'path'='customers/15000000/materials/resume-v1.docx',
+    'ordinary job-content change clawed back a paid delivered document');
+end;
+$$;
 do $$ begin
   perform public.ap_assert_current_artifact_facts('e5000000-0000-4000-8000-000000000001');
   raise exception 'invalidated_job_snapshot_dependency_accepted';
@@ -613,17 +635,19 @@ select (jsonb_populate_record(null::public.ap_job_snapshots,to_jsonb(original)||
   'content_sha256',repeat('9',64)))).*
 from public.ap_job_snapshots original where original.id='75000000-0000-4000-8000-000000000001';
 select pg_temp.assert_true(
-  (select downloads_revoked_at is not null from public.ap_generated_file_versions where id='f5000000-0000-4000-8000-000000000001')
+  (select downloads_revoked_at is null from public.ap_generated_file_versions where id='f5000000-0000-4000-8000-000000000001')
     and (select invalidated_at is not null from public.ap_artifact_quality_reviews where id='aa500000-0000-4000-8000-000000000001')
     and exists(select 1 from public.ap_releases where id='ab500000-0000-4000-8000-000000000001'),
-  'job replacement must revoke file and approval while preserving the historical release');
-do $$ begin
-  perform public.ap_authorize_material_download('15000000-0000-4000-8000-000000000001',
+  'job replacement must preserve delivered download while invalidating approval');
+do $$
+declare result_value jsonb;
+begin
+  result_value:=public.ap_authorize_material_download('15000000-0000-4000-8000-000000000001',
     'e5000000-0000-4000-8000-000000000001','f5000000-0000-4000-8000-000000000001',clock_timestamp()-interval '1 second');
-  raise exception 'superseded_job_download_accepted';
-exception when raise_exception then
-  if sqlerrm<>'material_download_unavailable' then raise; end if;
-end $$;
+  perform pg_temp.assert_true(result_value->>'path'='customers/15000000/materials/resume-v1.docx',
+    'job snapshot successor clawed back a paid delivered document');
+end;
+$$;
 do $$ begin
   perform public.ap_assert_current_artifact_facts('e5000000-0000-4000-8000-000000000001');
   raise exception 'superseded_job_dependency_accepted';
