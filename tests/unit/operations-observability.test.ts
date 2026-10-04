@@ -458,7 +458,8 @@ describe("operations route contract", () => {
     expect(operations).toContain(`.select("not_before").in("status", ["queued", "failed"])`);
     expect(operations).toContain(`.lte("not_before", nowIso)`);
     expect(operations).toContain(`count("storage_cleanup_queue").gte("attempts", 20)`);
-    expect(cron).toContain('return fail("STORAGE_CLEANUP_DEAD_LETTER"');
+    expect(cron).toContain("storageCleanupDeadLettered");
+    expect(cron).not.toContain('return fail("STORAGE_CLEANUP_DEAD_LETTER"');
     expect(operations).not.toContain(`.select("created_at").in("status", ["queued", "processing", "awaiting_review"`);
   });
 });

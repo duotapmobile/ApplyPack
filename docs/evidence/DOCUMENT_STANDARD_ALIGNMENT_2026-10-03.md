@@ -108,7 +108,9 @@ fails acceptance.
   a persistent critical dead-letter condition. Maintenance returns HTTP 503,
   launch health remains false, and the sanitized admin operations summary keeps
   the pending and dead-letter counts visible until an operator removes the
-  object and resolves the queue row.
+  object and resolves the queue row. The maintenance pass still runs independent
+  document, workflow, payment, webhook, and refund reconciliation so a cleanup
+  dead letter cannot starve existing paid obligations.
 
 ## Local acceptance evidence
 

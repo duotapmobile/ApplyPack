@@ -149,7 +149,7 @@ describe("maintenance authorization and independent queues", () => {
     expect(dependencies.processWorkflowTasks).toHaveBeenCalledOnce();
     expect(dependencies.reconcileBoardSubscriptions).toHaveBeenCalledOnce();
   });
-  it("keeps exhausted sensitive-storage cleanup visible as a critical maintenance failure", async () => {
+  it("keeps exhausted cleanup critical while continuing independent paid-obligation processors", async () => {
     const from = vi.fn((table: string) => {
       const chain = query();
       if (table === "storage_cleanup_queue") {
@@ -169,15 +169,18 @@ describe("maintenance authorization and independent queues", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({ code: "STORAGE_CLEANUP_DEAD_LETTER" });
-    expect(dependencies.recordMaintenanceFailure).toHaveBeenCalledWith(
+    expect(dependencies.recordMaintenanceFailure).not.toHaveBeenCalled();
+    expect(dependencies.recordMaintenanceOutcome).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
-      "STORAGE_CLEANUP_DEAD_LETTER",
+      expect.anything(),
       expect.arrayContaining([{ code: "EXPIRATION_CLEANUP", status: "FAILED" }]),
       expect.any(Date),
+      [],
     );
-    expect(dependencies.processPendingDocumentExtractions).not.toHaveBeenCalled();
+    expect(dependencies.processPendingDocumentExtractions).toHaveBeenCalledOnce();
+    expect(dependencies.processWorkflowTasks).toHaveBeenCalledOnce();
+    expect(dependencies.reconcileBoardSubscriptions).toHaveBeenCalledOnce();
   });
   it("records a diagnosis failure without invoking processors", async () => {
     dependencies.collectOperationsSummary.mockRejectedValue(new Error("provider secret"));
