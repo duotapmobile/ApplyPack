@@ -57,12 +57,13 @@ export function documentRendererConfiguration(environment: Partial<NodeJS.Proces
   };
   const documentFont = tool("APP_DOCUMENT_FONT_FILE", "APP_DOCUMENT_FONT_FILE_SHA256");
   const identity = environment.APP_DOCUMENT_RENDERER_IDENTITY?.trim() || "";
+  const discoveryFailed = environment.APP_RENDERER_RUNTIME_DISCOVERY_FAILED === "true";
   const values = Object.values(tools);
   return {
     identity,
     tools,
     documentFont,
-    ready: identity.length >= 3
+    ready: !discoveryFailed && identity.length >= 3
       && values.every((value) => isAbsolute(value.path) && SHA256.test(value.sha256))
       && isAbsolute(documentFont.path) && SHA256.test(documentFont.sha256),
   } as const;

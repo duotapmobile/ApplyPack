@@ -24,7 +24,8 @@ export function documentWorkerConfiguration(environment: Environment = process.e
   const fontSha256 = environment.APP_DOCUMENT_WORKER_FONT_SHA256?.trim().toLowerCase();
   const imageDigest = environment.APP_DOCUMENT_WORKER_IMAGE_DIGEST?.trim().toLowerCase();
   const networkAttestationSha256 = environment.APP_DOCUMENT_WORKER_NETWORK_ATTESTATION_SHA256?.trim().toLowerCase();
-  const ready = Boolean(region === "us-east-1" && functionArn && VERSION_ARN.test(functionArn) && bucket
+  const discoveryFailed = environment.APP_RENDERER_RUNTIME_DISCOVERY_FAILED === "true";
+  const ready = Boolean(!discoveryFailed && region === "us-east-1" && functionArn && VERSION_ARN.test(functionArn) && bucket
     && identity === "applypack-document-worker-v1" && fontSha256 && SHA256.test(fontSha256)
     && imageDigest && SHA256.test(imageDigest) && networkAttestationSha256 && SHA256.test(networkAttestationSha256));
   return { region, functionArn, bucket, identity, fontSha256, imageDigest, networkAttestationSha256, ready };

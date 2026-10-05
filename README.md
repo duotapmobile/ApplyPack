@@ -105,7 +105,7 @@ It expires abandoned reservations, deletes source documents whose retention date
 
 ## Health
 
-`GET /api/health` returns HTTP 200 only when the production origin, provider variables, cron secret, and live database capacity rows are present. Railway uses this as a deployment readiness check; continuous uptime monitoring must be configured separately.
+`GET /api/live` is Railway's dependency-independent process healthcheck. `GET /api/health` returns HTTP 200 only when the production origin, provider variables, cron secret, document processing, and live database capacity rows are ready. Monitor readiness separately and keep checkout locked whenever it returns HTTP 503.
 
 ## Repository
 

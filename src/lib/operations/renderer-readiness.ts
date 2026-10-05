@@ -42,6 +42,7 @@ export async function rendererFilesMatch(runtime: Renderer) {
 }
 
 export async function checkDocumentRendererReadiness(admin: AdminClient) {
+  if (process.env.APP_RENDERER_RUNTIME_DISCOVERY_FAILED === "true") return false;
   const runtime = documentRendererConfiguration();
   const result = await admin.from("ap_commerce_configuration")
     .select("materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_family,document_font_sha256,document_safety_policy,document_worker_network_attestation_sha256")

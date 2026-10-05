@@ -193,6 +193,8 @@ describe("October 2 manual-launch hardening", () => {
   it("separates healthy infrastructure from accepting orders and excludes dormant board commerce", () => {
     const health = source("src/app/api/health/route.ts");
     const readiness = source("src/lib/operations/launch-readiness.ts");
+    const rendererReadiness = source("src/lib/operations/renderer-readiness.ts");
+    const railway = JSON.parse(source("railway.json")) as { deploy?: { healthcheckPath?: string } };
     expect(health).toContain("commerceConfigured: infrastructure.commerceConfigured");
     expect(health).toContain("manualLaunchCheckoutGate(admin, infrastructure)");
     expect(health).not.toContain("STRIPE_JOB_BOARD");
@@ -205,6 +207,8 @@ describe("October 2 manual-launch hardening", () => {
     expect(readiness.match(/!infrastructure\.ready/g)).toHaveLength(2);
     expect(health).toContain("{ status: infrastructure.ready ? 200 : 503");
     expect(source("src/app/api/live/route.ts")).toContain('status: "ok"');
+    expect(rendererReadiness).toContain('APP_RENDERER_RUNTIME_DISCOVERY_FAILED === "true"');
+    expect(railway.deploy?.healthcheckPath).toBe("/api/live");
     const maintenance = source("src/app/api/cron/maintenance/route.ts");
     expect(maintenance).toContain('APP_LEGACY_BOARD_MAINTENANCE_ENABLED === "true"');
     expect(maintenance).toContain('rpc("ap_ensure_manual_launch_capacity_rollover")');
