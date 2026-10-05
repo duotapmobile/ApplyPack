@@ -19,6 +19,14 @@ const canonicalDnsHostname = (value) => {
   return hostname;
 };
 
+export function environmentWithoutPreflightSecrets(environment) {
+  return Object.fromEntries(
+    Object.entries(environment).filter(
+      ([key]) => !key.toUpperCase().startsWith("AP_PREMIGRATION_"),
+    ),
+  );
+}
+
 export function validateAndCanonicalizePreflightConnection({
   uri,
   expectedHost,

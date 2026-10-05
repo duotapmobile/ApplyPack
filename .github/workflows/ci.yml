@@ -76,31 +76,47 @@ jobs:
           cat tests/integration/historical-preservation-assertions.sql | docker exec -i supabase_db_applypack psql -U postgres -d postgres -v ON_ERROR_STOP=1
 
   document-render:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      APPLYPACK_LIBREOFFICE_PACKAGE_VERSION: '26.2.6'
+      APPLYPACK_POPPLER_PACKAGE_VERSION: '26.9.0'
+      APPLYPACK_EXPECTED_LIBREOFFICE_VERSION: '26.2.6'
+      APPLYPACK_EXPECTED_POPPLER_VERSION: '26.9.0'
+      APP_DOCUMENT_RENDERER_IDENTITY: 'applypack-windows-ci-lo-26.2.6-poppler-26.9.0'
+      APPLYPACK_RENDER_EVIDENCE_DIR: ${{ runner.temp }}\applypack-chunk5-render-ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: sudo apt-get update && sudo apt-get install -y libreoffice-writer fonts-liberation fontconfig poppler-utils
+      - name: Provision pinned Windows document tools
+        shell: pwsh
+        run: |
+          choco install libreoffice-fresh --version=$env:APPLYPACK_LIBREOFFICE_PACKAGE_VERSION --source=https://community.chocolatey.org/api/v2/ --yes --no-progress --limit-output
+          if ($LASTEXITCODE -ne 0) { throw "Pinned LibreOffice installation failed with exit code $LASTEXITCODE." }
+          choco install poppler --version=$env:APPLYPACK_POPPLER_PACKAGE_VERSION --source=https://community.chocolatey.org/api/v2/ --yes --no-progress --limit-output
+          if ($LASTEXITCODE -ne 0) { throw "Pinned Poppler installation failed with exit code $LASTEXITCODE." }
+          $popplerTools = @('pdfinfo.exe', 'pdffonts.exe', 'pdftotext.exe', 'pdftoppm.exe')
+          $toolsRoot = if ($env:ChocolateyToolsLocation) { $env:ChocolateyToolsLocation } else { 'C:\tools' }
+          $searchRoots = @($toolsRoot, (Join-Path $env:ChocolateyInstall 'lib\poppler')) | Where-Object { Test-Path -LiteralPath $_ }
+          $popplerBin = Get-ChildItem -LiteralPath $searchRoots -Filter pdfinfo.exe -File -Recurse |
+            ForEach-Object { $_.Directory.FullName } |
+            Where-Object {
+              $directory = $_
+              ($popplerTools | Where-Object { !(Test-Path -LiteralPath (Join-Path $directory $_) -PathType Leaf) }).Count -eq 0
+            } |
+            Select-Object -First 1
+          if (!$popplerBin) { throw 'Pinned Poppler binary directory was not found.' }
+          "APPLYPACK_POPPLER_BIN=$popplerBin" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - run: npm ci
-      - run: node --test scripts/test-renderer-runtime.test.mjs
       - name: Render actual DOCX files and verify PDF outputs
-        env:
-          APP_RENDERER_RUNTIME_DISCOVERY: 'true'
-          APPLYPACK_RENDER_EVIDENCE_DIR: ${{ runner.temp }}/applypack-chunk5-render-ci
-        run: >-
-          node --input-type=module -e
-          "import {configureRendererRuntime} from './scripts/configure-renderer-runtime.mjs';
-          import {spawnSync} from 'node:child_process';
-          configureRendererRuntime();
-          const result=spawnSync(process.execPath,['node_modules/vitest/vitest.mjs','run','--config','vitest.render.config.mts'],{stdio:'inherit',env:process.env});
-          process.exit(result.status ?? 1);"
+        shell: pwsh
+        run: .\scripts\test-document-render-windows.ps1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: document-render-evidence
-          path: ${{ runner.temp }}/applypack-chunk5-render-ci
+          path: ${{ env.APPLYPACK_RENDER_EVIDENCE_DIR }}
           if-no-files-found: warn

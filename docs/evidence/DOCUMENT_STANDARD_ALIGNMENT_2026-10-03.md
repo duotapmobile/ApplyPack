@@ -128,7 +128,7 @@ fails acceptance.
 
 - Lint: passed.
 - Type checking: passed.
-- Unit/integration suite: 86 files, 619 tests passed.
+- Unit/integration suite: 86 files, 621 tests passed.
 - Production build: passed on Next.js 16.3.8.
 - Production dependency audit: zero vulnerabilities.
 - Database contract fixtures: 14 passed.
@@ -181,6 +181,12 @@ fails acceptance.
   PDFs, exact extracted text, metadata, structure trees, and visual page review
   passed. Arial file SHA-256:
   `b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a`.
+- The CI real-render job now runs only on Windows with Windows-bundled Arial,
+  exact Chocolatey package versions for LibreOffice and Poppler, executable
+  hashes measured by the strict Windows harness, and a CI-specific renderer
+  identity. It uploads the same absolute evidence directory consumed by the
+  render test. Workflow guards and the local Windows harness passed; a hosted
+  run tied to the final SHA remains required before this is CI evidence.
 - Final render evidence directory:
   `evidence/applypack-chunk5-render-20261003-193535`.
 - The tracked render manifest

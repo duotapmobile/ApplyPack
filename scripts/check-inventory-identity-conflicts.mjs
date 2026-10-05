@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { validateAndCanonicalizePreflightConnection } from "./inventory-preflight-connection.mjs";
+import {
+  environmentWithoutPreflightSecrets,
+  validateAndCanonicalizePreflightConnection,
+} from "./inventory-preflight-connection.mjs";
 
 const sqlPath = fileURLToPath(new URL("./preflight-inventory-identity-conflicts.sql", import.meta.url));
 const sql = readFileSync(sqlPath, "utf8");
@@ -60,9 +63,7 @@ const result = spawnSync(
   {
     cwd: process.cwd(),
     encoding: "utf8",
-    env: Object.fromEntries(
-      Object.entries(process.env).filter(([key]) => !key.startsWith("AP_PREMIGRATION_")),
-    ),
+    env: environmentWithoutPreflightSecrets(process.env),
     input,
     stdio: ["pipe", "pipe", "pipe"],
     timeout: 120_000,

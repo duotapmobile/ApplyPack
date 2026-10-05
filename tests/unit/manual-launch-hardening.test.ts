@@ -21,7 +21,10 @@ import {
   APPROVED_ROLLBACK_LEGAL_CONTRACT,
   verifyRollbackLegalSource,
 } from "../../scripts/rollback-legal-contract.mjs";
-import { validateAndCanonicalizePreflightConnection } from "../../scripts/inventory-preflight-connection.mjs";
+import {
+  environmentWithoutPreflightSecrets,
+  validateAndCanonicalizePreflightConnection,
+} from "../../scripts/inventory-preflight-connection.mjs";
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
@@ -325,6 +328,19 @@ describe("October 2 manual-launch hardening", () => {
     }
   });
 
+  it("removes remote-preflight secrets from a Windows-style mixed-case environment", () => {
+    expect(environmentWithoutPreflightSecrets({
+      Path: "C:\\Windows\\System32",
+      SAFE_VALUE: "preserved",
+      AP_PREMIGRATION_DATABASE_URL: "secret-one",
+      Ap_PrEmIgRaTiOn_Expected_Host: "secret-two",
+      ap_premigration_expected_user: "secret-three",
+    })).toEqual({
+      Path: "C:\\Windows\\System32",
+      SAFE_VALUE: "preserved",
+    });
+  });
+
   it("rejects a representative wrapper query override without printing credentials", () => {
     const password = "preflight-super-secret";
     const databaseUrl = `postgresql://operator:${password}@db.example.test:5432/postgres?host=%2Fvar%2Frun%2Fpostgresql&sslmode=verify-full`;
@@ -349,6 +365,30 @@ describe("October 2 manual-launch hardening", () => {
     expect(output).toContain("expected host, port, database, and user");
     expect(output).not.toContain(databaseUrl);
     expect(output).not.toContain(password);
+  });
+
+  it("runs real document-render CI on pinned Windows Arial through the strict harness", () => {
+    const workflow = source(".github/workflows/ci.yml");
+    const documentRender = workflow.match(/(?:^|\r?\n)  document-render:\r?\n([\s\S]*)/)?.[1];
+    if (!documentRender) throw new Error("document-render job missing");
+    expect(documentRender).toContain("runs-on: windows-latest");
+    expect(documentRender).toContain("APPLYPACK_LIBREOFFICE_PACKAGE_VERSION: '26.2.6'");
+    expect(documentRender).toContain("APPLYPACK_POPPLER_PACKAGE_VERSION: '26.9.0'");
+    expect(documentRender).toContain("choco install libreoffice-fresh --version=$env:APPLYPACK_LIBREOFFICE_PACKAGE_VERSION");
+    expect(documentRender).toContain("choco install poppler --version=$env:APPLYPACK_POPPLER_PACKAGE_VERSION");
+    expect(documentRender).toContain("APP_DOCUMENT_RENDERER_IDENTITY: 'applypack-windows-ci-");
+    expect(documentRender).toContain("APPLYPACK_RENDER_EVIDENCE_DIR: ${{ runner.temp }}\\applypack-chunk5-render-ci");
+    expect(documentRender).toContain("run: .\\scripts\\test-document-render-windows.ps1");
+    expect(documentRender).toContain("path: ${{ env.APPLYPACK_RENDER_EVIDENCE_DIR }}");
+    expect(documentRender).not.toContain("apt-get");
+    expect(documentRender).not.toContain("fonts-liberation");
+    expect(documentRender).not.toContain("configure-renderer-runtime");
+    const windowsHarness = source("scripts/test-document-render-windows.ps1");
+    expect(windowsHarness).toContain("C:\\Windows\\Fonts\\arial.ttf");
+    expect(windowsHarness).toContain("A complete same-directory Poppler toolset is required.");
+    expect(windowsHarness).toContain("APPLYPACK_EXPECTED_LIBREOFFICE_VERSION");
+    expect(windowsHarness).toContain("APPLYPACK_EXPECTED_POPPLER_VERSION");
+    expect(windowsHarness).toContain("npm.cmd run test:document-render -- --reporter=verbose");
   });
 
   it("finalizes encrypted intake and current legal acceptance through one retry-safe atomic command", () => {
