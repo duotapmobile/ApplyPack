@@ -265,8 +265,16 @@ describe("Railway staging Infrastructure as Code", () => {
     expect(wrapper).toContain("new AbortController()");
     expect(wrapper).toContain('serviceInstance: __type(name: "ServiceInstance")');
     expect(wrapper).toContain('serviceInstanceUpdateInput: __type(name: "ServiceInstanceUpdateInput")');
+    expect(wrapper).toContain('mutation: __type(name: "Mutation")');
+    expect(wrapper).toContain('field?.name === "serviceInstanceUpdate"');
     expect(wrapper).toContain("deployment.meta?.serviceManifest?.deploy");
     expect(wrapper).toContain("RAILWAY_IAC_DEPLOYMENT_MANIFEST_STALE");
+    expect(wrapper).toContain("deployConfigSha256: sha256Json(deploy)");
+    expect(wrapper).toContain("RAILWAY_IAC_TOPOLOGY_DRIFTED");
+    expect(wrapper.match(/verifyCommittedInputs\(/g)).toHaveLength(3);
+    expect(wrapper).toContain("RAILWAY_IAC_BOUND_INPUT_DRIFTED");
+    expect(wrapper).toContain("const preApplyPlan = validatePlan");
+    expect(wrapper.match(/sha256File\(planPath\)/g)).toHaveLength(3);
     expect(wrapper).toContain('excludedWriteOnlyFields: ["registryCredentials"]');
     expect(wrapper).toContain("RAILWAY_IAC_ACCOUNT_TOKEN_PROHIBITED");
     expect(wrapper).toContain("RAILWAY_IAC_CONFIG_FILE_BASELINE_MISMATCH");
@@ -279,6 +287,19 @@ describe("Railway staging Infrastructure as Code", () => {
       railwayCliVersion: string;
       serviceInstanceFields: string[];
       serviceInstanceUpdateInputFields: string[];
+      signatures: {
+        namedTypeKinds: Record<string, string>;
+        serviceInstance: {
+          fields: Array<{ name: string; type: string; args: unknown[] }>;
+        };
+        serviceInstanceUpdateInput: {
+          fields: Array<{ name: string; type: string; defaultValue: string | null }>;
+        };
+        serviceInstanceUpdate: {
+          args: Array<{ name: string; type: string; defaultValue: string | null }>;
+          returnType: string;
+        };
+      };
       response: {
         data: { environment: { serviceInstances: { edges: Array<{ node: Record<string, unknown> }> } } };
       };
@@ -288,6 +309,27 @@ describe("Railway staging Infrastructure as Code", () => {
     expect(fixture.serviceInstanceFields).not.toContain("multiRegionConfig");
     expect(fixture.serviceInstanceUpdateInputFields).toContain("multiRegionConfig");
     expect(fixture.serviceInstanceUpdateInputFields).toContain("preDeployTimeoutSeconds");
+    expect(fixture.signatures.namedTypeKinds.Deployment).toBe("OBJECT");
+    expect(fixture.signatures.namedTypeKinds.RestartPolicyType).toBe("ENUM");
+    expect(
+      fixture.signatures.serviceInstance.fields.find(
+        (field) => field.name === "activeDeployments",
+      ),
+    ).toEqual({ name: "activeDeployments", type: "[Deployment!]!", args: [] });
+    expect(
+      fixture.signatures.serviceInstanceUpdateInput.fields.find(
+        (field) => field.name === "preDeployCommand",
+      )?.type,
+    ).toBe("[String!]");
+    expect(fixture.signatures.serviceInstanceUpdate).toEqual({
+      name: "serviceInstanceUpdate",
+      args: [
+        { name: "environmentId", type: "String", defaultValue: null },
+        { name: "input", type: "ServiceInstanceUpdateInput!", defaultValue: null },
+        { name: "serviceId", type: "String!", defaultValue: null },
+      ],
+      returnType: "Boolean!",
+    });
     for (const { node } of fixture.response.data.environment.serviceInstances.edges) {
       expect(node).not.toHaveProperty("multiRegionConfig");
       expect(node).toHaveProperty(

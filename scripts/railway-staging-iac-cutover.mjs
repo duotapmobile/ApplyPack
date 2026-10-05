@@ -64,90 +64,164 @@ const TOKEN_SCOPE_QUERY = `query ApplyPackCutoverTokenScope {
   }
 }`;
 
-const EXPECTED_SERVICE_INSTANCE_FIELDS = Object.freeze([
-  "activeDeployments",
-  "autoInstrumentationEnabled",
-  "buildCommand",
-  "builder",
-  "clearance",
-  "clearanceEffective",
-  "createdAt",
-  "cronSchedule",
-  "deletedAt",
-  "dockerfilePath",
-  "domains",
-  "drainingSeconds",
-  "edgeConfig",
-  "environmentId",
-  "hasEverDeployed",
-  "healthcheckPath",
-  "healthcheckTimeout",
-  "id",
-  "ipv6EgressEnabled",
-  "isUpdatable",
-  "latestDeployment",
-  "nextCronRunAt",
-  "nixpacksPlan",
-  "numReplicas",
-  "overlapSeconds",
-  "preDeployCommand",
-  "preDeployTimeoutSeconds",
-  "railpackInfo",
-  "railwayConfigFile",
-  "region",
-  "resolvedFileConfig",
-  "restartPolicyMaxRetries",
-  "restartPolicyType",
-  "rootDirectory",
-  "service",
-  "serviceId",
-  "serviceName",
-  "sleepApplication",
-  "source",
-  "startCommand",
-  "tracingEnabled",
-  "updatedAt",
-  "upstreamUrl",
-  "watchPatterns",
-]);
+const EXPECTED_SERVICE_INSTANCE_FIELD_TYPES = Object.freeze({
+  activeDeployments: "[Deployment!]!",
+  autoInstrumentationEnabled: "Boolean!",
+  buildCommand: "String",
+  builder: "Builder!",
+  clearance: "Boolean",
+  clearanceEffective: "Boolean!",
+  createdAt: "DateTime!",
+  cronSchedule: "String",
+  deletedAt: "DateTime",
+  dockerfilePath: "String",
+  domains: "AllDomains!",
+  drainingSeconds: "Int",
+  edgeConfig: "EdgeConfig",
+  environmentId: "String!",
+  hasEverDeployed: "Boolean!",
+  healthcheckPath: "String",
+  healthcheckTimeout: "Int",
+  id: "ID!",
+  ipv6EgressEnabled: "Boolean",
+  isUpdatable: "Boolean!",
+  latestDeployment: "Deployment",
+  nextCronRunAt: "DateTime",
+  nixpacksPlan: "JSON",
+  numReplicas: "Int",
+  overlapSeconds: "Int",
+  preDeployCommand: "JSON",
+  preDeployTimeoutSeconds: "Int",
+  railpackInfo: "RailpackInfo",
+  railwayConfigFile: "String",
+  region: "String",
+  resolvedFileConfig: "ResolvedFileConfig",
+  restartPolicyMaxRetries: "Int!",
+  restartPolicyType: "RestartPolicyType!",
+  rootDirectory: "String",
+  service: "Service!",
+  serviceId: "String!",
+  serviceName: "String!",
+  sleepApplication: "Boolean",
+  source: "ServiceSource",
+  startCommand: "String",
+  tracingEnabled: "Boolean!",
+  updatedAt: "DateTime!",
+  upstreamUrl: "String",
+  watchPatterns: "[String!]!",
+});
 
-const EXPECTED_UPDATE_INPUT_FIELDS = Object.freeze([
-  "autoInstrumentationEnabled",
-  "buildCommand",
-  "builder",
-  "cronSchedule",
-  "dockerfilePath",
-  "drainingSeconds",
-  "healthcheckPath",
-  "healthcheckTimeout",
-  "ipv6EgressEnabled",
-  "multiRegionConfig",
-  "nixpacksPlan",
-  "numReplicas",
-  "overlapSeconds",
-  "preDeployCommand",
-  "preDeployTimeoutSeconds",
-  "railwayConfigFile",
-  "region",
-  "registryCredentials",
-  "restartPolicyMaxRetries",
-  "restartPolicyType",
-  "rootDirectory",
-  "sleepApplication",
-  "source",
-  "startCommand",
-  "tracingEnabled",
-  "watchPatterns",
-]);
+const EXPECTED_UPDATE_INPUT_FIELD_TYPES = Object.freeze({
+  autoInstrumentationEnabled: "Boolean",
+  buildCommand: "String",
+  builder: "Builder",
+  cronSchedule: "String",
+  dockerfilePath: "String",
+  drainingSeconds: "Int",
+  healthcheckPath: "String",
+  healthcheckTimeout: "Int",
+  ipv6EgressEnabled: "Boolean",
+  multiRegionConfig: "JSON",
+  nixpacksPlan: "JSON",
+  numReplicas: "Int",
+  overlapSeconds: "Int",
+  preDeployCommand: "[String!]",
+  preDeployTimeoutSeconds: "Int",
+  railwayConfigFile: "String",
+  region: "String",
+  registryCredentials: "RegistryCredentialsInput",
+  restartPolicyMaxRetries: "Int",
+  restartPolicyType: "RestartPolicyType",
+  rootDirectory: "String",
+  sleepApplication: "Boolean",
+  source: "ServiceSourceInput",
+  startCommand: "String",
+  tracingEnabled: "Boolean",
+  watchPatterns: "[String!]",
+});
 
-const PROVIDER_CONTRACT_QUERY = `query ApplyPackCutoverProviderContract {
-  serviceInstance: __type(name: "ServiceInstance") { fields { name } }
+const EXPECTED_SERVICE_INSTANCE_UPDATE_SIGNATURE = Object.freeze({
+  name: "serviceInstanceUpdate",
+  args: [
+    { name: "environmentId", type: "String", defaultValue: null },
+    {
+      name: "input",
+      type: "ServiceInstanceUpdateInput!",
+      defaultValue: null,
+    },
+    { name: "serviceId", type: "String!", defaultValue: null },
+  ],
+  returnType: "Boolean!",
+});
+
+const EXPECTED_NAMED_TYPE_KINDS = Object.freeze({
+  AllDomains: "OBJECT",
+  Boolean: "SCALAR",
+  Builder: "ENUM",
+  DateTime: "SCALAR",
+  Deployment: "OBJECT",
+  EdgeConfig: "OBJECT",
+  ID: "SCALAR",
+  Int: "SCALAR",
+  JSON: "SCALAR",
+  RailpackInfo: "SCALAR",
+  RegistryCredentialsInput: "INPUT_OBJECT",
+  ResolvedFileConfig: "OBJECT",
+  RestartPolicyType: "ENUM",
+  Service: "OBJECT",
+  ServiceInstanceUpdateInput: "INPUT_OBJECT",
+  ServiceSource: "OBJECT",
+  ServiceSourceInput: "INPUT_OBJECT",
+  String: "SCALAR",
+});
+
+const TYPE_REF_SELECTION = `
+  kind
+  name
+  ofType {
+    kind
+    name
+    ofType {
+      kind
+      name
+      ofType {
+        kind
+        name
+        ofType {
+          kind
+          name
+          ofType { kind name }
+        }
+      }
+    }
+  }
+`;
+
+export const PROVIDER_CONTRACT_QUERY = `query ApplyPackCutoverProviderContract {
+  serviceInstance: __type(name: "ServiceInstance") {
+    kind
+    name
+    fields(includeDeprecated: true) {
+      name
+      args { name defaultValue type { ${TYPE_REF_SELECTION} } }
+      type { ${TYPE_REF_SELECTION} }
+    }
+  }
   serviceInstanceUpdateInput: __type(name: "ServiceInstanceUpdateInput") {
-    inputFields { name }
+    kind
+    name
+    inputFields { name defaultValue type { ${TYPE_REF_SELECTION} } }
+  }
+  mutation: __type(name: "Mutation") {
+    fields(includeDeprecated: true) {
+      name
+      args { name defaultValue type { ${TYPE_REF_SELECTION} } }
+      type { ${TYPE_REF_SELECTION} }
+    }
   }
 }`;
 
-const TOPOLOGY_QUERY = `query ApplyPackCutoverTopology($environmentId: String!) {
+export const TOPOLOGY_QUERY = `query ApplyPackCutoverTopology($environmentId: String!) {
   environment(id: $environmentId) {
     id
     name
@@ -379,6 +453,10 @@ function verifyCommittedInputs(run, repoRoot, localEnv, readBoundFile) {
   return boundInputs;
 }
 
+function boundInputsFingerprint(boundInputs) {
+  return sha256Json(boundInputs);
+}
+
 function ensureReceiptDirectory(repoRoot, receiptDirectory) {
   if (!receiptDirectory || !isAbsolute(receiptDirectory)) {
     fail("RAILWAY_IAC_RECEIPT_DIRECTORY_MUST_BE_ABSOLUTE");
@@ -410,50 +488,219 @@ function validateScope(response) {
   };
 }
 
-function sortedFieldNames(fields) {
-  if (!Array.isArray(fields) || fields.some((field) => typeof field?.name !== "string")) {
-    fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
-  }
-  const names = fields.map((field) => field.name).sort();
-  if (new Set(names).size !== names.length) {
-    fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
-  }
-  return names;
+function stableJsonValue(value) {
+  if (Array.isArray(value)) return value.map(stableJsonValue);
+  if (!isPlainObject(value)) return value;
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, stableJsonValue(value[key])]),
+  );
 }
 
-function validateProviderContract(response) {
-  const serviceInstanceFields = sortedFieldNames(response?.data?.serviceInstance?.fields);
-  const serviceInstanceUpdateInputFields = sortedFieldNames(
-    response?.data?.serviceInstanceUpdateInput?.inputFields,
+function sha256Json(value) {
+  return createHash("sha256")
+    .update(JSON.stringify(stableJsonValue(value)))
+    .digest("hex")
+    .toUpperCase();
+}
+
+function canonicalTypeDescriptor(type, depth = 0) {
+  if (!isPlainObject(type) || depth > 8 || typeof type.kind !== "string") {
+    fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+  }
+  if (type.kind === "NON_NULL") {
+    if (type.name !== null || !type.ofType) {
+      fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+    }
+    const nested = canonicalTypeDescriptor(type.ofType, depth + 1);
+    return { signature: `${nested.signature}!`, namedKind: nested.namedKind };
+  }
+  if (type.kind === "LIST") {
+    if (type.name !== null || !type.ofType) {
+      fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+    }
+    const nested = canonicalTypeDescriptor(type.ofType, depth + 1);
+    return { signature: `[${nested.signature}]`, namedKind: nested.namedKind };
+  }
+  if (
+    !["SCALAR", "OBJECT", "ENUM", "INPUT_OBJECT", "INTERFACE", "UNION"].includes(
+      type.kind,
+    ) ||
+    typeof type.name !== "string" ||
+    !type.name ||
+    type.ofType !== null
+  ) {
+    fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+  }
+  return { signature: type.name, namedKind: type.kind };
+}
+
+function canonicalArguments(args) {
+  if (!Array.isArray(args)) fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+  const canonical = args.map((argument) => {
+    if (
+      !isPlainObject(argument) ||
+      typeof argument.name !== "string" ||
+      !argument.name ||
+      !Object.prototype.hasOwnProperty.call(argument, "defaultValue") ||
+      !["string", "object"].includes(typeof argument.defaultValue) ||
+      (typeof argument.defaultValue === "object" && argument.defaultValue !== null)
+    ) {
+      fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+    }
+    return {
+      name: argument.name,
+      type: canonicalTypeDescriptor(argument.type),
+      defaultValue: argument.defaultValue,
+    };
+  }).sort((left, right) => left.name.localeCompare(right.name));
+  if (new Set(canonical.map((argument) => argument.name)).size !== canonical.length) {
+    fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+  }
+  return canonical;
+}
+
+function canonicalObjectFields(fields) {
+  if (!Array.isArray(fields)) fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+  const canonical = fields.map((field) => {
+    if (!isPlainObject(field) || typeof field.name !== "string" || !field.name) {
+      fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+    }
+    return {
+      name: field.name,
+      type: canonicalTypeDescriptor(field.type),
+      args: canonicalArguments(field.args),
+    };
+  }).sort((left, right) => left.name.localeCompare(right.name));
+  if (new Set(canonical.map((field) => field.name)).size !== canonical.length) {
+    fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+  }
+  return canonical;
+}
+
+function canonicalInputFields(fields) {
+  if (!Array.isArray(fields)) fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+  const canonical = fields.map((field) => {
+    if (
+      !isPlainObject(field) ||
+      typeof field.name !== "string" ||
+      !field.name ||
+      !Object.prototype.hasOwnProperty.call(field, "defaultValue") ||
+      !["string", "object"].includes(typeof field.defaultValue) ||
+      (typeof field.defaultValue === "object" && field.defaultValue !== null)
+    ) {
+      fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+    }
+    return {
+      name: field.name,
+      type: canonicalTypeDescriptor(field.type),
+      defaultValue: field.defaultValue,
+    };
+  }).sort((left, right) => left.name.localeCompare(right.name));
+  if (new Set(canonical.map((field) => field.name)).size !== canonical.length) {
+    fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+  }
+  return canonical;
+}
+
+function expectedTypeDescriptor(signature) {
+  const name = signature.replace(/[\[\]!]/g, "");
+  const namedKind = EXPECTED_NAMED_TYPE_KINDS[name];
+  if (!namedKind) fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+  return { signature, namedKind };
+}
+
+function expectedObjectFields(typeMap) {
+  return Object.entries(typeMap)
+    .map(([name, type]) => ({ name, type: expectedTypeDescriptor(type), args: [] }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function expectedInputFields(typeMap) {
+  return Object.entries(typeMap)
+    .map(([name, type]) => ({
+      name,
+      type: expectedTypeDescriptor(type),
+      defaultValue: null,
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export function validateProviderContract(response) {
+  const serviceInstanceType = response?.data?.serviceInstance;
+  const updateInputType = response?.data?.serviceInstanceUpdateInput;
+  if (
+    serviceInstanceType?.kind !== "OBJECT" ||
+    serviceInstanceType?.name !== "ServiceInstance" ||
+    updateInputType?.kind !== "INPUT_OBJECT" ||
+    updateInputType?.name !== "ServiceInstanceUpdateInput"
+  ) {
+    fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+  }
+  const serviceInstanceFields = canonicalObjectFields(serviceInstanceType.fields);
+  const serviceInstanceUpdateInputFields = canonicalInputFields(updateInputType.inputFields);
+  const mutationFields = response?.data?.mutation?.fields;
+  if (!Array.isArray(mutationFields)) fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+  const matchingMutations = mutationFields.filter(
+    (field) => field?.name === "serviceInstanceUpdate",
+  );
+  if (matchingMutations.length !== 1) fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+  const serviceInstanceUpdate = {
+    name: "serviceInstanceUpdate",
+    args: canonicalArguments(matchingMutations[0].args),
+    returnType: canonicalTypeDescriptor(matchingMutations[0].type),
+  };
+  const expectedServiceInstanceUpdate = {
+    ...EXPECTED_SERVICE_INSTANCE_UPDATE_SIGNATURE,
+    args: EXPECTED_SERVICE_INSTANCE_UPDATE_SIGNATURE.args.map((argument) => ({
+      ...argument,
+      type: expectedTypeDescriptor(argument.type),
+    })),
+    returnType: expectedTypeDescriptor(
+      EXPECTED_SERVICE_INSTANCE_UPDATE_SIGNATURE.returnType,
+    ),
+  };
+  const expectedServiceInstanceFields = expectedObjectFields(
+    EXPECTED_SERVICE_INSTANCE_FIELD_TYPES,
+  );
+  const expectedUpdateInputFields = expectedInputFields(
+    EXPECTED_UPDATE_INPUT_FIELD_TYPES,
   );
   if (
-    JSON.stringify(serviceInstanceFields) !== JSON.stringify(EXPECTED_SERVICE_INSTANCE_FIELDS) ||
+    JSON.stringify(serviceInstanceFields) !== JSON.stringify(expectedServiceInstanceFields) ||
     JSON.stringify(serviceInstanceUpdateInputFields) !==
-      JSON.stringify(EXPECTED_UPDATE_INPUT_FIELDS)
+      JSON.stringify(expectedUpdateInputFields) ||
+    JSON.stringify(serviceInstanceUpdate) !==
+      JSON.stringify(expectedServiceInstanceUpdate)
   ) {
     fail("RAILWAY_IAC_PROVIDER_CONTRACT_MISMATCH");
   }
-  const rollbackMutationInputFields = serviceInstanceUpdateInputFields.filter(
-    (field) => field !== "registryCredentials",
-  );
+  const rollbackMutationInputFields = serviceInstanceUpdateInputFields
+    .map((field) => field.name)
+    .filter((field) => field !== "registryCredentials");
   if (
     JSON.stringify(rollbackMutationInputFields) !== JSON.stringify(ROLLBACK_INPUT_FIELDS)
   ) {
     fail("RAILWAY_IAC_PROVIDER_CONTRACT_MISMATCH");
   }
-  const fingerprint = createHash("sha256")
-    .update(JSON.stringify({
-      railwayCliVersion: EXPECTED_RAILWAY_CLI_VERSION,
-      serviceInstanceFields,
-      serviceInstanceUpdateInputFields,
-    }))
-    .digest("hex")
-    .toUpperCase();
-  return {
+  const contract = {
     railwayCliVersion: EXPECTED_RAILWAY_CLI_VERSION,
-    fingerprint,
-    serviceInstanceFields,
-    serviceInstanceUpdateInputFields,
+    serviceInstance: {
+      kind: serviceInstanceType.kind,
+      name: serviceInstanceType.name,
+      fields: serviceInstanceFields,
+    },
+    serviceInstanceUpdateInput: {
+      kind: updateInputType.kind,
+      name: updateInputType.name,
+      fields: serviceInstanceUpdateInputFields,
+    },
+    serviceInstanceUpdate,
+  };
+  return {
+    ...contract,
+    fingerprint: sha256Json(contract),
     rollbackMutationInputFields,
     excludedWriteOnlyFields: ["registryCredentials"],
   };
@@ -467,7 +714,7 @@ function isPlainObject(value) {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function deploymentManifestMultiRegionConfig(node) {
+function deploymentManifestEvidence(node) {
   const deployment = node?.latestDeployment;
   if (!deployment || typeof deployment.id !== "string") {
     fail("RAILWAY_IAC_DEPLOYMENT_MANIFEST_MISSING");
@@ -496,25 +743,35 @@ function deploymentManifestMultiRegionConfig(node) {
     fail("RAILWAY_IAC_DEPLOYMENT_MANIFEST_MISSING");
   }
   const config = deploy.multiRegionConfig;
-  if (config === null) return null;
-  if (!isPlainObject(config) || Object.keys(config).length === 0) {
-    fail("RAILWAY_IAC_DEPLOYMENT_MANIFEST_MALFORMED");
-  }
-  for (const [region, settings] of Object.entries(config)) {
-    if (
-      !/^[a-z0-9][a-z0-9-]{1,63}$/.test(region) ||
-      !isPlainObject(settings) ||
-      JSON.stringify(Object.keys(settings).sort()) !== JSON.stringify(["numReplicas"]) ||
-      !Number.isSafeInteger(settings.numReplicas) ||
-      settings.numReplicas < 1
-    ) {
+  if (config !== null) {
+    if (!isPlainObject(config) || Object.keys(config).length === 0) {
       fail("RAILWAY_IAC_DEPLOYMENT_MANIFEST_MALFORMED");
     }
+    for (const [region, settings] of Object.entries(config)) {
+      if (
+        !/^[a-z0-9][a-z0-9-]{1,63}$/.test(region) ||
+        !isPlainObject(settings) ||
+        JSON.stringify(Object.keys(settings).sort()) !== JSON.stringify(["numReplicas"]) ||
+        !Number.isSafeInteger(settings.numReplicas) ||
+        settings.numReplicas < 1
+      ) {
+        fail("RAILWAY_IAC_DEPLOYMENT_MANIFEST_MALFORMED");
+      }
+    }
   }
-  return config;
+  return {
+    deploymentId: deployment.id,
+    deploymentStatus: deployment.status,
+    deploymentCommitHash: deploymentCommit(node),
+    deploymentCreatedAt: deployment.createdAt,
+    deploymentUpdatedAt: deployment.updatedAt,
+    serviceInstanceUpdatedAt: node.updatedAt,
+    deployConfigSha256: sha256Json(deploy),
+    multiRegionConfig: config,
+  };
 }
 
-function validateTopology(response, reviewedSha) {
+export function validateTopology(response, reviewedSha) {
   const environment = response?.data?.environment;
   if (
     environment?.id !== EXPECTED.environment.id ||
@@ -537,7 +794,7 @@ function validateTopology(response, reviewedSha) {
   ) {
     fail("RAILWAY_IAC_SERVICE_TOPOLOGY_MISMATCH");
   }
-  const multiRegionConfigByServiceId = {};
+  const manifestEvidenceByServiceId = {};
   for (const node of [web, maintenance]) {
     if (
       node.railwayConfigFile !== null ||
@@ -545,8 +802,7 @@ function validateTopology(response, reviewedSha) {
     ) {
       fail("RAILWAY_IAC_CONFIG_FILE_BASELINE_MISMATCH");
     }
-    multiRegionConfigByServiceId[node.serviceId] =
-      deploymentManifestMultiRegionConfig(node);
+    manifestEvidenceByServiceId[node.serviceId] = deploymentManifestEvidence(node);
     if (
       node.latestDeployment?.status !== "SUCCESS" ||
       deploymentCommit(node) !== reviewedSha
@@ -565,11 +821,13 @@ function validateTopology(response, reviewedSha) {
   ) {
     fail("RAILWAY_IAC_SERVICE_SETTINGS_MISMATCH");
   }
-  return {
+  const topology = {
     environment: EXPECTED.environment,
     services: nodes,
-    multiRegionConfigByServiceId,
+    manifestEvidenceByServiceId,
   };
+  topology.fingerprint = topologyFingerprint(topology);
+  return topology;
 }
 
 function validatePlan(plan, sourceTree) {
@@ -674,6 +932,7 @@ function runPlan(run, repoRoot, providerEnv, outputPath, sourceTree) {
 function sanitizeTopology(topology) {
   return {
     environment: topology.environment,
+    fingerprint: topology.fingerprint,
     services: topology.services.map((node) => ({
       serviceId: node.serviceId,
       serviceInstanceId: node.id,
@@ -692,9 +951,12 @@ function sanitizeTopology(topology) {
       healthcheckPath: node.healthcheckPath,
       healthcheckTimeout: node.healthcheckTimeout,
       ipv6EgressEnabled: node.ipv6EgressEnabled,
-      multiRegionConfig: topology.multiRegionConfigByServiceId[node.serviceId],
+      multiRegionConfig:
+        topology.manifestEvidenceByServiceId[node.serviceId].multiRegionConfig,
       multiRegionConfigSource:
         "latestDeployment.meta.serviceManifest.deploy.multiRegionConfig",
+      deployConfigSha256:
+        topology.manifestEvidenceByServiceId[node.serviceId].deployConfigSha256,
       nixpacksPlan: node.nixpacksPlan,
       numReplicas: node.numReplicas,
       overlapSeconds: node.overlapSeconds,
@@ -744,6 +1006,23 @@ function rollbackInput(node, multiRegionConfig) {
   return input;
 }
 
+function topologyFingerprint(topology) {
+  const services = topology.services
+    .map((node) => {
+      const evidence = topology.manifestEvidenceByServiceId[node.serviceId];
+      if (!evidence) fail("RAILWAY_IAC_DEPLOYMENT_MANIFEST_MISSING");
+      return {
+        serviceId: node.serviceId,
+        serviceInstanceId: node.id,
+        serviceName: node.serviceName,
+        rollbackInput: rollbackInput(node, evidence.multiRegionConfig),
+        deployment: evidence,
+      };
+    })
+    .sort((left, right) => left.serviceId.localeCompare(right.serviceId));
+  return sha256Json({ environment: topology.environment, services });
+}
+
 function buildRollbackReceipt(topology) {
   const byName = new Map(topology.services.map((node) => [node.serviceName, node]));
   return {
@@ -761,7 +1040,7 @@ function buildRollbackReceipt(topology) {
         serviceName: expected.name,
         input: rollbackInput(
           node,
-          topology.multiRegionConfigByServiceId[node.serviceId],
+          topology.manifestEvidenceByServiceId[node.serviceId].multiRegionConfig,
         ),
       };
     }),
@@ -867,6 +1146,7 @@ export async function runCutover({
     localEnv,
     readBoundFile,
   );
+  const initialBoundInputsFingerprint = boundInputsFingerprint(boundInputs);
   const reviewedSha = requireSuccess(
     run("git", ["rev-parse", "HEAD"], { cwd: repoRoot, env: localEnv }),
     "RAILWAY_IAC_GIT_HEAD_FAILED",
@@ -935,7 +1215,9 @@ export async function runCutover({
     scope,
     providerContract,
     boundInputs,
+    boundInputsFingerprint: initialBoundInputsFingerprint,
     topology: sanitizeTopology(topology),
+    topologyFingerprint: topology.fingerprint,
     rollback,
     checkoutLock,
     hostedPreflight,
@@ -973,6 +1255,8 @@ export async function runCutover({
     sourceTree,
     railwayCliVersion,
     providerContractFingerprint: providerContract.fingerprint,
+    topologyFingerprint: topology.fingerprint,
+    boundInputsFingerprint: initialBoundInputsFingerprint,
     boundInputHashes: Object.fromEntries(
       Object.entries(boundInputs).map(([path, evidence]) => [
         path,
@@ -1014,14 +1298,45 @@ export async function runCutover({
   if (preApplyProviderContract.fingerprint !== providerContract.fingerprint) {
     fail("RAILWAY_IAC_PROVIDER_CONTRACT_MISMATCH");
   }
-  validateTopology(
+  const preApplyTopology = validateTopology(
     runApi(run, repoRoot, providerEnv, TOPOLOGY_QUERY, [
       ["environmentId", EXPECTED.environment.id],
     ]),
     reviewedSha,
   );
+  if (preApplyTopology.fingerprint !== topology.fingerprint) {
+    fail("RAILWAY_IAC_TOPOLOGY_DRIFTED");
+  }
   validateCheckoutDisabled(run, repoRoot, providerEnv);
   await validateHosted(fetchImpl, reviewedSha, "preflight", hostedFetchTimeoutMs);
+  const preApplyBoundInputs = verifyCommittedInputs(
+    run,
+    repoRoot,
+    localEnv,
+    readBoundFile,
+  );
+  if (
+    boundInputsFingerprint(preApplyBoundInputs) !== initialBoundInputsFingerprint ||
+    JSON.stringify(preApplyBoundInputs) !== JSON.stringify(boundInputs)
+  ) {
+    fail("RAILWAY_IAC_BOUND_INPUT_DRIFTED");
+  }
+  if (sha256File(planPath) !== pinnedPlanHash) {
+    fail("RAILWAY_IAC_PLAN_PIN_CHANGED");
+  }
+  const preApplyPlan = validatePlan(
+    parseJsonOutput(
+      readFileSync(planPath, "utf8"),
+      "RAILWAY_IAC_PLAN_ARTIFACT_INVALID",
+    ),
+    sourceTree,
+  );
+  if (
+    preApplyPlan.configEtag !== plan.configEtag ||
+    preApplyPlan.changeSetHash !== plan.changeSetHash
+  ) {
+    fail("RAILWAY_IAC_PLAN_PIN_CHANGED");
+  }
   const apply = run(
     "railway",
     ["config", "apply", "--json", "--yes", "--plan", planPath],

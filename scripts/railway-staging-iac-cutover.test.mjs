@@ -89,14 +89,102 @@ function clone(value) {
   return structuredClone(value);
 }
 
+function introspectionType(signature) {
+  if (signature.endsWith("!")) {
+    return {
+      kind: "NON_NULL",
+      name: null,
+      ofType: introspectionType(signature.slice(0, -1)),
+    };
+  }
+  if (signature.startsWith("[") && signature.endsWith("]")) {
+    return {
+      kind: "LIST",
+      name: null,
+      ofType: introspectionType(signature.slice(1, -1)),
+    };
+  }
+  const kind = providerFixture.signatures.namedTypeKinds[signature];
+  assert.ok(kind, `Fixture is missing the named kind for ${signature}`);
+  return { kind, name: signature, ofType: null };
+}
+
+function introspectionArgument(argument) {
+  return {
+    name: argument.name,
+    defaultValue: argument.defaultValue,
+    type: introspectionType(argument.type),
+  };
+}
+
+function expectedTypeDescriptor(signature) {
+  const name = signature.replace(/[\[\]!]/g, "");
+  return {
+    signature,
+    namedKind: providerFixture.signatures.namedTypeKinds[name],
+  };
+}
+
+function expectedProviderContract() {
+  const signatures = providerFixture.signatures;
+  const argument = (value) => ({
+    ...value,
+    type: expectedTypeDescriptor(value.type),
+  });
+  return {
+    serviceInstance: {
+      kind: signatures.serviceInstance.kind,
+      name: signatures.serviceInstance.name,
+      fields: signatures.serviceInstance.fields.map((field) => ({
+        ...field,
+        type: expectedTypeDescriptor(field.type),
+        args: field.args.map(argument),
+      })),
+    },
+    serviceInstanceUpdateInput: {
+      kind: signatures.serviceInstanceUpdateInput.kind,
+      name: signatures.serviceInstanceUpdateInput.name,
+      fields: signatures.serviceInstanceUpdateInput.fields.map((field) => ({
+        ...field,
+        type: expectedTypeDescriptor(field.type),
+      })),
+    },
+    serviceInstanceUpdate: {
+      ...signatures.serviceInstanceUpdate,
+      args: signatures.serviceInstanceUpdate.args.map(argument),
+      returnType: expectedTypeDescriptor(signatures.serviceInstanceUpdate.returnType),
+    },
+  };
+}
+
 function providerContractResponse() {
+  const signatures = providerFixture.signatures;
   return {
     data: {
       serviceInstance: {
-        fields: providerFixture.serviceInstanceFields.map((name) => ({ name })),
+        kind: signatures.serviceInstance.kind,
+        name: signatures.serviceInstance.name,
+        fields: signatures.serviceInstance.fields.map((field) => ({
+          name: field.name,
+          args: field.args.map(introspectionArgument),
+          type: introspectionType(field.type),
+        })),
       },
       serviceInstanceUpdateInput: {
-        inputFields: providerFixture.serviceInstanceUpdateInputFields.map((name) => ({ name })),
+        kind: signatures.serviceInstanceUpdateInput.kind,
+        name: signatures.serviceInstanceUpdateInput.name,
+        inputFields: signatures.serviceInstanceUpdateInput.fields.map((field) => ({
+          name: field.name,
+          defaultValue: field.defaultValue,
+          type: introspectionType(field.type),
+        })),
+      },
+      mutation: {
+        fields: [{
+          name: signatures.serviceInstanceUpdate.name,
+          args: signatures.serviceInstanceUpdate.args.map(introspectionArgument),
+          type: introspectionType(signatures.serviceInstanceUpdate.returnType),
+        }],
       },
     },
   };
@@ -137,9 +225,11 @@ function planArtifact({ destructive = false, changes = [] } = {}) {
 function createRunner({
   scope = scopeResponse(),
   topology,
+  topologies,
   providerContract = providerContractResponse(),
   plan = planArtifact(),
   statusOutput = "",
+  driftBlobOidsAfterPlans = false,
   cliVersion = EXPECTED_RAILWAY_CLI_VERSION,
   gitHead = reviewedSha,
   checkoutVariables = {
@@ -150,6 +240,7 @@ function createRunner({
 } = {}) {
   const calls = [];
   const effectiveTopology = topology ?? topologyResponse({ commitHash: gitHead });
+  let topologyCall = 0;
   const blobPaths = new Map();
   const committedContent = (path) =>
     readFileSync(resolve(repoRoot, path), "utf8")
@@ -171,7 +262,14 @@ function createRunner({
     }
     if (command === "git" && args[0] === "rev-parse" && args[1].startsWith("HEAD:")) {
       const path = args[1].slice("HEAD:".length);
-      const oid = createHash("sha1").update(`test-blob:${path}`).digest("hex");
+      const plansCompleted = calls.filter(
+        (call) =>
+          call.command === "railway" &&
+          call.args[0] === "config" &&
+          call.args[1] === "plan",
+      ).length;
+      const generation = driftBlobOidsAfterPlans && plansCompleted >= 2 ? "after-plan" : "initial";
+      const oid = createHash("sha1").update(`test-blob:${generation}:${path}`).digest("hex");
       blobPaths.set(oid, path);
       return { status: 0, stdout: `${oid}\n`, stderr: "" };
     }
@@ -188,7 +286,9 @@ function createRunner({
         ? scope
         : args[1].includes("ApplyPackCutoverProviderContract")
           ? providerContract
-          : effectiveTopology;
+          : topologies
+            ? topologies[Math.min(topologyCall++, topologies.length - 1)]
+            : effectiveTopology;
       return { status: 0, stdout: JSON.stringify(body), stderr: "" };
     }
     if (command === "railway" && args[0] === "variable" && args[1] === "list") {
@@ -314,13 +414,25 @@ test("dry-run performs audits, exact scope/topology checks, and two pinned zero-
   assert.equal(receipt.checkoutLock.checkoutEnabled, false);
   assert.equal(receipt.hostedPreflight.requestTimeoutMs, HOSTED_FETCH_TIMEOUT_MS);
   assert.equal(receipt.hostedPreflight.health.maintenanceFresh, true);
+  assert.match(receipt.boundInputsFingerprint, /^[A-F0-9]{64}$/);
+  assert.match(receipt.topologyFingerprint, /^[A-F0-9]{64}$/);
+  assert.equal(receipt.topology.fingerprint, receipt.topologyFingerprint);
+  for (const service of receipt.topology.services) {
+    assert.match(service.deployConfigSha256, /^[A-F0-9]{64}$/);
+    assert.equal(
+      service.latestDeployment.commitHash,
+      reviewedSha,
+    );
+  }
+  const expectedContract = expectedProviderContract();
+  assert.deepEqual(receipt.providerContract.serviceInstance, expectedContract.serviceInstance);
   assert.deepEqual(
-    receipt.providerContract.serviceInstanceFields,
-    providerFixture.serviceInstanceFields,
+    receipt.providerContract.serviceInstanceUpdateInput,
+    expectedContract.serviceInstanceUpdateInput,
   );
   assert.deepEqual(
-    receipt.providerContract.serviceInstanceUpdateInputFields,
-    providerFixture.serviceInstanceUpdateInputFields,
+    receipt.providerContract.serviceInstanceUpdate,
+    expectedContract.serviceInstanceUpdate,
   );
   assert.deepEqual(
     receipt.providerContract.rollbackMutationInputFields,
@@ -448,7 +560,11 @@ test("captured live Railway 5.49.6 contract fixture drives topology parsing with
 test("live provider contract disappearance or addition fails before topology, plan, or apply", async () => {
   for (const mutate of [
     (contract) => contract.data.serviceInstanceUpdateInput.inputFields.pop(),
-    (contract) => contract.data.serviceInstance.fields.push({ name: "unexpectedField" }),
+    (contract) => contract.data.serviceInstance.fields.push({
+      name: "unexpectedField",
+      args: [],
+      type: introspectionType("String"),
+    }),
   ]) {
     const contract = providerContractResponse();
     mutate(contract);
@@ -463,6 +579,40 @@ test("live provider contract disappearance or addition fails before topology, pl
       ),
       false,
     );
+  }
+});
+
+test("same-name type drift and serviceInstanceUpdate mutation-signature drift fail closed", async () => {
+  const fixtures = [
+    (contract) => {
+      const field = contract.data.serviceInstance.fields.find(
+        (entry) => entry.name === "healthcheckTimeout",
+      );
+      field.type = introspectionType("Int!");
+    },
+    (contract) => {
+      const field = contract.data.serviceInstanceUpdateInput.inputFields.find(
+        (entry) => entry.name === "preDeployCommand",
+      );
+      field.type = introspectionType("[String!]!");
+    },
+    (contract) => {
+      contract.data.mutation.fields[0].args.find(
+        (entry) => entry.name === "environmentId",
+      ).type = introspectionType("String!");
+    },
+    (contract) => {
+      contract.data.mutation.fields[0].type = introspectionType("Boolean");
+    },
+  ];
+  for (const mutate of fixtures) {
+    const contract = providerContractResponse();
+    mutate(contract);
+    const runner = createRunner({ providerContract: contract });
+    await assert.rejects(runCutover(options(runner.run, { mode: "execute" })), {
+      message: "RAILWAY_IAC_PROVIDER_CONTRACT_MISMATCH",
+    });
+    assert.equal(providerMutationCalls(runner.calls).length, 0);
   }
 });
 
@@ -508,6 +658,27 @@ test("missing, malformed, or stale deployment manifests fail before plan or appl
   }
 });
 
+test("deployment generation or exact manifest drift after planning prevents apply", async () => {
+  for (const mutate of [
+    (node) => {
+      node.latestDeployment.id = "replacement-deployment-at-the-same-sha";
+      node.latestDeployment.updatedAt = "2026-10-05T04:06:41.000Z";
+    },
+    (node) => {
+      node.latestDeployment.meta.serviceManifest.deploy.runtime = "V3";
+    },
+  ]) {
+    const initial = topologyResponse();
+    const changed = clone(initial);
+    mutate(changed.data.environment.serviceInstances.edges[0].node);
+    const runner = createRunner({ topologies: [initial, changed] });
+    await assert.rejects(runCutover(options(runner.run, { mode: "execute" })), {
+      message: "RAILWAY_IAC_TOPOLOGY_DRIFTED",
+    });
+    assert.equal(providerMutationCalls(runner.calls).length, 0);
+  }
+});
+
 test("canonical committed-content hashing accepts clean LF and Windows CRLF", () => {
   const lf = '{\n  "startCommand": "npm run start"\n}\n';
   const crlf = lf.replace(/\n/g, "\r\n");
@@ -540,6 +711,81 @@ test("dirty wrapper, wrapper test, or CI input stops before credential validatio
       false,
     );
   }
+});
+
+test("bound input mutation between the pinned plan and apply is sanitized and prevents every write", async () => {
+  const runner = createRunner();
+  const directory = receiptDirectory();
+  let reads = 0;
+  const readBoundFile = (path) => {
+    const content = readFileSync(path);
+    reads += 1;
+    if (reads > CUTOVER_BOUND_INPUTS.length) {
+      return Buffer.concat([content, Buffer.from("\n# uncommitted-between-plan-drift")]);
+    }
+    return content;
+  };
+
+  let thrown;
+  try {
+    await runCutover(
+      options(runner.run, {
+        mode: "execute",
+        receiptDirectory: directory,
+        readBoundFile,
+      }),
+    );
+  } catch (error) {
+    thrown = error;
+  }
+  assert.equal(thrown?.message, "RAILWAY_IAC_BOUND_INPUT_CONTENT_MISMATCH");
+  assert.equal(String(thrown).includes(token), false);
+  assert.equal(String(thrown).includes("uncommitted-between-plan-drift"), false);
+  assert.equal(providerMutationCalls(runner.calls).length, 0);
+  assert.equal(
+    runner.calls.filter(
+      (call) => call.command === "railway" && call.args[0] === "config" && call.args[1] === "plan",
+    ).length,
+    2,
+  );
+  for (const receipt of ["pre-cutover-receipt.json", "plan-receipt.json"]) {
+    const text = readFileSync(join(directory, receipt), "utf8");
+    assert.equal(text.includes(token), false);
+    assert.equal(text.includes("uncommitted-between-plan-drift"), false);
+  }
+});
+
+test("clean same-content Git object drift between plan and apply is rejected by OID fingerprint", async () => {
+  const runner = createRunner({ driftBlobOidsAfterPlans: true });
+  await assert.rejects(
+    runCutover(options(runner.run, { mode: "execute" })),
+    { message: "RAILWAY_IAC_BOUND_INPUT_DRIFTED" },
+  );
+  assert.equal(providerMutationCalls(runner.calls).length, 0);
+});
+
+test("pinned plan artifact mutation during the final preflight is rejected immediately before apply", async () => {
+  const runner = createRunner();
+  const directory = receiptDirectory();
+  let reads = 0;
+  const readBoundFile = (path) => {
+    reads += 1;
+    if (reads === CUTOVER_BOUND_INPUTS.length + 1) {
+      writeFileSync(join(directory, "reviewed-plan.json"), '{"tampered":true}\n');
+    }
+    return readFileSync(path);
+  };
+  await assert.rejects(
+    runCutover(
+      options(runner.run, {
+        mode: "execute",
+        receiptDirectory: directory,
+        readBoundFile,
+      }),
+    ),
+    { message: "RAILWAY_IAC_PLAN_PIN_CHANGED" },
+  );
+  assert.equal(providerMutationCalls(runner.calls).length, 0);
 });
 
 test("wrong CLI or plan CLI version stops without apply", async () => {
