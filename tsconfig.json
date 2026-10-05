@@ -38,6 +38,7 @@
   ],
   "exclude": [
     "node_modules",
+    ".railway",
     "evidence",
     "playwright-report",
     "test-results"
