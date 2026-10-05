@@ -1,4 +1,11 @@
-import { defineRailway, github, preserve, project, service } from "railway/iac";
+import {
+  defineRailway,
+  github,
+  preserve,
+  project,
+  service,
+  type RailwayContext,
+} from "railway/iac";
 
 const EXPECTED_PROJECT_ID = "fb5a58c4-8ccb-4205-82f9-8b8738c84e56";
 const EXPECTED_PROJECT_NAME = "Apply Pack";
@@ -9,7 +16,7 @@ const STAGING_CUTOVER_AUTHORIZATION_ENV =
 const STAGING_CUTOVER_AUTHORIZATION_VALUE =
   "apply:fb5a58c4-8ccb-4205-82f9-8b8738c84e56:6633e585-5bcd-4729-b167-2a99628daf86";
 
-export default defineRailway((ctx) => {
+export default defineRailway((ctx: RailwayContext) => {
   const isExpectedStagingEnvironment =
     ctx.projectId === EXPECTED_PROJECT_ID &&
     ctx.projectName === EXPECTED_PROJECT_NAME &&

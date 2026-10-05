@@ -19,10 +19,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm ci --prefix .railway
+      - run: npm audit --prefix .railway --audit-level=high
+      - run: npm run typecheck --prefix .railway
+      - run: npm test --prefix .railway
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
-      - run: node --test scripts/test-maintenance-runner.test.mjs scripts/test-renderer-runtime.test.mjs
+      - run: node --test scripts/test-maintenance-runner.test.mjs scripts/test-renderer-runtime.test.mjs scripts/railway-staging-iac-cutover.test.mjs
       - run: npm run build
 
   browser:
