@@ -4,6 +4,10 @@ const EXPECTED_PROJECT_ID = "fb5a58c4-8ccb-4205-82f9-8b8738c84e56";
 const EXPECTED_PROJECT_NAME = "Apply Pack";
 const EXPECTED_ENVIRONMENT_ID = "6633e585-5bcd-4729-b167-2a99628daf86";
 const EXPECTED_ENVIRONMENT_NAME = "staging";
+const STAGING_CUTOVER_AUTHORIZATION_ENV =
+  "APPLYPACK_RAILWAY_IAC_STAGING_CUTOVER_AUTHORIZATION";
+const STAGING_CUTOVER_AUTHORIZATION_VALUE =
+  "apply:fb5a58c4-8ccb-4205-82f9-8b8738c84e56:6633e585-5bcd-4729-b167-2a99628daf86";
 
 export default defineRailway((ctx) => {
   const isExpectedStagingEnvironment =
@@ -15,6 +19,15 @@ export default defineRailway((ctx) => {
 
   if (!isExpectedStagingEnvironment) {
     throw new Error("APPLYPACK_RAILWAY_IAC_STAGING_IDENTITY_MISMATCH");
+  }
+
+  const isApplyCommand = ctx.command?.trim().toLowerCase() === "apply";
+  if (
+    isApplyCommand &&
+    process.env[STAGING_CUTOVER_AUTHORIZATION_ENV] !==
+      STAGING_CUTOVER_AUTHORIZATION_VALUE
+  ) {
+    throw new Error("APPLYPACK_RAILWAY_IAC_APPLY_NOT_AUTHORIZED");
   }
 
   const web = service("ApplyPack-staging", {
