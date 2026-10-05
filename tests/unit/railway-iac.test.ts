@@ -96,6 +96,7 @@ describe("Railway staging Infrastructure as Code", () => {
     expect(appPackage.devDependencies.railway).toBeUndefined();
     expect(existsSync(resolve(process.cwd(), ".railway/package-lock.json"))).toBe(true);
     expect(existsSync(resolve(process.cwd(), ".railway/railway.test.ts"))).toBe(true);
+    expect(existsSync(resolve(process.cwd(), "tests/fixtures/railway-service-instance-contract-5.49.6.json"))).toBe(true);
     expect(existsSync(resolve(process.cwd(), ".railway/tsconfig.json"))).toBe(true);
     expect(source("tsconfig.json")).toContain('".railway"');
 
@@ -190,6 +191,9 @@ describe("Railway staging Infrastructure as Code", () => {
     expect(readme).toContain("Before loading or validating a provider credential");
     expect(readme).toContain("exact Git blob object ID and canonical SHA-256");
     expect(readme).toContain("clean LF and Windows CRLF checkouts");
+    expect(readme).toContain("Each `/api/live` and `/api/health` request has an independent 10-second");
+    expect(readme).toContain("latestDeployment.meta.serviceManifest.deploy.multiRegionConfig");
+    expect(readme).toContain("SHA-256 contract fingerprint");
   });
 
   it("documents the value-free rollback receipt and executable restoration", () => {
@@ -198,8 +202,8 @@ describe("Railway staging Infrastructure as Code", () => {
     expect(readme).toContain("Mandatory pre-cutover rollback receipt");
     expect(readme).toContain("Do not infer that a retained file currently owns a service setting");
     expect(readme).toContain("`railwayConfigFile` | `null` | `null`");
-    expect(readme).toContain("3a39e1f2-6843-4fd3-aaf1-7e453843d18a");
-    expect(readme).toContain("7ff4d797-9e62-4b12-88fa-d72b1c996e48");
+    expect(readme).toContain("8fefc2dd-0521-4f22-9de8-fdc8b4519c9c");
+    expect(readme).toContain("ebf7570e-890c-4799-a62e-5f68a197e7f1");
     expect(readme).toContain("8C18D356C0EE16F939A40E69311B81F554D3A7F5DFFBD7B7C14973B72DCF3A58");
     expect(readme).toContain("EEDFA7D896A451A8BFE6CD53FAF4859243D547777A0544F03E6AA3ED1CC8B106");
     expect(readme).toContain("serviceInstanceUpdate");
@@ -249,6 +253,7 @@ describe("Railway staging Infrastructure as Code", () => {
     expect(wrapper).toContain('".railway/README.md"');
     expect(wrapper).toContain('"scripts/railway-staging-iac-cutover.test.mjs"');
     expect(wrapper).toContain('"tests/unit/railway-iac.test.ts"');
+    expect(wrapper).toContain('"tests/fixtures/railway-service-instance-contract-5.49.6.json"');
     expect(wrapper).toContain("canonicalSha256");
     expect(wrapper).toContain("RAILWAY_IAC_BOUND_INPUT_DIRTY");
     expect(wrapper).toContain("RAILWAY_IAC_CLI_VERSION_MISMATCH");
@@ -256,9 +261,40 @@ describe("Railway staging Infrastructure as Code", () => {
     expect(wrapper).toContain('fail(`${prefix}_MAINTENANCE_NOT_FRESH`)');
     expect(wrapper).toContain("RAILWAY_IAC_CHECKOUT_NOT_DISABLED");
     expect(wrapper).toContain("ServiceInstanceUpdateInput");
+    expect(wrapper).toContain('HOSTED_FETCH_TIMEOUT_MS = 10_000');
+    expect(wrapper).toContain("new AbortController()");
+    expect(wrapper).toContain('serviceInstance: __type(name: "ServiceInstance")');
+    expect(wrapper).toContain('serviceInstanceUpdateInput: __type(name: "ServiceInstanceUpdateInput")');
+    expect(wrapper).toContain("deployment.meta?.serviceManifest?.deploy");
+    expect(wrapper).toContain("RAILWAY_IAC_DEPLOYMENT_MANIFEST_STALE");
     expect(wrapper).toContain('excludedWriteOnlyFields: ["registryCredentials"]');
     expect(wrapper).toContain("RAILWAY_IAC_ACCOUNT_TOKEN_PROHIBITED");
     expect(wrapper).toContain("RAILWAY_IAC_CONFIG_FILE_BASELINE_MISMATCH");
+  });
+
+  it("pins the sanitized live Railway provider contract without inventing multiRegionConfig on ServiceInstance", () => {
+    const fixture = JSON.parse(
+      source("tests/fixtures/railway-service-instance-contract-5.49.6.json"),
+    ) as {
+      railwayCliVersion: string;
+      serviceInstanceFields: string[];
+      serviceInstanceUpdateInputFields: string[];
+      response: {
+        data: { environment: { serviceInstances: { edges: Array<{ node: Record<string, unknown> }> } } };
+      };
+    };
+
+    expect(fixture.railwayCliVersion).toBe("5.49.6");
+    expect(fixture.serviceInstanceFields).not.toContain("multiRegionConfig");
+    expect(fixture.serviceInstanceUpdateInputFields).toContain("multiRegionConfig");
+    expect(fixture.serviceInstanceUpdateInputFields).toContain("preDeployTimeoutSeconds");
+    for (const { node } of fixture.response.data.environment.serviceInstances.edges) {
+      expect(node).not.toHaveProperty("multiRegionConfig");
+      expect(node).toHaveProperty(
+        "latestDeployment.meta.serviceManifest.deploy.multiRegionConfig.ams.numReplicas",
+        1,
+      );
+    }
   });
 
   it("keeps Railway SDK and root development advisories separated", () => {

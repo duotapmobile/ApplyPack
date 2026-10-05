@@ -1,0 +1,186 @@
+{
+  "kind": "applypack.railway.provider-contract-fixture",
+  "railwayCliVersion": "5.49.6",
+  "observedAt": "2026-10-05T04:17:13.0645200Z",
+  "source": "Read-only Railway GraphQL introspection and staging ServiceInstance query",
+  "serviceInstanceFields": [
+    "activeDeployments",
+    "autoInstrumentationEnabled",
+    "buildCommand",
+    "builder",
+    "clearance",
+    "clearanceEffective",
+    "createdAt",
+    "cronSchedule",
+    "deletedAt",
+    "dockerfilePath",
+    "domains",
+    "drainingSeconds",
+    "edgeConfig",
+    "environmentId",
+    "hasEverDeployed",
+    "healthcheckPath",
+    "healthcheckTimeout",
+    "id",
+    "ipv6EgressEnabled",
+    "isUpdatable",
+    "latestDeployment",
+    "nextCronRunAt",
+    "nixpacksPlan",
+    "numReplicas",
+    "overlapSeconds",
+    "preDeployCommand",
+    "preDeployTimeoutSeconds",
+    "railpackInfo",
+    "railwayConfigFile",
+    "region",
+    "resolvedFileConfig",
+    "restartPolicyMaxRetries",
+    "restartPolicyType",
+    "rootDirectory",
+    "service",
+    "serviceId",
+    "serviceName",
+    "sleepApplication",
+    "source",
+    "startCommand",
+    "tracingEnabled",
+    "updatedAt",
+    "upstreamUrl",
+    "watchPatterns"
+  ],
+  "serviceInstanceUpdateInputFields": [
+    "autoInstrumentationEnabled",
+    "buildCommand",
+    "builder",
+    "cronSchedule",
+    "dockerfilePath",
+    "drainingSeconds",
+    "healthcheckPath",
+    "healthcheckTimeout",
+    "ipv6EgressEnabled",
+    "multiRegionConfig",
+    "nixpacksPlan",
+    "numReplicas",
+    "overlapSeconds",
+    "preDeployCommand",
+    "preDeployTimeoutSeconds",
+    "railwayConfigFile",
+    "region",
+    "registryCredentials",
+    "restartPolicyMaxRetries",
+    "restartPolicyType",
+    "rootDirectory",
+    "sleepApplication",
+    "source",
+    "startCommand",
+    "tracingEnabled",
+    "watchPatterns"
+  ],
+  "response": {
+    "data": {
+      "environment": {
+        "id": "6633e585-5bcd-4729-b167-2a99628daf86",
+        "name": "staging",
+        "serviceInstances": {
+          "edges": [
+            {
+              "node": {
+                "id": "2207d73b-ff81-4538-812d-22d368e573de",
+                "serviceId": "866e36fd-2fec-45fd-ba01-7150a789e419",
+                "serviceName": "ApplyPack-maintenance",
+                "updatedAt": "2026-10-05T04:06:28.996Z",
+                "autoInstrumentationEnabled": false,
+                "builder": "RAILPACK",
+                "railwayConfigFile": null,
+                "resolvedFileConfig": { "configFile": null },
+                "buildCommand": "node --check scripts/run-maintenance-once.mjs",
+                "dockerfilePath": null,
+                "drainingSeconds": null,
+                "rootDirectory": "/",
+                "startCommand": "node scripts/run-maintenance-once.mjs",
+                "cronSchedule": "0 * * * *",
+                "healthcheckPath": null,
+                "healthcheckTimeout": null,
+                "ipv6EgressEnabled": false,
+                "nixpacksPlan": null,
+                "numReplicas": 1,
+                "overlapSeconds": null,
+                "preDeployCommand": null,
+                "preDeployTimeoutSeconds": null,
+                "region": null,
+                "restartPolicyType": "NEVER",
+                "restartPolicyMaxRetries": 10,
+                "sleepApplication": false,
+                "source": { "image": null, "repo": "duotapmobile/ApplyPack" },
+                "tracingEnabled": false,
+                "watchPatterns": [],
+                "latestDeployment": {
+                  "id": "ebf7570e-890c-4799-a62e-5f68a197e7f1",
+                  "status": "SUCCESS",
+                  "createdAt": "2026-10-05T04:05:37.951Z",
+                  "updatedAt": "2026-10-05T04:06:40.331Z",
+                  "meta": {
+                    "commitHash": "d0aea15f0dfab0cf10154e4f6d80cd96185468e7",
+                    "serviceManifest": {
+                      "deploy": {
+                        "multiRegionConfig": { "ams": { "numReplicas": 1 } }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "node": {
+                "id": "29cd1c79-a42b-4499-aaa9-d036ddacc4d1",
+                "serviceId": "3d379eca-87ac-48ba-9f95-9d69c806a5db",
+                "serviceName": "ApplyPack-staging",
+                "updatedAt": "2026-10-05T04:06:23.036Z",
+                "autoInstrumentationEnabled": false,
+                "builder": "RAILPACK",
+                "railwayConfigFile": null,
+                "resolvedFileConfig": { "configFile": null },
+                "buildCommand": null,
+                "dockerfilePath": null,
+                "drainingSeconds": null,
+                "rootDirectory": null,
+                "startCommand": null,
+                "cronSchedule": null,
+                "healthcheckPath": "/api/live",
+                "healthcheckTimeout": 120,
+                "ipv6EgressEnabled": false,
+                "nixpacksPlan": null,
+                "numReplicas": null,
+                "overlapSeconds": null,
+                "preDeployCommand": null,
+                "preDeployTimeoutSeconds": null,
+                "region": null,
+                "restartPolicyType": "ON_FAILURE",
+                "restartPolicyMaxRetries": 3,
+                "sleepApplication": false,
+                "source": { "image": null, "repo": "duotapmobile/ApplyPack" },
+                "tracingEnabled": false,
+                "watchPatterns": [],
+                "latestDeployment": {
+                  "id": "8fefc2dd-0521-4f22-9de8-fdc8b4519c9c",
+                  "status": "SUCCESS",
+                  "createdAt": "2026-10-05T04:05:37.950Z",
+                  "updatedAt": "2026-10-05T04:06:40.066Z",
+                  "meta": {
+                    "commitHash": "d0aea15f0dfab0cf10154e4f6d80cd96185468e7",
+                    "serviceManifest": {
+                      "deploy": {
+                        "multiRegionConfig": { "ams": { "numReplicas": 1 } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

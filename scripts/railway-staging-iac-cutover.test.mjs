@@ -10,6 +10,7 @@ import {
   CUTOVER_AUTHORIZATION_VALUE,
   CUTOVER_BOUND_INPUTS,
   EXPECTED_RAILWAY_CLI_VERSION,
+  HOSTED_FETCH_TIMEOUT_MS,
   canonicalSha256,
   runCutover,
 } from "./railway-staging-iac-cutover.mjs";
@@ -19,6 +20,12 @@ const reviewedSha = "a".repeat(40);
 const sourceTree = "b".repeat(40);
 const token = "temporary-staging-project-token-for-test";
 const tempDirectories = [];
+const providerFixture = JSON.parse(
+  readFileSync(
+    resolve(repoRoot, "tests/fixtures/railway-service-instance-contract-5.49.6.json"),
+    "utf8",
+  ),
+);
 const expectedRollbackFields = [
   "autoInstrumentationEnabled",
   "buildCommand",
@@ -78,95 +85,31 @@ function scopeResponse(overrides = {}) {
   };
 }
 
-function topologyResponse({ configFile = null } = {}) {
+function clone(value) {
+  return structuredClone(value);
+}
+
+function providerContractResponse() {
   return {
     data: {
-      environment: {
-        id: "6633e585-5bcd-4729-b167-2a99628daf86",
-        name: "staging",
-        serviceInstances: {
-          edges: [
-            {
-              node: {
-                id: "29cd1c79-a42b-4499-aaa9-d036ddacc4d1",
-                serviceId: "3d379eca-87ac-48ba-9f95-9d69c806a5db",
-                serviceName: "ApplyPack-staging",
-                autoInstrumentationEnabled: false,
-                builder: "RAILPACK",
-                railwayConfigFile: configFile,
-                resolvedFileConfig: { configFile },
-                buildCommand: null,
-                dockerfilePath: null,
-                drainingSeconds: null,
-                rootDirectory: null,
-                startCommand: null,
-                cronSchedule: null,
-                healthcheckPath: "/api/live",
-                healthcheckTimeout: 120,
-                ipv6EgressEnabled: false,
-                multiRegionConfig: { ams: { numReplicas: 1 } },
-                nixpacksPlan: null,
-                numReplicas: null,
-                overlapSeconds: null,
-                preDeployCommand: null,
-                preDeployTimeoutSeconds: null,
-                region: null,
-                restartPolicyType: "ON_FAILURE",
-                restartPolicyMaxRetries: 3,
-                sleepApplication: false,
-                source: { image: null, repo: "duotapmobile/ApplyPack" },
-                tracingEnabled: false,
-                watchPatterns: [],
-                latestDeployment: {
-                  id: "web-deployment",
-                  status: "SUCCESS",
-                  meta: { commitHash: reviewedSha },
-                },
-              },
-            },
-            {
-              node: {
-                id: "2207d73b-ff81-4538-812d-22d368e573de",
-                serviceId: "866e36fd-2fec-45fd-ba01-7150a789e419",
-                serviceName: "ApplyPack-maintenance",
-                autoInstrumentationEnabled: false,
-                builder: "RAILPACK",
-                railwayConfigFile: configFile,
-                resolvedFileConfig: { configFile },
-                buildCommand: "node --check scripts/run-maintenance-once.mjs",
-                dockerfilePath: null,
-                drainingSeconds: null,
-                rootDirectory: "/",
-                startCommand: "node scripts/run-maintenance-once.mjs",
-                cronSchedule: "0 * * * *",
-                healthcheckPath: null,
-                healthcheckTimeout: null,
-                ipv6EgressEnabled: false,
-                multiRegionConfig: { ams: { numReplicas: 1 } },
-                nixpacksPlan: null,
-                numReplicas: 1,
-                overlapSeconds: null,
-                preDeployCommand: null,
-                preDeployTimeoutSeconds: null,
-                region: null,
-                restartPolicyType: "NEVER",
-                restartPolicyMaxRetries: 10,
-                sleepApplication: false,
-                source: { image: null, repo: "duotapmobile/ApplyPack" },
-                tracingEnabled: false,
-                watchPatterns: [],
-                latestDeployment: {
-                  id: "maintenance-deployment",
-                  status: "SUCCESS",
-                  meta: { commitHash: reviewedSha },
-                },
-              },
-            },
-          ],
-        },
+      serviceInstance: {
+        fields: providerFixture.serviceInstanceFields.map((name) => ({ name })),
+      },
+      serviceInstanceUpdateInput: {
+        inputFields: providerFixture.serviceInstanceUpdateInputFields.map((name) => ({ name })),
       },
     },
   };
+}
+
+function topologyResponse({ configFile = null, commitHash = reviewedSha } = {}) {
+  const response = clone(providerFixture.response);
+  for (const { node } of response.data.environment.serviceInstances.edges) {
+    node.railwayConfigFile = configFile;
+    node.resolvedFileConfig.configFile = configFile;
+    node.latestDeployment.meta.commitHash = commitHash;
+  }
+  return response;
 }
 
 function planArtifact({ destructive = false, changes = [] } = {}) {
@@ -193,10 +136,12 @@ function planArtifact({ destructive = false, changes = [] } = {}) {
 
 function createRunner({
   scope = scopeResponse(),
-  topology = topologyResponse(),
+  topology,
+  providerContract = providerContractResponse(),
   plan = planArtifact(),
   statusOutput = "",
   cliVersion = EXPECTED_RAILWAY_CLI_VERSION,
+  gitHead = reviewedSha,
   checkoutVariables = {
     APP_CHECKOUT_ENABLED: "false",
     APP_LIVE_PAYMENTS_ENABLED: "false",
@@ -204,6 +149,7 @@ function createRunner({
   },
 } = {}) {
   const calls = [];
+  const effectiveTopology = topology ?? topologyResponse({ commitHash: gitHead });
   const blobPaths = new Map();
   const committedContent = (path) =>
     readFileSync(resolve(repoRoot, path), "utf8")
@@ -218,7 +164,7 @@ function createRunner({
       return { status: 0, stdout: statusOutput, stderr: "" };
     }
     if (command === "git" && args.join(" ") === "rev-parse HEAD") {
-      return { status: 0, stdout: `${reviewedSha}\n`, stderr: "" };
+      return { status: 0, stdout: `${gitHead}\n`, stderr: "" };
     }
     if (command === "git" && args.join(" ") === "rev-parse HEAD:.railway") {
       return { status: 0, stdout: `${sourceTree}\n`, stderr: "" };
@@ -238,7 +184,11 @@ function createRunner({
       return { status: 0, stdout: `railway ${cliVersion}\n`, stderr: "" };
     }
     if (command === "railway" && args[0] === "api") {
-      const body = args[1].includes("projectToken") ? scope : topology;
+      const body = args[1].includes("projectToken")
+        ? scope
+        : args[1].includes("ApplyPackCutoverProviderContract")
+          ? providerContract
+          : effectiveTopology;
       return { status: 0, stdout: JSON.stringify(body), stderr: "" };
     }
     if (command === "railway" && args[0] === "variable" && args[1] === "list") {
@@ -362,7 +312,25 @@ test("dry-run performs audits, exact scope/topology checks, and two pinned zero-
     "8C18D356C0EE16F939A40E69311B81F554D3A7F5DFFBD7B7C14973B72DCF3A58",
   );
   assert.equal(receipt.checkoutLock.checkoutEnabled, false);
+  assert.equal(receipt.hostedPreflight.requestTimeoutMs, HOSTED_FETCH_TIMEOUT_MS);
   assert.equal(receipt.hostedPreflight.health.maintenanceFresh, true);
+  assert.deepEqual(
+    receipt.providerContract.serviceInstanceFields,
+    providerFixture.serviceInstanceFields,
+  );
+  assert.deepEqual(
+    receipt.providerContract.serviceInstanceUpdateInputFields,
+    providerFixture.serviceInstanceUpdateInputFields,
+  );
+  assert.deepEqual(
+    receipt.providerContract.rollbackMutationInputFields,
+    expectedRollbackFields,
+  );
+  assert.deepEqual(
+    receipt.providerContract.excludedWriteOnlyFields,
+    ["registryCredentials"],
+  );
+  assert.match(receipt.providerContract.fingerprint, /^[A-F0-9]{64}$/);
   assert.equal(receipt.rollback.services.length, 2);
   const webRollback = receipt.rollback.services.find(
     (entry) => entry.serviceName === "ApplyPack-staging",
@@ -431,6 +399,113 @@ test("dry-run performs audits, exact scope/topology checks, and two pinned zero-
     watchPatterns: [],
   });
   assert.deepEqual(receipt.rollback.excludedWriteOnlyFields, ["registryCredentials"]);
+  const topologyReceipt = receipt.topology.services.find(
+    (entry) => entry.serviceName === "ApplyPack-staging",
+  );
+  assert.equal(
+    topologyReceipt.multiRegionConfigSource,
+    "latestDeployment.meta.serviceManifest.deploy.multiRegionConfig",
+  );
+});
+
+test("captured live Railway 5.49.6 contract fixture drives topology parsing without a mock-only field", async () => {
+  assert.equal(providerFixture.railwayCliVersion, EXPECTED_RAILWAY_CLI_VERSION);
+  assert.equal(providerFixture.serviceInstanceFields.includes("multiRegionConfig"), false);
+  assert.equal(
+    providerFixture.serviceInstanceUpdateInputFields.includes("multiRegionConfig"),
+    true,
+  );
+  for (const { node } of providerFixture.response.data.environment.serviceInstances.edges) {
+    assert.equal(Object.hasOwn(node, "multiRegionConfig"), false);
+    assert.deepEqual(
+      node.latestDeployment.meta.serviceManifest.deploy.multiRegionConfig,
+      { ams: { numReplicas: 1 } },
+    );
+  }
+
+  const fixtureSha =
+    providerFixture.response.data.environment.serviceInstances.edges[0].node.latestDeployment
+      .meta.commitHash;
+  const runner = createRunner({
+    gitHead: fixtureSha,
+    topology: clone(providerFixture.response),
+  });
+  const directory = receiptDirectory();
+  await runCutover(
+    options(runner.run, {
+      receiptDirectory: directory,
+      fetchImpl: hostedFetch({ releaseSha: fixtureSha }),
+    }),
+  );
+  const receipt = JSON.parse(
+    readFileSync(join(directory, "pre-cutover-receipt.json"), "utf8"),
+  );
+  for (const service of receipt.rollback.services) {
+    assert.deepEqual(service.input.multiRegionConfig, { ams: { numReplicas: 1 } });
+  }
+});
+
+test("live provider contract disappearance or addition fails before topology, plan, or apply", async () => {
+  for (const mutate of [
+    (contract) => contract.data.serviceInstanceUpdateInput.inputFields.pop(),
+    (contract) => contract.data.serviceInstance.fields.push({ name: "unexpectedField" }),
+  ]) {
+    const contract = providerContractResponse();
+    mutate(contract);
+    const runner = createRunner({ providerContract: contract });
+    await assert.rejects(runCutover(options(runner.run, { mode: "execute" })), {
+      message: "RAILWAY_IAC_PROVIDER_CONTRACT_MISMATCH",
+    });
+    assert.equal(providerMutationCalls(runner.calls).length, 0);
+    assert.equal(
+      runner.calls.some(
+        (call) => call.command === "railway" && call.args[1]?.includes("ApplyPackCutoverTopology"),
+      ),
+      false,
+    );
+  }
+});
+
+test("missing, malformed, or stale deployment manifests fail before plan or apply", async () => {
+  const fixtures = [
+    {
+      code: "RAILWAY_IAC_DEPLOYMENT_MANIFEST_MISSING",
+      mutate: (node) => delete node.latestDeployment,
+    },
+    {
+      code: "RAILWAY_IAC_DEPLOYMENT_MANIFEST_MISSING",
+      mutate: (node) => delete node.latestDeployment.meta.serviceManifest,
+    },
+    {
+      code: "RAILWAY_IAC_DEPLOYMENT_MANIFEST_MALFORMED",
+      mutate: (node) => {
+        node.latestDeployment.meta.serviceManifest.deploy.multiRegionConfig = {
+          ams: { numReplicas: 0 },
+        };
+      },
+    },
+    {
+      code: "RAILWAY_IAC_DEPLOYMENT_MANIFEST_STALE",
+      mutate: (node) => {
+        node.updatedAt = "2026-10-05T04:07:00.000Z";
+      },
+    },
+  ];
+  for (const fixture of fixtures) {
+    const topology = topologyResponse();
+    fixture.mutate(topology.data.environment.serviceInstances.edges[0].node);
+    const runner = createRunner({ topology });
+    await assert.rejects(runCutover(options(runner.run, { mode: "execute" })), {
+      message: fixture.code,
+    });
+    assert.equal(providerMutationCalls(runner.calls).length, 0);
+    assert.equal(
+      runner.calls.some(
+        (call) => call.command === "railway" && call.args[0] === "config" && call.args[1] === "plan",
+      ),
+      false,
+    );
+  }
 });
 
 test("canonical committed-content hashing accepts clean LF and Windows CRLF", () => {
@@ -449,6 +524,7 @@ test("dirty wrapper, wrapper test, or CI input stops before credential validatio
     "scripts/railway-staging-iac-cutover.test.mjs",
     ".github/workflows/ci.yml",
     ".railway/README.md",
+    "tests/fixtures/railway-service-instance-contract-5.49.6.json",
   ]) {
     const runner = createRunner({ statusOutput: ` M ${path}\n` });
     await assert.rejects(runCutover(options(runner.run)), {
@@ -577,6 +653,37 @@ test("stale or missing maintenance heartbeat evidence prevents apply", async () 
       { message: "RAILWAY_IAC_PREFLIGHT_MAINTENANCE_NOT_FRESH" },
     );
     assert.equal(providerMutationCalls(runner.calls).length, 0);
+  }
+});
+
+test("bounded AbortController deadlines fail closed for both hosted probes", async () => {
+  for (const target of ["live", "health"]) {
+    const runner = createRunner();
+    const observedSignals = [];
+    const fetchImpl = async (url, init) => {
+      observedSignals.push(init.signal);
+      if (target === "health" && url.endsWith("/api/live")) {
+        return { status: 200, json: async () => ({ status: "ok" }) };
+      }
+      return new Promise(() => {});
+    };
+    await assert.rejects(
+      runCutover(
+        options(runner.run, {
+          mode: "execute",
+          fetchImpl,
+          hostedFetchTimeoutMs: 5,
+        }),
+      ),
+      {
+        message:
+          target === "live"
+            ? "RAILWAY_IAC_PREFLIGHT_LIVENESS_FAILED"
+            : "RAILWAY_IAC_PREFLIGHT_READINESS_NOT_LOCKED",
+      },
+    );
+    assert.equal(providerMutationCalls(runner.calls).length, 0);
+    assert.equal(observedSignals.at(-1).aborted, true);
   }
 });
 

@@ -9,6 +9,7 @@ export const CUTOVER_AUTHORIZATION_ENV =
 export const CUTOVER_AUTHORIZATION_VALUE =
   "apply:fb5a58c4-8ccb-4205-82f9-8b8738c84e56:6633e585-5bcd-4729-b167-2a99628daf86";
 export const EXPECTED_RAILWAY_CLI_VERSION = "5.49.6";
+export const HOSTED_FETCH_TIMEOUT_MS = 10_000;
 
 export const CUTOVER_BOUND_INPUTS = Object.freeze([
   ".github/workflows/ci.yml",
@@ -27,6 +28,7 @@ export const CUTOVER_BOUND_INPUTS = Object.freeze([
   "src/lib/operations/launch-readiness.ts",
   "src/lib/operations/summary.ts",
   "src/lib/stripe/mode.ts",
+  "tests/fixtures/railway-service-instance-contract-5.49.6.json",
   "tests/unit/railway-iac.test.ts",
 ]);
 
@@ -62,6 +64,89 @@ const TOKEN_SCOPE_QUERY = `query ApplyPackCutoverTokenScope {
   }
 }`;
 
+const EXPECTED_SERVICE_INSTANCE_FIELDS = Object.freeze([
+  "activeDeployments",
+  "autoInstrumentationEnabled",
+  "buildCommand",
+  "builder",
+  "clearance",
+  "clearanceEffective",
+  "createdAt",
+  "cronSchedule",
+  "deletedAt",
+  "dockerfilePath",
+  "domains",
+  "drainingSeconds",
+  "edgeConfig",
+  "environmentId",
+  "hasEverDeployed",
+  "healthcheckPath",
+  "healthcheckTimeout",
+  "id",
+  "ipv6EgressEnabled",
+  "isUpdatable",
+  "latestDeployment",
+  "nextCronRunAt",
+  "nixpacksPlan",
+  "numReplicas",
+  "overlapSeconds",
+  "preDeployCommand",
+  "preDeployTimeoutSeconds",
+  "railpackInfo",
+  "railwayConfigFile",
+  "region",
+  "resolvedFileConfig",
+  "restartPolicyMaxRetries",
+  "restartPolicyType",
+  "rootDirectory",
+  "service",
+  "serviceId",
+  "serviceName",
+  "sleepApplication",
+  "source",
+  "startCommand",
+  "tracingEnabled",
+  "updatedAt",
+  "upstreamUrl",
+  "watchPatterns",
+]);
+
+const EXPECTED_UPDATE_INPUT_FIELDS = Object.freeze([
+  "autoInstrumentationEnabled",
+  "buildCommand",
+  "builder",
+  "cronSchedule",
+  "dockerfilePath",
+  "drainingSeconds",
+  "healthcheckPath",
+  "healthcheckTimeout",
+  "ipv6EgressEnabled",
+  "multiRegionConfig",
+  "nixpacksPlan",
+  "numReplicas",
+  "overlapSeconds",
+  "preDeployCommand",
+  "preDeployTimeoutSeconds",
+  "railwayConfigFile",
+  "region",
+  "registryCredentials",
+  "restartPolicyMaxRetries",
+  "restartPolicyType",
+  "rootDirectory",
+  "sleepApplication",
+  "source",
+  "startCommand",
+  "tracingEnabled",
+  "watchPatterns",
+]);
+
+const PROVIDER_CONTRACT_QUERY = `query ApplyPackCutoverProviderContract {
+  serviceInstance: __type(name: "ServiceInstance") { fields { name } }
+  serviceInstanceUpdateInput: __type(name: "ServiceInstanceUpdateInput") {
+    inputFields { name }
+  }
+}`;
+
 const TOPOLOGY_QUERY = `query ApplyPackCutoverTopology($environmentId: String!) {
   environment(id: $environmentId) {
     id
@@ -72,6 +157,7 @@ const TOPOLOGY_QUERY = `query ApplyPackCutoverTopology($environmentId: String!) 
           id
           serviceId
           serviceName
+          updatedAt
           autoInstrumentationEnabled
           builder
           railwayConfigFile
@@ -85,7 +171,6 @@ const TOPOLOGY_QUERY = `query ApplyPackCutoverTopology($environmentId: String!) 
           healthcheckPath
           healthcheckTimeout
           ipv6EgressEnabled
-          multiRegionConfig
           nixpacksPlan
           numReplicas
           overlapSeconds
@@ -98,7 +183,7 @@ const TOPOLOGY_QUERY = `query ApplyPackCutoverTopology($environmentId: String!) 
           source { image repo }
           tracingEnabled
           watchPatterns
-          latestDeployment { id status meta }
+          latestDeployment { id status createdAt updatedAt meta }
         }
       }
     }
@@ -325,8 +410,108 @@ function validateScope(response) {
   };
 }
 
+function sortedFieldNames(fields) {
+  if (!Array.isArray(fields) || fields.some((field) => typeof field?.name !== "string")) {
+    fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+  }
+  const names = fields.map((field) => field.name).sort();
+  if (new Set(names).size !== names.length) {
+    fail("RAILWAY_IAC_PROVIDER_CONTRACT_MALFORMED");
+  }
+  return names;
+}
+
+function validateProviderContract(response) {
+  const serviceInstanceFields = sortedFieldNames(response?.data?.serviceInstance?.fields);
+  const serviceInstanceUpdateInputFields = sortedFieldNames(
+    response?.data?.serviceInstanceUpdateInput?.inputFields,
+  );
+  if (
+    JSON.stringify(serviceInstanceFields) !== JSON.stringify(EXPECTED_SERVICE_INSTANCE_FIELDS) ||
+    JSON.stringify(serviceInstanceUpdateInputFields) !==
+      JSON.stringify(EXPECTED_UPDATE_INPUT_FIELDS)
+  ) {
+    fail("RAILWAY_IAC_PROVIDER_CONTRACT_MISMATCH");
+  }
+  const rollbackMutationInputFields = serviceInstanceUpdateInputFields.filter(
+    (field) => field !== "registryCredentials",
+  );
+  if (
+    JSON.stringify(rollbackMutationInputFields) !== JSON.stringify(ROLLBACK_INPUT_FIELDS)
+  ) {
+    fail("RAILWAY_IAC_PROVIDER_CONTRACT_MISMATCH");
+  }
+  const fingerprint = createHash("sha256")
+    .update(JSON.stringify({
+      railwayCliVersion: EXPECTED_RAILWAY_CLI_VERSION,
+      serviceInstanceFields,
+      serviceInstanceUpdateInputFields,
+    }))
+    .digest("hex")
+    .toUpperCase();
+  return {
+    railwayCliVersion: EXPECTED_RAILWAY_CLI_VERSION,
+    fingerprint,
+    serviceInstanceFields,
+    serviceInstanceUpdateInputFields,
+    rollbackMutationInputFields,
+    excludedWriteOnlyFields: ["registryCredentials"],
+  };
+}
+
 function deploymentCommit(node) {
   return node?.latestDeployment?.meta?.commitHash ?? null;
+}
+
+function isPlainObject(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function deploymentManifestMultiRegionConfig(node) {
+  const deployment = node?.latestDeployment;
+  if (!deployment || typeof deployment.id !== "string") {
+    fail("RAILWAY_IAC_DEPLOYMENT_MANIFEST_MISSING");
+  }
+  const instanceUpdatedAt = Date.parse(node.updatedAt);
+  const deploymentCreatedAt = Date.parse(deployment.createdAt);
+  const deploymentUpdatedAt = Date.parse(deployment.updatedAt);
+  if (
+    !Number.isFinite(instanceUpdatedAt) ||
+    !Number.isFinite(deploymentCreatedAt) ||
+    !Number.isFinite(deploymentUpdatedAt)
+  ) {
+    fail("RAILWAY_IAC_DEPLOYMENT_MANIFEST_MALFORMED");
+  }
+  if (
+    deploymentUpdatedAt < deploymentCreatedAt ||
+    deploymentUpdatedAt < instanceUpdatedAt
+  ) {
+    fail("RAILWAY_IAC_DEPLOYMENT_MANIFEST_STALE");
+  }
+  const deploy = deployment.meta?.serviceManifest?.deploy;
+  if (
+    !isPlainObject(deploy) ||
+    !Object.prototype.hasOwnProperty.call(deploy, "multiRegionConfig")
+  ) {
+    fail("RAILWAY_IAC_DEPLOYMENT_MANIFEST_MISSING");
+  }
+  const config = deploy.multiRegionConfig;
+  if (config === null) return null;
+  if (!isPlainObject(config) || Object.keys(config).length === 0) {
+    fail("RAILWAY_IAC_DEPLOYMENT_MANIFEST_MALFORMED");
+  }
+  for (const [region, settings] of Object.entries(config)) {
+    if (
+      !/^[a-z0-9][a-z0-9-]{1,63}$/.test(region) ||
+      !isPlainObject(settings) ||
+      JSON.stringify(Object.keys(settings).sort()) !== JSON.stringify(["numReplicas"]) ||
+      !Number.isSafeInteger(settings.numReplicas) ||
+      settings.numReplicas < 1
+    ) {
+      fail("RAILWAY_IAC_DEPLOYMENT_MANIFEST_MALFORMED");
+    }
+  }
+  return config;
 }
 
 function validateTopology(response, reviewedSha) {
@@ -352,6 +537,7 @@ function validateTopology(response, reviewedSha) {
   ) {
     fail("RAILWAY_IAC_SERVICE_TOPOLOGY_MISMATCH");
   }
+  const multiRegionConfigByServiceId = {};
   for (const node of [web, maintenance]) {
     if (
       node.railwayConfigFile !== null ||
@@ -359,6 +545,8 @@ function validateTopology(response, reviewedSha) {
     ) {
       fail("RAILWAY_IAC_CONFIG_FILE_BASELINE_MISMATCH");
     }
+    multiRegionConfigByServiceId[node.serviceId] =
+      deploymentManifestMultiRegionConfig(node);
     if (
       node.latestDeployment?.status !== "SUCCESS" ||
       deploymentCommit(node) !== reviewedSha
@@ -377,7 +565,11 @@ function validateTopology(response, reviewedSha) {
   ) {
     fail("RAILWAY_IAC_SERVICE_SETTINGS_MISMATCH");
   }
-  return { environment: EXPECTED.environment, services: nodes };
+  return {
+    environment: EXPECTED.environment,
+    services: nodes,
+    multiRegionConfigByServiceId,
+  };
 }
 
 function validatePlan(plan, sourceTree) {
@@ -486,6 +678,7 @@ function sanitizeTopology(topology) {
       serviceId: node.serviceId,
       serviceInstanceId: node.id,
       serviceName: node.serviceName,
+      serviceInstanceUpdatedAt: node.updatedAt,
       autoInstrumentationEnabled: node.autoInstrumentationEnabled,
       builder: node.builder,
       railwayConfigFile: node.railwayConfigFile,
@@ -499,7 +692,9 @@ function sanitizeTopology(topology) {
       healthcheckPath: node.healthcheckPath,
       healthcheckTimeout: node.healthcheckTimeout,
       ipv6EgressEnabled: node.ipv6EgressEnabled,
-      multiRegionConfig: node.multiRegionConfig,
+      multiRegionConfig: topology.multiRegionConfigByServiceId[node.serviceId],
+      multiRegionConfigSource:
+        "latestDeployment.meta.serviceManifest.deploy.multiRegionConfig",
       nixpacksPlan: node.nixpacksPlan,
       numReplicas: node.numReplicas,
       overlapSeconds: node.overlapSeconds,
@@ -515,15 +710,21 @@ function sanitizeTopology(topology) {
       latestDeployment: {
         id: node.latestDeployment.id,
         status: node.latestDeployment.status,
+        createdAt: node.latestDeployment.createdAt,
+        updatedAt: node.latestDeployment.updatedAt,
         commitHash: deploymentCommit(node),
       },
     })),
   };
 }
 
-function rollbackInput(node) {
+function rollbackInput(node, multiRegionConfig) {
   const input = {};
   for (const field of ROLLBACK_INPUT_FIELDS) {
+    if (field === "multiRegionConfig") {
+      input[field] = multiRegionConfig;
+      continue;
+    }
     if (!Object.prototype.hasOwnProperty.call(node, field)) {
       fail("RAILWAY_IAC_ROLLBACK_RECEIPT_INCOMPLETE");
     }
@@ -558,37 +759,58 @@ function buildRollbackReceipt(topology) {
         serviceId: expected.id,
         serviceInstanceId: expected.instanceId,
         serviceName: expected.name,
-        input: rollbackInput(node),
+        input: rollbackInput(
+          node,
+          topology.multiRegionConfigByServiceId[node.serviceId],
+        ),
       };
     }),
   };
 }
 
-async function validateHosted(fetchImpl, reviewedSha, phase) {
-  const prefix = phase === "post" ? "RAILWAY_IAC_POST" : "RAILWAY_IAC_PREFLIGHT";
-  let liveResponse;
-  let live;
+async function fetchHostedJson(fetchImpl, url, timeoutMs, failureCode) {
+  const controller = new AbortController();
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      controller.abort();
+      reject(new CutoverError(failureCode));
+    }, timeoutMs);
+  });
   try {
-    liveResponse = await fetchImpl(`${EXPECTED.publicOrigin}/api/live`, {
-      redirect: "error",
-    });
-    live = await liveResponse.json();
-  } catch {
-    fail(`${prefix}_LIVENESS_FAILED`);
+    const request = (async () => {
+      const response = await fetchImpl(url, {
+        redirect: "error",
+        signal: controller.signal,
+      });
+      return { response, body: await response.json() };
+    })();
+    return await Promise.race([request, timeout]);
+  } catch (error) {
+    if (error instanceof CutoverError) throw error;
+    fail(failureCode);
+  } finally {
+    clearTimeout(timeoutId);
   }
+}
+
+async function validateHosted(fetchImpl, reviewedSha, phase, timeoutMs) {
+  const prefix = phase === "post" ? "RAILWAY_IAC_POST" : "RAILWAY_IAC_PREFLIGHT";
+  const { response: liveResponse, body: live } = await fetchHostedJson(
+    fetchImpl,
+    `${EXPECTED.publicOrigin}/api/live`,
+    timeoutMs,
+    `${prefix}_LIVENESS_FAILED`,
+  );
   if (liveResponse.status !== 200 || live?.status !== "ok") {
     fail(`${prefix}_LIVENESS_FAILED`);
   }
-  let healthResponse;
-  let health;
-  try {
-    healthResponse = await fetchImpl(`${EXPECTED.publicOrigin}/api/health`, {
-      redirect: "error",
-    });
-    health = await healthResponse.json();
-  } catch {
-    fail(`${prefix}_READINESS_NOT_LOCKED`);
-  }
+  const { response: healthResponse, body: health } = await fetchHostedJson(
+    fetchImpl,
+    `${EXPECTED.publicOrigin}/api/health`,
+    timeoutMs,
+    `${prefix}_READINESS_NOT_LOCKED`,
+  );
   if (
     healthResponse.status !== 503 ||
     health?.status !== "not_ready" ||
@@ -601,6 +823,7 @@ async function validateHosted(fetchImpl, reviewedSha, phase) {
     fail(`${prefix}_MAINTENANCE_NOT_FRESH`);
   }
   return {
+    requestTimeoutMs: timeoutMs,
     live: { statusCode: 200, status: "ok" },
     health: {
       statusCode: 503,
@@ -621,8 +844,16 @@ export async function runCutover({
   fetchImpl = globalThis.fetch,
   now = () => new Date(),
   readBoundFile = readFileSync,
+  hostedFetchTimeoutMs = HOSTED_FETCH_TIMEOUT_MS,
 } = {}) {
   if (!["dry-run", "execute"].includes(mode)) fail("RAILWAY_IAC_MODE_INVALID");
+  if (
+    !Number.isSafeInteger(hostedFetchTimeoutMs) ||
+    hostedFetchTimeoutMs < 1 ||
+    hostedFetchTimeoutMs > 60_000
+  ) {
+    fail("RAILWAY_IAC_HOSTED_FETCH_TIMEOUT_INVALID");
+  }
   if (exactEnvValue(env, CUTOVER_AUTHORIZATION_ENV) !== CUTOVER_AUTHORIZATION_VALUE) {
     fail("RAILWAY_IAC_CUTOVER_NOT_AUTHORIZED");
   }
@@ -676,6 +907,9 @@ export async function runCutover({
   const providerEnv = scrubCredentialEnv(env, { railwayToken: token });
 
   const scope = validateScope(runApi(run, repoRoot, providerEnv, TOKEN_SCOPE_QUERY));
+  const providerContract = validateProviderContract(
+    runApi(run, repoRoot, providerEnv, PROVIDER_CONTRACT_QUERY),
+  );
   const topology = validateTopology(
     runApi(run, repoRoot, providerEnv, TOPOLOGY_QUERY, [
       ["environmentId", EXPECTED.environment.id],
@@ -683,7 +917,12 @@ export async function runCutover({
     reviewedSha,
   );
   const checkoutLock = validateCheckoutDisabled(run, repoRoot, providerEnv);
-  const hostedPreflight = await validateHosted(fetchImpl, reviewedSha, "preflight");
+  const hostedPreflight = await validateHosted(
+    fetchImpl,
+    reviewedSha,
+    "preflight",
+    hostedFetchTimeoutMs,
+  );
   const rollback = buildRollbackReceipt(topology);
 
   const preReceipt = {
@@ -692,7 +931,9 @@ export async function runCutover({
     reviewedSha,
     sourceTree,
     railwayCliVersion,
+    providerContractFingerprint: providerContract.fingerprint,
     scope,
+    providerContract,
     boundInputs,
     topology: sanitizeTopology(topology),
     rollback,
@@ -731,6 +972,7 @@ export async function runCutover({
     reviewedSha,
     sourceTree,
     railwayCliVersion,
+    providerContractFingerprint: providerContract.fingerprint,
     boundInputHashes: Object.fromEntries(
       Object.entries(boundInputs).map(([path, evidence]) => [
         path,
@@ -766,6 +1008,12 @@ export async function runCutover({
   }
 
   validateScope(runApi(run, repoRoot, providerEnv, TOKEN_SCOPE_QUERY));
+  const preApplyProviderContract = validateProviderContract(
+    runApi(run, repoRoot, providerEnv, PROVIDER_CONTRACT_QUERY),
+  );
+  if (preApplyProviderContract.fingerprint !== providerContract.fingerprint) {
+    fail("RAILWAY_IAC_PROVIDER_CONTRACT_MISMATCH");
+  }
   validateTopology(
     runApi(run, repoRoot, providerEnv, TOPOLOGY_QUERY, [
       ["environmentId", EXPECTED.environment.id],
@@ -773,7 +1021,7 @@ export async function runCutover({
     reviewedSha,
   );
   validateCheckoutDisabled(run, repoRoot, providerEnv);
-  await validateHosted(fetchImpl, reviewedSha, "preflight");
+  await validateHosted(fetchImpl, reviewedSha, "preflight", hostedFetchTimeoutMs);
   const apply = run(
     "railway",
     ["config", "apply", "--json", "--yes", "--plan", planPath],
@@ -788,7 +1036,12 @@ export async function runCutover({
     reviewedSha,
   );
   const postCheckoutLock = validateCheckoutDisabled(run, repoRoot, providerEnv);
-  const hosted = await validateHosted(fetchImpl, reviewedSha, "post");
+  const hosted = await validateHosted(
+    fetchImpl,
+    reviewedSha,
+    "post",
+    hostedFetchTimeoutMs,
+  );
   const postReceipt = {
     kind: "applypack.railway.staging.post-cutover",
     capturedAt: now().toISOString(),
@@ -796,6 +1049,7 @@ export async function runCutover({
     sourceTree,
     railwayCliVersion,
     planSha256: pinnedPlanHash,
+    providerContractFingerprint: preApplyProviderContract.fingerprint,
     topology: sanitizeTopology(postTopology),
     checkoutLock: postCheckoutLock,
     hosted,

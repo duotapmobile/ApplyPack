@@ -96,7 +96,7 @@ The wrapper never invokes `railway config migrate`. Railway migration can infer 
 
 Before loading or validating a provider credential, the wrapper requires every cutover input to exist at `HEAD`, be clean, and byte-equivalent to its committed Git blob after the single permitted cross-platform transformation: CRLF and lone CR line endings are normalized to LF. Invalid UTF-8 replacement characters and NUL bytes fail closed. The binding covers the wrapper, its direct test, the CI workflow, this runbook, the isolated Railway package and tests, all three legacy Railway JSON files, and the application source that defines readiness, checkout mode, and operations truth.
 
-The pre-cutover receipt records the exact Git blob object ID and canonical SHA-256 for every bound input. The plan receipt repeats each canonical SHA-256. This allows a Windows CRLF checkout to match the reviewed LF Git object without weakening the content check. A dirty bound path, missing committed object, content mismatch, or legacy-hash mismatch stops before provider identity validation, planning, or apply.
+The pre-cutover receipt records the exact Git blob object ID and canonical SHA-256 for every bound input, including the sanitized Railway 5.49.6 provider-contract fixture. The plan receipt repeats each canonical SHA-256. This allows a Windows CRLF checkout to match the reviewed LF Git object without weakening the content check. A dirty bound path, missing committed object, content mismatch, or legacy-hash mismatch stops before provider identity validation, planning, or apply.
 
 ## Dependency-audit boundary
 
@@ -138,7 +138,7 @@ Current provider fields returned by the read-only `serviceInstance` query:
 | `dockerfilePath` | `null` | `null` |
 | `drainingSeconds` | `null` | `null` |
 | `numReplicas` | `null` | `1` |
-| `multiRegionConfig` | `ams: 1` | `ams: 1` |
+| `multiRegionConfig` | `ams: 1`, from the latest deployment manifest | `ams: 1`, from the latest deployment manifest |
 | `nixpacksPlan` | `null` | `null` |
 | `overlapSeconds` | `null` | `null` |
 | `preDeployCommand` | `null` | `null` |
@@ -150,7 +150,7 @@ Current provider fields returned by the read-only `serviceInstance` query:
 | `tracingEnabled` | `false` | `false` |
 | `watchPatterns` | `[]` | `[]` |
 
-The reference deployments were web `3a39e1f2-6843-4fd3-aaf1-7e453843d18a` and maintenance `7ff4d797-9e62-4b12-88fa-d72b1c996e48`, both successful at commit `14c908ef1a7365f8d234e72d2d9524313b3a1812`. The reference plan also reported `ams: 1` for both services. The retained legacy-file hashes are:
+The sanitized Railway 5.49.6 provider-contract fixture observed web deployment `8fefc2dd-0521-4f22-9de8-fdc8b4519c9c` and maintenance deployment `ebf7570e-890c-4799-a62e-5f68a197e7f1`, both successful at commit `d0aea15f0dfab0cf10154e4f6d80cd96185468e7`. Their deployment manifests reported `ams: 1` for both services. These IDs and the SHA are historical fixture evidence only; the wrapper requires a fresh exact-SHA deployment at execution time. The retained legacy-file hashes are:
 
 ```text
 railway.json             8C18D356C0EE16F939A40E69311B81F554D3A7F5DFFBD7B7C14973B72DCF3A58
@@ -160,7 +160,9 @@ railway.maintenance.json EEDFA7D896A451A8BFE6CD53FAF4859243D547777A0544F03E6AA3E
 
 These are SHA-256 values over the committed UTF-8 content with line endings canonically normalized to LF. They are intentionally stable across clean LF and Windows CRLF checkouts. The receipt also records the exact Git blob object ID, so normalization does not permit arbitrary content changes.
 
-Immediately before cutover, the wrapper reruns a targeted `serviceInstance` query for the two exact service IDs and captures every restorable `ServiceInstanceUpdateInput` field listed above, `resolvedFileConfig.configFile`, the latest deployment IDs/status/commit SHA, and the exact `multiRegionConfig`. The only excluded update field is `registryCredentials`: Railway exposes it as a write-only username/password input and the two services use a GitHub source, so no value can or should be queried or recorded. Recompute the three canonical file hashes and bind every cutover input to its committed object. Abort before mutation if:
+Railway 5.49.6 does not expose `multiRegionConfig` on `ServiceInstance`; requesting it there is an invalid GraphQL query. It does expose the field on `ServiceInstanceUpdateInput`, and the current value is present at `latestDeployment.meta.serviceManifest.deploy.multiRegionConfig`. The wrapper therefore reads all directly exposed fields from the exact service instance and reads only `multiRegionConfig` from that instance's latest deployment manifest. The deployment must exist, be successful at the reviewed SHA, have valid creation/update timestamps, be no older than the service-instance update, and contain a strictly shaped region-to-positive-replica mapping. Missing, stale, malformed, or unbound manifest data fails closed.
+
+Immediately before cutover, the wrapper also introspects live `ServiceInstance` and `ServiceInstanceUpdateInput` through the pinned Railway 5.49.6 CLI. Both field lists must exactly equal the reviewed, sanitized live-contract fixture: no missing field and no unreviewed addition is accepted. The receipt records both exact lists, a SHA-256 contract fingerprint, the 25-field rollback mutation allowlist, and the sole excluded write-only field, `registryCredentials`. The wrapper repeats this introspection immediately before apply and requires the same fingerprint. It then captures every restorable field listed above, `resolvedFileConfig.configFile`, the latest deployment identity/timestamps/status/commit SHA, and manifest-derived `multiRegionConfig`. Recompute the three canonical file hashes and bind every cutover input to its committed object. Abort before mutation if:
 
 - token scope, project, environment, service count, service IDs, or service names differ;
 - either config-file field is unavailable rather than explicitly JSON `null`, is the empty string, or any captured field is incomplete;
@@ -171,13 +173,13 @@ Immediately before cutover, the wrapper reruns a targeted `serviceInstance` quer
 - `/api/health` is not HTTP 503 with `status: not_ready`, `acceptingOrders: false`, the exact reviewed release SHA, and `checks.maintenance: true`;
 - any of `APP_CHECKOUT_ENABLED`, `APP_LIVE_PAYMENTS_ENABLED`, or `APP_JOB_BOARD_CHECKOUT_ENABLED` is absent or not exactly `false`.
 
-The wrapper repeats project scope, service topology, all three lock variables, liveness, locked readiness, exact release SHA, and the fresh maintenance-heartbeat check immediately before the pinned apply. It repeats the topology, lock variables, liveness, readiness, release SHA, and maintenance check after apply. Any pre-apply failure produces no provider mutation. Any post-apply failure leaves checkout locked and requires the sequential restoration procedure below.
+The wrapper repeats project scope, live provider-schema fingerprint, service topology, all three lock variables, liveness, locked readiness, exact release SHA, and the fresh maintenance-heartbeat check immediately before the pinned apply. It repeats the topology, lock variables, liveness, readiness, release SHA, and maintenance check after apply. Each `/api/live` and `/api/health` request has an independent 10-second `AbortController` deadline; timeout, aborted response, invalid JSON, or transport failure fails closed. Any pre-apply failure produces no provider mutation. Any post-apply failure leaves checkout locked and requires the sequential restoration procedure below.
 
 ### Executable sequential restoration
 
 The GraphQL schema defines `railwayConfigFile` as a nullable string. JSON `null` and `""` are distinct states; the live baseline returned exact `null` for both services. Read-only inspection cannot prove write-time equivalence, so none is claimed. The wrapper rejects empty string, and rollback restores exact JSON `null`.
 
-Railway `serviceInstanceUpdate` calls are not transactional. Never combine the web and maintenance updates behind aliases or claim atomic rollback. Query the live `ServiceInstanceUpdateInput` schema during the change window, compare it to the receipt schema, then create one private variables file per service from the immediate receipt. The wrapper records every supported, queryable, restorable field: `autoInstrumentationEnabled`, `buildCommand`, `builder`, `cronSchedule`, `dockerfilePath`, `drainingSeconds`, `healthcheckPath`, `healthcheckTimeout`, `ipv6EgressEnabled`, `multiRegionConfig`, `nixpacksPlan`, `numReplicas`, `overlapSeconds`, `preDeployCommand`, `preDeployTimeoutSeconds`, `railwayConfigFile`, `region`, `restartPolicyMaxRetries`, `restartPolicyType`, `rootDirectory`, `sleepApplication`, `source`, `startCommand`, `tracingEnabled`, and `watchPatterns`. Preserve exact JSON `null`, boolean, number, array, and object semantics. Do not invent or capture the write-only `registryCredentials` field.
+Railway `serviceInstanceUpdate` calls are not transactional. Never combine the web and maintenance updates behind aliases or claim atomic rollback. Use the wrapper's live schema fingerprint and exact 25-field allowlist, then create one private variables file per service from the immediate receipt. The wrapper records every live-accepted and observed restorable field: `autoInstrumentationEnabled`, `buildCommand`, `builder`, `cronSchedule`, `dockerfilePath`, `drainingSeconds`, `healthcheckPath`, `healthcheckTimeout`, `ipv6EgressEnabled`, manifest-derived `multiRegionConfig`, `nixpacksPlan`, `numReplicas`, `overlapSeconds`, `preDeployCommand`, `preDeployTimeoutSeconds`, `railwayConfigFile`, `region`, `restartPolicyMaxRetries`, `restartPolicyType`, `rootDirectory`, `sleepApplication`, `source`, `startCommand`, `tracingEnabled`, and `watchPatterns`. Preserve exact JSON `null`, boolean, number, array, and object semantics. Do not invent or capture the write-only `registryCredentials` field.
 
 Each private file contains `environmentId`, one exact `serviceId`, and one `input` object. The reference web input restores `railwayConfigFile: null`, `builder: RAILPACK`, null build/root/start/cron fields, `/api/live`, timeout `120`, `ams: 1`, and `ON_FAILURE` with three retries. The maintenance input restores `railwayConfigFile: null`, `builder: RAILPACK`, root `/`, the exact build/start commands, hourly `0 * * * *`, `ams: 1`, and `NEVER` with ten retries. Never use deployment IDs as mutation targets.
 
