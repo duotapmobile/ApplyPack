@@ -34,6 +34,6 @@ test("capture Chunk 2 four-step and adaptive/error evidence", async ({ page }, t
     await page.screenshot({ path: resolve(output, `${width}-step-4.png`), fullPage: true });
     await waitForHydration(page);
     const axe = await new AxeBuilder({ page }).exclude("script").analyze();
-    expect(axe.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
+    expect(axe.violations.filter((item) => ["moderate", "serious", "critical"].includes(item.impact || ""))).toEqual([]);
   }
 });

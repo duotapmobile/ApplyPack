@@ -31,8 +31,7 @@ export function createStripeMaterialsClient() {
 }
 
 export function createStripeBoardClient() {
-  if (!checkoutConfiguration().boardReady) return null;
-  return createStripeOperationalClient();
+  return null;
 }
 
 export async function assertConfiguredPrice(

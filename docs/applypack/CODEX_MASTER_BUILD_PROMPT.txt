@@ -1,5 +1,7 @@
 # CODEX MASTER BUILD PROMPT, APPLYPACK PRODUCTION BACKEND
 
+> Historical implementation prompt. For the October 2, 2026 manual launch, `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` supersedes conflicting prices, subscription-board scope, checkout timing, and activation instructions below.
+
 Copy everything below into a new Codex conversation.
 
 ---

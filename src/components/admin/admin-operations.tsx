@@ -95,7 +95,7 @@ export function AdminOperations({ searchOrders, applyItems, conflicts, correctio
     </section>
 
     <section className="admin-control">
-      <div className="admin-control__heading"><div><p className="eyebrow">APPLY PACK PRODUCTION</p><h2>Upload reviewed DOCX files</h2></div><p>Each card is one separate $8 order.</p></div>
+      <div className="admin-control__heading"><div><p className="eyebrow">APPLY PACK PRODUCTION</p><h2>Upload reviewed DOCX files</h2></div><p>Each card is one separate $7.99 order.</p></div>
       {applyItems.length ? applyItems.map((item) => <article className="admin-work-card" key={item.id}>
         <div><strong>{item.title}</strong><span>{item.company} - Order {item.order_id.slice(0, 8).toUpperCase()}</span></div>
         {item.emphasis_notes ? <p><b>Emphasize:</b> {item.emphasis_notes}</p> : null}
@@ -151,12 +151,17 @@ export function AdminOperations({ searchOrders, applyItems, conflicts, correctio
         const data = new FormData(event.currentTarget);
         request("/api/admin/capacity/" + limit.kind, {
           method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ unitsPer24h: Number(data.get("units")), enabled: data.get("enabled") === "on" }),
+          body: JSON.stringify({
+            unitsPer24h: Number(data.get("units")),
+            enabled: data.get("enabled") === "on",
+            reason: data.get("reason"),
+          }),
         }, "capacity-" + limit.kind);
       }}>
         <strong>{limit.kind.replaceAll("_", " ")}</strong>
-        <label>Units per 24 hours<input name="units" type="number" min={1} max={100} defaultValue={limit.units_per_24h} /></label>
+        <label>Units per rolling 24 hours<input name="units" type="number" readOnly value={limit.units_per_24h} /></label>
         <label className="confirm"><input name="enabled" type="checkbox" defaultChecked={limit.enabled} />Accept new orders</label>
+        <label>Audit reason<textarea name="reason" minLength={12} maxLength={500} required placeholder="Record why capacity is being enabled or disabled." /></label>
         <button>Save capacity</button>
       </form>)}</div>
     </section>

@@ -70,7 +70,7 @@ function absoluteHttpsUrl(value: string) {
   return url.toString();
 }
 
-function money(cents = 2_000) {
+function money(cents = 1_899) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
 }
 
@@ -84,7 +84,7 @@ function diffText(value: unknown) {
 export function renderChunk4Email(input: Chunk4EmailInput) {
   const actionUrl = absoluteHttpsUrl(input.actionUrl);
   const deadline = input.deadline ? formatEasternDeadline(input.deadline) : null;
-  const amount = money(input.refundAmountCents ?? 2_000);
+  const amount = money(input.refundAmountCents ?? 1_899);
   let lines: string[];
   let actionLabel = "Open My ApplyPack";
   switch (input.kind) {
@@ -119,7 +119,7 @@ export function renderChunk4Email(input: Chunk4EmailInput) {
       break;
     case "MATERIALS_PAYMENT_VERIFIED":
       lines = [
-        `Your card payment for ${input.lineCount ?? "the selected"} $8 material line${input.lineCount === 1 ? "" : "s"} was verified.`,
+        `Your card payment for ${input.lineCount ?? "the selected"} $7.99 material line${input.lineCount === 1 ? "" : "s"} was verified.`,
         `The exact active deadline is ${deadline || "recorded in My ApplyPack"}.`,
         "Each selected job receives one tailored resume and one tailored cover letter. ApplyPack does not submit applications.",
       ];

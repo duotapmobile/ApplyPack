@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { validateDocumentSafety } from "@/lib/files/document-safety";
 import { extensionMatchesMimeType, hasExpectedFileSignature } from "@/lib/files/signatures";
 import { scanFile } from "@/lib/files/scanner";
+import { createSourceUploadCleanupIntent, removeSourceUploadOrQueue } from "@/lib/files/source-upload-cleanup";
 import { allowedResumeTypes } from "@/lib/schemas/intake";
 import { isSameOriginRequest } from "@/lib/security/origin";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -44,10 +45,32 @@ export async function POST(request: Request) {
 
   const extension = file.name.toLowerCase().split(".").pop();
   const path = authData.user.id + "/drafts/" + draft.id + "/" + kind + "-" + randomUUID() + "." + extension;
+  try {
+    await createSourceUploadCleanupIntent(admin, path, "draft_source_upload_intent");
+  } catch {
+    return NextResponse.json({ error: "The private upload could not be prepared safely." }, { status: 500 });
+  }
   const upload = await admin.storage.from("customer-source-documents").upload(path, file, { contentType: file.type, upsert: false });
-  if (upload.error) return NextResponse.json({ error: "The document could not be stored privately." }, { status: 502 });
+  if (upload.error) {
+    try {
+      await removeSourceUploadOrQueue(admin, path, "draft_source_upload_failed");
+    } catch {
+      return NextResponse.json({ error: "The upload failed and its private cleanup could not be confirmed." }, { status: 500 });
+    }
+    return NextResponse.json({ error: "The document could not be stored privately." }, { status: 502 });
+  }
 
-  const scan = await scanFile(file, { structureValidated: true });
+  let scan;
+  try {
+    scan = await scanFile(file, { structureValidated: true });
+  } catch {
+    try {
+      await removeSourceUploadOrQueue(admin, path, "draft_source_scan_failed");
+    } catch {
+      return NextResponse.json({ error: "Document validation failed and its private cleanup could not be confirmed." }, { status: 500 });
+    }
+    return NextResponse.json({ error: "The document could not be validated." }, { status: 502 });
+  }
   const document = {
     path,
     name: file.name.slice(0, 255),
@@ -60,26 +83,25 @@ export async function POST(request: Request) {
     scanErrorCode: scan.errorCode,
     scannedAt: scan.scannedAt,
   };
-  const field = kind === "resume" ? "resume_document" : "cover_letter_document";
-  const prior = (kind === "resume" ? draft.resume_document : draft.cover_letter_document) as { path?: string } | null;
-  const { error: updateError } = await admin.from("intake_drafts").update({
-    [field]: document,
-    updated_at: now.toISOString(),
-    expires_at: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-  }).eq("id", draft.id).eq("customer_id", authData.user.id);
+  const { data: priorPath, error: updateError } = await admin.rpc("ap_register_intake_draft_document", {
+    p_draft_id: draft.id,
+    p_customer_id: authData.user.id,
+    p_kind: kind,
+    p_document: document,
+  });
   if (updateError) {
-    await admin.storage.from("customer-source-documents").remove([path]);
+    try {
+      await removeSourceUploadOrQueue(admin, path, "draft_source_registration_failed");
+    } catch {
+      return NextResponse.json({ error: "The document record failed and its private cleanup could not be confirmed." }, { status: 500 });
+    }
     return NextResponse.json({ error: "The document record could not be saved." }, { status: 502 });
   }
-  if (prior?.path && prior.path !== path) {
-    const removal = await admin.storage.from("customer-source-documents").remove([prior.path]);
-    if (removal.error) {
-      await admin.from("storage_cleanup_queue").upsert({
-        bucket: "customer-source-documents",
-        storage_path: prior.path,
-        reason: "draft_document_replaced",
-        last_error: "storage_remove_failed",
-      }, { onConflict: "bucket,storage_path" });
+  if (priorPath && priorPath !== path) {
+    try {
+      await removeSourceUploadOrQueue(admin, priorPath, "draft_document_replaced");
+    } catch {
+      return NextResponse.json({ error: "The new document was saved, but prior-document cleanup could not be queued." }, { status: 500 });
     }
   }
   return NextResponse.json({

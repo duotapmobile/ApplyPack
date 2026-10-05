@@ -204,12 +204,12 @@ export async function processChunk4Outbox(admin: AdminClient, owner: string, lim
     try {
       await sendMessage(admin, message, owner);
       sent += 1;
-    } catch (error) {
+    } catch {
       const deadLetter = outboxShouldDeadLetter(message.first_submitted_at);
       const failed = await admin.rpc("ap_fail_outbox_message", {
         p_message_id: message.id,
         p_owner: owner,
-        p_error_code: error instanceof Error ? error.message.slice(0, 100) : "outbox_send_failed",
+        p_error_code: "OUTBOX_SEND_FAILED",
         p_retry_at: outboxRetryAt(message.attempts),
         p_dead_letter: deadLetter,
       });

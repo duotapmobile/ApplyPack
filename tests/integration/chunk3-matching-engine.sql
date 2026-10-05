@@ -154,11 +154,19 @@ do $$ declare auth_id uuid; member_id uuid; begin
   begin
     perform public.ap_persist_parsed_inventory_job(
       '53000000-0000-4000-8000-000000000003','72000000-0000-4000-8000-000000000005','different-stable-id',
-      jsonb_build_object('id','83000000-0000-4000-8000-000000000003','canonical_application_url','https://employer.invalid/apply/2','canonical_employer_listing_url','https://other.invalid/jobs/3','external_job_id','OTHER-3','canonical_employer_domain','other.invalid'),
+      jsonb_build_object('id','83000000-0000-4000-8000-000000000003','canonical_application_url','https://employer.invalid/jobs/2','canonical_employer_listing_url','https://other.invalid/jobs/3','external_job_id','OTHER-3','canonical_employer_domain','other.invalid','normalized_fingerprint',repeat('c',64)),
       jsonb_build_array(jsonb_build_object('id','85000000-0000-4000-8000-000000000013','position',0,'node_kind','ALL_OF','classification_method','listing-requirements-v2','human_correction_history','[]'::jsonb))
     );
-    raise exception 'atomic_url_duplicate_was_accepted';
-  exception when raise_exception then if sqlerrm='atomic_url_duplicate_was_accepted' then raise; end if; if sqlerrm<>'duplicate_inventory_job' then raise; end if; end;
+    raise exception 'atomic_listing_to_application_duplicate_was_accepted';
+  exception when raise_exception then if sqlerrm='atomic_listing_to_application_duplicate_was_accepted' then raise; end if; if sqlerrm<>'duplicate_inventory_job' then raise; end if; end;
+  begin
+    perform public.ap_persist_parsed_inventory_job(
+      '53000000-0000-4000-8000-000000000003','72000000-0000-4000-8000-000000000005','another-stable-id',
+      jsonb_build_object('id','83000000-0000-4000-8000-000000000004','canonical_application_url','https://other.invalid/apply/4','canonical_employer_listing_url','https://employer.invalid/apply/2','external_job_id','OTHER-4','canonical_employer_domain','other.invalid','normalized_fingerprint',repeat('d',64)),
+      jsonb_build_array(jsonb_build_object('id','85000000-0000-4000-8000-000000000014','position',0,'node_kind','ALL_OF','classification_method','listing-requirements-v2','human_correction_history','[]'::jsonb))
+    );
+    raise exception 'atomic_application_to_listing_duplicate_was_accepted';
+  exception when raise_exception then if sqlerrm='atomic_application_to_listing_duplicate_was_accepted' then raise; end if; if sqlerrm<>'duplicate_inventory_job' then raise; end if; end;
 end $$;
 do $$ begin
   begin

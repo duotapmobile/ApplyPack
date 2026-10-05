@@ -47,6 +47,7 @@ export type OperationsSummary = {
     workflow: QueueCounts;
     outbox: QueueCounts;
     commerceReconciliation: QueueCounts;
+    storageCleanup: QueueCounts;
   };
   maintenance: {
     heartbeatAgeSeconds: number | null;
@@ -257,6 +258,7 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
     oldestRecomputeDue, oldestRecomputeExpiredLease,
     oldestWorkflowDue, oldestWorkflowExpiredLease,
     oldestOutboxScheduled, oldestOutboxImmediate, oldestOutboxSending,
+    storageCleanupPending, storageCleanupDeadLetter,
     heartbeat, warnings, critical, blockingCritical, commerce,
   ] = await Promise.all([
     count("job_source_runs").eq("source_id", SYNTHETIC_SOURCE_ID),
@@ -290,6 +292,8 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
     admin.from("ap_outbox_messages").select("created_at").in("state", ["QUEUED", "RETRY"])
       .is("next_attempt_at", null).lte("created_at", nowIso).order("created_at").limit(1),
     admin.from("ap_outbox_messages").select("updated_at").eq("state", "SENDING").order("updated_at").limit(1),
+    count("storage_cleanup_queue").lt("attempts", 20),
+    count("storage_cleanup_queue").gte("attempts", 20),
     admin.from("operational_heartbeats").select("last_succeeded_at").eq("task_name", "maintenance").maybeSingle(),
     count("ap_operational_alerts").eq("state", "OPEN").eq("severity", "WARNING"),
     count("ap_operational_alerts").eq("state", "OPEN").eq("severity", "CRITICAL"),
@@ -303,7 +307,9 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
     recomputePending, recomputeProcessing, recomputeRetry, recomputeDead, workflowQueued, workflowProcessing, workflowReview,
     workflowBlocked, workflowFailed, outboxQueued, outboxSending, outboxRetry, outboxDead,
     oldestRecomputeDue, oldestRecomputeExpiredLease, oldestWorkflowDue, oldestWorkflowExpiredLease,
-    oldestOutboxScheduled, oldestOutboxImmediate, oldestOutboxSending, heartbeat, warnings, critical, blockingCritical, commerce];
+    oldestOutboxScheduled, oldestOutboxImmediate, oldestOutboxSending,
+    storageCleanupPending, storageCleanupDeadLetter,
+    heartbeat, warnings, critical, blockingCritical, commerce];
   const currentSources = currentSourceReadiness(sourceReadiness.error ? null : sourceReadiness.data);
   const database = authorityComplete && currentSources.valid && results.every((result) => !result.error);
   const heartbeatAt = !heartbeat.error && heartbeat.data && typeof heartbeat.data.last_succeeded_at === "string"
@@ -336,12 +342,18 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
     releaseSha: safeReleaseSha(),
     readiness: {
       database,
-      payments: payment.ready && payment.searchReady && payment.boardReady,
+      // Provider/webhook integrity is independent of whether either checkout
+      // gate is currently accepting new orders. Dormant board prices are not a
+      // manual-launch dependency.
+      payments: payment.commerceConfigured,
       email: recentEmailVerification(process.env, now),
       fileSafety,
       encryption,
       documentRendering,
-      maintenance: Boolean(process.env.CRON_SECRET) && !maintenanceStale,
+      maintenance: Boolean(process.env.CRON_SECRET)
+        && !maintenanceStale
+        && !storageCleanupDeadLetter.error
+        && countOf(storageCleanupDeadLetter) === 0,
     },
     inventory: {
       manualReady: currentSources.manualReady, automatedReady: currentSources.automatedReady,
@@ -365,6 +377,14 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
           || commerceCounts.deadLetter > 0
           || commerceCounts.expiredLease > 0
           || (commerceCounts.pending > 0 && commerceCounts.oldestAgeSeconds !== null && commerceCounts.oldestAgeSeconds > 15 * 60),
+      },
+      storageCleanup: {
+        states: {
+          pending: countOf(storageCleanupPending),
+          deadLetter: countOf(storageCleanupDeadLetter),
+        },
+        oldestItemAgeSeconds: null,
+        stale: countOf(storageCleanupDeadLetter) > 0,
       },
     },
     maintenance: { heartbeatAgeSeconds, stale: maintenanceStale },

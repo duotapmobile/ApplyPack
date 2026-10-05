@@ -12,7 +12,7 @@ describe("checkout preparation and private draft safety", () => {
     expect(migration).toContain("pg_advisory_xact_lock(hashtext('search:'");
     expect(migration).toContain("pg_advisory_xact_lock(hashtext('apply-pack:'");
     expect(migration).toContain("one_active_search_order_per_intake");
-    expect(search.indexOf('rpc("ap_begin_search_checkout"')).toBeLessThan(search.indexOf("stripe.checkout.sessions.create"));
+    expect(search.indexOf('rpc("ap_begin_invited_search_checkout"')).toBeLessThan(search.indexOf("stripe.checkout.sessions.create"));
     expect(applyPack.indexOf('rpc("ap_begin_material_checkout"')).toBeLessThan(applyPack.indexOf("stripe.checkout.sessions.create"));
   });
 

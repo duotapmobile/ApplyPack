@@ -95,6 +95,9 @@ function baseFixture(): EvidenceBoundMaterialInput {
       exactTitle: "Operations Coordinator",
       employer: "Lakeview Service Partners",
       location: "Richmond, VA",
+      canonicalApplicationUrl: "https://jobs.example.invalid/operations-coordinator",
+      retrievedAt: "2026-10-03T12:00:00.000Z",
+      postedOn: "2026-10-01",
       postingContentSha256: "b".repeat(64),
       jobEvidenceIds: [JOB_EVIDENCE],
     },
@@ -321,7 +324,7 @@ describe("Chunk 5 real document rendering", () => {
     expect(records).toHaveLength(7);
   });
 
-  it("renders representative one- and two-page DOCX artifacts with exact text and Liberation Sans", async () => {
+  it("renders representative one- and two-page DOCX artifacts with exact text and Arial", async () => {
     const configuration = documentRendererConfiguration();
     expect(configuration.ready).toBe(true);
     const directory = outputDirectory();

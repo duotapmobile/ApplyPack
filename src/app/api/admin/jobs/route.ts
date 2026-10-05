@@ -8,7 +8,8 @@ import { loadPersistedEvaluationsForSnapshot, persistedFitSummary, selectAndPers
 import { LISTING_PARSER_VERSION, parseListingRequirements, requirementPersistenceRows } from "@/lib/matching/listing-parser";
 import { normalizeJob } from "@/lib/jobs/normalize";
 import { persistNormalizedJob } from "@/lib/jobs/persistence";
-import { stableNormalizedJobId } from "@/lib/matching/deduplication";
+import { persistedDuplicateEdgeReason, stableNormalizedJobId } from "@/lib/matching/deduplication";
+import { hasDatabaseErrorCode } from "@/lib/matching/persistence-error";
 import { isSameOriginRequest } from "@/lib/security/origin";
 
 export const dynamic = "force-dynamic";
@@ -100,16 +101,36 @@ export async function POST(request: Request) {
   ]);
   if (!snapshot || !coveragePlan) return NextResponse.json({ error: "The immutable criteria snapshot and coverage inventory must exist before listing ingestion." }, { status: 409 });
   const stableJobId = stableNormalizedJobId(normalized);
-  const { data: existingMembers, error: memberQueryError } = await auth.admin.from("ap_inventory_members").select("id,stable_normalized_job_id,job_snapshot:ap_job_snapshots!inner(external_job_id,canonical_application_url,canonical_employer_listing_url,canonical_employer_domain)").eq("inventory_version_id", coveragePlan.inventory_version_id);
+  const candidateApplicationUrl = applicationProvenance.canonicalApplicationUrl;
+  const candidateListingUrl = normalized.isDirectEmployerSource ? normalized.sourceJobUrl : null;
+  const candidateEmployerDomain = applicationProvenance.applicationHostType === "EMPLOYER_HOSTED"
+    ? new URL(candidateApplicationUrl).hostname.toLocaleLowerCase("en-US")
+    : normalized.canonicalEmployerId;
+  const candidateFingerprint = canonicalSha256({
+    employer: semanticComparisonKey(parsed.data.company),
+    title: semanticComparisonKey(parsed.data.title),
+    applicationUrl: candidateApplicationUrl,
+  });
+  const { data: existingMembers, error: memberQueryError } = await auth.admin.from("ap_inventory_members").select("id,stable_normalized_job_id,job_snapshot:ap_job_snapshots!inner(external_job_id,canonical_application_url,canonical_employer_listing_url,canonical_employer_domain,normalized_fingerprint)").eq("inventory_version_id", coveragePlan.inventory_version_id);
   if (memberQueryError) return NextResponse.json({ error: "The current inventory could not be checked for duplicates." }, { status: 502 });
   const duplicate = (existingMembers || []).some((member) => {
     const existing = Array.isArray(member.job_snapshot) ? member.job_snapshot[0] : member.job_snapshot;
     return member.stable_normalized_job_id === stableJobId
-      || existing?.canonical_application_url === applicationProvenance.canonicalApplicationUrl
-      || existing?.canonical_employer_listing_url === (normalized.isDirectEmployerSource ? normalized.sourceJobUrl : null)
-      || (Boolean(parsed.data.externalJobId) && existing?.external_job_id === parsed.data.externalJobId && existing?.canonical_employer_domain === (applicationProvenance.applicationHostType === "EMPLOYER_HOSTED" ? new URL(applicationProvenance.canonicalApplicationUrl).hostname.toLocaleLowerCase("en-US") : normalized.canonicalEmployerId));
+      || Boolean(existing && persistedDuplicateEdgeReason({
+        externalJobId: existing.external_job_id,
+        canonicalEmployerDomain: existing.canonical_employer_domain,
+        canonicalEmployerListingUrl: existing.canonical_employer_listing_url,
+        canonicalApplicationUrl: existing.canonical_application_url,
+        normalizedFingerprint: existing.normalized_fingerprint,
+      }, {
+        externalJobId: parsed.data.externalJobId,
+        canonicalEmployerDomain: candidateEmployerDomain,
+        canonicalEmployerListingUrl: candidateListingUrl,
+        canonicalApplicationUrl: candidateApplicationUrl,
+        normalizedFingerprint: candidateFingerprint,
+      }));
   });
-  if (duplicate) return NextResponse.json({ error: "The listing duplicates a current inventory member under the requisition-or-canonical-URL rule." }, { status: 409 });
+  if (duplicate) return NextResponse.json({ error: "The listing duplicates a current inventory member under the strong-identifier-or-fingerprint rule." }, { status: 409 });
   try {
     const legacyJobId = await persistNormalizedJob(auth.admin, normalized);
     const applicationHost = new URL(applicationProvenance.canonicalApplicationUrl).hostname.toLocaleLowerCase("en-US");
@@ -121,13 +142,13 @@ export async function POST(request: Request) {
       origin: "APPLYPACK_FOUND" as const,
       discovery_source: "manual-reviewed",
       external_job_id: parsed.data.externalJobId,
-      canonical_application_url: applicationProvenance.canonicalApplicationUrl,
+      canonical_application_url: candidateApplicationUrl,
       application_host_type: applicationProvenance.applicationHostType,
-      canonical_employer_listing_url: normalized.isDirectEmployerSource ? normalized.sourceJobUrl : null,
+      canonical_employer_listing_url: candidateListingUrl,
       source_url: parsed.data.sourceUrl,
       company: parsed.data.company,
       exact_title: parsed.data.title,
-      normalized_fingerprint: canonicalSha256({ employer: semanticComparisonKey(parsed.data.company), title: semanticComparisonKey(parsed.data.title), applicationUrl: applicationProvenance.canonicalApplicationUrl }),
+      normalized_fingerprint: candidateFingerprint,
       captured_listing: capturedListing,
       retrieved_at: parsed.data.checkedAt,
       posted_on: parsed.data.postedAt?.slice(0, 10) ?? null,
@@ -140,7 +161,7 @@ export async function POST(request: Request) {
       content_sha256: canonicalSha256(capturedListing),
       source_authorization_id: authorization.id,
       first_seen_at: parsed.data.checkedAt,
-      canonical_employer_domain: applicationProvenance.applicationHostType === "EMPLOYER_HOSTED" ? applicationHost : normalized.canonicalEmployerId,
+      canonical_employer_domain: candidateEmployerDomain,
       employer_identity_result: "PASS",
       application_path_result: "PASS",
       listing_activity_result: "PASS",
@@ -155,7 +176,10 @@ export async function POST(request: Request) {
     const { data: memberId, error: memberError } = await auth.admin.rpc("ap_persist_parsed_inventory_job", { p_criteria_snapshot_id: parsed.data.snapshotId, p_inventory_version_id: coveragePlan.inventory_version_id, p_stable_normalized_job_id: stableJobId, p_job_snapshot: snapshotRow, p_requirement_nodes: requirementNodes });
     if (memberError || !memberId) throw memberError || new Error("inventory_member_not_persisted");
     return NextResponse.json({ jobSnapshotId, inventoryMemberId: memberId, legacyJobId, parserStatus: parser.status, issues: parser.issues }, { status: parser.status === "COMPLETE" ? 201 : 202 });
-  } catch {
+  } catch (error) {
+    if (hasDatabaseErrorCode(error, "duplicate_inventory_job")) {
+      return NextResponse.json({ error: "The listing duplicates a current inventory member under the strong-identifier-or-fingerprint rule." }, { status: 409 });
+    }
     return NextResponse.json({ error: "The parsed listing snapshot could not be persisted." }, { status: 502 });
   }
 }

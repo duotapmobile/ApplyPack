@@ -12,6 +12,7 @@ import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
 export const MAINTENANCE_ACTION_CODES = [
+  "CAPACITY_ROLLOVER",
   "EXPIRATION_CLEANUP",
   "EXPIRED_LEASE_RECOVERY",
   "DOCUMENT_PROCESSING",
@@ -27,6 +28,15 @@ export type MaintenanceActionEvidence = {
   status: MaintenanceActionStatus;
 };
 
+export function maintenanceActionsSucceeded(
+  actions: readonly MaintenanceActionEvidence[],
+  allowedSkippedActions: readonly MaintenanceActionCode[] = [],
+) {
+  const allowedSkipped = new Set(allowedSkippedActions);
+  return actions.every((action) => action.status === "SUCCEEDED"
+    || (action.status === "SKIPPED" && allowedSkipped.has(action.code)));
+}
+
 export type DiagnosticCode =
   | "DATABASE_NOT_READY"
   | "PAYMENT_INTEGRITY_NOT_READY"
@@ -40,7 +50,9 @@ export type DiagnosticCode =
   | "WORKFLOW_QUEUE_STALE"
   | "OUTBOX_QUEUE_STALE"
   | "COMMERCE_RECONCILIATION_STALE"
+  | "STORAGE_CLEANUP_DEAD_LETTER"
   | "MAINTENANCE_DIAGNOSIS_FAILED"
+  | "CAPACITY_ROLLOVER_FAILED"
   | "EXPIRED_LEASE_RECOVERY_FAILED"
   | "EXPIRATION_CLEANUP_FAILED"
   | "DOCUMENT_PROCESSING_FAILED"
@@ -57,6 +69,7 @@ const FAIL_CLOSED_CODES: readonly DiagnosticCode[] = [
   "DOCUMENT_RENDERING_NOT_READY",
   "SOURCE_PERMISSION_COVERAGE_MISSING",
   "CRITICAL_SECURITY_OR_INTEGRITY_ALERT_OPEN",
+  "STORAGE_CLEANUP_DEAD_LETTER",
 ];
 
 const MANAGED_ALERT_CODES: readonly DiagnosticCode[] = [
@@ -72,7 +85,9 @@ const MANAGED_ALERT_CODES: readonly DiagnosticCode[] = [
   "WORKFLOW_QUEUE_STALE",
   "OUTBOX_QUEUE_STALE",
   "COMMERCE_RECONCILIATION_STALE",
+  "STORAGE_CLEANUP_DEAD_LETTER",
   "MAINTENANCE_DIAGNOSIS_FAILED",
+  "CAPACITY_ROLLOVER_FAILED",
   "EXPIRED_LEASE_RECOVERY_FAILED",
   "EXPIRATION_CLEANUP_FAILED",
   "DOCUMENT_PROCESSING_FAILED",
@@ -83,8 +98,10 @@ const MANAGED_ALERT_CODES: readonly DiagnosticCode[] = [
 ];
 
 const ACTION_FAILURE_CODE_BY_ACTION: Readonly<Partial<Record<DiagnosticCode, MaintenanceActionCode>>> = {
+  CAPACITY_ROLLOVER_FAILED: "CAPACITY_ROLLOVER",
   EXPIRED_LEASE_RECOVERY_FAILED: "EXPIRED_LEASE_RECOVERY",
   EXPIRATION_CLEANUP_FAILED: "EXPIRATION_CLEANUP",
+  STORAGE_CLEANUP_DEAD_LETTER: "EXPIRATION_CLEANUP",
   DOCUMENT_PROCESSING_FAILED: "DOCUMENT_PROCESSING",
   BOUNDED_QUEUE_PROCESSING_FAILED: "BOUNDED_QUEUE_PROCESSING",
   STRIPE_RECONCILIATION_FAILED: "STRIPE_RECONCILIATION",
@@ -118,6 +135,7 @@ export function diagnoseOperations(summary: OperationsSummary) {
   if (summary.queues.workflow.stale) codes.push("WORKFLOW_QUEUE_STALE");
   if (summary.queues.outbox.stale) codes.push("OUTBOX_QUEUE_STALE");
   if (summary.queues.commerceReconciliation.stale) codes.push("COMMERCE_RECONCILIATION_STALE");
+  if ((summary.queues.storageCleanup.states.deadLetter || 0) > 0) codes.push("STORAGE_CLEANUP_DEAD_LETTER");
   return {
     codes,
     failClosedCodes: codes.filter((code) => FAIL_CLOSED_CODES.includes(code)),
@@ -278,6 +296,7 @@ export async function recordMaintenanceOutcome(
   after: OperationsSummary,
   actions: readonly MaintenanceActionEvidence[],
   now = new Date(),
+  allowedSkippedActions: readonly MaintenanceActionCode[] = [],
 ) {
   const outcome = maintenanceOutcome(before, after, actions);
   const nowIso = now.toISOString();
@@ -285,7 +304,7 @@ export async function recordMaintenanceOutcome(
 
   // Alert reconciliation must succeed before a success heartbeat can be refreshed.
   await reconcileMaintenanceAlerts(admin, outcome.unresolvedCodes, after.environment, after.releaseSha, nowIso);
-  if (outcome.unresolvedCodes.length || actions.some((action) => action.status !== "SUCCEEDED")) {
+  if (outcome.unresolvedCodes.length || !maintenanceActionsSucceeded(actions, allowedSkippedActions)) {
     await updateFailureEvidence(admin, { schemaVersion: 2, phase: "FAILED", ...outcome }, nowIso);
     return { ...outcome, recoveryEmail: "not_needed" as const };
   }

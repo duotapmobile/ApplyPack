@@ -1,5 +1,7 @@
 # ApplyPack Security, Privacy, Accessibility, and SEO Requirements
 
+> October 2, 2026 authority: `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` controls the manual-launch security, accessibility, and activation requirements. Conflicting product examples below are historical.
+
 Last updated: September 1, 2026
 
 ## Non-negotiable principle

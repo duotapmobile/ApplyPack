@@ -22,13 +22,10 @@ export function checkoutConfiguration() {
   const pricesConfigured = Boolean(
     process.env.STRIPE_JOB_SEARCH_PRICE_ID && process.env.STRIPE_APPLY_PACK_PRICE_ID,
   );
-  const boardPricesConfigured = Boolean(
-    process.env.STRIPE_JOB_BOARD_WEEKLY_PRICE_ID
-      && process.env.STRIPE_JOB_BOARD_MONTHLY_PRICE_ID
-      && process.env.STRIPE_JOB_BOARD_THREE_MONTH_PRICE_ID,
-  );
   const searchPriceConfigured = Boolean(process.env.STRIPE_JOB_SEARCH_PRICE_ID);
   const webhookConfigured = Boolean(process.env.STRIPE_WEBHOOK_SECRET);
+  const commerceConfigured = modeMatchesCredential && liveGuardSatisfied && pricesConfigured && webhookConfigured;
+  const acceptingOrders = checkoutEnabled && commerceConfigured;
 
   return {
     mode,
@@ -38,9 +35,11 @@ export function checkoutConfiguration() {
     modeMatchesCredential,
     liveGuardSatisfied,
     pricesConfigured,
-    boardPricesConfigured,
+    boardPricesConfigured: false,
     searchPriceConfigured,
     webhookConfigured,
+    commerceConfigured,
+    acceptingOrders,
     searchReady:
       checkoutEnabled &&
       modeMatchesCredential &&
@@ -48,17 +47,8 @@ export function checkoutConfiguration() {
       searchPriceConfigured &&
       webhookConfigured,
     ready:
-      checkoutEnabled &&
-      modeMatchesCredential &&
-      liveGuardSatisfied &&
-      pricesConfigured &&
-      webhookConfigured,
-    boardReady:
-      checkoutEnabled &&
-      modeMatchesCredential &&
-      liveGuardSatisfied &&
-      boardPricesConfigured &&
-      webhookConfigured,
+      acceptingOrders,
+    boardReady: false,
   };
 }
 

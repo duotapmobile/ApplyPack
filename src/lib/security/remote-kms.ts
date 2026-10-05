@@ -34,7 +34,10 @@ async function command(path: "wrap" | "unwrap", body: Record<string, unknown>, e
 }
 
 export function remoteKmsAdapter(environment: KmsEnvironment = process.env): KmsEnvelopeAdapter {
-  // Compatibility factory: all existing callers use explicit provider selection.
+  if (environment.APP_DEPLOYMENT_ENV === "production" && environment.APP_KMS_PROVIDER !== "aws") {
+    throw new Error("kms_production_requires_aws");
+  }
+  // The remote adapter remains available only for explicit nonproduction compatibility.
   if (environment.APP_KMS_PROVIDER === "aws") return awsKmsAdapter(environment);
   if (environment.APP_KMS_PROVIDER && environment.APP_KMS_PROVIDER !== "remote") throw new Error("kms_provider_invalid");
   return {
@@ -55,6 +58,7 @@ export function remoteKmsAdapter(environment: KmsEnvironment = process.env): Kms
 
 export function kmsProviderConfigured(environment: KmsEnvironment = process.env) {
   try {
+    if (environment.APP_DEPLOYMENT_ENV === "production" && environment.APP_KMS_PROVIDER !== "aws") return false;
     if (environment.APP_KMS_PROVIDER === "aws") { awsKmsConfiguration(environment); return true; }
     if (environment.APP_KMS_PROVIDER && environment.APP_KMS_PROVIDER !== "remote") return false;
     endpoint(environment.APP_KMS_WRAP_URL);

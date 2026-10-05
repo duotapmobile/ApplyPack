@@ -34,7 +34,17 @@ export async function GET() {
   const row = Array.isArray(data) ? data[0] : null;
   const state = row ? await fourStepPrivateState(context.admin, context.capability.draftId).catch(() => null) : null;
   if (row && !state) return NextResponse.json({ error: "The saved intake details are temporarily unavailable." }, { status: 502 });
-  return NextResponse.json({ draft: row ? publicFourStepDraft(row as Record<string, unknown>, state!) : null }, { headers: { "cache-control": "no-store" } });
+  const publicDraft = row ? publicFourStepDraft(row as Record<string, unknown>, state!) : null;
+  let legalContentAccepted = false;
+  if (publicDraft?.finalizedSnapshotId) {
+    const legal = await context.admin.rpc("ap_has_current_content_bound_legal_acceptance", {
+      p_draft_id: context.capability.draftId,
+      p_snapshot_id: publicDraft.finalizedSnapshotId,
+    });
+    if (legal.error) return NextResponse.json({ error: "The saved intake legal status is temporarily unavailable." }, { status: 502 });
+    legalContentAccepted = legal.data === true;
+  }
+  return NextResponse.json({ draft: publicDraft ? { ...publicDraft, legalContentAccepted } : null }, { headers: { "cache-control": "no-store" } });
 }
 
 export async function PUT(request: Request) {

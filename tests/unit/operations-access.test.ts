@@ -16,6 +16,7 @@ function providerState(input: {
   email?: string;
   role?: string;
   aal?: "aal1" | "aal2";
+  mfaAgeSeconds?: number | null;
 }) {
   const user = input.email ? { id: "operator-fixture", email: input.email } : null;
   const auditInsert = vi.fn().mockResolvedValue({ error: null });
@@ -30,6 +31,11 @@ function providerState(input: {
   const server = {
     auth: {
       getUser: vi.fn().mockResolvedValue({ data: { user } }),
+      getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: "verified-fixture-token" } } }),
+      getClaims: vi.fn().mockResolvedValue({ data: { claims: user ? {
+        sub: user.id,
+        amr: input.mfaAgeSeconds === null ? [] : [{ method: "totp", timestamp: Math.floor(Date.now() / 1_000) - (input.mfaAgeSeconds ?? 60) }],
+      } : null }, error: null }),
       mfa: {
         getAuthenticatorAssuranceLevel: vi.fn().mockResolvedValue({
           data: { currentLevel: input.aal || "aal1" },
@@ -86,5 +92,19 @@ describe("operations admin access boundary", () => {
     const result = await requireAdmin();
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.admin).toBe(admin);
+  });
+
+  it("rejects AAL2 when the verified TOTP event is older than 15 minutes", async () => {
+    providerState({ email: "operator@example.test", role: "admin", aal: "aal2", mfaAgeSeconds: 901 });
+    const result = await requireAdmin();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(403);
+  });
+
+  it("rejects AAL2 without a verified TOTP event", async () => {
+    providerState({ email: "operator@example.test", role: "admin", aal: "aal2", mfaAgeSeconds: null });
+    const result = await requireAdmin();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(403);
   });
 });

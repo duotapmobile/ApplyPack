@@ -1,5 +1,7 @@
 # ApplyPack Consolidated Preflight Questions and Credentials
 
+> October 2, 2026 authority: `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` controls current prices, product scope, and launch approvals. Conflicting questions below are retained as historical preflight evidence.
+
 The executing agent must ask this information in one organized message before implementation. It must not ask for passwords, secret keys, API keys, recovery codes, or payment information in ordinary chat.
 
 The user should authenticate directly in provider dashboards, use approved connector or CLI login flows, or place secrets in local and hosting-provider secret stores when instructed.

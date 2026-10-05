@@ -70,24 +70,25 @@ const questions = [
   {
     question: "Can ApplyPack help me find jobs as well as customize my résumé?",
     answer:
-      "Yes. You can explore the filtered job board or purchase a standalone, human-reviewed Top 10. A tailored résumé and cover letter can then be purchased for an eligible board job or a job from your delivered Top 10.",
+      "Yes. Submit a search intake for a standalone, human-reviewed Top 10. After those matches are delivered, you can purchase a tailored résumé and cover letter for any eligible job you select from that delivery.",
   },
 ];
 
 function ChoiceLinks({ compact = false }: { compact?: boolean }) {
+  const Heading = compact ? "h2" : "h3";
   return (
     <div className={`${styles.choiceLinks} ${compact ? styles.choiceLinksCompact : ""}`}>
       <article>
         <p className={styles.choiceKicker}>Start with opportunities</p>
-        <h3>Find Jobs That Fit</h3>
-        <p>Explore opportunities connected to your experience and preferences.</p>
-        <ButtonLink href="/job-board">Find Jobs That Fit</ButtonLink>
+        <Heading>Request 10 Job Matches</Heading>
+        <p>Tell us what fits your experience and life so a person can verify whether the search can support ten current opportunities.</p>
+        <ButtonLink href="/get-started">Start My Intake</ButtonLink>
       </article>
       <article>
-        <p className={styles.choiceKicker}>Already have an eligible job?</p>
-        <h3>Customize My Résumé</h3>
-        <p>Get a résumé and cover letter tailored to the job.</p>
-        <ButtonLink href="/my-applypack" variant="secondary">Customize My Résumé</ButtonLink>
+        <p className={styles.choiceKicker}>Matches already delivered?</p>
+        <Heading>Customize My Résumé</Heading>
+        <p>Choose an eligible job from your delivered Top 10 for a tailored résumé and cover letter.</p>
+        <ButtonLink href="/my-applypack" variant="secondary">Choose a Delivered Job</ButtonLink>
       </article>
     </div>
   );
@@ -113,7 +114,7 @@ export default function WhyCustomizePage() {
         serviceType: "Application document preparation",
         provider: { "@type": "Organization", name: siteConfig.legalEntity, url: siteConfig.url },
         areaServed: "US",
-        description: "Truthful résumé and cover-letter customization for an eligible job from a customer's active board or delivered Top 10.",
+        description: "Truthful résumé and cover-letter customization for an eligible job from a customer's delivered Top 10.",
       },
     ],
   };
@@ -141,7 +142,7 @@ export default function WhyCustomizePage() {
               </a>
             </div>
             <p className={styles.heroBoundary}>
-              Already have an eligible board or Top 10 job? Sign in to choose it. ApplyPack does not promise ATS acceptance, human review, an interview, or employment.
+              Already have an eligible job in a delivered Top 10? Sign in to choose it. ApplyPack does not promise ATS acceptance, human review, an interview, or employment.
             </p>
           </div>
 

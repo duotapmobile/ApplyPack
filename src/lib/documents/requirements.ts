@@ -6,22 +6,44 @@
  * version. The composite generator version is persisted with artifacts and is
  * used to reject output created under an older contract.
  */
+export const DOCUMENT_STANDARD_SHA256 = "1d85789d434c0252d1797e366cd732931756fd4baa74bc36045fdeb2547786cf";
+
 export const DOCUMENT_VERSIONS = Object.freeze({
-  content: "applypack-content-2026-09-22.1",
-  template: "applypack-template-2026-09-22.1",
-  exporter: "libreoffice-tagged-pdf-2026-09-22.1",
+  instructions: "applypack-universal-document-standard-2026-10-03.1",
+  content: "applypack-content-2026-10-03.1",
+  template: "applypack-template-2026-10-03.1",
+  exporter: "libreoffice-tagged-pdf-2026-10-03.1",
 });
 
 export const DOCUMENT_GENERATOR_VERSION = [
   "applypack-documents",
+  `instructions=${DOCUMENT_VERSIONS.instructions}`,
+  `standardSha256=${DOCUMENT_STANDARD_SHA256}`,
   `content=${DOCUMENT_VERSIONS.content}`,
   `template=${DOCUMENT_VERSIONS.template}`,
   `exporter=${DOCUMENT_VERSIONS.exporter}`,
 ].join("|");
 
+// Previously released files remain customer-accessible by their immutable
+// quality evidence. This compatibility allowlist must never be used to approve
+// or release new work under an older contract.
+export const LEGACY_DOCUMENT_GENERATOR_VERSION = [
+  "applypack-documents",
+  "content=applypack-content-2026-09-22.1",
+  "template=applypack-template-2026-09-22.1",
+  "exporter=libreoffice-tagged-pdf-2026-09-22.1",
+].join("|");
+
+export const SUPPORTED_DOCUMENT_GENERATOR_VERSIONS = Object.freeze([
+  DOCUMENT_GENERATOR_VERSION,
+  LEGACY_DOCUMENT_GENERATOR_VERSION,
+]);
+
 export const DOCUMENT_REQUIREMENTS = Object.freeze({
   language: "en-US",
-  font: "Liberation Sans",
+  font: "Arial",
+  normalDeliveryFormat: "PDF",
+  editableFallbackFormat: "DOCX",
   page: {
     widthTwips: 12_240,
     heightTwips: 15_840,
@@ -66,21 +88,31 @@ export const DOCUMENT_REQUIREMENTS = Object.freeze({
   coverLetter: {
     paragraphMinimum: 3,
     paragraphMaximum: 4,
-    supportedWordMinimum: 250,
+    normalWordMinimum: 250,
     supportedWordMaximum: 350,
     humanApprovedWordMaximum: 400,
   },
   pdfExportFilter: 'pdf:writer_pdf_Export:{"UseTaggedPDF":{"type":"boolean","value":"true"}}',
-  candidatePresentationProfiles: {
-    marissaWright: {
-      displayName: "Marissa Wright",
-      employer: "PRIVATE-LABEL AMAZON E-COMMERCE",
-      historicalTitle: "Amazon Marketplace & Operations Specialist",
-      forbiddenDefaultTitles: ["Founder", "CEO", "Owner"],
-    },
-  },
 });
 
 export function isCurrentDocumentGeneratorVersion(value: unknown) {
   return value === DOCUMENT_GENERATOR_VERSION;
+}
+
+export function supportedDocumentFontFamily(value: unknown): "Arial" | "Liberation Sans" | null {
+  if (value === DOCUMENT_GENERATOR_VERSION) return "Arial";
+  if (value === LEGACY_DOCUMENT_GENERATOR_VERSION) return "Liberation Sans";
+  return null;
+}
+
+export function isSupportedDocumentGeneratorVersion(value: unknown) {
+  return supportedDocumentFontFamily(value) !== null;
+}
+
+export function selectDocumentOutputFormat(allowed: unknown, approved: unknown): "PDF" | "DOCX" | null {
+  const employer = Array.isArray(allowed) ? allowed : [];
+  const configured = Array.isArray(approved) ? approved : [];
+  if (employer.includes("PDF") && configured.includes("PDF")) return "PDF";
+  if (employer.includes("DOCX") && configured.includes("DOCX")) return "DOCX";
+  return null;
 }

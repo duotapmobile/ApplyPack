@@ -1,6 +1,6 @@
-export const SEARCH_PRICE_CENTS = 2_000;
-export const SEARCH_PRICE_LABEL = "$20";
-export const SEARCH_CHECKOUT_CTA = "Pay $20 and Start My Search";
+export const SEARCH_PRICE_CENTS = 1_899;
+export const SEARCH_PRICE_LABEL = "$18.99";
+export const SEARCH_CHECKOUT_CTA = "Use My $18.99 Checkout Invitation";
 export const CHECKOUT_RESERVATION_MINUTES = 30;
 export const ACCESS_LINK_MINUTES = 15;
 export const RELEASE_VERIFICATION_MINUTES = 60;
@@ -54,7 +54,7 @@ export function feasibilityPresentation(value: FeasibilityView): FeasibilityPres
     if (!value.checkoutEligible) {
       return { title: "Your search looks feasible", message: "A required checkout, legal, tax, access-email, or provider setting is not ready. No payment can start.", canCheckout: false, showEdit: true, showHumanReview: false, showLeave: true };
     }
-    return { title: "Your search looks feasible", message: "Current capacity can be reserved for 30 minutes. Your exact 24-hour deadline is recorded only after verified payment.", canCheckout: true, showEdit: true, showHumanReview: false, showLeave: true };
+    return { title: "Your search looks feasible", message: "An operator must verify ten suitable opportunities and issue a single-use checkout invitation. Your exact 24-hour deadline starts only after verified payment.", canCheckout: true, showEdit: true, showHumanReview: false, showLeave: true };
   }
   const explanation = reasonText[value.primaryReason || ""] || (value.reasons || []).map((reason) => reasonText[reason]).find(Boolean)
     || "We could not confirm 10 current jobs under the selected must-haves.";

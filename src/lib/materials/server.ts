@@ -7,6 +7,7 @@ import { canonicalSha256 } from "@/lib/domain/foundation";
 import { remoteKmsAdapter } from "@/lib/security/remote-kms";
 import { decryptSensitivePayload, sensitivePayloadConfiguration, sensitivePayloadEncryptionReady } from "@/lib/security/sensitive-payload";
 import { MATERIAL_CURRENCY, MATERIAL_LINE_PRICE_CENTS, materialTotalCents } from "./contract";
+import { APPLY_PACK_CONTRACT_VERSION } from "@/lib/domain/applypack";
 
 export const materialContactSchema = z.object({
   schemaVersion: z.literal("chunk5-document-contact-v1"),
@@ -87,11 +88,11 @@ export function materialSelectionSha256(input: {
     .sort((left, right) => left.jobMatchId.localeCompare(right.jobMatchId));
   materialTotalCents(selections.map((selection) => selection.jobMatchId));
   return canonicalSha256({ ...input, selections, priceCents: MATERIAL_LINE_PRICE_CENTS,
-    currency: MATERIAL_CURRENCY, taxInclusive: true, contractVersion: "chunk5-v1" });
+    currency: MATERIAL_CURRENCY, taxInclusive: true, contractVersion: APPLY_PACK_CONTRACT_VERSION });
 }
 
 export function materialCheckoutRequestKey(selectionSha256: string) {
-  return `materials:${canonicalSha256({ selectionSha256, contractVersion: "chunk5-v1" })}`;
+  return `materials:${canonicalSha256({ selectionSha256, contractVersion: APPLY_PACK_CONTRACT_VERSION })}`;
 }
 
 export function immediateMaterialPayment(input: {
@@ -100,8 +101,9 @@ export function immediateMaterialPayment(input: {
   charge: Stripe.Charge | null;
   expectedPriceId: string;
   expectedLineCount: number;
+  expectedUnitAmountCents?: number;
 }) {
-  const expectedAmount = materialTotalCents(Array.from({ length: input.expectedLineCount }, (_, index) => String(index)));
+  const expectedAmount = input.expectedLineCount * (input.expectedUnitAmountCents ?? MATERIAL_LINE_PRICE_CENTS);
   const line = input.session.line_items?.data?.[0];
   const paymentMethodType = input.charge?.payment_method_details?.type
     || input.paymentIntent.payment_method_types?.[0] || "";

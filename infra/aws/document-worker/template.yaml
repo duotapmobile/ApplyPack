@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ApplyPack bounded no-internet document extraction and render worker
+Parameters:
+  WorkerImageUri:
+    Type: String
+    AllowedPattern: "^.+@sha256:[0-9a-f]{64}$"
+    Description: Immutable ECR image URI including its sha256 digest
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  PrivateRouteTableIds:
+    Type: CommaDelimitedList
+  S3PrefixListId:
+    Type: String
+    Description: Regional com.amazonaws.us-east-1.s3 managed prefix list ID
+  PrimaryAlertEmail:
+    Type: String
+    AllowedPattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+  SecondaryAlertEmail:
+    Type: String
+    AllowedPattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+  CreateBudget:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+  KmsKeyArn:
+    Type: String
+  KmsKeyVersion:
+    Type: String
+    MinLength: 1
+Conditions:
+  ShouldCreateBudget: !Equals [!Ref CreateBudget, "true"]
+Resources:
+  TemporaryBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteTemporaryWorkerObjects
+            Status: Enabled
+            ExpirationInDays: 1
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+  WorkerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ApplyPack document worker no outbound internet
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          DestinationPrefixListId: !Ref S3PrefixListId
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      VpcId: !Ref VpcId
+      RouteTableIds: !Ref PrivateRouteTableIds
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+            Resource: !Sub "${TemporaryBucket.Arn}/ephemeral/*"
+  WorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: WorkerTemporaryObjectOnly
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+                Resource: !Sub "${TemporaryBucket.Arn}/ephemeral/*"
+              - Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DescribeSubnets
+                  - ec2:DeleteNetworkInterface
+                  - ec2:AssignPrivateIpAddresses
+                  - ec2:UnassignPrivateIpAddresses
+                Resource: "*"
+  Worker:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: applypack-production-document-worker
+      PackageType: Image
+      Code: { ImageUri: !Ref WorkerImageUri }
+      Role: !GetAtt WorkerRole.Arn
+      Architectures: [x86_64]
+      MemorySize: 512
+      Timeout: 30
+      ReservedConcurrentExecutions: 2
+      EphemeralStorage: { Size: 1024 }
+      VpcConfig:
+        SecurityGroupIds: [!Ref WorkerSecurityGroup]
+        SubnetIds: !Ref PrivateSubnetIds
+      Environment:
+        Variables:
+          PYTHONUNBUFFERED: "1"
+          APPLYPACK_WORKER_IMAGE_URI: !Ref WorkerImageUri
+  WorkerVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref Worker
+      Description: !Sub "ApplyPack immutable document worker ${WorkerImageUri}"
+  WebRuntimePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: ApplyPack web runtime access to the isolated worker and production wrapping key
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: lambda:InvokeFunction
+            Resource: !Ref WorkerVersion
+          - Effect: Allow
+            Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+            Resource: !Sub "${TemporaryBucket.Arn}/ephemeral/*"
+          - Effect: Allow
+            Action: [kms:Encrypt, kms:Decrypt]
+            Resource: !Ref KmsKeyArn
+            Condition:
+              StringEquals:
+                kms:EncryptionContext:application: ApplyPack
+                kms:EncryptionContext:deployment: production
+                kms:EncryptionContext:keyVersion: !Ref KmsKeyVersion
+          - Effect: Allow
+            Action: kms:DescribeKey
+            Resource: !Ref KmsKeyArn
+  Budget:
+    Type: AWS::Budgets::Budget
+    Condition: ShouldCreateBudget
+    Properties:
+      Budget:
+        BudgetLimit: { Amount: 5, Unit: USD }
+        BudgetName: ApplyPack-new-AWS-cost-ceiling
+        BudgetType: COST
+        TimeUnit: MONTHLY
+      NotificationsWithSubscribers:
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: FORECASTED
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref PrimaryAlertEmail
+              SubscriptionType: EMAIL
+            - Address: !Ref SecondaryAlertEmail
+              SubscriptionType: EMAIL
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: ACTUAL
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref PrimaryAlertEmail
+              SubscriptionType: EMAIL
+            - Address: !Ref SecondaryAlertEmail
+              SubscriptionType: EMAIL
+Outputs:
+  BucketName: { Value: !Ref TemporaryBucket }
+  FunctionVersionArn: { Value: !Ref WorkerVersion }
+  WorkerImageUri: { Value: !Ref WorkerImageUri }
+  WebRuntimePolicyArn: { Value: !Ref WebRuntimePolicy }

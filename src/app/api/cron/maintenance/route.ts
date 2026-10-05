@@ -18,6 +18,7 @@ import {
   recordMaintenanceDiagnosis,
   recordMaintenanceFailure,
   recordMaintenanceOutcome,
+  maintenanceActionsSucceeded,
   type DiagnosticCode,
   type MaintenanceActionCode,
   type MaintenanceActionEvidence,
@@ -71,6 +72,12 @@ export async function POST(request: Request) {
     await recordMaintenanceFailure(admin, beforeSummary, code, actions, now).catch(() => null);
     return response({ error: message, code }, 503);
   };
+  const { data: capacityRollovers, error: capacityRolloverError } = await admin
+    .rpc("ap_ensure_manual_launch_capacity_rollover");
+  if (capacityRolloverError) {
+    return fail("CAPACITY_ROLLOVER_FAILED", "CAPACITY_ROLLOVER", "Capacity rollover provisioning failed.");
+  }
+  actions.push({ code: "CAPACITY_ROLLOVER", status: "SUCCEEDED" });
   const staleDraftClaims = await admin.from("apply_pack_items").update({ status: "draft_ready", delivery_claimed_at: null })
     .eq("status", "delivery_processing").not("draft_resume_path", "is", null)
     .lt("delivery_claimed_at", new Date(now.getTime() - 15 * 60_000).toISOString());
@@ -97,6 +104,12 @@ export async function POST(request: Request) {
     .lt("window_started_at", new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString());
   if (rateLimitCleanupError) {
     return fail("EXPIRATION_CLEANUP_FAILED", "EXPIRATION_CLEANUP", "Rate-limit retention maintenance failed.");
+  }
+
+  const { data: expiredSearchInvitations, error: invitationExpiryError } = await admin
+    .rpc("ap_expire_search_checkout_invitations");
+  if (invitationExpiryError) {
+    return fail("EXPIRATION_CLEANUP_FAILED", "EXPIRATION_CLEANUP", "Search invitation expiration maintenance failed.");
   }
 
   const [reservationResult, cartResult] = await Promise.all([
@@ -165,8 +178,18 @@ export async function POST(request: Request) {
     else expirationCleanupFailed = true;
   }
 
+  const storageCleanupMaxAttempts = 20;
+  const { count: exhaustedCleanupRows, error: exhaustedCleanupError } = await admin.from("storage_cleanup_queue")
+    .select("id", { count: "exact", head: true })
+    .gte("attempts", storageCleanupMaxAttempts);
+  if (exhaustedCleanupError) {
+    return fail("EXPIRATION_CLEANUP_FAILED", "EXPIRATION_CLEANUP", "Storage cleanup dead-letter state could not be loaded.");
+  }
+  let storageCleanupDeadLettered = (exhaustedCleanupRows || 0) > 0;
+
   const { data: cleanupRows, error: cleanupQueryError } = await admin.from("storage_cleanup_queue")
-    .select("id,bucket,storage_path,attempts").lt("attempts", 20).order("created_at").limit(50);
+    .select("id,bucket,storage_path,attempts").lt("attempts", storageCleanupMaxAttempts)
+    .lte("not_before", nowIso).order("created_at").limit(50);
   if (cleanupQueryError) return fail("EXPIRATION_CLEANUP_FAILED", "EXPIRATION_CLEANUP", "Storage cleanup queue could not be loaded.");
   let recoveredStorageObjects = 0;
   for (const row of cleanupRows || []) {
@@ -174,19 +197,25 @@ export async function POST(request: Request) {
     if (!removal.error) {
       const deletion = await admin.from("storage_cleanup_queue").delete().eq("id", row.id);
       if (!deletion.error) recoveredStorageObjects += 1;
+      else expirationCleanupFailed = true;
     } else {
       expirationCleanupFailed = true;
-      await admin.from("storage_cleanup_queue").update({
-        attempts: Number(row.attempts || 0) + 1,
+      const attempts = Number(row.attempts || 0) + 1;
+      const update = await admin.from("storage_cleanup_queue").update({
+        attempts,
         last_error: "storage_remove_failed",
         last_attempt_at: nowIso,
       }).eq("id", row.id);
+      if (update.error) expirationCleanupFailed = true;
+      if (!update.error && attempts >= storageCleanupMaxAttempts) {
+        storageCleanupDeadLettered = true;
+      }
     }
   }
-  if (expirationCleanupFailed) {
-    return fail("EXPIRATION_CLEANUP_FAILED", "EXPIRATION_CLEANUP", "Expiration cleanup was incomplete.");
-  }
-  actions.push({ code: "EXPIRATION_CLEANUP", status: "SUCCEEDED" });
+  actions.push({
+    code: "EXPIRATION_CLEANUP",
+    status: expirationCleanupFailed || storageCleanupDeadLettered ? "FAILED" : "SUCCEEDED",
+  });
 
   const alertEmail = process.env.APP_ADMIN_ALERT_EMAIL;
   let alerts = 0;
@@ -271,8 +300,9 @@ export async function POST(request: Request) {
   actions.push({ code: "BOUNDED_QUEUE_PROCESSING", status: queueStates.includes("FAILED") ? "FAILED" : queueStates.includes("SKIPPED") ? "SKIPPED" : "SUCCEEDED" });
 
   const stripe = createStripeOperationalClient();
+  const legacyBoardMaintenanceEnabled = process.env.APP_LEGACY_BOARD_MAINTENANCE_ENABLED === "true";
   let boardSubscriptionsReconciled;
-  if (stripe) {
+  if (stripe && legacyBoardMaintenanceEnabled) {
     try {
       boardSubscriptionsReconciled = await reconcileBoardSubscriptions(stripe, admin);
       actions.push({ code: "STRIPE_RECONCILIATION", status: boardSubscriptionsReconciled >= 0 ? "SUCCEEDED" : "FAILED" });
@@ -280,7 +310,7 @@ export async function POST(request: Request) {
   } else actions.push({ code: "STRIPE_RECONCILIATION", status: "SKIPPED" });
 
   let boardAdmissions;
-  if (sourcesReady) {
+  if (sourcesReady && legacyBoardMaintenanceEnabled) {
     try {
       boardAdmissions = await processBoardRecomputeJobs(admin, 10);
       actions.push({ code: "BOARD_RECOMPUTATION", status: boardAdmissions.status === "enabled" ? "SUCCEEDED" : "FAILED" });
@@ -290,13 +320,28 @@ export async function POST(request: Request) {
   if (!afterSummary) {
     return fail("MAINTENANCE_VERIFICATION_FAILED", null, "Maintenance verification unavailable.");
   }
-  const diagnostics = await recordMaintenanceOutcome(admin, beforeSummary, afterSummary, actions, now).catch(() => null);
+  const intentionallyDormantBoardActions = new Set<MaintenanceActionCode>([
+    "STRIPE_RECONCILIATION",
+    "BOARD_RECOMPUTATION",
+  ]);
+  const allowedSkippedActions = legacyBoardMaintenanceEnabled ? [] : [...intentionallyDormantBoardActions];
+  const diagnostics = await recordMaintenanceOutcome(
+    admin,
+    beforeSummary,
+    afterSummary,
+    actions,
+    now,
+    allowedSkippedActions,
+  ).catch(() => null);
   if (!diagnostics) {
     return response({ error: "Maintenance evidence could not be recorded.", code: "MAINTENANCE_VERIFICATION_FAILED" }, 503);
   }
-  const healthy = diagnostics.unresolvedCodes.length === 0 && actions.every((action) => action.status === "SUCCEEDED");
+  const healthy = diagnostics.unresolvedCodes.length === 0
+    && maintenanceActionsSucceeded(actions, allowedSkippedActions);
   return NextResponse.json({
     ok: healthy,
+    capacityRollovers: Number(capacityRollovers || 0),
+    expiredSearchInvitations: Number(expiredSearchInvitations || 0),
     expiredReservations: reservationResult.data?.length || 0,
     expiredCarts: cartResult.data?.length || 0,
     removedRateLimits: removedRateLimits || 0,

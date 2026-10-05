@@ -1,5 +1,7 @@
 # ApplyPack Customer and Admin Workflows
 
+> October 2, 2026 authority: `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` requires operator-issued, single-use search checkout invitations and starts each 24-hour clock only after successful payment and complete required inputs.
+
 Last updated: September 1, 2026
 
 ## End-to-end customer flow

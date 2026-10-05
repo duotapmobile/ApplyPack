@@ -4,6 +4,14 @@ import type Stripe from "stripe";
 import { createCapabilitySecret, hashCapabilitySecret, immediateSearchPayment } from "@/lib/commerce/server";
 import { sendOrderReceipt } from "@/lib/email/send";
 import { immediateMaterialPayment } from "@/lib/materials/server";
+import {
+  APPLY_PACK_CONTRACT_VERSION,
+  APPLY_PACK_PRICE_CENTS,
+  LEGACY_APPLY_PACK_CONTRACT_VERSION,
+  LEGACY_SEARCH_CONTRACT_VERSION,
+  SEARCH_CONTRACT_VERSION,
+  SEARCH_PRICE_CENTS,
+} from "@/lib/domain/applypack";
 import { processBoardStripeEvent } from "@/lib/job-board/stripe-events";
 import { stripeEventMatchesConfiguredMode } from "@/lib/stripe/mode";
 import { assertConfiguredPrice, createStripeOperationalClient } from "@/lib/stripe/server";
@@ -86,7 +94,7 @@ export async function POST(request: Request) {
     } else if (["refund.created", "refund.updated", "refund.failed"].includes(event.type)) {
       const refund = event.data.object as Stripe.Refund;
       if (refund.metadata?.refund_operation_id) {
-        await recordCorrectedRefund(admin, refund, event, payloadSha256, signatureVerifiedAt);
+        await recordCorrectedRefund(stripe, admin, refund, event, payloadSha256, signatureVerifiedAt);
       } else await recordRefund(refund);
     } else if (["charge.dispute.created", "charge.dispute.updated", "charge.dispute.closed"].includes(event.type)) {
       const handled = await recordCorrectedDispute(admin, stripe, event, payloadSha256, signatureVerifiedAt);
@@ -117,25 +125,24 @@ export async function POST(request: Request) {
     if (processedError || !processed) throw new Error("Could not finalize webhook event");
     after(() => processWorkflowTasks(admin, 2).catch(() => undefined));
     return NextResponse.json({ received: true });
-  } catch (error) {
-    const message = error instanceof Error ? error.message.slice(0, 500) : "Processing failed";
+  } catch {
     await admin.from("webhook_events").update({
       processing_status: "failed",
       last_error_code: "webhook_processing_failed",
-      error_message: message,
+      error_message: null,
     }).eq("provider_event_id", event.id);
     return NextResponse.json({ error: "Webhook processing failed." }, { status: 500 });
   }
 }
 
 function isCorrectedSearchSession(session: Stripe.Checkout.Session) {
-  return session.metadata?.contract_version === "chunk4-v1"
+  return [SEARCH_CONTRACT_VERSION, LEGACY_SEARCH_CONTRACT_VERSION].includes(session.metadata?.contract_version || "")
     && session.metadata?.product_kind === "job_search"
     && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(session.metadata?.checkout_attempt_id || "");
 }
 
 function isCorrectedMaterialSession(session: Stripe.Checkout.Session) {
-  return session.metadata?.contract_version === "chunk5-v1"
+  return [APPLY_PACK_CONTRACT_VERSION, LEGACY_APPLY_PACK_CONTRACT_VERSION].includes(session.metadata?.contract_version || "")
     && session.metadata?.product_kind === "apply_pack"
     && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(session.metadata?.checkout_intent_id || "");
 }
@@ -146,7 +153,8 @@ async function completeCorrectedMaterials(
   eventSession: Stripe.Checkout.Session,
   evidence: { eventId: string; eventType: string; payloadSha256: string; signatureVerifiedAt: string },
 ) {
-  const expectedPriceId = process.env.STRIPE_APPLY_PACK_PRICE_ID;
+  const legacy = eventSession.metadata?.contract_version === LEGACY_APPLY_PACK_CONTRACT_VERSION;
+  const expectedPriceId = legacy ? process.env.STRIPE_LEGACY_APPLY_PACK_PRICE_ID : process.env.STRIPE_APPLY_PACK_PRICE_ID;
   if (!expectedPriceId) throw new Error("Corrected materials price is not configured");
   const session = await stripe.checkout.sessions.retrieve(eventSession.id, {
     expand: ["line_items.data.price.product", "payment_intent.latest_charge"],
@@ -165,7 +173,7 @@ async function completeCorrectedMaterials(
     ? await stripe.charges.retrieve(paymentIntent.latest_charge)
     : paymentIntent.latest_charge || null;
   await assertConfiguredPrice(stripe, expectedPriceId, {
-    unitAmount: 800,
+    unitAmount: legacy ? 800 : APPLY_PACK_PRICE_CENTS,
     productName: "Tailored Resume + Cover Letter",
   });
   const payment = immediateMaterialPayment({
@@ -174,6 +182,7 @@ async function completeCorrectedMaterials(
     charge,
     expectedPriceId,
     expectedLineCount: checkout.line_count,
+    expectedUnitAmountCents: legacy ? 800 : APPLY_PACK_PRICE_CENTS,
   });
   if (!payment.valid || !payment.paymentVerifiedAt) {
     throw new Error("Corrected materials payment was not an immediate successful card charge");
@@ -214,7 +223,8 @@ async function completeCorrectedSearch(
   eventSession: Stripe.Checkout.Session,
   evidence: { eventId: string; eventType: string; payloadSha256: string; signatureVerifiedAt: string },
 ) {
-  const expectedPriceId = process.env.STRIPE_JOB_SEARCH_PRICE_ID;
+  const legacy = eventSession.metadata?.contract_version === LEGACY_SEARCH_CONTRACT_VERSION;
+  const expectedPriceId = legacy ? process.env.STRIPE_LEGACY_JOB_SEARCH_PRICE_ID : process.env.STRIPE_JOB_SEARCH_PRICE_ID;
   if (!expectedPriceId) throw new Error("Corrected search price is not configured");
   const session = await stripe.checkout.sessions.retrieve(eventSession.id, {
     expand: ["line_items.data.price.product", "payment_intent.latest_charge"],
@@ -227,8 +237,9 @@ async function completeCorrectedSearch(
   const charge = typeof paymentIntent.latest_charge === "string"
     ? await stripe.charges.retrieve(paymentIntent.latest_charge)
     : paymentIntent.latest_charge || null;
-  await assertConfiguredPrice(stripe, expectedPriceId, { unitAmount: 2_000, productName: "Job Match Search" });
-  const payment = immediateSearchPayment({ session, paymentIntent, charge, expectedPriceId });
+  await assertConfiguredPrice(stripe, expectedPriceId, { unitAmount: legacy ? 2_000 : SEARCH_PRICE_CENTS, productName: "Job Match Search" });
+  const payment = immediateSearchPayment({ session, paymentIntent, charge, expectedPriceId,
+    expectedAmountCents: legacy ? 2_000 : SEARCH_PRICE_CENTS });
 
   const checkoutAttemptId = session.metadata!.checkout_attempt_id!;
   const { data: checkout, error: checkoutError } = await admin.from("ap_checkout_attempts")
@@ -331,6 +342,7 @@ async function expireCorrectedSearch(admin: AdminClient, session: Stripe.Checkou
 }
 
 async function recordCorrectedRefund(
+  stripe: Stripe,
   admin: AdminClient,
   refund: Stripe.Refund,
   event: Stripe.Event,
@@ -339,10 +351,23 @@ async function recordCorrectedRefund(
 ) {
   const refundId = refund.metadata?.refund_operation_id;
   if (!refundId || !/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(refundId)) throw new Error("Corrected refund binding is invalid");
-  const { error } = await admin.rpc("ap_record_search_refund_result", {
+  let paymentIntentId = typeof refund.payment_intent === "string" ? refund.payment_intent : refund.payment_intent?.id;
+  if (!paymentIntentId && refund.charge) {
+    const charge = typeof refund.charge === "string" ? await stripe.charges.retrieve(refund.charge) : refund.charge;
+    const paymentIntent = "deleted" in charge && charge.deleted ? null : charge.payment_intent;
+    paymentIntentId = typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;
+  }
+  if (!paymentIntentId || !Number.isSafeInteger(refund.amount) || refund.amount < 1 || !refund.currency) {
+    throw new Error("Corrected refund payment semantics are missing");
+  }
+  const { error } = await admin.rpc("ap_record_search_refund_result_verified", {
     p_refund_id: refundId,
     p_provider_refund_id: refund.id,
     p_provider_status: refund.status || "pending",
+    p_provider_payment_id: paymentIntentId,
+    p_amount_cents: refund.amount,
+    p_currency: refund.currency.toUpperCase(),
+    p_metadata_refund_id: refundId,
     p_provider_event_id: event.id,
     p_error_code: refund.failure_reason || null,
     p_payload_sha256: payloadSha256,

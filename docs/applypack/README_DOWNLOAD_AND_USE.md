@@ -1,5 +1,7 @@
 # How to Use This ApplyPack Codex Handoff
 
+> October 2, 2026 authority: `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` controls current manual-launch prices and scope. Conflicting examples below are historical.
+
 ## 1. Download and extract
 
 Extract the package contents into:

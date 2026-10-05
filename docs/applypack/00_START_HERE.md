@@ -1,5 +1,7 @@
 # ApplyPack Build Handoff, Start Here
 
+> October 2, 2026 authority: `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` controls the launch scope, prices, invitation checkout, subscription-board removal, and activation gates. Conflicting text below is preserved as historical handoff material.
+
 Last updated: September 1, 2026
 
 ## Purpose

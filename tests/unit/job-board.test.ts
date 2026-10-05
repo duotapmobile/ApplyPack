@@ -71,17 +71,29 @@ describe("paid filtered job board", () => {
     }
   });
 
-  it("requires full checkout readiness for board checkout and handles the provider lifecycle", () => {
+  it("hard-disables new board checkout while retaining historical provider reconciliation", () => {
     const checkout = readFileSync("src/app/api/checkout/job-board/route.ts", "utf8");
     const events = readFileSync("src/lib/job-board/stripe-events.ts", "utf8");
-    expect(checkout).toContain("createStripeBoardClient");
+    expect(checkout).toContain("Subscription checkout is not offered in the manual launch.");
+    expect(checkout).toContain("status: 410");
+    expect(checkout).not.toContain("createStripeBoardClient");
+    const stripeMode = readFileSync("src/lib/stripe/mode.ts", "utf8");
+    const stripeServer = readFileSync("src/lib/stripe/server.ts", "utf8");
+    expect(stripeMode).toContain("boardReady: false");
+    expect(stripeServer).toContain("createStripeBoardClient()");
+    expect(stripeServer).toContain("return null");
     expect(events).toContain('event.type === "customer.subscription.created"');
     expect(events).toContain('expand: ["latest_invoice"]');
-    expect(events).toContain('requestedState === "PENDING"');
+    expect(events).toContain("stripe.subscriptions.update(subscription.id, { cancel_at_period_end: true })");
+    expect(events).toContain('state: "CANCELED"');
+    expect(events).toContain("void requestedState");
     expect(events).toContain('latestInvoiceId === binding.invoice.id');
     const health = readFileSync("src/app/api/health/route.ts", "utf8");
-    expect(health).toContain('admin.rpc("ap_current_source_readiness")');
-    expect(health).toContain('process.env.APP_JOB_SOURCE_SYNC_ENABLED === "true"');
+    const launchReadiness = readFileSync("src/lib/operations/launch-readiness.ts", "utf8");
+    expect(health).toContain("evaluateLaunchInfrastructure");
+    expect(launchReadiness).toContain('admin.rpc("ap_current_source_readiness")');
+    expect(health).not.toContain("STRIPE_JOB_BOARD_WEEKLY_PRICE_ID");
+    expect(launchReadiness).not.toContain("STRIPE_JOB_BOARD_WEEKLY_PRICE_ID");
   });
 
   it("keeps subscription access separate from purchased material orders in the migration", () => {

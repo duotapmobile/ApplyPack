@@ -1,5 +1,7 @@
 # ApplyPack Test Plan and Ship Checklist
 
+> October 2, 2026 authority: `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` replaces the historical price assertions and adds invitation, exact-ten, KMS, isolated-worker, maintenance, staging, supervisor, tax, and canary gates.
+
 Last updated: September 1, 2026
 
 ## Completion standard

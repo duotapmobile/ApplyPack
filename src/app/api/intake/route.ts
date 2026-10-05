@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { validateDocumentSafety } from "@/lib/files/document-safety";
 import { extensionMatchesMimeType, hasExpectedFileSignature } from "@/lib/files/signatures";
 import { scanFile, type FileScanResult } from "@/lib/files/scanner";
+import { createSourceUploadCleanupIntent, removeSourceUploadOrQueue } from "@/lib/files/source-upload-cleanup";
 import { allowedResumeTypes, parseIntakeForm } from "@/lib/schemas/intake";
 import { isSameOriginRequest } from "@/lib/security/origin";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
@@ -94,7 +95,14 @@ export async function POST(request: Request) {
       ? await uploadDocument(coverFile, "cover-letter", authData.user.id, intakeId)
       : validateStoredDocument(savedDraft?.cover_letter_document, authData.user.id, draftId);
   } catch (error) {
-    if (freshPaths.length) await admin.storage.from("customer-source-documents").remove(freshPaths);
+    if (freshPaths.length) {
+      try {
+        await Promise.all([...new Set(freshPaths)].map((path) =>
+          removeSourceUploadOrQueue(admin, path, "intake_source_precompletion_failed")));
+      } catch {
+        return NextResponse.json({ error: "The intake failed and private document cleanup could not be confirmed." }, { status: 500 });
+      }
+    }
     return NextResponse.json({ error: error instanceof Error ? error.message : "A source document could not be validated." }, { status: 400 });
   }
 
@@ -106,9 +114,14 @@ export async function POST(request: Request) {
     if (!safety.safe) throw new Error("A document contains an unsupported or unsafe feature. Export a new plain PDF or DOCX.");
     const extension = file.name.toLowerCase().split(".").pop();
     const path = customerId + "/intakes/" + targetIntakeId + "/source/" + kind + "-" + randomUUID() + "." + extension;
+    try {
+      await createSourceUploadCleanupIntent(admin!, path, "intake_source_upload_intent");
+    } catch {
+      throw new Error("Private document storage could not be prepared safely.");
+    }
+    freshPaths.push(path);
     const upload = await admin!.storage.from("customer-source-documents").upload(path, file, { contentType: file.type, upsert: false });
     if (upload.error) throw new Error("A source document could not be stored privately.");
-    freshPaths.push(path);
     const scan = await scanFile(file, { structureValidated: true });
     return {
       path, name: file.name.slice(0, 255), size: file.size, mimeType: file.type,
@@ -161,7 +174,14 @@ export async function POST(request: Request) {
     p_draft_id: savedDraft?.id || null,
   });
   if (completionError) {
-    if (freshPaths.length) await admin.storage.from("customer-source-documents").remove([...new Set(freshPaths)]);
+    if (freshPaths.length) {
+      try {
+        await Promise.all([...new Set(freshPaths)].map((path) =>
+          removeSourceUploadOrQueue(admin, path, "intake_source_registration_failed")));
+      } catch {
+        return NextResponse.json({ error: "The intake record failed and private document cleanup could not be confirmed." }, { status: 500 });
+      }
+    }
     return NextResponse.json({ error: "Your approved criteria and private document records could not be preserved atomically." }, { status: 502 });
   }
   return NextResponse.json({

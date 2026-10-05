@@ -42,7 +42,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     auth.admin.from("ap_requirement_nodes").select("id,stable_criterion_id,source_excerpt").eq("job_snapshot_id", jobId).eq("node_kind", "CRITERION").order("position").limit(201),
     auth.admin.from("ap_human_review_records").select("decision").or(`customer_id.is.null,customer_id.eq.${customerId}`)
       .eq("snapshot_id", snapshotId).eq("job_snapshot_id", jobId).eq("review_kind", "MATCH_EVIDENCE").is("invalidated_at", null).limit(201),
-    auth.admin.from("ap_job_snapshots").select("company,exact_title,content_sha256").eq("id", jobId).maybeSingle(),
+    auth.admin.from("ap_job_snapshots").select("company,exact_title,canonical_application_url,retrieved_at,posted_on,content_sha256").eq("id", jobId).maybeSingle(),
     auth.admin.from("ap_job_snapshots").select("id").eq("supersedes_job_snapshot_id", jobId).limit(1),
     auth.admin.from("ap_material_checkout_intents").select("career_break_choice").eq("id", purchase.data.checkout_intent_id).eq("customer_id", customerId).maybeSingle(),
   ]);
@@ -55,7 +55,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
   try {
     const draft = prepareMaterialDraft({ facts: facts.data || [], requirements: nodes.data || [], reviews: reviews.data || [],
-      job: { employer: job.data.company, exactTitle: job.data.exact_title, postingContentSha256: job.data.content_sha256,
+      job: { employer: job.data.company, exactTitle: job.data.exact_title,
+        canonicalApplicationUrl: job.data.canonical_application_url, retrievedAt: job.data.retrieved_at,
+        postedOn: job.data.posted_on, postingContentSha256: job.data.content_sha256,
         jobEvidenceIds: (nodes.data || []).map((node) => node.id) },
       careerBreakChoice: intent.data.career_break_choice as EvidenceBoundMaterialInput["careerBreak"]["choice"],
     });

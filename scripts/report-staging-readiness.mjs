@@ -38,9 +38,8 @@ for (const table of tables) {
 
 const requiredVariables = [
   "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_JOB_SEARCH_PRICE_ID",
-  "STRIPE_APPLY_PACK_PRICE_ID", "STRIPE_JOB_BOARD_WEEKLY_PRICE_ID",
-  "STRIPE_JOB_BOARD_MONTHLY_PRICE_ID", "STRIPE_JOB_BOARD_THREE_MONTH_PRICE_ID",
-  "RESEND_API_KEY", "CRON_SECRET", "APP_BOARD_WORKER_ID",
+  "STRIPE_APPLY_PACK_PRICE_ID",
+  "RESEND_API_KEY", "CRON_SECRET",
   "APP_DOCUMENT_RENDERER_IDENTITY", "APP_MALWARE_SCANNER_IDENTITY",
 ];
 const variablePresence = Object.fromEntries(requiredVariables.map((name) => [name, Boolean(process.env[name])]));

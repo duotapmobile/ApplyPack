@@ -20,7 +20,7 @@ const SHA256 = /^[0-9a-f]{64}$/i;
 
 type LocalTool = { path: string; sha256: string };
 
-export type LocalRenderResult = {
+export type DocumentRenderResult = {
   rendererIdentity: string;
   documentFontSha256: string;
   pageCount: 1 | 2;
@@ -32,6 +32,15 @@ export type LocalRenderResult = {
   structureTreeSha256: string;
   searchablePdf: Buffer;
   searchablePdfSha256: string;
+};
+export type LocalRenderResult = DocumentRenderResult;
+
+export type DocumentRenderInput = {
+  docx: Buffer;
+  expectedPages: 1 | 2;
+  expectedExtractedTextSha256: string;
+  artifactType: ArtifactProvenance["artifact"];
+  expectedMetadata: DocumentMetadata;
 };
 
 export function documentRendererConfiguration(environment: Partial<NodeJS.ProcessEnv> = process.env) {
@@ -48,24 +57,27 @@ export function documentRendererConfiguration(environment: Partial<NodeJS.Proces
   };
   const documentFont = tool("APP_DOCUMENT_FONT_FILE", "APP_DOCUMENT_FONT_FILE_SHA256");
   const identity = environment.APP_DOCUMENT_RENDERER_IDENTITY?.trim() || "";
+  const discoveryFailed = environment.APP_RENDERER_RUNTIME_DISCOVERY_FAILED === "true";
   const values = Object.values(tools);
   return {
     identity,
     tools,
     documentFont,
-    ready: identity.length >= 3
+    ready: !discoveryFailed && identity.length >= 3
       && values.every((value) => isAbsolute(value.path) && SHA256.test(value.sha256))
       && isAbsolute(documentFont.path) && SHA256.test(documentFont.sha256),
   } as const;
 }
 
-export async function renderDocumentLocallyForQa(input: {
-  docx: Buffer;
-  expectedPages: 1 | 2;
-  expectedExtractedTextSha256: string;
-  artifactType: ArtifactProvenance["artifact"];
-  expectedMetadata: DocumentMetadata;
-}): Promise<LocalRenderResult> {
+export async function renderDocumentForQa(input: DocumentRenderInput): Promise<DocumentRenderResult> {
+  if (process.env.APP_DEPLOYMENT_ENV === "production") {
+    const { renderWithDocumentWorker } = await import("@/lib/files/aws-document-worker");
+    return renderWithDocumentWorker(input);
+  }
+  return renderDocumentLocallyForQa(input);
+}
+
+export async function renderDocumentLocallyForQa(input: DocumentRenderInput): Promise<LocalRenderResult> {
   const configuration = documentRendererConfiguration();
   if (!configuration.ready) throw new Error("approved_local_document_renderer_not_configured");
   await Promise.all(Object.values(configuration.tools).map(verifyTool));
@@ -79,10 +91,21 @@ export async function renderDocumentLocallyForQa(input: {
   const pdfPath = join(work, `${stem}.pdf`);
   const textPath = join(work, `${stem}.txt`);
   const imageStem = join(work, `${stem}-page`);
-  const officeProfile = pathToFileURL(join(work, "libreoffice-profile")).href;
   try {
     await writeFile(inputPath, input.docx, { flag: "wx" });
-    await execute(configuration.tools.office.path, [`-env:UserInstallation=${officeProfile}`, "--headless", "--nologo", "--nodefault", "--nolockcheck", "--norestore", "--convert-to", DOCUMENT_REQUIREMENTS.pdfExportFilter, "--outdir", work, inputPath], 45_000);
+    let conversionError: unknown;
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const officeProfile = pathToFileURL(join(work, `libreoffice-profile-${attempt}`)).href;
+      try {
+        await execute(configuration.tools.office.path, [`-env:UserInstallation=${officeProfile}`, "--headless", "--nologo", "--nodefault", "--nolockcheck", "--norestore", "--convert-to", DOCUMENT_REQUIREMENTS.pdfExportFilter, "--outdir", work, inputPath], 45_000);
+        conversionError = undefined;
+        break;
+      } catch (error) {
+        conversionError = error;
+        await rm(pdfPath, { force: true });
+      }
+    }
+    if (conversionError) throw conversionError;
     const pdfInfo = await execute(configuration.tools.pdfInfo.path, [pdfPath], 10_000);
     if (!/^Tagged:\s+yes\s*$/im.test(pdfInfo)) throw new Error("rendered_pdf_not_tagged");
     assertPdfMetadata(pdfInfo, input.expectedMetadata);

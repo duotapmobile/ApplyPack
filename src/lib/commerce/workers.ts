@@ -5,6 +5,7 @@ import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { assertConfiguredPrice, createStripeOperationalClient, createStripeSearchClient } from "@/lib/stripe/server";
 import { canonicalApplicationOrigin } from "./server";
 import { processChunk4Outbox } from "./outbox";
+import { APPLY_PACK_CONTRACT_VERSION, SEARCH_CONTRACT_VERSION, SEARCH_PRICE_CENTS } from "@/lib/domain/applypack";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 type ScheduledJob = {
@@ -71,14 +72,30 @@ async function handleRefund(admin: AdminClient, job: ScheduledJob, owner: string
       amount: refund.amount_cents,
       metadata: {
         refund_operation_id: refund.id,
-        contract_version: refund.scope === "MATERIAL_LINE" ? "chunk5-v1" : "chunk4-v1",
+        contract_version: refund.scope === "MATERIAL_LINE" ? APPLY_PACK_CONTRACT_VERSION : SEARCH_CONTRACT_VERSION,
       },
     }, { idempotencyKey: command.provider_idempotency_key });
   }
-  const recorded = await admin.rpc("ap_record_search_refund_result", {
+  let paymentIntentId = typeof providerRefund.payment_intent === "string"
+    ? providerRefund.payment_intent : providerRefund.payment_intent?.id;
+  if (!paymentIntentId && providerRefund.charge) {
+    const charge = typeof providerRefund.charge === "string"
+      ? await stripe.charges.retrieve(providerRefund.charge) : providerRefund.charge;
+    const paymentIntent = "deleted" in charge && charge.deleted ? null : charge.payment_intent;
+    paymentIntentId = typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;
+  }
+  if (!paymentIntentId || providerRefund.metadata?.refund_operation_id !== refund.id
+    || !Number.isSafeInteger(providerRefund.amount) || providerRefund.amount < 1 || !providerRefund.currency) {
+    throw new Error("refund_provider_semantics_missing");
+  }
+  const recorded = await admin.rpc("ap_record_search_refund_result_verified", {
     p_refund_id: refund.id,
     p_provider_refund_id: providerRefund.id,
     p_provider_status: providerRefund.status || "pending",
+    p_provider_payment_id: paymentIntentId,
+    p_amount_cents: providerRefund.amount,
+    p_currency: providerRefund.currency.toUpperCase(),
+    p_metadata_refund_id: refund.id,
     p_provider_event_id: null,
     p_error_code: providerRefund.failure_reason || null,
     p_payload_sha256: null,
@@ -119,7 +136,7 @@ async function handleProvisionalCheckout(admin: AdminClient, job: ScheduledJob, 
     .select("access_email_normalized").eq("id", quote.snapshot_id).maybeSingle();
   if (snapshotError || !snapshot?.access_email_normalized) throw snapshotError || new Error("provisional_checkout_email_missing");
   const origin = canonicalApplicationOrigin();
-  await assertConfiguredPrice(stripe, priceId, { unitAmount: 2_000, productName: "Job Match Search" });
+  await assertConfiguredPrice(stripe, priceId, { unitAmount: SEARCH_PRICE_CENTS, productName: "Job Match Search" });
   await renewExternal(admin, job, owner);
   let session: Stripe.Checkout.Session;
   if (command.provider_object_id) session = await stripe.checkout.sessions.retrieve(command.provider_object_id);
@@ -131,7 +148,7 @@ async function handleProvisionalCheckout(admin: AdminClient, job: ScheduledJob, 
     success_url: `${origin}/checkout/return`,
     cancel_url: `${origin}/checkout/return?cancelled=1`,
     line_items: [{ quantity: 1, price: priceId }],
-    metadata: { checkout_attempt_id: checkout.id, quote_id: checkout.quote_id, product_kind: "job_search", contract_version: "chunk4-v1" },
+    metadata: { checkout_attempt_id: checkout.id, quote_id: checkout.quote_id, product_kind: "job_search", contract_version: SEARCH_CONTRACT_VERSION },
   }, { idempotencyKey: command.provider_idempotency_key });
   if (session.status === "expired") {
     const expired = await admin.rpc("ap_expire_search_checkout", { p_checkout_attempt_id: checkout.id, p_reason: "PROVIDER_SESSION_EXPIRED" });
@@ -223,8 +240,8 @@ export async function processChunk4Workers(admin: AdminClient, limit = 20) {
     try {
       await handleJob(admin, job, owner);
       completed += 1;
-    } catch (error) {
-      await retryExternal(admin, job, owner, error instanceof Error ? error.message : "chunk4_worker_failed");
+    } catch {
+      await retryExternal(admin, job, owner, "CHUNK4_WORKER_FAILED");
     }
   }
   const monitor = await admin.rpc("ap_chunk4_monitor_snapshot");

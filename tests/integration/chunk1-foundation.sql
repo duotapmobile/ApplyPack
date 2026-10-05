@@ -88,10 +88,10 @@ select pg_temp.assert_true(not has_table_privilege('authenticated','public.ap_do
 select pg_temp.assert_true(not has_table_privilege('authenticated','public.ap_job_snapshots','select'), 'direct job snapshot access granted');
 reset role;
 
-insert into public.ap_capacity_pools(id,resource,enabled,configuration_version) values ('70000000-0000-4000-8000-000000000001','SEARCH',true,'staff-v1');
+insert into public.ap_capacity_pools(id,resource,enabled,configuration_version) values ('70000000-0000-4000-8000-000000000001','REFERENCE_REGENERATION',true,'staff-v1');
 insert into public.ap_capacity_buckets(id,pool_id,starts_at,ends_at,total_units,staffing_version) values
  ('71000000-0000-4000-8000-000000000001','70000000-0000-4000-8000-000000000001',now()-interval '1 hour',now()+interval '1 hour',4,'staff-v1');
-select public.ap_reserve_capacity('10000000-0000-4000-8000-000000000001','SEARCH',2,'reserve-1',now()+interval '30 minutes','[]');
+select public.ap_reserve_capacity('10000000-0000-4000-8000-000000000001','REFERENCE_REGENERATION',2,'reserve-1',now()+interval '30 minutes','[]');
 select pg_temp.assert_true(public.ap_capacity_available('71000000-0000-4000-8000-000000000001')=2,'held capacity not debited');
 update public.ap_capacity_allocations set lifecycle='CONSUMED',debit_disposition='SPENT',consumed_at=now() where request_key='reserve-1';
 update public.ap_capacity_allocations set lifecycle='COMPLETED' where request_key='reserve-1';
@@ -121,6 +121,11 @@ values
  ('75000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000001','50000000-0000-4000-8000-000000000003','74000000-0000-4000-8000-000000000002',2000,'USD',true,repeat('4',64),now()+interval '1 hour');
 insert into public.ap_human_review_records(customer_id,reviewer_id,snapshot_id,review_kind,rationale,catalog_version,decision)
 values ('10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002','50000000-0000-4000-8000-000000000001','FEASIBILITY','fixture rationale','v1','{}');
+insert into public.ap_capacity_pools(id,resource,enabled,configuration_version)
+values ('70000000-0000-4000-8000-000000000003','SEARCH',true,'manual-launch-fixture-v1');
+insert into public.ap_capacity_buckets(id,pool_id,starts_at,ends_at,total_units,staffing_version)
+values ('71000000-0000-4000-8000-000000000003','70000000-0000-4000-8000-000000000003',
+  now()-interval '1 hour',now()+interval '2 days',4,'manual-launch-fixture-v1');
 select public.ap_reserve_capacity('10000000-0000-4000-8000-000000000001','SEARCH',1,'reserve-pre-edit',now()+interval '30 minutes','[]');
 update public.ap_capacity_allocations set criteria_revision_id='50000000-0000-4000-8000-000000000001' where request_key='reserve-pre-edit';
 select public.ap_invalidate_pre_activation_snapshot('10000000-0000-4000-8000-000000000001','50000000-0000-4000-8000-000000000001','50000000-0000-4000-8000-000000000003','PRE_ACTIVATION_EDIT');
@@ -165,7 +170,26 @@ do $$ begin
   values ('10000000-0000-4000-8000-000000000001','75000000-0000-4000-8000-000000000002','81000000-0000-4000-8000-000000000001',(select id from public.ap_capacity_allocations where request_key='reserve-checkout'),'OPEN','cs_unapproved',now()+interval '20 minutes');
   raise exception 'checkout opened without approved tax configuration';
 exception when others then if sqlerrm='checkout opened without approved tax configuration' then raise; end if; end $$;
-update public.ap_commerce_configuration set tax_configuration_approved=true,tax_approval_reference='test-approval';
+insert into public.ap_manual_launch_activations(
+  id,release_sha,health_evidence_reference,database_evidence_reference,payment_evidence_reference,
+  email_evidence_reference,kms_evidence_reference,worker_evidence_reference,maintenance_evidence_reference,
+  backup_restore_evidence_reference,inventory_evidence_reference,accessibility_evidence_reference,
+  product_supervisor_reference,security_supervisor_reference,operations_supervisor_reference,
+  tenth_man_supervisor_reference,accepted_p2_disposition_reference,unresolved_p0_count,unresolved_p1_count,
+  canary_reconciliation_reference,canary_reconciled_amount_cents,tax_approval_reference,
+  worker_network_attestation_sha256,evidence_bundle_sha256,approved_by
+) values(
+  '82000000-0000-4000-8000-000000000001',repeat('a',40),'fixture-health-evidence','fixture-database-evidence','fixture-payment-evidence',
+  'fixture-email-evidence','fixture-kms-evidence','fixture-worker-evidence','fixture-maintenance-evidence',
+  'fixture-backup-restore','fixture-inventory-evidence','fixture-accessibility-evidence',
+  'fixture-product-supervisor','fixture-security-supervisor','fixture-operations-supervisor',
+  'fixture-tenth-man-supervisor','fixture-p2-disposition',0,0,'fixture-canary-reconciliation',2698,
+  'fixture-tax-approval-reference',repeat('b',64),repeat('c',64),'10000000-0000-4000-8000-000000000002'
+);
+update public.ap_commerce_configuration set tax_configuration_approved=true,tax_approval_reference='fixture-tax-approval-reference',
+  sales_activation_approved=true,sales_activation_reference='manual-launch-activation:82000000-0000-4000-8000-000000000001',
+  launch_activation_id='82000000-0000-4000-8000-000000000001',launch_release_sha=repeat('a',40),
+  document_worker_network_attestation_sha256=repeat('b',64);
 insert into public.ap_checkout_attempts(customer_id,quote_id,command_id,capacity_allocation_id,state,provider_checkout_session_id,expires_at)
 values ('10000000-0000-4000-8000-000000000001','75000000-0000-4000-8000-000000000002','81000000-0000-4000-8000-000000000001',(select id from public.ap_capacity_allocations where request_key='reserve-checkout'),'OPEN','cs_approved',now()+interval '20 minutes');
 select pg_temp.assert_true(not (select cleanup_enabled from public.ap_retention_configuration),'retention cleanup enabled without approved durations');
@@ -206,6 +230,9 @@ values
  ('90000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000002','job_search',2000,'delivered',now(),now());
 insert into public.jobs(id,company,title,source_url,checked_at) values ('91000000-0000-4000-8000-000000000001','Example','Coordinator','https://example.invalid/job',now());
 insert into public.job_matches(id,search_order_id,job_id,position,fit_summary) values ('92000000-0000-4000-8000-000000000001','90000000-0000-4000-8000-000000000001','91000000-0000-4000-8000-000000000001',1,'fixture');
+update public.ap_checkout_attempts set state='CANCELED' where provider_checkout_session_id='cs_approved';
+update public.ap_capacity_allocations set lifecycle='RELEASED',debit_disposition='RETURNED',returned_at=now(),updated_at=now()
+where request_key='reserve-checkout';
 insert into public.ap_intake_snapshots
 select (jsonb_populate_record(null::public.ap_intake_snapshots, to_jsonb(s) || jsonb_build_object(
   'id','50000000-0000-4000-8000-000000000004','parent_snapshot_id','50000000-0000-4000-8000-000000000003',

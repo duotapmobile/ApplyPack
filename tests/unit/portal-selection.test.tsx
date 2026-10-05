@@ -52,7 +52,7 @@ describe("Tailored Resume + Cover Letter customer selection", () => {
     await userEvent.click(checkbox);
     expect(checkbox).toBeChecked();
     expect(screen.getByText("Selected")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /1 document set.*\$8 total/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /1 document set.*\$7\.99 total/ })).toBeInTheDocument();
   });
 
   it("keeps the development-only manual fixture self-contained and gives every job card a meaningful name", async () => {
@@ -74,7 +74,7 @@ describe("Tailored Resume + Cover Letter customer selection", () => {
     expect(checkbox).toBeEnabled();
     await userEvent.click(checkbox);
     expect(checkbox).toBeChecked();
-    expect(screen.getByRole("heading", { name: /1 document set.*\$8 total/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /1 document set.*\$7\.99 total/ })).toBeInTheDocument();
   });
 
   it("renders the immutable exact-ten release with all five explanations and plain-language warnings", async () => {

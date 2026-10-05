@@ -68,11 +68,11 @@ export async function retryFailedEmails(admin: AdminClient, limit = 10) {
       }).eq("id", event.id).eq("status", "failed");
       if (update.error) throw update.error;
       sentCount += 1;
-    } catch (sendError) {
+    } catch {
       await admin.from("email_events").update({
         attempt_count: Number(event.attempt_count || 0) + 1,
         last_attempt_at: new Date().toISOString(),
-        last_error_code: sendError instanceof Error ? sendError.message.slice(0, 100) : "provider_send_failed",
+        last_error_code: "EMAIL_PROVIDER_SEND_FAILED",
         updated_at: new Date().toISOString(),
       }).eq("id", event.id).eq("status", "failed");
     }
