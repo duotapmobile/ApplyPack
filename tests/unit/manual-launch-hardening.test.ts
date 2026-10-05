@@ -377,9 +377,11 @@ describe("October 2 manual-launch hardening", () => {
     expect(documentRender).toContain("choco install libreoffice-fresh --version=$env:APPLYPACK_LIBREOFFICE_PACKAGE_VERSION");
     expect(documentRender).toContain("choco install poppler --version=$env:APPLYPACK_POPPLER_PACKAGE_VERSION");
     expect(documentRender).toContain("APP_DOCUMENT_RENDERER_IDENTITY: 'applypack-windows-ci-");
-    expect(documentRender).toContain("APPLYPACK_RENDER_EVIDENCE_DIR: ${{ runner.temp }}\\applypack-chunk5-render-ci");
+    const [jobConfiguration, renderAndUpload] = documentRender.split("      - name: Render actual DOCX files and verify PDF outputs");
+    expect(jobConfiguration).not.toContain("APPLYPACK_RENDER_EVIDENCE_DIR");
+    expect(renderAndUpload).toContain("APPLYPACK_RENDER_EVIDENCE_DIR: ${{ runner.temp }}\\applypack-chunk5-render-ci");
     expect(documentRender).toContain("run: .\\scripts\\test-document-render-windows.ps1");
-    expect(documentRender).toContain("path: ${{ env.APPLYPACK_RENDER_EVIDENCE_DIR }}");
+    expect(documentRender).toContain("path: ${{ runner.temp }}\\applypack-chunk5-render-ci");
     expect(documentRender).not.toContain("apt-get");
     expect(documentRender).not.toContain("fonts-liberation");
     expect(documentRender).not.toContain("configure-renderer-runtime");

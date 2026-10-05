@@ -84,7 +84,6 @@ jobs:
       APPLYPACK_EXPECTED_LIBREOFFICE_VERSION: '26.2.6'
       APPLYPACK_EXPECTED_POPPLER_VERSION: '26.9.0'
       APP_DOCUMENT_RENDERER_IDENTITY: 'applypack-windows-ci-lo-26.2.6-poppler-26.9.0'
-      APPLYPACK_RENDER_EVIDENCE_DIR: ${{ runner.temp }}\applypack-chunk5-render-ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -113,10 +112,12 @@ jobs:
       - run: npm ci
       - name: Render actual DOCX files and verify PDF outputs
         shell: pwsh
+        env:
+          APPLYPACK_RENDER_EVIDENCE_DIR: ${{ runner.temp }}\applypack-chunk5-render-ci
         run: .\scripts\test-document-render-windows.ps1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: document-render-evidence
-          path: ${{ env.APPLYPACK_RENDER_EVIDENCE_DIR }}
+          path: ${{ runner.temp }}\applypack-chunk5-render-ci
           if-no-files-found: warn
