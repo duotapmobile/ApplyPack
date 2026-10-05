@@ -8,21 +8,47 @@ export const CUTOVER_AUTHORIZATION_ENV =
   "APPLYPACK_RAILWAY_IAC_STAGING_CUTOVER_AUTHORIZATION";
 export const CUTOVER_AUTHORIZATION_VALUE =
   "apply:fb5a58c4-8ccb-4205-82f9-8b8738c84e56:6633e585-5bcd-4729-b167-2a99628daf86";
+export const EXPECTED_RAILWAY_CLI_VERSION = "5.49.6";
+
+export const CUTOVER_BOUND_INPUTS = Object.freeze([
+  ".github/workflows/ci.yml",
+  ".railway/README.md",
+  ".railway/package-lock.json",
+  ".railway/package.json",
+  ".railway/railway.test.ts",
+  ".railway/railway.ts",
+  ".railway/tsconfig.json",
+  "railway-maintenance.json",
+  "railway.maintenance.json",
+  "railway.json",
+  "scripts/railway-staging-iac-cutover.mjs",
+  "scripts/railway-staging-iac-cutover.test.mjs",
+  "src/app/api/health/route.ts",
+  "src/lib/operations/launch-readiness.ts",
+  "src/lib/operations/summary.ts",
+  "src/lib/stripe/mode.ts",
+  "tests/unit/railway-iac.test.ts",
+]);
 
 const EXPECTED = Object.freeze({
   project: { id: "fb5a58c4-8ccb-4205-82f9-8b8738c84e56", name: "Apply Pack" },
   environment: { id: "6633e585-5bcd-4729-b167-2a99628daf86", name: "staging" },
-  web: { id: "3d379eca-87ac-48ba-9f95-9d69c806a5db", name: "ApplyPack-staging" },
+  web: {
+    id: "3d379eca-87ac-48ba-9f95-9d69c806a5db",
+    instanceId: "29cd1c79-a42b-4499-aaa9-d036ddacc4d1",
+    name: "ApplyPack-staging",
+  },
   maintenance: {
     id: "866e36fd-2fec-45fd-ba01-7150a789e419",
+    instanceId: "2207d73b-ff81-4538-812d-22d368e573de",
     name: "ApplyPack-maintenance",
   },
   publicOrigin: "https://applypack-staging-staging.up.railway.app",
   declaredResources: ["service.ApplyPack-maintenance", "service.ApplyPack-staging"],
 });
 
-const EXPECTED_LEGACY_HASHES = Object.freeze({
-  "railway.json": "7A31888BADA01725F4C27037BE591CE0BA00A1A964E5187D31A3D361DD2C4451",
+const EXPECTED_LEGACY_CANONICAL_SHA256 = Object.freeze({
+  "railway.json": "8C18D356C0EE16F939A40E69311B81F554D3A7F5DFFBD7B7C14973B72DCF3A58",
   "railway-maintenance.json":
     "EEDFA7D896A451A8BFE6CD53FAF4859243D547777A0544F03E6AA3ED1CC8B106",
   "railway.maintenance.json":
@@ -43,24 +69,75 @@ const TOPOLOGY_QUERY = `query ApplyPackCutoverTopology($environmentId: String!) 
     serviceInstances {
       edges {
         node {
+          id
           serviceId
           serviceName
+          autoInstrumentationEnabled
+          builder
           railwayConfigFile
           resolvedFileConfig { configFile }
           buildCommand
+          dockerfilePath
+          drainingSeconds
           rootDirectory
           startCommand
           cronSchedule
           healthcheckPath
           healthcheckTimeout
+          ipv6EgressEnabled
+          multiRegionConfig
+          nixpacksPlan
+          numReplicas
+          overlapSeconds
+          preDeployCommand
+          preDeployTimeoutSeconds
+          region
           restartPolicyType
           restartPolicyMaxRetries
+          sleepApplication
+          source { image repo }
+          tracingEnabled
+          watchPatterns
           latestDeployment { id status meta }
         }
       }
     }
   }
 }`;
+
+const CHECKOUT_LOCK_KEYS = Object.freeze([
+  "APP_CHECKOUT_ENABLED",
+  "APP_LIVE_PAYMENTS_ENABLED",
+  "APP_JOB_BOARD_CHECKOUT_ENABLED",
+]);
+
+const ROLLBACK_INPUT_FIELDS = Object.freeze([
+  "autoInstrumentationEnabled",
+  "buildCommand",
+  "builder",
+  "cronSchedule",
+  "dockerfilePath",
+  "drainingSeconds",
+  "healthcheckPath",
+  "healthcheckTimeout",
+  "ipv6EgressEnabled",
+  "multiRegionConfig",
+  "nixpacksPlan",
+  "numReplicas",
+  "overlapSeconds",
+  "preDeployCommand",
+  "preDeployTimeoutSeconds",
+  "railwayConfigFile",
+  "region",
+  "restartPolicyMaxRetries",
+  "restartPolicyType",
+  "rootDirectory",
+  "sleepApplication",
+  "source",
+  "startCommand",
+  "tracingEnabled",
+  "watchPatterns",
+]);
 
 export class CutoverError extends Error {
   constructor(code) {
@@ -76,6 +153,18 @@ function fail(code) {
 
 function sha256File(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex").toUpperCase();
+}
+
+export function canonicalSha256(content) {
+  const text = Buffer.isBuffer(content) ? content.toString("utf8") : String(content);
+  if (text.includes("\0") || text.includes("\uFFFD")) {
+    fail("RAILWAY_IAC_BOUND_INPUT_ENCODING_INVALID");
+  }
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  return createHash("sha256")
+    .update(Buffer.from(normalized, "utf8"))
+    .digest("hex")
+    .toUpperCase();
 }
 
 function parseJsonOutput(output, code) {
@@ -158,6 +247,53 @@ function requireSuccess(result, code) {
   return result;
 }
 
+function verifyRailwayCli(run, repoRoot, localEnv) {
+  const result = requireSuccess(
+    run("railway", ["--version"], { cwd: repoRoot, env: localEnv }),
+    "RAILWAY_IAC_CLI_VERSION_UNAVAILABLE",
+  );
+  if (result.stdout.trim() !== `railway ${EXPECTED_RAILWAY_CLI_VERSION}`) {
+    fail("RAILWAY_IAC_CLI_VERSION_MISMATCH");
+  }
+  return EXPECTED_RAILWAY_CLI_VERSION;
+}
+
+function verifyCommittedInputs(run, repoRoot, localEnv, readBoundFile) {
+  const status = requireSuccess(
+    run("git", ["status", "--porcelain", "--", ...CUTOVER_BOUND_INPUTS], {
+      cwd: repoRoot,
+      env: localEnv,
+    }),
+    "RAILWAY_IAC_GIT_STATUS_FAILED",
+  ).stdout.trim();
+  if (status) fail("RAILWAY_IAC_BOUND_INPUT_DIRTY");
+
+  const boundInputs = {};
+  for (const path of CUTOVER_BOUND_INPUTS) {
+    const blobOid = requireSuccess(
+      run("git", ["rev-parse", `HEAD:${path}`], { cwd: repoRoot, env: localEnv }),
+      "RAILWAY_IAC_BOUND_INPUT_MISSING",
+    ).stdout.trim();
+    if (!/^[0-9a-f]{40}$/i.test(blobOid)) fail("RAILWAY_IAC_BOUND_INPUT_BLOB_INVALID");
+    const committed = requireSuccess(
+      run("git", ["cat-file", "blob", blobOid], { cwd: repoRoot, env: localEnv }),
+      "RAILWAY_IAC_BOUND_INPUT_READ_FAILED",
+    ).stdout;
+    const committedSha256 = canonicalSha256(committed);
+    const workingSha256 = canonicalSha256(readBoundFile(resolve(repoRoot, path)));
+    if (workingSha256 !== committedSha256) fail("RAILWAY_IAC_BOUND_INPUT_CONTENT_MISMATCH");
+    const expectedLegacySha256 = EXPECTED_LEGACY_CANONICAL_SHA256[path];
+    if (expectedLegacySha256 && committedSha256 !== expectedLegacySha256) {
+      fail("RAILWAY_IAC_LEGACY_HASH_MISMATCH");
+    }
+    boundInputs[path] = {
+      gitBlobOid: blobOid.toLowerCase(),
+      canonicalSha256: committedSha256,
+    };
+  }
+  return boundInputs;
+}
+
 function ensureReceiptDirectory(repoRoot, receiptDirectory) {
   if (!receiptDirectory || !isAbsolute(receiptDirectory)) {
     fail("RAILWAY_IAC_RECEIPT_DIRECTORY_MUST_BE_ABSOLUTE");
@@ -209,7 +345,9 @@ function validateTopology(response, reviewedSha) {
   const web = byName.get(EXPECTED.web.name);
   const maintenance = byName.get(EXPECTED.maintenance.name);
   if (
+    web?.id !== EXPECTED.web.instanceId ||
     web?.serviceId !== EXPECTED.web.id ||
+    maintenance?.id !== EXPECTED.maintenance.instanceId ||
     maintenance?.serviceId !== EXPECTED.maintenance.id
   ) {
     fail("RAILWAY_IAC_SERVICE_TOPOLOGY_MISMATCH");
@@ -247,6 +385,7 @@ function validatePlan(plan, sourceTree) {
   if (
     plan?.kind !== "railway.config.plan" ||
     plan?.version !== 1 ||
+    plan?.cliVersion !== EXPECTED_RAILWAY_CLI_VERSION ||
     plan?.environmentId !== EXPECTED.environment.id ||
     plan?.sourceTree !== sourceTree ||
     plan?.destructive !== false ||
@@ -272,6 +411,43 @@ function runApi(run, repoRoot, providerEnv, query, variables = []) {
     "RAILWAY_IAC_PROVIDER_QUERY_FAILED",
   );
   return parseJsonOutput(result.stdout, "RAILWAY_IAC_PROVIDER_RESPONSE_INVALID");
+}
+
+function validateCheckoutDisabled(run, repoRoot, providerEnv) {
+  const result = requireSuccess(
+    run(
+      "railway",
+      [
+        "variable",
+        "list",
+        "--service",
+        EXPECTED.web.name,
+        "--environment",
+        EXPECTED.environment.name,
+        "--project",
+        EXPECTED.project.id,
+        "--json",
+      ],
+      { cwd: repoRoot, env: providerEnv },
+    ),
+    "RAILWAY_IAC_CHECKOUT_LOCK_QUERY_FAILED",
+  );
+  const variables = parseJsonOutput(
+    result.stdout,
+    "RAILWAY_IAC_CHECKOUT_LOCK_RESPONSE_INVALID",
+  );
+  if (
+    !variables ||
+    typeof variables !== "object" ||
+    CHECKOUT_LOCK_KEYS.some((key) => variables[key] !== "false")
+  ) {
+    fail("RAILWAY_IAC_CHECKOUT_NOT_DISABLED");
+  }
+  return {
+    checkoutEnabled: false,
+    livePaymentsEnabled: false,
+    boardCheckoutEnabled: false,
+  };
 }
 
 function runPlan(run, repoRoot, providerEnv, outputPath, sourceTree) {
@@ -308,17 +484,34 @@ function sanitizeTopology(topology) {
     environment: topology.environment,
     services: topology.services.map((node) => ({
       serviceId: node.serviceId,
+      serviceInstanceId: node.id,
       serviceName: node.serviceName,
+      autoInstrumentationEnabled: node.autoInstrumentationEnabled,
+      builder: node.builder,
       railwayConfigFile: node.railwayConfigFile,
       resolvedConfigFile: node.resolvedFileConfig.configFile,
       buildCommand: node.buildCommand,
+      dockerfilePath: node.dockerfilePath,
+      drainingSeconds: node.drainingSeconds,
       rootDirectory: node.rootDirectory,
       startCommand: node.startCommand,
       cronSchedule: node.cronSchedule,
       healthcheckPath: node.healthcheckPath,
       healthcheckTimeout: node.healthcheckTimeout,
+      ipv6EgressEnabled: node.ipv6EgressEnabled,
+      multiRegionConfig: node.multiRegionConfig,
+      nixpacksPlan: node.nixpacksPlan,
+      numReplicas: node.numReplicas,
+      overlapSeconds: node.overlapSeconds,
+      preDeployCommand: node.preDeployCommand,
+      preDeployTimeoutSeconds: node.preDeployTimeoutSeconds,
+      region: node.region,
       restartPolicyType: node.restartPolicyType,
       restartPolicyMaxRetries: node.restartPolicyMaxRetries,
+      sleepApplication: node.sleepApplication,
+      source: node.source,
+      tracingEnabled: node.tracingEnabled,
+      watchPatterns: node.watchPatterns,
       latestDeployment: {
         id: node.latestDeployment.id,
         status: node.latestDeployment.status,
@@ -328,24 +521,84 @@ function sanitizeTopology(topology) {
   };
 }
 
-async function validateHosted(fetchImpl) {
-  const liveResponse = await fetchImpl(`${EXPECTED.publicOrigin}/api/live`, {
-    redirect: "error",
-  });
-  const live = await liveResponse.json();
-  if (liveResponse.status !== 200 || live?.status !== "ok") {
-    fail("RAILWAY_IAC_POST_LIVENESS_FAILED");
+function rollbackInput(node) {
+  const input = {};
+  for (const field of ROLLBACK_INPUT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(node, field)) {
+      fail("RAILWAY_IAC_ROLLBACK_RECEIPT_INCOMPLETE");
+    }
+    input[field] = node[field];
   }
-  const healthResponse = await fetchImpl(`${EXPECTED.publicOrigin}/api/health`, {
-    redirect: "error",
-  });
-  const health = await healthResponse.json();
+  if (
+    input.railwayConfigFile !== null ||
+    input.builder !== "RAILPACK" ||
+    input.nixpacksPlan !== null ||
+    input.multiRegionConfig?.ams?.numReplicas !== 1 ||
+    !Array.isArray(input.watchPatterns) ||
+    input.source?.repo !== "duotapmobile/ApplyPack" ||
+    input.source?.image !== null
+  ) {
+    fail("RAILWAY_IAC_ROLLBACK_RECEIPT_INVALID");
+  }
+  return input;
+}
+
+function buildRollbackReceipt(topology) {
+  const byName = new Map(topology.services.map((node) => [node.serviceName, node]));
+  return {
+    schema: "ServiceInstanceUpdateInput",
+    environmentId: EXPECTED.environment.id,
+    excludedWriteOnlyFields: ["registryCredentials"],
+    services: [EXPECTED.maintenance, EXPECTED.web].map((expected) => {
+      const node = byName.get(expected.name);
+      if (!node || node.serviceId !== expected.id) {
+        fail("RAILWAY_IAC_ROLLBACK_RECEIPT_INCOMPLETE");
+      }
+      return {
+        serviceId: expected.id,
+        serviceInstanceId: expected.instanceId,
+        serviceName: expected.name,
+        input: rollbackInput(node),
+      };
+    }),
+  };
+}
+
+async function validateHosted(fetchImpl, reviewedSha, phase) {
+  const prefix = phase === "post" ? "RAILWAY_IAC_POST" : "RAILWAY_IAC_PREFLIGHT";
+  let liveResponse;
+  let live;
+  try {
+    liveResponse = await fetchImpl(`${EXPECTED.publicOrigin}/api/live`, {
+      redirect: "error",
+    });
+    live = await liveResponse.json();
+  } catch {
+    fail(`${prefix}_LIVENESS_FAILED`);
+  }
+  if (liveResponse.status !== 200 || live?.status !== "ok") {
+    fail(`${prefix}_LIVENESS_FAILED`);
+  }
+  let healthResponse;
+  let health;
+  try {
+    healthResponse = await fetchImpl(`${EXPECTED.publicOrigin}/api/health`, {
+      redirect: "error",
+    });
+    health = await healthResponse.json();
+  } catch {
+    fail(`${prefix}_READINESS_NOT_LOCKED`);
+  }
   if (
     healthResponse.status !== 503 ||
     health?.status !== "not_ready" ||
-    health?.acceptingOrders !== false
+    health?.acceptingOrders !== false ||
+    health?.releaseSha !== reviewedSha
   ) {
-    fail("RAILWAY_IAC_POST_READINESS_NOT_LOCKED");
+    fail(`${prefix}_READINESS_NOT_LOCKED`);
+  }
+  if (health?.checks?.maintenance !== true) {
+    fail(`${prefix}_MAINTENANCE_NOT_FRESH`);
   }
   return {
     live: { statusCode: 200, status: "ok" },
@@ -353,7 +606,8 @@ async function validateHosted(fetchImpl) {
       statusCode: 503,
       status: "not_ready",
       acceptingOrders: false,
-      releaseSha: health.releaseSha ?? null,
+      releaseSha: reviewedSha,
+      maintenanceFresh: true,
     },
   };
 }
@@ -366,6 +620,7 @@ export async function runCutover({
   run = defaultRun,
   fetchImpl = globalThis.fetch,
   now = () => new Date(),
+  readBoundFile = readFileSync,
 } = {}) {
   if (!["dry-run", "execute"].includes(mode)) fail("RAILWAY_IAC_MODE_INVALID");
   if (exactEnvValue(env, CUTOVER_AUTHORIZATION_ENV) !== CUTOVER_AUTHORIZATION_VALUE) {
@@ -374,6 +629,25 @@ export async function runCutover({
   const receipts = ensureReceiptDirectory(repoRoot, receiptDirectory);
   const localEnv = scrubCredentialEnv(env);
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+
+  const boundInputs = verifyCommittedInputs(
+    run,
+    repoRoot,
+    localEnv,
+    readBoundFile,
+  );
+  const reviewedSha = requireSuccess(
+    run("git", ["rev-parse", "HEAD"], { cwd: repoRoot, env: localEnv }),
+    "RAILWAY_IAC_GIT_HEAD_FAILED",
+  ).stdout.trim();
+  const sourceTree = requireSuccess(
+    run("git", ["rev-parse", "HEAD:.railway"], { cwd: repoRoot, env: localEnv }),
+    "RAILWAY_IAC_GIT_TREE_FAILED",
+  ).stdout.trim();
+  if (!/^[0-9a-f]{40}$/i.test(reviewedSha) || !/^[0-9a-f]{40}$/i.test(sourceTree)) {
+    fail("RAILWAY_IAC_GIT_IDENTITY_INVALID");
+  }
+  const railwayCliVersion = verifyRailwayCli(run, repoRoot, localEnv);
 
   requireSuccess(
     run(npm, ["audit", "--prefix", ".railway", "--audit-level=high"], {
@@ -394,44 +668,6 @@ export async function runCutover({
     "RAILWAY_IAC_NESTED_TEST_FAILED",
   );
 
-  const status = requireSuccess(
-    run(
-      "git",
-      [
-        "status",
-        "--porcelain",
-        "--",
-        ".railway",
-        "railway.json",
-        "railway-maintenance.json",
-        "railway.maintenance.json",
-      ],
-      { cwd: repoRoot, env: localEnv },
-    ),
-    "RAILWAY_IAC_GIT_STATUS_FAILED",
-  ).stdout.trim();
-  if (status) fail("RAILWAY_IAC_SOURCE_NOT_COMMITTED");
-
-  const reviewedSha = requireSuccess(
-    run("git", ["rev-parse", "HEAD"], { cwd: repoRoot, env: localEnv }),
-    "RAILWAY_IAC_GIT_HEAD_FAILED",
-  ).stdout.trim();
-  const sourceTree = requireSuccess(
-    run("git", ["rev-parse", "HEAD:.railway"], { cwd: repoRoot, env: localEnv }),
-    "RAILWAY_IAC_GIT_TREE_FAILED",
-  ).stdout.trim();
-  if (!/^[0-9a-f]{40}$/i.test(reviewedSha) || !/^[0-9a-f]{40}$/i.test(sourceTree)) {
-    fail("RAILWAY_IAC_GIT_IDENTITY_INVALID");
-  }
-
-  const legacyHashes = Object.fromEntries(
-    Object.entries(EXPECTED_LEGACY_HASHES).map(([name, expectedHash]) => {
-      const actualHash = sha256File(resolve(repoRoot, name));
-      if (actualHash !== expectedHash) fail("RAILWAY_IAC_LEGACY_HASH_MISMATCH");
-      return [name, actualHash];
-    }),
-  );
-
   if (exactEnvValue(env, "RAILWAY_API_TOKEN") !== undefined) {
     fail("RAILWAY_IAC_ACCOUNT_TOKEN_PROHIBITED");
   }
@@ -446,15 +682,22 @@ export async function runCutover({
     ]),
     reviewedSha,
   );
+  const checkoutLock = validateCheckoutDisabled(run, repoRoot, providerEnv);
+  const hostedPreflight = await validateHosted(fetchImpl, reviewedSha, "preflight");
+  const rollback = buildRollbackReceipt(topology);
 
   const preReceipt = {
     kind: "applypack.railway.staging.pre-cutover",
     capturedAt: now().toISOString(),
     reviewedSha,
     sourceTree,
+    railwayCliVersion,
     scope,
-    legacyHashes,
+    boundInputs,
     topology: sanitizeTopology(topology),
+    rollback,
+    checkoutLock,
+    hostedPreflight,
     nullConfigFileSemantics: {
       railwayConfigFile: null,
       resolvedConfigFile: null,
@@ -487,6 +730,13 @@ export async function runCutover({
     capturedAt: now().toISOString(),
     reviewedSha,
     sourceTree,
+    railwayCliVersion,
+    boundInputHashes: Object.fromEntries(
+      Object.entries(boundInputs).map(([path, evidence]) => [
+        path,
+        evidence.canonicalSha256,
+      ]),
+    ),
     configEtag: plan.configEtag,
     changeSetHash: plan.changeSetHash,
     pinnedPlanSha256: pinnedPlanHash,
@@ -508,6 +758,7 @@ export async function runCutover({
       status: "RAILWAY_IAC_DRY_RUN_VERIFIED",
       reviewedSha,
       sourceTree,
+      railwayCliVersion,
       planSha256: pinnedPlanHash,
       providerWrites: 0,
       tokenRevocationRequired: true,
@@ -515,6 +766,14 @@ export async function runCutover({
   }
 
   validateScope(runApi(run, repoRoot, providerEnv, TOKEN_SCOPE_QUERY));
+  validateTopology(
+    runApi(run, repoRoot, providerEnv, TOPOLOGY_QUERY, [
+      ["environmentId", EXPECTED.environment.id],
+    ]),
+    reviewedSha,
+  );
+  validateCheckoutDisabled(run, repoRoot, providerEnv);
+  await validateHosted(fetchImpl, reviewedSha, "preflight");
   const apply = run(
     "railway",
     ["config", "apply", "--json", "--yes", "--plan", planPath],
@@ -528,14 +787,17 @@ export async function runCutover({
     ]),
     reviewedSha,
   );
-  const hosted = await validateHosted(fetchImpl);
+  const postCheckoutLock = validateCheckoutDisabled(run, repoRoot, providerEnv);
+  const hosted = await validateHosted(fetchImpl, reviewedSha, "post");
   const postReceipt = {
     kind: "applypack.railway.staging.post-cutover",
     capturedAt: now().toISOString(),
     reviewedSha,
     sourceTree,
+    railwayCliVersion,
     planSha256: pinnedPlanHash,
     topology: sanitizeTopology(postTopology),
+    checkoutLock: postCheckoutLock,
     hosted,
     checkoutLocked: true,
     tokenRevocationRequired: true,

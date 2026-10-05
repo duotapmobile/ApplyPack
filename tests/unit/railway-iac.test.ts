@@ -171,6 +171,8 @@ describe("Railway staging Infrastructure as Code", () => {
   it("documents a staging-only, pinned-plan, sole-wrapper cutover gate", () => {
     const readme = source(".railway/README.md");
     expect(readme).toContain("npm ci --prefix .railway");
+    expect(readme).toContain("Use exactly Railway CLI `5.49.6`");
+    expect(readme).toContain("plan's `cliVersion` to be exactly `5.49.6`");
     expect(readme).toContain("Production is a separate Railway environment and is not represented by this file.");
     expect(readme).toContain("scripts/railway-staging-iac-cutover.mjs --dry-run");
     expect(readme).toContain("0 to add, 0 to change, 0 to destroy");
@@ -185,6 +187,9 @@ describe("Railway staging Infrastructure as Code", () => {
     expect(readme).toContain("project { id name } environment { id name }");
     expect(readme).toContain("Revoke the project token immediately");
     expect(readme).toContain("Direct Railway CLI access cannot be blocked by an authoring callback.");
+    expect(readme).toContain("Before loading or validating a provider credential");
+    expect(readme).toContain("exact Git blob object ID and canonical SHA-256");
+    expect(readme).toContain("clean LF and Windows CRLF checkouts");
   });
 
   it("documents the value-free rollback receipt and executable restoration", () => {
@@ -195,17 +200,37 @@ describe("Railway staging Infrastructure as Code", () => {
     expect(readme).toContain("`railwayConfigFile` | `null` | `null`");
     expect(readme).toContain("3a39e1f2-6843-4fd3-aaf1-7e453843d18a");
     expect(readme).toContain("7ff4d797-9e62-4b12-88fa-d72b1c996e48");
-    expect(readme).toContain("7A31888BADA01725F4C27037BE591CE0BA00A1A964E5187D31A3D361DD2C4451");
+    expect(readme).toContain("8C18D356C0EE16F939A40E69311B81F554D3A7F5DFFBD7B7C14973B72DCF3A58");
     expect(readme).toContain("EEDFA7D896A451A8BFE6CD53FAF4859243D547777A0544F03E6AA3ED1CC8B106");
     expect(readme).toContain("serviceInstanceUpdate");
     expect(readme).toContain("--variables @private-sanitized-web-rollback-variables.json");
     expect(readme).toContain("Railway `serviceInstanceUpdate` calls are not transactional.");
     expect(readme).not.toContain("@<private");
-    expect(readme).not.toContain('"autoInstrumentationEnabled"');
-    expect(readme).not.toContain('"tracingEnabled"');
-    expect(readme).not.toContain('"preDeployTimeoutSeconds"');
+    for (const field of [
+      "autoInstrumentationEnabled",
+      "builder",
+      "dockerfilePath",
+      "drainingSeconds",
+      "ipv6EgressEnabled",
+      "multiRegionConfig",
+      "nixpacksPlan",
+      "numReplicas",
+      "overlapSeconds",
+      "preDeployTimeoutSeconds",
+      "sleepApplication",
+      "source",
+      "tracingEnabled",
+      "watchPatterns",
+    ]) {
+      expect(readme).toContain(`\`${field}\``);
+    }
+    expect(readme).toContain("write-only `registryCredentials`");
     expect(readme).toContain("`/api/live` HTTP 200");
     expect(readme).toContain("`/api/health` fail-closed with checkout locked");
+    expect(readme).toContain("`checks.maintenance: true`");
+    expect(readme).toContain("`APP_CHECKOUT_ENABLED`");
+    expect(readme).toContain("`APP_LIVE_PAYMENTS_ENABLED`");
+    expect(readme).toContain("`APP_JOB_BOARD_CHECKOUT_ENABLED`");
   });
 
   it("guards the executable wrapper's exact scope, zero-change, and pinned-apply rules", () => {
@@ -218,6 +243,20 @@ describe("Railway staging Infrastructure as Code", () => {
     expect(wrapper).toContain('"--source-tree"');
     expect(wrapper).not.toContain('"config", "migrate"');
     expect(wrapper).not.toContain('"--confirm-destructive"');
+    expect(wrapper).toContain('EXPECTED_RAILWAY_CLI_VERSION = "5.49.6"');
+    expect(wrapper).toContain("CUTOVER_BOUND_INPUTS");
+    expect(wrapper).toContain('".github/workflows/ci.yml"');
+    expect(wrapper).toContain('".railway/README.md"');
+    expect(wrapper).toContain('"scripts/railway-staging-iac-cutover.test.mjs"');
+    expect(wrapper).toContain('"tests/unit/railway-iac.test.ts"');
+    expect(wrapper).toContain("canonicalSha256");
+    expect(wrapper).toContain("RAILWAY_IAC_BOUND_INPUT_DIRTY");
+    expect(wrapper).toContain("RAILWAY_IAC_CLI_VERSION_MISMATCH");
+    expect(wrapper).toContain('phase === "post" ? "RAILWAY_IAC_POST" : "RAILWAY_IAC_PREFLIGHT"');
+    expect(wrapper).toContain('fail(`${prefix}_MAINTENANCE_NOT_FRESH`)');
+    expect(wrapper).toContain("RAILWAY_IAC_CHECKOUT_NOT_DISABLED");
+    expect(wrapper).toContain("ServiceInstanceUpdateInput");
+    expect(wrapper).toContain('excludedWriteOnlyFields: ["registryCredentials"]');
     expect(wrapper).toContain("RAILWAY_IAC_ACCOUNT_TOKEN_PROHIBITED");
     expect(wrapper).toContain("RAILWAY_IAC_CONFIG_FILE_BASELINE_MISMATCH");
   });
