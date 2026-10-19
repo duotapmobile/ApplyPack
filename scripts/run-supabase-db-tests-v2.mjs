@@ -19,6 +19,7 @@ const fixtures = [
   "../tests/integration/material-filename-cleanup-compatibility.sql",
   "../tests/integration/open-font-document-contract.sql",
   "../tests/integration/legacy-board-read-only-archive.sql",
+  "../tests/integration/legacy-board-terminal-event-ordering.sql",
 ];
 for (const fixture of fixtures) {
   const sqlPath = fileURLToPath(new URL(fixture, import.meta.url));

@@ -77,7 +77,7 @@ select pg_temp.assert_true(
 );
 
 select pg_temp.assert_true(
-  public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610190083'
+  public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610190084'
   and (public.ap_manual_launch_schema_readiness()->'requiredMigrations') ? '202610190083'
   and exists(select 1 from public.ap_migration_checkpoints
     where migration_id='202610190083' and checkpoint='LEGACY_BOARD_READ_ONLY_ARCHIVE'),

@@ -704,6 +704,7 @@ export type Database = {
           id: string
           last_provider_event_created: number
           last_provider_event_id: string | null
+          last_reconciled_at: string | null
           plan_id: string
           provider_checkout_session_id: string | null
           provider_customer_id: string
@@ -723,6 +724,7 @@ export type Database = {
           id?: string
           last_provider_event_created?: number
           last_provider_event_id?: string | null
+          last_reconciled_at?: string | null
           plan_id: string
           provider_checkout_session_id?: string | null
           provider_customer_id: string
@@ -742,6 +744,7 @@ export type Database = {
           id?: string
           last_provider_event_created?: number
           last_provider_event_id?: string | null
+          last_reconciled_at?: string | null
           plan_id?: string
           provider_checkout_session_id?: string | null
           provider_customer_id?: string
@@ -11212,6 +11215,21 @@ export type Database = {
           p_state: Database["public"]["Enums"]["ap_document_processing_state"]
         }
         Returns: boolean
+      }
+      ap_apply_legacy_board_terminal_event: {
+        Args: {
+          p_amount_cents?: number
+          p_event_type: string
+          p_full_amount_cents?: number
+          p_provider_created: number
+          p_provider_dispute_id?: string
+          p_provider_event_id: string
+          p_provider_refund_id?: string
+          p_provider_subscription_id: string
+          p_refund_state?: string
+          p_resulting_state: string
+        }
+        Returns: Json
       }
       ap_apply_local_scheduled_job: {
         Args: { p_job_id: string; p_owner: string }

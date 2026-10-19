@@ -22,11 +22,11 @@ select pg_temp.assert_true(
 
 select pg_temp.assert_true(
   public.ap_manual_launch_schema_readiness()->>'ready'='true'
-  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610190083'
+  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610190084'
   and not has_function_privilege('anon','public.ap_manual_launch_schema_readiness()','execute')
   and not has_function_privilege('authenticated','public.ap_manual_launch_schema_readiness()','execute')
   and has_function_privilege('service_role','public.ap_manual_launch_schema_readiness()','execute'),
-  'launch schema readiness must bind service-only runtime health to migrations 077 through 082'
+  'launch schema readiness must bind service-only runtime health to migrations 077 through 084'
 );
 savepoint before_schema_floor_checkpoint_removal;
 delete from public.ap_migration_checkpoints where migration_id='202610040080';

@@ -223,8 +223,22 @@ describe("retired paid filtered job board", () => {
     expect(staging).not.toContain("Return to the test board");
     const runbook = readFileSync("docs/runbooks/MANUAL_LAUNCH_RELEASE.md", "utf8");
     const schema = readFileSync("src/lib/operations/launch-schema.ts", "utf8");
-    expect(runbook).toContain("migrations 077 through 083");
-    expect(runbook).toContain("schema `202610190083`");
-    expect(schema).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610190083"');
+    expect(runbook).toContain("migrations 077 through 084");
+    expect(runbook).toContain("schema `202610190084`");
+    expect(schema).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610190084"');
+  });
+
+  it("separates reconciliation from signed ordering and restricts cross-tenant entitlement checks", () => {
+    const migration = readFileSync("supabase/migrations/202610190084_legacy_board_terminal_event_ordering.sql", "utf8");
+    const events = readFileSync("src/lib/job-board/stripe-events.ts", "utf8");
+    expect(migration).toContain("add column if not exists last_reconciled_at");
+    expect(migration).toContain("ap_apply_legacy_board_terminal_event");
+    expect(migration).toContain("legacy_board_terminal_event_replay_mismatch");
+    expect(migration).toContain("greatest(subscription.last_provider_event_created,p_provider_created)");
+    expect(migration).toContain("from public,anon,authenticated");
+    expect(migration).toContain("p_customer_id=auth.uid()");
+    expect(events).toContain('kind: "reconciliation"');
+    expect(events).toContain("last_reconciled_at: source.reconciledAt");
+    expect(events).not.toContain("legacy.subscription.reconciliation");
   });
 });
