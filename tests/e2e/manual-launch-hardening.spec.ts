@@ -14,6 +14,30 @@ test("manual launch removes the public board and fails closed for board checkout
 
   const boardMaterial = await request.post("/api/checkout/board-materials/10000000-0000-4000-8000-000000000001", { data: {} });
   expect(boardMaterial.status()).toBe(410);
+
+  for (const path of [
+    "/my-applypack/job-board",
+    "/my-applypack/job-board/10000000-0000-4000-8000-000000000001",
+  ]) {
+    const response = await request.get(path);
+    expect(response.status()).toBe(404);
+  }
+
+  for (const path of [
+    "/api/customer/job-board",
+    "/api/customer/job-board/10000000-0000-4000-8000-000000000001",
+    "/api/customer/job-board/10000000-0000-4000-8000-000000000001/apply-link",
+  ]) {
+    const response = await request.get(path);
+    expect(response.status()).toBe(410);
+    expect(response.headers()["cache-control"]).toContain("no-store");
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining("not offered") });
+  }
+
+  const billingPortal = await request.post("/api/customer/billing/portal");
+  expect(billingPortal.status()).toBe(410);
+  expect(billingPortal.headers()["cache-control"]).toContain("no-store");
+  expect(await billingPortal.json()).toMatchObject({ error: expect.stringContaining("not offered") });
 });
 
 for (const path of ["/", "/pricing", "/why-customize", "/get-started"]) {

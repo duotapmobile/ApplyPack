@@ -140,15 +140,41 @@ describe("October 2 manual-launch hardening", () => {
     const boardCheckout = source("src/app/api/checkout/job-board/route.ts");
     const boardMaterials = source("src/app/api/checkout/board-materials/[id]/route.ts");
     const boardPage = source("src/app/job-board/page.tsx");
+    const customerBoardPage = source("src/app/my-applypack/job-board/page.tsx");
+    const customerBoardDetailPage = source("src/app/my-applypack/job-board/[id]/page.tsx");
+    const retiredCustomerApis = [
+      source("src/app/api/customer/job-board/route.ts"),
+      source("src/app/api/customer/job-board/[id]/route.ts"),
+      source("src/app/api/customer/job-board/[id]/apply-link/route.ts"),
+      source("src/app/api/customer/billing/portal/route.ts"),
+    ];
     const site = source("src/config/site.ts");
+    const sitemap = source("src/app/sitemap.ts");
+    const header = source("src/components/layout/site-header.tsx");
+    const footer = source("src/components/layout/site-footer.tsx");
+    const health = source("src/app/api/health/route.ts");
+    const readiness = source("src/lib/operations/launch-readiness.ts");
     expect(boardCheckout).toContain("status: 410");
     expect(boardCheckout).not.toContain("createStripe");
     expect(boardMaterials).toContain("boardOriginCheckoutIsDisabled");
     expect(boardMaterials).toContain("status: 410");
     expect(boardPage).toContain("notFound()");
     expect(boardPage).toContain("index: false");
-    expect(site).not.toContain('href: "/job-board"');
-    expect(site).not.toContain('"/job-board"');
+    for (const privatePage of [customerBoardPage, customerBoardDetailPage]) {
+      expect(privatePage).toContain("notFound();");
+      expect(privatePage).not.toMatch(/requireBoardAccess|createSupabase|ap_board_subscriptions|process\.env|ApplyLinkButton/);
+    }
+    for (const route of retiredCustomerApis) {
+      expect(route).toContain("status: 410");
+      expect(route).toContain('"cache-control": "no-store, max-age=0"');
+      expect(route).not.toMatch(/requireBoardAccess|createSupabase|createStripe|ap_board_subscriptions|process\.env/);
+    }
+    for (const publicSurface of [site, sitemap, header, footer]) {
+      expect(publicSurface).not.toContain("/job-board");
+    }
+    expect(health).not.toMatch(/STRIPE_JOB_BOARD|ap_board_subscriptions|boardSubscriptions/);
+    expect(readiness).not.toMatch(/STRIPE_JOB_BOARD|ap_board_subscriptions|boardSubscriptions/);
+    expect(readiness).toContain("legacy_subscription_retirement_reference");
   });
 
   it("binds search checkout to a short-lived operator invitation", () => {

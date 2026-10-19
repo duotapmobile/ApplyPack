@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { evaluateBoardAdmission, neutralSort } from "@/lib/job-board/admission";
 import { boardPlanDisclosure, boardPlans, isBoardPlanId } from "@/lib/job-board/plans";
 import { boardSubscriptionStateFromProvider, hasBoardAccess, transitionBoardEntitlement } from "@/lib/job-board/entitlements";
+import { GET as getRetiredBoardJobs } from "@/app/api/customer/job-board/route";
+import { GET as getRetiredBoardJob } from "@/app/api/customer/job-board/[id]/route";
+import { GET as getRetiredBoardApplyLink } from "@/app/api/customer/job-board/[id]/apply-link/route";
+import { POST as openRetiredBillingPortal } from "@/app/api/customer/billing/portal/route";
 import { readFileSync } from "node:fs";
 
 describe("paid filtered job board", () => {
@@ -58,16 +62,47 @@ describe("paid filtered job board", () => {
     expect(boardSubscriptionStateFromProvider({ eventType: "customer.subscription.deleted", subscriptionStatus: "canceled", cancelAtPeriodEnd: false, latestInvoicePaid: true })).toBe("CANCELED");
   });
 
-  it("enforces listing, detail, and apply-link access on the server without shared caching", () => {
+  it("retires every customer board and subscription-management API before auth, environment, or data access", async () => {
+    const previousMaintenanceFlag = process.env.APP_LEGACY_BOARD_MAINTENANCE_ENABLED;
+    process.env.APP_LEGACY_BOARD_MAINTENANCE_ENABLED = "true";
+    try {
+      for (const response of [
+        await getRetiredBoardJobs(),
+        await getRetiredBoardJob(),
+        await getRetiredBoardApplyLink(),
+        await openRetiredBillingPortal(),
+      ]) {
+        expect(response.status).toBe(410);
+        expect(response.headers.get("cache-control")).toBe("no-store, max-age=0");
+        await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("not offered") });
+      }
+    } finally {
+      if (previousMaintenanceFlag === undefined) delete process.env.APP_LEGACY_BOARD_MAINTENANCE_ENABLED;
+      else process.env.APP_LEGACY_BOARD_MAINTENANCE_ENABLED = previousMaintenanceFlag;
+    }
+
     for (const file of [
       "src/app/api/customer/job-board/route.ts",
       "src/app/api/customer/job-board/[id]/route.ts",
       "src/app/api/customer/job-board/[id]/apply-link/route.ts",
+      "src/app/api/customer/billing/portal/route.ts",
     ]) {
       const source = readFileSync(file, "utf8");
-      expect(source).toContain("requireBoardAccess");
-      expect(source).toContain("private, no-store");
-      expect(source).toContain("profile_snapshot_id");
+      expect(source).toContain("status: 410");
+      expect(source).toContain('"cache-control": "no-store, max-age=0"');
+      expect(source).not.toMatch(/requireBoardAccess|createSupabase|createStripe|ap_board_subscriptions|process\.env/);
+    }
+  });
+
+  it("makes both authenticated board pages unconditional not-found routes", () => {
+    for (const file of [
+      "src/app/my-applypack/job-board/page.tsx",
+      "src/app/my-applypack/job-board/[id]/page.tsx",
+    ]) {
+      const source = readFileSync(file, "utf8");
+      expect(source).toContain('import { notFound } from "next/navigation"');
+      expect(source).toContain("notFound();");
+      expect(source).not.toMatch(/requireBoardAccess|createSupabase|ap_board_subscriptions|process\.env|<Link|ApplyLinkButton/);
     }
   });
 
@@ -90,10 +125,19 @@ describe("paid filtered job board", () => {
     expect(events).toContain('latestInvoiceId === binding.invoice.id');
     const health = readFileSync("src/app/api/health/route.ts", "utf8");
     const launchReadiness = readFileSync("src/lib/operations/launch-readiness.ts", "utf8");
+    const site = readFileSync("src/config/site.ts", "utf8");
+    const sitemap = readFileSync("src/app/sitemap.ts", "utf8");
+    const header = readFileSync("src/components/layout/site-header.tsx", "utf8");
+    const footer = readFileSync("src/components/layout/site-footer.tsx", "utf8");
     expect(health).toContain("evaluateLaunchInfrastructure");
     expect(launchReadiness).toContain('admin.rpc("ap_current_source_readiness")');
     expect(health).not.toContain("STRIPE_JOB_BOARD_WEEKLY_PRICE_ID");
     expect(launchReadiness).not.toContain("STRIPE_JOB_BOARD_WEEKLY_PRICE_ID");
+    expect(launchReadiness).not.toContain("ap_board_subscriptions");
+    expect(launchReadiness).toContain("legacy_subscription_retirement_reference");
+    for (const publicSurface of [site, sitemap, header, footer]) {
+      expect(publicSurface).not.toContain("/job-board");
+    }
   });
 
   it("keeps subscription access separate from purchased material orders in the migration", () => {
