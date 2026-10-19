@@ -61,7 +61,7 @@ const rollbackReadiness = capture("git", [
   `${resolvedRollbackTarget}:src/lib/operations/launch-readiness.ts`,
 ]);
 const requiredSchemaBindingSignals = [
-  'REQUIRED_LAUNCH_SCHEMA_VERSION = "202610190082"',
+  'REQUIRED_LAUNCH_SCHEMA_VERSION = "202610190083"',
   '"202610040077"',
   '"202610040078"',
   '"202610040079"',
@@ -80,7 +80,7 @@ if (
   if (rollbackSchemaBinding.stderr) process.stderr.write(rollbackSchemaBinding.stderr);
   if (rollbackReadiness.stderr) process.stderr.write(rollbackReadiness.stderr);
   console.error(
-    `Rollback target ${resolvedRollbackTarget} does not bind runtime health and checkout to schema 202610190082.`,
+    `Rollback target ${resolvedRollbackTarget} does not bind runtime health and checkout to schema 202610190083.`,
   );
   process.exit(rollbackSchemaBinding.status || rollbackReadiness.status || 1);
 }
@@ -302,7 +302,9 @@ select case when
       and not tgisinternal
   )
   and public.ap_manual_launch_schema_readiness()->>'ready'='true'
-  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610190082'
+  and exists(select 1 from public.ap_migration_checkpoints
+    where migration_id='202610190083' and checkpoint='LEGACY_BOARD_READ_ONLY_ARCHIVE')
+  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610190083'
   and exists (
     select 1 from pg_proc procedure
     join pg_namespace namespace on namespace.oid=procedure.pronamespace

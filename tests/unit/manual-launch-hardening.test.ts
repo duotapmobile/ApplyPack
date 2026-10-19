@@ -146,8 +146,8 @@ describe("October 2 manual-launch hardening", () => {
       source("src/app/api/customer/job-board/route.ts"),
       source("src/app/api/customer/job-board/[id]/route.ts"),
       source("src/app/api/customer/job-board/[id]/apply-link/route.ts"),
-      source("src/app/api/customer/billing/portal/route.ts"),
     ];
+    const legacyBilling = source("src/app/api/customer/billing/portal/route.ts");
     const site = source("src/config/site.ts");
     const sitemap = source("src/app/sitemap.ts");
     const header = source("src/components/layout/site-header.tsx");
@@ -162,13 +162,19 @@ describe("October 2 manual-launch hardening", () => {
     expect(boardPage).toContain("index: false");
     for (const privatePage of [customerBoardPage, customerBoardDetailPage]) {
       expect(privatePage).toContain("notFound();");
-      expect(privatePage).not.toMatch(/requireBoardAccess|createSupabase|ap_board_subscriptions|process\.env|ApplyLinkButton/);
+      expect(privatePage).toContain("requireLegacyBoardArchiveAccess");
+      expect(privatePage).toContain("ap_legacy_board_archive_entries");
+      expect(privatePage).not.toMatch(/ap_board_admissions|ApplyLinkButton|source_job_url|process\.env/);
     }
     for (const route of retiredCustomerApis) {
       expect(route).toContain("status: 410");
       expect(route).toContain('"cache-control": "no-store, max-age=0"');
       expect(route).not.toMatch(/requireBoardAccess|createSupabase|createStripe|ap_board_subscriptions|process\.env/);
     }
+    expect(legacyBilling).toContain("requireLegacyBoardArchiveAccess");
+    expect(legacyBilling).toContain("createStripeOperationalClient");
+    expect(legacyBilling).toContain("status: 410");
+    expect(legacyBilling).not.toMatch(/checkout\.sessions|subscriptions\.create/);
     for (const publicSurface of [site, sitemap, header, footer]) {
       expect(publicSurface).not.toContain("/job-board");
     }
@@ -601,7 +607,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(rollbackCheck).toContain("intentIndex >= uploadIndex");
     expect(rollbackCheck).toContain("exact approved legal content");
     expect(rollbackCheck).toContain("ap_upgrade_completed_intake_legal_acceptance");
-    expect(rollbackCheck).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610190082"');
+    expect(rollbackCheck).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610190083"');
     expect(rollbackCheck).toContain('admin.rpc("ap_manual_launch_schema_readiness")');
     expect(rollbackCheck).toContain("launchSchemaReadinessIsCurrent(schemaReadiness)");
     expect(rollbackRunbook).toContain("minimum compatible application rollback commit is `aeae1dee597e153602febd6adfea5644e4628d20`");
@@ -659,6 +665,8 @@ describe("October 2 manual-launch hardening", () => {
     expect(materialsCheckout).toContain('rpc("ap_bind_manual_launch_canary_payment"');
     expect(materialsCheckout).toContain(":canary:${authorizationResult.data.id}");
     expect(board).toContain("cancel_at_period_end: true");
-    expect(board).toContain('state: "CANCELED"');
+    expect(board).toContain("legacyBoardProviderProjection");
+    expect(board).toContain("access_ends_at: accessEndsAt");
+    expect(board).not.toContain("void requestedState");
   });
 });

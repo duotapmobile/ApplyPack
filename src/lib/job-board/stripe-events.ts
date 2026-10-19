@@ -2,7 +2,7 @@ import "server-only";
 import type Stripe from "stripe";
 import { isBoardPlanId } from "./plans";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { boardSubscriptionStateFromProvider } from "./entitlements";
+import { boardSubscriptionStateFromProvider, legacyBoardProviderProjection, type BoardSubscriptionState } from "./entitlements";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
@@ -84,7 +84,7 @@ async function boardSubscriptionForPaymentIntent(stripe: Stripe, paymentIntentId
 }
 
 async function recordBoardProviderEvent(admin: AdminClient, input: {
-  event: Stripe.Event; subscriptionId: string; refundId?: string; disputeId?: string;
+  event: { id: string; type: string; created: number }; subscriptionId: string; refundId?: string; disputeId?: string;
   amountCents?: number; fullAmountCents?: number; resultingState: string;
 }) {
   const result = await admin.from("ap_board_provider_events").upsert({
@@ -157,46 +157,65 @@ async function persistSubscription(
   stripe: Stripe,
   admin: AdminClient,
   subscription: Stripe.Subscription,
-  event: Pick<Stripe.Event, "id" | "created">,
+  event: Pick<Stripe.Event, "id" | "created"> & { type?: string },
   requestedState: "PENDING" | "ACTIVE" | "CANCEL_AT_PERIOD_END" | "PAST_DUE" | "CANCELED",
 ) {
   const customerId = subscription.metadata.customer_id;
   const planId = subscription.metadata.plan_id;
   if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(customerId || "") || !isBoardPlanId(planId)) throw new Error("invalid_board_subscription_binding");
-  const item = subscription.items.data[0];
-  if (!item || subscription.items.data.length !== 1 || item.quantity !== 1) throw new Error("invalid_board_subscription_shape");
+  if (!subscription.items.data[0] || subscription.items.data.length !== 1 || subscription.items.data[0].quantity !== 1) {
+    throw new Error("invalid_board_subscription_shape");
+  }
   if (!["canceled", "incomplete_expired"].includes(subscription.status) && !subscription.cancel_at_period_end) {
     subscription = await stripe.subscriptions.update(subscription.id, { cancel_at_period_end: true });
   }
+  const item = subscription.items.data[0];
+  if (!item || subscription.items.data.length !== 1 || item.quantity !== 1) throw new Error("invalid_board_subscription_shape");
   const providerCustomerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
   const periodStart = new Date(item.current_period_start * 1_000).toISOString();
   const { data: current, error: currentError } = await admin.from("ap_board_subscriptions")
-    .select("id,last_provider_event_created,state,access_ends_at").eq("provider_subscription_id", subscription.id).maybeSingle();
+    .select("id,last_provider_event_created,state,access_ends_at,refund_state,provider_dispute_id")
+    .eq("provider_subscription_id", subscription.id).maybeSingle();
   if (currentError) throw currentError;
   if (current && Number(current.last_provider_event_created) > event.created) return;
-  void requestedState;
+  if (!current) {
+    await recordBoardProviderEvent(admin, {
+      event: { ...event, type: "legacy.subscription.unbound" },
+      subscriptionId: subscription.id,
+      resultingState: "CANCELED",
+    });
+    return;
+  }
+  const { state, accessEndsAt } = legacyBoardProviderProjection({
+    requestedState,
+    subscriptionStatus: subscription.status,
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    periodEnd: new Date(item.current_period_end * 1_000).toISOString(),
+    currentState: current.state as BoardSubscriptionState,
+    refundState: current.refund_state as "NONE" | "PARTIAL" | "FULL" | "FAILED",
+    providerDisputeId: current.provider_dispute_id,
+  });
   const record = {
     customer_id: customerId,
     plan_id: planId,
-    state: "CANCELED",
+    state,
     provider_customer_id: providerCustomerId,
     provider_subscription_id: subscription.id,
     current_period_starts_at: periodStart,
-    access_ends_at: null,
+    access_ends_at: accessEndsAt,
     cancel_at_period_end: true,
     last_provider_event_created: event.created,
     last_provider_event_id: event.id,
     updated_at: new Date().toISOString(),
   };
-  const result = current
-    ? await admin.from("ap_board_subscriptions").update(record).eq("id", current.id).lte("last_provider_event_created", event.created)
-    : await admin.from("ap_board_subscriptions").insert(record);
+  const result = await admin.from("ap_board_subscriptions").update(record)
+    .eq("id", current.id).lte("last_provider_event_created", event.created);
   if (result.error) throw result.error;
 }
 
 export async function reconcileBoardSubscriptions(stripe: Stripe, admin: AdminClient, limit = 50) {
   const { data, error } = await admin.from("ap_board_subscriptions").select("provider_subscription_id")
-    .in("state", ["PENDING", "ACTIVE", "CANCEL_AT_PERIOD_END", "PAST_DUE"]).order("updated_at").limit(limit);
+    .order("updated_at").limit(limit);
   if (error) throw error;
   let reconciled = 0;
   for (const row of data || []) {
@@ -207,7 +226,11 @@ export async function reconcileBoardSubscriptions(stripe: Stripe, admin: AdminCl
     const state = subscription.status === "canceled" ? "CANCELED"
       : subscription.cancel_at_period_end && invoicePaid ? "CANCEL_AT_PERIOD_END"
         : subscription.status === "active" && invoicePaid ? "ACTIVE" : "PAST_DUE";
-    await persistSubscription(stripe, admin, subscription, { id: `reconciliation:${subscription.id}:${subscription.items.data[0]?.current_period_end || 0}`, created: Math.floor(Date.now() / 1_000) }, state);
+    await persistSubscription(stripe, admin, subscription, {
+      id: `reconciliation:${subscription.id}:${subscription.items.data[0]?.current_period_end || 0}`,
+      type: "legacy.subscription.reconciliation",
+      created: Math.floor(Date.now() / 1_000),
+    }, state);
     reconciled += 1;
   }
   return reconciled;

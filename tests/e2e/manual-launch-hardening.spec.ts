@@ -37,7 +37,7 @@ test("manual launch removes the public board and fails closed for board checkout
   const billingPortal = await request.post("/api/customer/billing/portal");
   expect(billingPortal.status()).toBe(410);
   expect(billingPortal.headers()["cache-control"]).toContain("no-store");
-  expect(await billingPortal.json()).toMatchObject({ error: expect.stringContaining("not offered") });
+  expect(await billingPortal.json()).toEqual({ error: "No current legacy billing entitlement was found." });
 });
 
 for (const path of ["/", "/pricing", "/why-customize", "/get-started"]) {

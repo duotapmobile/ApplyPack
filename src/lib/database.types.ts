@@ -3748,6 +3748,85 @@ export type Database = {
           },
         ]
       }
+      ap_legacy_board_archive_entries: {
+        Row: {
+          admission_id: string
+          archived_at: string
+          capability_connection_codes: Json
+          company: string
+          customer_id: string
+          description: string | null
+          evaluated_at: string
+          id: string
+          last_verified_at: string | null
+          location_text: string | null
+          original_job_id: string
+          posted_at: string | null
+          salary_text: string | null
+          source_name: string | null
+          title: string
+          warning_codes: Json
+        }
+        Insert: {
+          admission_id: string
+          archived_at?: string
+          capability_connection_codes?: Json
+          company: string
+          customer_id: string
+          description?: string | null
+          evaluated_at: string
+          id?: string
+          last_verified_at?: string | null
+          location_text?: string | null
+          original_job_id: string
+          posted_at?: string | null
+          salary_text?: string | null
+          source_name?: string | null
+          title: string
+          warning_codes?: Json
+        }
+        Update: {
+          admission_id?: string
+          archived_at?: string
+          capability_connection_codes?: Json
+          company?: string
+          customer_id?: string
+          description?: string | null
+          evaluated_at?: string
+          id?: string
+          last_verified_at?: string | null
+          location_text?: string | null
+          original_job_id?: string
+          posted_at?: string | null
+          salary_text?: string | null
+          source_name?: string | null
+          title?: string
+          warning_codes?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_legacy_board_archive_entries_admission_id_fkey"
+            columns: ["admission_id"]
+            isOneToOne: true
+            referencedRelation: "ap_board_admissions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_legacy_board_archive_entries_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_legacy_board_archive_entries_original_job_id_fkey"
+            columns: ["original_job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_legal_receipt_acceptance_reconciliations: {
         Row: {
           matching_legal_acceptance_id: string
@@ -12044,6 +12123,10 @@ export type Database = {
           p_snapshot_id: string
         }
         Returns: string
+      }
+      ap_legacy_board_has_access: {
+        Args: { p_customer_id: string; p_now?: string }
+        Returns: boolean
       }
       ap_lock_anonymous_draft_to_checkout: {
         Args: {

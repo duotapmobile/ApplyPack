@@ -447,7 +447,8 @@ describe("operations route contract", () => {
     expect(cron.match(/processWorkflowTasks\(/g)).toHaveLength(1);
     expect(cron.match(/processChunk4Workers\(/g)).toHaveLength(1);
     expect(cron.match(/await reconcileBoardSubscriptions\(/g)).toHaveLength(1);
-    expect(cron.match(/await processBoardRecomputeJobs\(/g)).toHaveLength(1);
+    expect(cron).not.toContain("processBoardRecomputeJobs");
+    expect(cron).toContain('const boardAdmissions = { status: "retired"');
   });
 
   it("keeps all real inventory visible and uses actionable queue timestamps", () => {

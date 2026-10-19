@@ -456,6 +456,7 @@ function FeasibilityResult({ value, checkoutBusy, invitationAvailable, onCheckou
     <p>{presentation.message}</p>
     {typeof value.preliminarilyDeliverableCount === "number" && <p><strong>{value.preliminarilyDeliverableCount}</strong> current candidates passed the preliminary evidence gates. Human release review is still required.</p>}
     <div className="admin-buttons">
+      {presentation.canCheckout && invitationAvailable && <p><strong>$18.99 total.</strong> The displayed total is fixed. ApplyPack does not add tax at checkout.</p>}
       {presentation.canCheckout && invitationAvailable && <button className="wizard-next" type="button" disabled={checkoutBusy} onClick={onCheckout}>{checkoutBusy ? "Preparing secure checkout…" : SEARCH_CHECKOUT_CTA}<ArrowRight aria-hidden="true" /></button>}
       {presentation.canCheckout && !invitationAvailable && <p>Your intake is ready for operator review. Checkout remains locked until capacity and ten suitable opportunities are verified and a single-use invitation is issued.</p>}
       {presentation.showEdit && <button className="secondary-button" type="button" onClick={onEdit}>Edit my settings</button>}

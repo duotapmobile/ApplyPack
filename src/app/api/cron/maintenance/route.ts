@@ -11,7 +11,6 @@ import { processUnpaidSourceRetention } from "@/lib/files/unpaid-retention";
 import { processPendingFeasibilityRequests } from "@/lib/matching/supabase-feasibility-store";
 import { processChunk4Workers } from "@/lib/commerce/workers";
 import { reconcileBoardSubscriptions } from "@/lib/job-board/stripe-events";
-import { processBoardRecomputeJobs } from "@/lib/job-board/recompute";
 import { createStripeOperationalClient } from "@/lib/stripe/server";
 import { collectOperationsSummary } from "@/lib/operations/summary";
 import {
@@ -309,13 +308,8 @@ export async function POST(request: Request) {
     } catch { actions.push({ code: "STRIPE_RECONCILIATION", status: "FAILED" }); }
   } else actions.push({ code: "STRIPE_RECONCILIATION", status: "SKIPPED" });
 
-  let boardAdmissions;
-  if (sourcesReady && legacyBoardMaintenanceEnabled) {
-    try {
-      boardAdmissions = await processBoardRecomputeJobs(admin, 10);
-      actions.push({ code: "BOARD_RECOMPUTATION", status: boardAdmissions.status === "enabled" ? "SUCCEEDED" : "FAILED" });
-    } catch { actions.push({ code: "BOARD_RECOMPUTATION", status: "FAILED" }); }
-  } else actions.push({ code: "BOARD_RECOMPUTATION", status: "SKIPPED" });
+  const boardAdmissions = { status: "retired", processed: 0, completed: 0, decisions: 0 } as const;
+  actions.push({ code: "BOARD_RECOMPUTATION", status: "SKIPPED" });
   const afterSummary = await collectOperationsSummary(admin).catch(() => null);
   if (!afterSummary) {
     return fail("MAINTENANCE_VERIFICATION_FAILED", null, "Maintenance verification unavailable.");
@@ -324,7 +318,9 @@ export async function POST(request: Request) {
     "STRIPE_RECONCILIATION",
     "BOARD_RECOMPUTATION",
   ]);
-  const allowedSkippedActions = legacyBoardMaintenanceEnabled ? [] : [...intentionallyDormantBoardActions];
+  const allowedSkippedActions = legacyBoardMaintenanceEnabled
+    ? ["BOARD_RECOMPUTATION" as const]
+    : [...intentionallyDormantBoardActions];
   const diagnostics = await recordMaintenanceOutcome(
     admin,
     beforeSummary,

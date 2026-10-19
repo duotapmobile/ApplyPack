@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const dependencies = vi.hoisted(() => Object.fromEntries([
   "adminClient", "collectOperationsSummary", "recordMaintenanceDiagnosis", "recordMaintenanceFailure", "recordMaintenanceOutcome", "maintenanceActionsSucceeded",
   "processUnpaidSourceRetention", "processPendingFileScans", "processPendingDocumentExtractions", "processPendingFeasibilityRequests", "processWorkflowTasks",
-  "retryFailedEmails", "processChunk4Workers", "reconcileBoardSubscriptions", "processBoardRecomputeJobs", "stripeClient", "sendTransactionalEmail",
+  "retryFailedEmails", "processChunk4Workers", "reconcileBoardSubscriptions", "stripeClient", "sendTransactionalEmail",
 ].map(name => [name, vi.fn()])) as Record<string, ReturnType<typeof vi.fn>>);
 vi.mock("@/lib/supabase/admin", () => ({ createSupabaseAdminClient: dependencies.adminClient }));
 vi.mock("@/lib/operations/summary", () => ({ collectOperationsSummary: dependencies.collectOperationsSummary }));
@@ -20,7 +20,6 @@ vi.mock("@/lib/workflow/process", () => ({ processWorkflowTasks: dependencies.pr
 vi.mock("@/lib/email/retry", () => ({ retryFailedEmails: dependencies.retryFailedEmails }));
 vi.mock("@/lib/commerce/workers", () => ({ processChunk4Workers: dependencies.processChunk4Workers }));
 vi.mock("@/lib/job-board/stripe-events", () => ({ reconcileBoardSubscriptions: dependencies.reconcileBoardSubscriptions }));
-vi.mock("@/lib/job-board/recompute", () => ({ processBoardRecomputeJobs: dependencies.processBoardRecomputeJobs }));
 vi.mock("@/lib/stripe/server", () => ({ createStripeOperationalClient: dependencies.stripeClient }));
 vi.mock("@/lib/email/send", () => ({ sendTransactionalEmail: dependencies.sendTransactionalEmail }));
 
@@ -63,7 +62,6 @@ describe("maintenance authorization and independent queues", () => {
     dependencies.processChunk4Workers.mockResolvedValue({ status: "enabled", processed: 0 });
     dependencies.stripeClient.mockReturnValue({});
     dependencies.reconcileBoardSubscriptions.mockResolvedValue(0);
-    dependencies.processBoardRecomputeJobs.mockResolvedValue({ status: "enabled", processed: 0 });
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -77,7 +75,6 @@ describe("maintenance authorization and independent queues", () => {
     const response = await POST(request());
     expect(response.status).toBe(200);
     expect(dependencies.reconcileBoardSubscriptions).not.toHaveBeenCalled();
-    expect(dependencies.processBoardRecomputeJobs).not.toHaveBeenCalled();
     expect(dependencies.processWorkflowTasks).toHaveBeenCalledOnce();
     expect(dependencies.recordMaintenanceOutcome).toHaveBeenCalledWith(
       expect.anything(),
@@ -123,11 +120,14 @@ describe("maintenance authorization and independent queues", () => {
     expect(response.status).toBe(503);
     expect(await response.text()).not.toContain("private provider detail");
     expect(dependencies.processWorkflowTasks).toHaveBeenCalledOnce();
-    expect(dependencies.processBoardRecomputeJobs).toHaveBeenCalledOnce();
     expect(dependencies.recordMaintenanceOutcome).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(),
-      expect.arrayContaining([{ code: "DOCUMENT_PROCESSING", status: "FAILED" }]), expect.any(Date), []);
+      expect.arrayContaining([
+        { code: "DOCUMENT_PROCESSING", status: "FAILED" },
+        { code: "BOARD_RECOMPUTATION", status: "SKIPPED" },
+      ]), expect.any(Date), ["BOARD_RECOMPUTATION"]);
   });
-  it.each(["processChunk4Workers", "processBoardRecomputeJobs"])("records disabled %s without aborting other maintenance", async name => {
+  it("records disabled processChunk4Workers without aborting other maintenance", async () => {
+    const name = "processChunk4Workers";
     dependencies[name].mockResolvedValue({ status: "disabled", processed: 0 });
     expect((await POST(request())).status).toBe(503);
     expect(dependencies.processPendingDocumentExtractions).toHaveBeenCalledOnce();
@@ -176,7 +176,7 @@ describe("maintenance authorization and independent queues", () => {
       expect.anything(),
       expect.arrayContaining([{ code: "EXPIRATION_CLEANUP", status: "FAILED" }]),
       expect.any(Date),
-      [],
+      ["BOARD_RECOMPUTATION"],
     );
     expect(dependencies.processPendingDocumentExtractions).toHaveBeenCalledOnce();
     expect(dependencies.processWorkflowTasks).toHaveBeenCalledOnce();

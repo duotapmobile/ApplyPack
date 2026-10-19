@@ -1,15 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { evaluateBoardAdmission, neutralSort } from "@/lib/job-board/admission";
 import { boardPlanDisclosure, boardPlans, isBoardPlanId } from "@/lib/job-board/plans";
-import { boardSubscriptionStateFromProvider, hasBoardAccess, transitionBoardEntitlement } from "@/lib/job-board/entitlements";
+import { boardSubscriptionStateFromProvider, hasBoardAccess, hasProviderConfirmedLegacyBoardAccess, legacyBoardProviderProjection, transitionBoardEntitlement } from "@/lib/job-board/entitlements";
 import { GET as getRetiredBoardJobs } from "@/app/api/customer/job-board/route";
 import { GET as getRetiredBoardJob } from "@/app/api/customer/job-board/[id]/route";
 import { GET as getRetiredBoardApplyLink } from "@/app/api/customer/job-board/[id]/apply-link/route";
-import { POST as openRetiredBillingPortal } from "@/app/api/customer/billing/portal/route";
 import { readFileSync } from "node:fs";
 
-describe("paid filtered job board", () => {
-  it("allowlists exact server-owned recurring plans and disclosures", () => {
+describe("retired paid filtered job board", () => {
+  it("preserves historical plan identities only for reconciliation", () => {
     expect(isBoardPlanId("weekly")).toBe(true);
     expect(isBoardPlanId("annual")).toBe(false);
     expect(boardPlans.three_months).toMatchObject({ amountCents: 4499, interval: "month", intervalCount: 3 });
@@ -54,6 +53,26 @@ describe("paid filtered job board", () => {
     expect(hasBoardAccess(transitionBoardEntitlement(paid, { kind: "REFUNDED", providerCreated: 23 }))).toBe(false);
   });
 
+  it("requires provider-bound, unexpired, non-refunded legacy archive evidence", () => {
+    const entitlement = {
+      state: "CANCEL_AT_PERIOD_END" as const,
+      accessEndsAt: "2026-10-20T00:00:00Z",
+      lastProviderEventCreated: 100,
+      lastProviderEventId: "evt_legacy_paid",
+      providerCustomerId: "cus_legacy",
+      providerSubscriptionId: "sub_legacy",
+      refundState: "NONE" as const,
+      providerDisputeId: null,
+    };
+    const now = new Date("2026-10-19T00:00:00Z");
+    expect(hasProviderConfirmedLegacyBoardAccess(entitlement, now)).toBe(true);
+    expect(hasProviderConfirmedLegacyBoardAccess({ ...entitlement, accessEndsAt: "2026-10-18T00:00:00Z" }, now)).toBe(false);
+    expect(hasProviderConfirmedLegacyBoardAccess({ ...entitlement, refundState: "PARTIAL" }, now)).toBe(false);
+    expect(hasProviderConfirmedLegacyBoardAccess({ ...entitlement, state: "REFUNDED" }, now)).toBe(false);
+    expect(hasProviderConfirmedLegacyBoardAccess({ ...entitlement, lastProviderEventId: null }, now)).toBe(false);
+    expect(hasProviderConfirmedLegacyBoardAccess({ ...entitlement, providerDisputeId: "dp_legacy" }, now)).toBe(false);
+  });
+
   it("derives pending, cancellation, recovery, failed-payment, and ended subscription states", () => {
     expect(boardSubscriptionStateFromProvider({ eventType: "customer.subscription.created", subscriptionStatus: "incomplete", cancelAtPeriodEnd: false, latestInvoicePaid: false })).toBe("PENDING");
     expect(boardSubscriptionStateFromProvider({ eventType: "customer.subscription.updated", subscriptionStatus: "active", cancelAtPeriodEnd: true, latestInvoicePaid: true })).toBe("CANCEL_AT_PERIOD_END");
@@ -62,7 +81,31 @@ describe("paid filtered job board", () => {
     expect(boardSubscriptionStateFromProvider({ eventType: "customer.subscription.deleted", subscriptionStatus: "canceled", cancelAtPeriodEnd: false, latestInvoicePaid: true })).toBe("CANCELED");
   });
 
-  it("retires every customer board and subscription-management API before auth, environment, or data access", async () => {
+  it("persists provider-derived paid-period state without reviving refunded access", () => {
+    const base = {
+      requestedState: "ACTIVE" as const,
+      subscriptionStatus: "active",
+      cancelAtPeriodEnd: true,
+      periodEnd: "2026-11-01T00:00:00Z",
+      currentState: "CANCELED" as const,
+      refundState: "NONE" as const,
+      providerDisputeId: null,
+    };
+    expect(legacyBoardProviderProjection(base)).toEqual({
+      state: "CANCEL_AT_PERIOD_END",
+      accessEndsAt: "2026-11-01T00:00:00Z",
+    });
+    expect(legacyBoardProviderProjection({ ...base, currentState: "REFUNDED", refundState: "FULL" })).toEqual({
+      state: "REFUNDED",
+      accessEndsAt: null,
+    });
+    expect(legacyBoardProviderProjection({ ...base, requestedState: "PAST_DUE" })).toEqual({
+      state: "PAST_DUE",
+      accessEndsAt: null,
+    });
+  });
+
+  it("retires every customer listing and apply-link API before auth, environment, or data access", async () => {
     const previousMaintenanceFlag = process.env.APP_LEGACY_BOARD_MAINTENANCE_ENABLED;
     process.env.APP_LEGACY_BOARD_MAINTENANCE_ENABLED = "true";
     try {
@@ -70,7 +113,6 @@ describe("paid filtered job board", () => {
         await getRetiredBoardJobs(),
         await getRetiredBoardJob(),
         await getRetiredBoardApplyLink(),
-        await openRetiredBillingPortal(),
       ]) {
         expect(response.status).toBe(410);
         expect(response.headers.get("cache-control")).toBe("no-store, max-age=0");
@@ -85,7 +127,6 @@ describe("paid filtered job board", () => {
       "src/app/api/customer/job-board/route.ts",
       "src/app/api/customer/job-board/[id]/route.ts",
       "src/app/api/customer/job-board/[id]/apply-link/route.ts",
-      "src/app/api/customer/billing/portal/route.ts",
     ]) {
       const source = readFileSync(file, "utf8");
       expect(source).toContain("status: 410");
@@ -94,7 +135,7 @@ describe("paid filtered job board", () => {
     }
   });
 
-  it("makes both authenticated board pages unconditional not-found routes", () => {
+  it("limits authenticated pages to the frozen archive with no live jobs or apply links", () => {
     for (const file of [
       "src/app/my-applypack/job-board/page.tsx",
       "src/app/my-applypack/job-board/[id]/page.tsx",
@@ -102,13 +143,18 @@ describe("paid filtered job board", () => {
       const source = readFileSync(file, "utf8");
       expect(source).toContain('import { notFound } from "next/navigation"');
       expect(source).toContain("notFound();");
-      expect(source).not.toMatch(/requireBoardAccess|createSupabase|ap_board_subscriptions|process\.env|<Link|ApplyLinkButton/);
+      expect(source).toContain("requireLegacyBoardArchiveAccess");
+      expect(source).toContain("ap_legacy_board_archive_entries");
+      expect(source).not.toMatch(/from\("jobs"\)|ap_board_admissions|ApplyLinkButton|apply-link|source_job_url|ranking_score|process\.env/);
     }
+    expect(readFileSync("src/app/my-applypack/job-board/page.tsx", "utf8")).toContain("LEGACY PAID ARCHIVE");
+    expect(readFileSync("src/app/my-applypack/job-board/[id]/page.tsx", "utf8")).toContain("does not resolve or expose an application link");
   });
 
   it("hard-disables new board checkout while retaining historical provider reconciliation", () => {
     const checkout = readFileSync("src/app/api/checkout/job-board/route.ts", "utf8");
     const events = readFileSync("src/lib/job-board/stripe-events.ts", "utf8");
+    const entitlements = readFileSync("src/lib/job-board/entitlements.ts", "utf8");
     expect(checkout).toContain("Subscription checkout is not offered in the manual launch.");
     expect(checkout).toContain("status: 410");
     expect(checkout).not.toContain("createStripeBoardClient");
@@ -120,8 +166,10 @@ describe("paid filtered job board", () => {
     expect(events).toContain('event.type === "customer.subscription.created"');
     expect(events).toContain('expand: ["latest_invoice"]');
     expect(events).toContain("stripe.subscriptions.update(subscription.id, { cancel_at_period_end: true })");
-    expect(events).toContain('state: "CANCELED"');
-    expect(events).toContain("void requestedState");
+    expect(entitlements).toContain('input.requestedState === "ACTIVE" && input.cancelAtPeriodEnd');
+    expect(events).toContain("access_ends_at: accessEndsAt");
+    expect(events).toContain('type: "legacy.subscription.unbound"');
+    expect(events).not.toContain('.insert(record)');
     expect(events).toContain('latestInvoiceId === binding.invoice.id');
     const health = readFileSync("src/app/api/health/route.ts", "utf8");
     const launchReadiness = readFileSync("src/lib/operations/launch-readiness.ts", "utf8");
@@ -155,5 +203,28 @@ describe("paid filtered job board", () => {
     expect(migration).toContain("create or replace function public.ap_begin_board_material_checkout");
     expect(migration).toContain("match_kind='BOARD_MATERIAL_SOURCE' and position is null and ranking_score is null");
     expect(migration).toContain("source_kind='BOARD' and delivered_release_id is null");
+  });
+
+  it("adds a forward-only immutable legacy archive and retires every write path", () => {
+    const migration = readFileSync("supabase/migrations/202610190083_legacy_board_read_only_archive.sql", "utf8");
+    expect(migration).toContain("create table public.ap_legacy_board_archive_entries");
+    expect(migration).toContain("ap_legacy_board_archive_immutable");
+    expect(migration).toContain("ap_legacy_board_admissions_frozen");
+    expect(migration).toContain("ap_legacy_board_recompute_jobs_frozen");
+    expect(migration).toContain("legacy_board_recompute_retired");
+    expect(migration).toContain("board_origin_commerce_retired");
+    expect(migration).toContain("new_board_subscriptions_are_retired");
+    expect(migration).not.toContain("source_job_url");
+    const maintenance = readFileSync("src/app/api/cron/maintenance/route.ts", "utf8");
+    expect(maintenance).toContain('const boardAdmissions = { status: "retired"');
+    expect(maintenance).not.toContain("processBoardRecomputeJobs");
+    const staging = readFileSync("src/app/staging/synthetic-application/page.tsx", "utf8");
+    expect(staging).toContain('href="/my-applypack"');
+    expect(staging).not.toContain("Return to the test board");
+    const runbook = readFileSync("docs/runbooks/MANUAL_LAUNCH_RELEASE.md", "utf8");
+    const schema = readFileSync("src/lib/operations/launch-schema.ts", "utf8");
+    expect(runbook).toContain("migrations 077 through 083");
+    expect(runbook).toContain("schema `202610190083`");
+    expect(schema).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610190083"');
   });
 });

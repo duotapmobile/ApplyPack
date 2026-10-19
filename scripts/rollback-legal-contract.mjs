@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 export const APPROVED_ROLLBACK_LEGAL_CONTRACT = Object.freeze({
   publicPagesSourceSha256: "6704e2888f06df440bc5e7663994d0cd162d7661c02bf2d55d77bce423149384",
   presentationSourceSha256: "f5f162603fead520d4777f142bc6a3f1449da49a3fb2c05aa45dffde97ff4d06",
-  wizardSourceSha256: "a358b1142b7a0cd9db1a69dde5e82a61687a3fceb06fe3efac94f18c883d8f83",
+  wizardSourceSha256: "b4e69de31506fb389fe35c2828140bc18f5f879659ead0d31fb568e04ad9df9c",
   legacyWizardSourceSha256: "587c9c56dd101779d521aa513185944af05d6aed9e539ab4be3a7267fdb734d5",
   termsVersion: "manual-launch-terms-2026-10-02-v2",
   termsContentSha256: "eeec6398df29e6bd831aa1130453762927a467ee1b7a8d98b3659e07b8069d8c",

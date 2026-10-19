@@ -62,4 +62,11 @@ describe("October 19 tax activation decision", () => {
     expect(migration).not.toContain("p_evidence->>'taxApprovalReference'");
     expect(migration).not.toContain("tax_configuration_approved=true");
   });
+
+  it("shows the fixed $18.99 total and no-added-tax disclosure at search payment review", () => {
+    const wizard = source("src/app/get-started/wizard-v3.tsx");
+    expect(wizard).toContain("$18.99 total.");
+    expect(wizard).toContain("The displayed total is fixed. ApplyPack does not add tax at checkout.");
+    expect(wizard.indexOf("$18.99 total.")).toBeLessThan(wizard.lastIndexOf("SEARCH_CHECKOUT_CTA"));
+  });
 });

@@ -22,7 +22,7 @@ select pg_temp.assert_true(
 
 select pg_temp.assert_true(
   public.ap_manual_launch_schema_readiness()->>'ready'='true'
-  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610190082'
+  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610190083'
   and not has_function_privilege('anon','public.ap_manual_launch_schema_readiness()','execute')
   and not has_function_privilege('authenticated','public.ap_manual_launch_schema_readiness()','execute')
   and has_function_privilege('service_role','public.ap_manual_launch_schema_readiness()','execute'),
@@ -301,8 +301,8 @@ select pg_temp.assert_true(
 
 select pg_temp.assert_true(
   exists(select 1 from pg_trigger where tgrelid='public.ap_board_subscriptions'::regclass
-    and tgname='ap_retire_board_subscription_state' and not tgisinternal),
-  'retired board access requires a fail-closed database trigger'
+    and tgname='ap_legacy_board_subscription_binding_immutable' and not tgisinternal),
+  'legacy board reconciliation requires an immutable binding trigger'
 );
 
 select pg_temp.assert_true(
