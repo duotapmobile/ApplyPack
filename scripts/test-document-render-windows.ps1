@@ -68,23 +68,36 @@ function Invoke-VersionProbe([string]$FilePath, [string]$Arguments) {
 }
 
 $poppler = Resolve-PopplerToolset
+$fontDirectory = [Environment]::GetFolderPath('Fonts')
+$fontPins = @{
+  APP_DOCUMENT_FONT_FILE = @{ File = 'LiberationSans-Regular.ttf'; Sha256 = '76d04c18ea243f426b7de1f3ad208e927008f961dc5945e5aad352d0dfde8ee8' }
+  APP_DOCUMENT_FONT_BOLD_FILE = @{ File = 'LiberationSans-Bold.ttf'; Sha256 = '788abee4c806d660e8aee46689dd8540cd4bb98da03dcc9d171ce3efd99a9173' }
+  APP_DOCUMENT_FONT_ITALIC_FILE = @{ File = 'LiberationSans-Italic.ttf'; Sha256 = 'e5bae5c4cde31f22142753855f4f8fb86da6ff39955ed3c0a11248b0d16948b0' }
+  APP_DOCUMENT_FONT_BOLD_ITALIC_FILE = @{ File = 'LiberationSans-BoldItalic.ttf'; Sha256 = '698da70fc191cc5f33ad4d6d3fe830fe4624b898ea2e3169955928b7c491f1ee' }
+}
 $pins = @{
   APP_LIBREOFFICE_EXECUTABLE = 'C:\Program Files\LibreOffice\program\soffice.com'
   APP_PDFINFO_EXECUTABLE = $poppler['pdfinfo.exe']
   APP_PDFFONTS_EXECUTABLE = $poppler['pdffonts.exe']
   APP_PDFTOTEXT_EXECUTABLE = $poppler['pdftotext.exe']
   APP_PDFTOPPM_EXECUTABLE = $poppler['pdftoppm.exe']
-  APP_DOCUMENT_FONT_FILE = 'C:\Windows\Fonts\arial.ttf'
 }
+$fontPins.GetEnumerator() | ForEach-Object { $pins[$_.Key] = Join-Path $fontDirectory $_.Value.File }
 foreach ($pin in $pins.GetEnumerator()) {
   if (!(Test-Path -LiteralPath $pin.Value -PathType Leaf)) { throw "Required renderer file is missing: $($pin.Key)" }
   [Environment]::SetEnvironmentVariable($pin.Key, $pin.Value, 'Process')
-  [Environment]::SetEnvironmentVariable(($pin.Key + '_SHA256'), (Get-FileHash -LiteralPath $pin.Value -Algorithm SHA256).Hash.ToLower(), 'Process')
+  $actualHash = (Get-FileHash -LiteralPath $pin.Value -Algorithm SHA256).Hash.ToLower()
+  if ($fontPins.ContainsKey($pin.Key) -and $actualHash -ne $fontPins[$pin.Key].Sha256) {
+    throw "Approved Liberation Sans 2.1.5 font identity mismatch: $($pin.Key)"
+  }
+  [Environment]::SetEnvironmentVariable(($pin.Key + '_SHA256'), $actualHash, 'Process')
 }
+$env:APPLYPACK_LIBERATION_SANS_DIRECTORY = $fontDirectory
+$env:APP_DOCUMENT_FONT_MANIFEST_SHA256 = 'd89582771ff8dde19015f5aa3965810d656f93fcb08cee6280497e780de614bb'
 Assert-ToolVersion 'LibreOffice' (Invoke-VersionProbe $pins.APP_LIBREOFFICE_EXECUTABLE '--version') $env:APPLYPACK_EXPECTED_LIBREOFFICE_VERSION
 Assert-ToolVersion 'Poppler' (Invoke-VersionProbe $pins.APP_PDFINFO_EXECUTABLE '-v') $env:APPLYPACK_EXPECTED_POPPLER_VERSION
 if ([string]::IsNullOrWhiteSpace($env:APP_DOCUMENT_RENDERER_IDENTITY)) {
-  $env:APP_DOCUMENT_RENDERER_IDENTITY = 'applypack-windows-local-qa-2026-10-03'
+  $env:APP_DOCUMENT_RENDERER_IDENTITY = 'applypack-windows-local-qa-liberation-sans-2.1.5'
 }
 if ([string]::IsNullOrWhiteSpace($env:APPLYPACK_RENDER_EVIDENCE_DIR)) {
   $env:APPLYPACK_RENDER_EVIDENCE_DIR = Join-Path (Get-Location) ('evidence/applypack-chunk5-render-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))

@@ -245,7 +245,7 @@ function staffLine(): MaterialStaffLine {
       contentApproved: false,
       visualApproved: false,
       rendererIdentity: "fixture-renderer-v1",
-      fontFamily: "Arial",
+      fontFamily: "Liberation Sans",
       fontResolved: true,
       currentStandard: true,
       referenceRegenerationId: null,

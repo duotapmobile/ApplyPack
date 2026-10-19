@@ -11,7 +11,7 @@ import { pathToFileURL } from "node:url";
 import { pdfFontTableUsesApprovedFont } from "@/lib/documents/font-validation";
 import { pdfTextBoundsAreValid } from "@/lib/documents/pdf-bounds";
 import { pdfStructureIsValid, pdfCatalogLanguageMatches } from "@/lib/documents/pdf-validation";
-import { DOCUMENT_REQUIREMENTS } from "@/lib/documents/requirements";
+import { DOCUMENT_FONT_CONTRACT, DOCUMENT_REQUIREMENTS } from "@/lib/documents/requirements";
 import { normalizeRenderedDocumentText } from "@/lib/documents/text-validation";
 import type { ArtifactProvenance, DocumentMetadata } from "@/lib/documents/generate";
 
@@ -22,7 +22,11 @@ type LocalTool = { path: string; sha256: string };
 
 export type DocumentRenderResult = {
   rendererIdentity: string;
+  documentFontFamily: typeof DOCUMENT_FONT_CONTRACT.family;
+  documentFontVersion: typeof DOCUMENT_FONT_CONTRACT.version;
+  documentFontManifestSha256: typeof DOCUMENT_FONT_CONTRACT.manifestSha256;
   documentFontSha256: string;
+  documentFontStyleSha256: typeof DOCUMENT_FONT_CONTRACT.styles;
   pageCount: 1 | 2;
   documentFontResolved: true;
   extractedTextSha256: string;
@@ -55,17 +59,28 @@ export function documentRendererConfiguration(environment: Partial<NodeJS.Proces
     pdfText: tool("APP_PDFTOTEXT_EXECUTABLE", "APP_PDFTOTEXT_EXECUTABLE_SHA256"),
     pdfPpm: tool("APP_PDFTOPPM_EXECUTABLE", "APP_PDFTOPPM_EXECUTABLE_SHA256"),
   };
-  const documentFont = tool("APP_DOCUMENT_FONT_FILE", "APP_DOCUMENT_FONT_FILE_SHA256");
+  const documentFontStyles = {
+    regular: tool("APP_DOCUMENT_FONT_FILE", "APP_DOCUMENT_FONT_FILE_SHA256"),
+    bold: tool("APP_DOCUMENT_FONT_BOLD_FILE", "APP_DOCUMENT_FONT_BOLD_FILE_SHA256"),
+    italic: tool("APP_DOCUMENT_FONT_ITALIC_FILE", "APP_DOCUMENT_FONT_ITALIC_FILE_SHA256"),
+    boldItalic: tool("APP_DOCUMENT_FONT_BOLD_ITALIC_FILE", "APP_DOCUMENT_FONT_BOLD_ITALIC_FILE_SHA256"),
+  };
+  const documentFont = documentFontStyles.regular;
   const identity = environment.APP_DOCUMENT_RENDERER_IDENTITY?.trim() || "";
+  const documentFontManifestSha256 = environment.APP_DOCUMENT_FONT_MANIFEST_SHA256?.trim().toLowerCase() || "";
   const discoveryFailed = environment.APP_RENDERER_RUNTIME_DISCOVERY_FAILED === "true";
   const values = Object.values(tools);
   return {
     identity,
+    documentFontManifestSha256,
     tools,
     documentFont,
+    documentFontStyles,
     ready: !discoveryFailed && identity.length >= 3
+      && documentFontManifestSha256 === DOCUMENT_FONT_CONTRACT.manifestSha256
       && values.every((value) => isAbsolute(value.path) && SHA256.test(value.sha256))
-      && isAbsolute(documentFont.path) && SHA256.test(documentFont.sha256),
+      && Object.entries(documentFontStyles).every(([style, value]) =>
+        isAbsolute(value.path) && value.sha256 === DOCUMENT_FONT_CONTRACT.styles[style as keyof typeof documentFontStyles]),
   } as const;
 }
 
@@ -81,7 +96,7 @@ export async function renderDocumentLocallyForQa(input: DocumentRenderInput): Pr
   const configuration = documentRendererConfiguration();
   if (!configuration.ready) throw new Error("approved_local_document_renderer_not_configured");
   await Promise.all(Object.values(configuration.tools).map(verifyTool));
-  await verifyTool(configuration.documentFont);
+  await Promise.all(Object.values(configuration.documentFontStyles).map(verifyTool));
   const work = await mkdtemp(join(tmpdir(), "applypack-render-"));
   const resolvedWork = resolve(work);
   const safeRoot = resolve(tmpdir()) + sep;
@@ -140,7 +155,11 @@ export async function renderDocumentLocallyForQa(input: DocumentRenderInput): Pr
     if (!searchablePdf.subarray(0, 5).equals(Buffer.from("%PDF-"))) throw new Error("rendered_pdf_invalid");
     return {
       rendererIdentity: configuration.identity,
+      documentFontFamily: DOCUMENT_FONT_CONTRACT.family,
+      documentFontVersion: DOCUMENT_FONT_CONTRACT.version,
+      documentFontManifestSha256: configuration.documentFontManifestSha256 as typeof DOCUMENT_FONT_CONTRACT.manifestSha256,
       documentFontSha256: configuration.documentFont.sha256,
+      documentFontStyleSha256: DOCUMENT_FONT_CONTRACT.styles,
       pageCount: pageCount as 1 | 2,
       documentFontResolved: true,
       extractedTextSha256,

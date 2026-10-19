@@ -8,6 +8,7 @@ import { pdfFontTableUsesApprovedFont } from "@/lib/documents/font-validation";
 import { pdfTextBoundsAreValid } from "@/lib/documents/pdf-bounds";
 import { pdfCatalogLanguageMatches, pdfStructureIsValid } from "@/lib/documents/pdf-validation";
 import { normalizeRenderedDocumentText } from "@/lib/documents/text-validation";
+import { DOCUMENT_FONT_CONTRACT } from "@/lib/documents/requirements";
 import type { ArtifactProvenance, DocumentMetadata } from "@/lib/documents/generate";
 import type { ParserLimits } from "./secure-pipeline";
 
@@ -22,13 +23,16 @@ export function documentWorkerConfiguration(environment: Environment = process.e
   const bucket = environment.APP_DOCUMENT_WORKER_BUCKET?.trim();
   const identity = environment.APP_DOCUMENT_WORKER_IDENTITY?.trim();
   const fontSha256 = environment.APP_DOCUMENT_WORKER_FONT_SHA256?.trim().toLowerCase();
+  const fontManifestSha256 = environment.APP_DOCUMENT_WORKER_FONT_MANIFEST_SHA256?.trim().toLowerCase();
   const imageDigest = environment.APP_DOCUMENT_WORKER_IMAGE_DIGEST?.trim().toLowerCase();
   const networkAttestationSha256 = environment.APP_DOCUMENT_WORKER_NETWORK_ATTESTATION_SHA256?.trim().toLowerCase();
   const discoveryFailed = environment.APP_RENDERER_RUNTIME_DISCOVERY_FAILED === "true";
   const ready = Boolean(!discoveryFailed && region === "us-east-1" && functionArn && VERSION_ARN.test(functionArn) && bucket
-    && identity === "applypack-document-worker-v1" && fontSha256 && SHA256.test(fontSha256)
+    && identity === "applypack-document-worker-v2-liberation-sans-2.1.5"
+    && fontSha256 === DOCUMENT_FONT_CONTRACT.styles.regular
+    && fontManifestSha256 === DOCUMENT_FONT_CONTRACT.manifestSha256
     && imageDigest && SHA256.test(imageDigest) && networkAttestationSha256 && SHA256.test(networkAttestationSha256));
-  return { region, functionArn, bucket, identity, fontSha256, imageDigest, networkAttestationSha256, ready };
+  return { region, functionArn, bucket, identity, fontSha256, fontManifestSha256, imageDigest, networkAttestationSha256, ready };
 }
 
 function boundedLimits(limits?: ParserLimits) {
@@ -140,12 +144,20 @@ export async function renderWithDocumentWorker(input: {
   const fontInfo = stringField(result, "fontInfo");
   const extractedText = stringField(result, "extractedText");
   const fontSha256 = stringField(result, "documentFontSha256").toLowerCase();
+  const fontFamily = stringField(result, "documentFontFamily");
+  const fontVersion = stringField(result, "documentFontVersion");
+  const fontManifestSha256 = stringField(result, "documentFontManifestSha256").toLowerCase();
+  const fontStyleSha256 = result.documentFontStyleSha256;
   if (!pdf || !images || pageCount !== input.expectedPages || images.length !== pageCount
     || !pdf.subarray(0, 5).equals(Buffer.from("%PDF-"))
     || result.networkIsolationVerified !== true
     || result.functionVersionArn !== configuration.functionArn
     || result.imageDigest !== configuration.imageDigest
     || fontSha256 !== configuration.fontSha256
+    || fontFamily !== DOCUMENT_FONT_CONTRACT.family
+    || fontVersion !== DOCUMENT_FONT_CONTRACT.version
+    || fontManifestSha256 !== configuration.fontManifestSha256
+    || JSON.stringify(fontStyleSha256) !== JSON.stringify(DOCUMENT_FONT_CONTRACT.styles)
     || !pdfFontTableUsesApprovedFont(fontInfo)
     || !pdfTextBoundsAreValid(boundingXml, pageCount)
     || !pdfStructureIsValid(structureTree, input.artifactType)) {
@@ -162,7 +174,11 @@ export async function renderWithDocumentWorker(input: {
   }
   return {
     rendererIdentity: configuration.identity!,
+    documentFontFamily: DOCUMENT_FONT_CONTRACT.family,
+    documentFontVersion: DOCUMENT_FONT_CONTRACT.version,
+    documentFontManifestSha256: DOCUMENT_FONT_CONTRACT.manifestSha256,
     documentFontSha256: fontSha256,
+    documentFontStyleSha256: DOCUMENT_FONT_CONTRACT.styles,
     pageCount: pageCount as 1 | 2,
     documentFontResolved: true as const,
     extractedTextSha256,
@@ -192,7 +208,11 @@ export async function probeDocumentWorker() {
     && Number(result.pageCount) >= 1 && Number(result.pageCount) <= 2
     && result.functionVersionArn === configuration.functionArn
     && result.imageDigest === configuration.imageDigest
-    && result.documentFontSha256 === configuration.fontSha256;
+    && result.documentFontSha256 === configuration.fontSha256
+    && result.documentFontFamily === DOCUMENT_FONT_CONTRACT.family
+    && result.documentFontVersion === DOCUMENT_FONT_CONTRACT.version
+    && result.documentFontManifestSha256 === configuration.fontManifestSha256
+    && JSON.stringify(result.documentFontStyleSha256) === JSON.stringify(DOCUMENT_FONT_CONTRACT.styles);
 }
 
 function stringField(value: Record<string, unknown>, key: string) {

@@ -3,7 +3,7 @@ begin
   if public.ap_manual_launch_schema_readiness()->>'ready' is distinct from 'true' then
     raise exception 'runtime_launch_schema_readiness_not_current';
   end if;
-  if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610040080' then
+  if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610190081' then
     raise exception 'runtime_launch_schema_version_not_current';
   end if;
   if not exists(

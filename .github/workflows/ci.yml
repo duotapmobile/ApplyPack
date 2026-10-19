@@ -85,9 +85,10 @@ jobs:
     env:
       APPLYPACK_LIBREOFFICE_PACKAGE_VERSION: '26.2.6'
       APPLYPACK_POPPLER_PACKAGE_VERSION: '26.9.0'
+      APPLYPACK_LIBERATION_FONTS_PACKAGE_VERSION: '2.1.5.20211119'
       APPLYPACK_EXPECTED_LIBREOFFICE_VERSION: '26.2.6'
       APPLYPACK_EXPECTED_POPPLER_VERSION: '26.9.0'
-      APP_DOCUMENT_RENDERER_IDENTITY: 'applypack-windows-ci-lo-26.2.6-poppler-26.9.0'
+      APP_DOCUMENT_RENDERER_IDENTITY: 'applypack-windows-ci-lo-26.2.6-poppler-26.9.0-liberation-sans-2.1.5'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -101,6 +102,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Pinned LibreOffice installation failed with exit code $LASTEXITCODE." }
           choco install poppler --version=$env:APPLYPACK_POPPLER_PACKAGE_VERSION --source=https://community.chocolatey.org/api/v2/ --yes --no-progress --limit-output
           if ($LASTEXITCODE -ne 0) { throw "Pinned Poppler installation failed with exit code $LASTEXITCODE." }
+          choco install liberationfonts --version=$env:APPLYPACK_LIBERATION_FONTS_PACKAGE_VERSION --source=https://community.chocolatey.org/api/v2/ --yes --no-progress --limit-output
+          if ($LASTEXITCODE -ne 0) { throw "Pinned Liberation Sans installation failed with exit code $LASTEXITCODE." }
           $popplerTools = @('pdfinfo.exe', 'pdffonts.exe', 'pdftotext.exe', 'pdftoppm.exe')
           $toolsRoot = if ($env:ChocolateyToolsLocation) { $env:ChocolateyToolsLocation } else { 'C:\tools' }
           $searchRoots = @($toolsRoot, (Join-Path $env:ChocolateyInstall 'lib\poppler')) | Where-Object { Test-Path -LiteralPath $_ }

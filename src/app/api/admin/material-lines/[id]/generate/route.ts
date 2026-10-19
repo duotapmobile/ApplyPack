@@ -15,7 +15,7 @@ import {
 import { documentRendererConfiguration, renderDocumentForQa } from "@/lib/documents/renderer";
 import { documentWorkerConfiguration } from "@/lib/files/aws-document-worker";
 import { validateMaterialClaims } from "@/lib/documents/claim-validation";
-import { selectDocumentOutputFormat } from "@/lib/documents/requirements";
+import { DOCUMENT_FONT_CONTRACT, selectDocumentDelivery } from "@/lib/documents/requirements";
 import { materialFilename } from "@/lib/materials/contract";
 import { readReferencePayload, type StoredReferenceEnvelope } from "@/lib/materials/references";
 import { readMaterialContact, type StoredMaterialContactEnvelope } from "@/lib/materials/server";
@@ -102,7 +102,7 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
   }
   const ownership = await auth.admin.rpc("ap_customer_owns_snapshot", { p_customer_id: purchase.customer_id, p_snapshot_id: revision.source_snapshot_id });
   if (ownership.error || ownership.data !== true) return response({ error: "Current source ownership could not be verified." }, 409);
-  const [{ data: intent }, { data: job }, { data: rule }, { data: generationConfiguration }] = await Promise.all([
+  const [{ data: intent }, { data: job }, { data: rule }, { data: generationConfiguration }, { data: applicantFormatRequest }] = await Promise.all([
     auth.admin.from("ap_material_checkout_intents").select("contact_payload_id,career_break_choice,career_break_custom_label,cover_letter_break_consent")
       .eq("id", purchase.checkout_intent_id).eq("customer_id", purchase.customer_id).maybeSingle(),
     auth.admin.from("ap_job_snapshots").select("id,company,exact_title,location_and_work_mode,canonical_application_url,retrieved_at,posted_on,content_sha256,captured_listing")
@@ -111,8 +111,12 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
       .select("id,content_sha256,allowed_formats,resume_page_limit,resume_filename_instruction,cover_letter_filename_instruction,reference_filename_instruction,reference_timing,reference_count,hard_block_reason,injection_scan_state,is_current,checked_at")
       .eq("id", revision.employer_rule_snapshot_id).eq("job_snapshot_id", revision.job_snapshot_id).maybeSingle(),
     auth.admin.from("ap_commerce_configuration")
-      .select("materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_sha256,document_safety_policy")
+      .select("materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_sha256,document_font_manifest_sha256,document_safety_policy")
       .eq("singleton", true).maybeSingle(),
+    auth.admin.from("ap_applicant_document_format_requests")
+      .select("id,delivery_format,request_reference_sha256,recorded_at")
+      .eq("material_line_id", line.id).eq("customer_id", purchase.customer_id)
+      .order("recorded_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   if (!intent || !job || !rule || !rule.is_current || rule.hard_block_reason || rule.injection_scan_state !== "CLEAR") {
     return response({ error: "Current employer instructions are not generation-ready." }, 409);
@@ -123,9 +127,11 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
     ? workerConfiguration.ready
       && workerConfiguration.identity === generationConfiguration?.document_renderer_identity
       && workerConfiguration.fontSha256 === generationConfiguration?.document_font_sha256
+      && workerConfiguration.fontManifestSha256 === generationConfiguration?.document_font_manifest_sha256
     : rendererConfiguration.ready
       && rendererConfiguration.identity === generationConfiguration?.document_renderer_identity
-      && rendererConfiguration.documentFont.sha256 === generationConfiguration?.document_font_sha256;
+      && rendererConfiguration.documentFont.sha256 === generationConfiguration?.document_font_sha256
+      && generationConfiguration?.document_font_manifest_sha256 === DOCUMENT_FONT_CONTRACT.manifestSha256;
 
   if (!generationConfiguration?.materials_generation_approved
     || !generationConfiguration.materials_generation_approval_reference
@@ -133,7 +139,7 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
     || !generationConfiguration.material_output_formats.length
     || !rendererReady
     || generationConfiguration.document_safety_policy !== "generated-structural-v1") {
-    return response({ error: "Approved Arial rendering and structural document policy are required." }, 503);
+    return response({ error: "Approved Liberation Sans 2.1.5 rendering and structural document policy are required." }, 503);
   }
   const now = new Date();
   const dueAt = line.materials_due_at ? new Date(line.materials_due_at) : null;
@@ -197,8 +203,17 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
   }
   const location = stringValue(job.location_and_work_mode, "location") || stringValue(job.location_and_work_mode, "locationText") || null;
   const allowedFormats = Array.isArray(rule.allowed_formats) ? rule.allowed_formats : [];
-  const outputFormat = selectDocumentOutputFormat(allowedFormats, generationConfiguration.material_output_formats);
-  if (!outputFormat) return response({ error: "No approved output format satisfies the current employer instructions." }, 409);
+  const applicantWordRequested = applicantFormatRequest?.delivery_format === "DOCX";
+  if (applicantWordRequested && !allowedFormats.includes("DOCX")) {
+    return response({ error: "The applicant’s Word-format request conflicts with the current employer instructions." }, 409);
+  }
+  const deliveryDecision = selectDocumentDelivery(
+    allowedFormats,
+    generationConfiguration.material_output_formats,
+    applicantWordRequested,
+  );
+  if (!deliveryDecision) return response({ error: "No approved output format satisfies the current employer instructions." }, 409);
+  const outputFormat = deliveryDecision.format;
   if (!/^[0-9a-f]{64}$/i.test(job.content_sha256)
     || !job.captured_listing || typeof job.captured_listing !== "object" || Array.isArray(job.captured_listing)
     || !Object.keys(job.captured_listing).length) {
@@ -349,6 +364,15 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
       ...(generated.referenceSheet ? [{ type: "REFERENCE_SHEET" as const, artifact: generated.referenceSheet }] : []),
     ];
   }
+
+  const deliveryFormatDecision = {
+    format: outputFormat,
+    reason: deliveryDecision.reason,
+    employerRuleId: rule.id,
+    applicantRequestId: applicantWordRequested ? applicantFormatRequest.id : null,
+    requestReferenceSha256: applicantWordRequested ? applicantFormatRequest.request_reference_sha256 : null,
+  } as const;
+  for (const current of artifacts) current.artifact.provenance.deliveryFormatDecision = deliveryFormatDecision;
 
   const registered = [];
   for (const current of artifacts) {
@@ -579,7 +603,17 @@ async function validateUploadAndRegister(input: {
     p_job_snapshot_id: input.jobSnapshotId,
     p_reference_regeneration_id: input.regenerationId,
     p_reference_permission_ids: input.permissionIds,
-    p_claim_provenance: { ...input.artifact.provenance, editableSource, uploadCleanup },
+    p_claim_provenance: {
+      ...input.artifact.provenance,
+      documentFontAttestation: {
+        family: render.documentFontFamily,
+        version: render.documentFontVersion,
+        manifestSha256: render.documentFontManifestSha256,
+        styleSha256: render.documentFontStyleSha256,
+      },
+      editableSource,
+      uploadCleanup,
+    },
     p_generator_version: input.artifact.provenance.generatorVersion,
     p_storage_bucket: "customer-deliveries",
     p_storage_path: storagePath,

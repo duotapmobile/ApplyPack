@@ -11,7 +11,11 @@ from pathlib import Path
 sys.modules.setdefault("boto3", types.SimpleNamespace(client=lambda _service: None))
 if os.name == "nt":
     os.environ.setdefault("LIBREOFFICE_BIN", r"C:\Program Files\LibreOffice\program\soffice.exe")
-    os.environ.setdefault("LIBERATION_SANS_FONT_PATH", r"C:\Windows\Fonts\LiberationSans-Regular.ttf")
+    fonts = Path(os.environ.get("APPLYPACK_LIBERATION_SANS_DIRECTORY", r"C:\Windows\Fonts"))
+    os.environ.setdefault("LIBERATION_SANS_REGULAR_FONT_PATH", str(fonts / "LiberationSans-Regular.ttf"))
+    os.environ.setdefault("LIBERATION_SANS_BOLD_FONT_PATH", str(fonts / "LiberationSans-Bold.ttf"))
+    os.environ.setdefault("LIBERATION_SANS_ITALIC_FONT_PATH", str(fonts / "LiberationSans-Italic.ttf"))
+    os.environ.setdefault("LIBERATION_SANS_BOLD_ITALIC_FONT_PATH", str(fonts / "LiberationSans-BoldItalic.ttf"))
 
 import handler
 
@@ -75,7 +79,15 @@ with tempfile.TemporaryDirectory(prefix="applypack-worker-smoke-") as work:
     # immutable Lambda identity require the deployed provider-backed probe.
     assert result["pageCount"] == 1
     assert "LiberationSans" in result["fontInfo"]
-    assert len(result["documentFontSha256"]) == 64
+    assert result["documentFontFamily"] == "Liberation Sans"
+    assert result["documentFontVersion"] == "2.1.5"
+    assert result["documentFontManifestSha256"] == "d89582771ff8dde19015f5aa3965810d656f93fcb08cee6280497e780de614bb"
+    assert result["documentFontStyleSha256"] == {
+        "regular": "76d04c18ea243f426b7de1f3ad208e927008f961dc5945e5aad352d0dfde8ee8",
+        "bold": "788abee4c806d660e8aee46689dd8540cd4bb98da03dcc9d171ce3efd99a9173",
+        "italic": "e5bae5c4cde31f22142753855f4f8fb86da6ff39955ed3c0a11248b0d16948b0",
+        "boldItalic": "698da70fc191cc5f33ad4d6d3fe830fe4624b898ea2e3169955928b7c491f1ee",
+    }
     probe = handler._probe_document(
         docx,
         {"expanded": 2_097_152, "pages": 2, "milliseconds": 30_000},

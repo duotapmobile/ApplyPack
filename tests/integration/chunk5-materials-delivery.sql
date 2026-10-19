@@ -167,6 +167,19 @@ from fixture_job_snapshot_input template;
 select pg_temp.assert_true(exists(select 1 from public.ap_current_source_verifications('75000000-0000-4000-8000-000000000001')),
  'fixture manual review must create current immutable source evidence');
 
+insert into public.ap_employer_submission_rules(
+  id,job_snapshot_id,content_sha256,source_evidence_ids,resume_requirement,
+  cover_letter_requirement,allowed_formats,resume_page_limit,cover_letter_page_limit,
+  reference_timing,submission_channel,parser_version,injection_scan_state,
+  human_confirmed_by,human_confirmed_at,checked_at
+) values(
+  'c5500000-0000-4000-8000-000000000001','75000000-0000-4000-8000-000000000001',
+  repeat('4',64),array['75000000-0000-4000-8000-000000000001'::uuid],
+  'REQUIRED','REQUIRED',array['DOCX']::text[],1,1,'OPTIONAL_NOW','HTTPS_UPLOAD',
+  'fixture-open-font-v1','CLEAR','15000000-0000-4000-8000-000000000003',
+  clock_timestamp()-interval '10 minutes',clock_timestamp()-interval '10 minutes'
+);
+
 insert into public.orders(
   id,customer_id,product_kind,amount_cents,status,paid_at,delivery_deadline,delivered_at,
   human_review_checklist,human_reviewed_by,human_reviewed_at
@@ -220,12 +233,13 @@ insert into public.ap_material_lines(
   statement_timestamp()-interval '25 hours',statement_timestamp()-interval '1 hour',statement_timestamp()-interval '2 minutes'
 );
 insert into public.ap_material_line_revisions(
-  id,line_id,version,revision_kind,job_snapshot_id,source_snapshot_id,binding_sha256,
+  id,line_id,version,revision_kind,job_snapshot_id,source_snapshot_id,employer_rule_snapshot_id,binding_sha256,
   accepted_at,started_at,due_at
 ) values(
   'c5000000-0000-4000-8000-000000000001','b5000000-0000-4000-8000-000000000001',1,
   'ORIGINAL','75000000-0000-4000-8000-000000000001','45000000-0000-4000-8000-000000000001',
-  repeat('b',64),statement_timestamp()-interval '25 hours',statement_timestamp()-interval '25 hours',
+  'c5500000-0000-4000-8000-000000000001',repeat('b',64),
+  statement_timestamp()-interval '25 hours',statement_timestamp()-interval '25 hours',
   statement_timestamp()-interval '1 hour'
 );
 insert into public.ap_material_entitlement_history(
@@ -316,23 +330,31 @@ insert into public.ap_generated_file_versions(
   '15000000-0000-4000-8000-000000000003',clock_timestamp()-interval '4 minutes',
   'Chunk_5_Fixture_Employer_Operations_Specialist_Resume.docx',repeat('b',64),repeat('d',64)
 );
-update public.ap_commerce_configuration set document_font_family='Arial',document_font_sha256=repeat('f',64),document_safety_policy='generated-structural-v1',document_renderer_identity='fixture-renderer-v1' where singleton;
+update public.ap_commerce_configuration set document_font_family='Liberation Sans',
+  document_font_sha256='76d04c18ea243f426b7de1f3ad208e927008f961dc5945e5aad352d0dfde8ee8',
+  document_font_manifest_sha256='d89582771ff8dde19015f5aa3965810d656f93fcb08cee6280497e780de614bb',
+  document_safety_policy='generated-structural-v1',document_renderer_identity='fixture-renderer-v1'
+where singleton;
+-- This fixture reconstructs an immutable October 3 record that existed before
+-- migration 081. Runtime writes cannot bypass the current safety stamp.
+set local session_replication_role='replica';
 insert into public.ap_artifact_quality_reviews(
   id,file_version_id,binding_sha256,structural_checks,provenance_checks,extracted_text_sha256,
-  rendered_page_count,renderer_identity,document_font_sha256,document_safety_policy,
+  rendered_page_count,renderer_identity,document_font_family,document_font_sha256,document_safety_policy,
   render_preview_bucket,render_preview_path,render_preview_sha256,rendered_page_sha256,
   document_font_resolved,automated_passed_at,content_approved_by,content_approved_at,content_attestation,
   visual_approved_by,visual_approved_at,visual_attestation
 ) values(
   'aa500000-0000-4000-8000-000000000001','f5000000-0000-4000-8000-000000000001',
   repeat('b',64),'{"docxPackage":"PASS"}','{"claims":"PASS"}',repeat('e',64),1,
-  'fixture-renderer-v1',repeat('f',64),'NOT_SCANNED:generated-structural-v1','operator-render-previews',
+  'fixture-renderer-v1','Arial',repeat('f',64),'generated-structural-v1','operator-render-previews',
   'chunk5/fixture/resume-v1.pdf',repeat('1',64),array[repeat('2',64)],true,
   clock_timestamp()-interval '6 minutes','15000000-0000-4000-8000-000000000003',
   clock_timestamp()-interval '5 minutes','All factual claims match the reviewed source evidence.',
   '15000000-0000-4000-8000-000000000003',clock_timestamp()-interval '4 minutes',
   'The rendered document has no clipping, overlap, or font substitution.'
 );
+set local session_replication_role='origin';
 savepoint historical_document_access_only;
 update public.ap_generated_artifacts
 set generator_version='applypack-documents|content=applypack-content-2026-09-22.1|template=applypack-template-2026-09-22.1|exporter=libreoffice-tagged-pdf-2026-09-22.1'
@@ -349,6 +371,64 @@ exception when raise_exception then
   if sqlerrm<>'document_policy_regeneration_required' then raise; end if;
 end $$;
 rollback to savepoint historical_document_access_only;
+select pg_temp.assert_true(
+  (public.ap_record_applicant_document_format_request(
+    'c5600000-0000-4000-8000-000000000001',
+    'b5000000-0000-4000-8000-000000000001',
+    '15000000-0000-4000-8000-000000000003',
+    'DOCX',repeat('5',64)
+  )->>'id')='c5600000-0000-4000-8000-000000000001',
+  'applicant Word-format request was not recorded'
+);
+select pg_temp.assert_true(
+  (public.ap_record_applicant_document_format_request(
+    'c5600000-0000-4000-8000-000000000002',
+    'b5000000-0000-4000-8000-000000000001',
+    '15000000-0000-4000-8000-000000000003',
+    'DOCX',repeat('5',64)
+  )->>'id')='c5600000-0000-4000-8000-000000000001',
+  'exact applicant Word-format request replay was not idempotent'
+);
+do $$ begin
+  perform public.ap_record_applicant_document_format_request(
+    'c5600000-0000-4000-8000-000000000003',
+    'b5000000-0000-4000-8000-000000000001',
+    '15000000-0000-4000-8000-000000000003',
+    'DOCX',repeat('6',64));
+  raise exception 'conflicting_applicant_word_request_accepted';
+exception when raise_exception then
+  if sqlerrm='conflicting_applicant_word_request_accepted' then raise; end if;
+  if sqlerrm<>'applicant_document_format_request_conflict' then raise; end if;
+end $$;
+do $$ begin
+  update public.ap_applicant_document_format_requests set request_reference_sha256=repeat('6',64)
+  where id='c5600000-0000-4000-8000-000000000001';
+  raise exception 'applicant_word_request_mutation_accepted';
+exception when raise_exception then
+  if sqlerrm='applicant_word_request_mutation_accepted' then raise; end if;
+  if sqlerrm<>'immutable_record' then raise; end if;
+end $$;
+update public.ap_generated_artifacts
+set generator_version='applypack-documents|instructions=applypack-universal-document-standard-2026-10-19.1|standardSha256=2133e3e315191bde8b05eba43cba552c7339f29d3ee19bae998dde7ffeda7778|content=applypack-content-2026-10-19.1|template=applypack-template-2026-10-19.1|exporter=libreoffice-tagged-pdf-2026-10-19.1',
+  claim_provenance=claim_provenance||jsonb_build_object(
+    'deliveryFormatDecision',jsonb_build_object(
+      'format','DOCX','reason','APPLICANT_REQUEST',
+      'employerRuleId','c5500000-0000-4000-8000-000000000001',
+      'applicantRequestId','c5600000-0000-4000-8000-000000000001',
+      'requestReferenceSha256',repeat('5',64)),
+    'documentFontAttestation',jsonb_build_object(
+      'family','Liberation Sans','version','2.1.5',
+      'manifestSha256','d89582771ff8dde19015f5aa3965810d656f93fcb08cee6280497e780de614bb',
+      'styleSha256',jsonb_build_object(
+        'regular','76d04c18ea243f426b7de1f3ad208e927008f961dc5945e5aad352d0dfde8ee8',
+        'bold','788abee4c806d660e8aee46689dd8540cd4bb98da03dcc9d171ce3efd99a9173',
+        'italic','e5bae5c4cde31f22142753855f4f8fb86da6ff39955ed3c0a11248b0d16948b0',
+        'boldItalic','698da70fc191cc5f33ad4d6d3fe830fe4624b898ea2e3169955928b7c491f1ee')))
+where id='e5000000-0000-4000-8000-000000000001';
+update public.ap_artifact_quality_reviews
+set document_font_family='Liberation Sans',
+    document_font_sha256='76d04c18ea243f426b7de1f3ad208e927008f961dc5945e5aad352d0dfde8ee8'
+where id='aa500000-0000-4000-8000-000000000001';
 insert into public.ap_releases(
   id,customer_id,order_id,material_line_id,release_kind,committed_at,active_due_at,
   version_bundle,human_approved_by

@@ -371,7 +371,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(output).not.toContain(password);
   });
 
-  it("runs real document-render CI on pinned Windows Arial through the strict harness", () => {
+  it("runs real document-render CI on pinned Windows Liberation Sans through the strict harness", () => {
     const workflow = source(".github/workflows/ci.yml");
     const documentRender = workflow.match(/(?:^|\r?\n)  document-render:\r?\n([\s\S]*)/)?.[1];
     if (!documentRender) throw new Error("document-render job missing");
@@ -380,6 +380,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(documentRender).toContain("APPLYPACK_POPPLER_PACKAGE_VERSION: '26.9.0'");
     expect(documentRender).toContain("choco install libreoffice-fresh --version=$env:APPLYPACK_LIBREOFFICE_PACKAGE_VERSION");
     expect(documentRender).toContain("choco install poppler --version=$env:APPLYPACK_POPPLER_PACKAGE_VERSION");
+    expect(documentRender).toContain("choco install liberationfonts --version=$env:APPLYPACK_LIBERATION_FONTS_PACKAGE_VERSION");
     expect(documentRender).toContain("APP_DOCUMENT_RENDERER_IDENTITY: 'applypack-windows-ci-");
     const [jobConfiguration, renderAndUpload] = documentRender.split("      - name: Render actual DOCX files and verify PDF outputs");
     expect(jobConfiguration).not.toContain("APPLYPACK_RENDER_EVIDENCE_DIR");
@@ -387,10 +388,13 @@ describe("October 2 manual-launch hardening", () => {
     expect(documentRender).toContain("run: .\\scripts\\test-document-render-windows.ps1");
     expect(documentRender).toContain("path: ${{ runner.temp }}\\applypack-chunk5-render-ci");
     expect(documentRender).not.toContain("apt-get");
-    expect(documentRender).not.toContain("fonts-liberation");
     expect(documentRender).not.toContain("configure-renderer-runtime");
     const windowsHarness = source("scripts/test-document-render-windows.ps1");
-    expect(windowsHarness).toContain("C:\\Windows\\Fonts\\arial.ttf");
+    expect(windowsHarness).toContain("LiberationSans-Regular.ttf");
+    expect(windowsHarness).toContain("LiberationSans-Bold.ttf");
+    expect(windowsHarness).toContain("LiberationSans-Italic.ttf");
+    expect(windowsHarness).toContain("LiberationSans-BoldItalic.ttf");
+    expect(windowsHarness).toContain("d89582771ff8dde19015f5aa3965810d656f93fcb08cee6280497e780de614bb");
     expect(windowsHarness).toContain("A complete same-directory Poppler toolset is required.");
     expect(windowsHarness).toContain("APPLYPACK_EXPECTED_LIBREOFFICE_VERSION");
     expect(windowsHarness).toContain("APPLYPACK_EXPECTED_POPPLER_VERSION");
@@ -447,6 +451,8 @@ describe("October 2 manual-launch hardening", () => {
     const readiness = source("src/lib/operations/renderer-readiness.ts");
     const launchReadiness = source("src/lib/operations/launch-readiness.ts");
     const workerTemplate = source("infra/aws/document-worker/template.yaml");
+    const workerImage = source("infra/aws/document-worker/Dockerfile");
+    const documentRequirements = source("src/lib/documents/requirements.ts");
     const documentPolicy = source("supabase/migrations/202610030066_locked_document_generation_standard.sql");
     const documentCompatibility = source("supabase/migrations/202610030067_document_source_and_rollback_compatibility.sql");
     const accessOnlyCompatibility = source("supabase/migrations/202610030068_historical_document_access_only.sql");
@@ -478,11 +484,20 @@ describe("October 2 manual-launch hardening", () => {
     expect(source("src/app/api/checkout/search/route.ts")).toContain('manualLaunchCheckoutGate(context.admin, infrastructure, "SEARCH")');
     expect(source("src/app/api/checkout/apply-packs/route.ts")).toContain('manualLaunchCheckoutGate(admin, infrastructure, "MATERIALS")');
     const generation = source("src/app/api/admin/material-lines/[id]/generate/route.ts");
+    const applicantFormatRequest = source("src/app/api/admin/material-lines/[id]/delivery-format-request/route.ts");
     expect(generation).toContain("renderDocumentForQa");
     expect(generation).not.toContain("renderDocumentLocallyForQa");
     expect(generation).toContain('storageBucket: "operator-drafts"');
     expect(generation).toContain("editableSourcePath");
-    expect(generation).toContain("p_claim_provenance: { ...input.artifact.provenance, editableSource, uploadCleanup }");
+    expect(generation).toContain("p_claim_provenance: {");
+    expect(generation).toContain("...input.artifact.provenance");
+    expect(generation).toContain("documentFontAttestation: {");
+    expect(generation).toContain("manifestSha256: render.documentFontManifestSha256");
+    expect(generation).toContain("styleSha256: render.documentFontStyleSha256");
+    expect(generation).toContain("applicantWordRequested && !allowedFormats.includes(\"DOCX\")");
+    expect(generation).toContain("requestReferenceSha256: applicantWordRequested");
+    expect(generation).toContain("editableSource");
+    expect(generation).toContain("uploadCleanup");
     expect(generation).toContain('admin.from("storage_cleanup_queue").upsert');
     expect(generation).toContain("bucket: upload.storageBucket");
     expect(generation).toContain('reason: "material_sensitive_upload_intent"');
@@ -500,6 +515,23 @@ describe("October 2 manual-launch hardening", () => {
     expect(handler).toContain("requested_memory");
     expect(handler).toContain("worker_memory_configuration_bound");
     expect(handler).toContain('ServerSideEncryption="AES256"');
+    expect(handler).toContain('"regular": ("Regular", "LIBERATION_SANS_REGULAR_FONT_PATH"');
+    expect(handler).toContain('"bold": ("Bold", "LIBERATION_SANS_BOLD_FONT_PATH"');
+    expect(handler).toContain('"italic": ("Italic", "LIBERATION_SANS_ITALIC_FONT_PATH"');
+    expect(handler).toContain('"boldItalic": ("Bold Italic", "LIBERATION_SANS_BOLD_ITALIC_FONT_PATH"');
+    expect(handler).toContain('FONT_MANIFEST_SHA256 = "d89582771ff8dde19015f5aa3965810d656f93fcb08cee6280497e780de614bb"');
+    expect(workerImage).toContain("LiberationSans-Regular.ttf");
+    expect(workerImage).toContain("LiberationSans-Bold.ttf");
+    expect(workerImage).toContain("LiberationSans-Italic.ttf");
+    expect(workerImage).toContain("LiberationSans-BoldItalic.ttf");
+    expect(workerImage).not.toContain("ARIAL_TTF");
+    expect(documentRequirements).toContain('family: "Liberation Sans"');
+    expect(documentRequirements).toContain('version: "2.1.5"');
+    expect(documentRequirements).toContain('manifestSha256: "d89582771ff8dde19015f5aa3965810d656f93fcb08cee6280497e780de614bb"');
+    expect(applicantFormatRequest).toContain("isSameOriginRequest(request)");
+    expect(applicantFormatRequest).toContain('deliveryFormat: z.literal("DOCX")');
+    expect(applicantFormatRequest).toContain('rpc("ap_record_applicant_document_format_request"');
+    expect(applicantFormatRequest).toContain("requestReferenceSha256");
     expect(workerTemplate).toContain("ec2:DescribeSubnets");
     expect(workerTemplate).toContain("ec2:AssignPrivateIpAddresses");
     expect(workerTemplate).toContain("ec2:UnassignPrivateIpAddresses");
@@ -543,7 +575,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(rollbackCheck).toContain("intentIndex >= uploadIndex");
     expect(rollbackCheck).toContain("exact approved legal content");
     expect(rollbackCheck).toContain("ap_upgrade_completed_intake_legal_acceptance");
-    expect(rollbackCheck).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610040080"');
+    expect(rollbackCheck).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610190081"');
     expect(rollbackCheck).toContain('admin.rpc("ap_manual_launch_schema_readiness")');
     expect(rollbackCheck).toContain("launchSchemaReadinessIsCurrent(schemaReadiness)");
     expect(rollbackRunbook).toContain("minimum compatible application rollback commit is `aeae1dee597e153602febd6adfea5644e4628d20`");

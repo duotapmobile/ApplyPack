@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { configureRendererRuntime } from "./configure-renderer-runtime.mjs";
+import { configureRendererRuntime, liberationSansContract } from "./configure-renderer-runtime.mjs";
 import {
   RENDERER_RUNTIME_DISCOVERY_FAILURE_CODE,
   RENDERER_RUNTIME_DISCOVERY_FAILURE_FLAG,
@@ -13,11 +13,25 @@ const dependencies = {
   platform: "linux",
   statSync: () => ({ isFile: () => true, size: 23 }),
   readFileSync: () => Buffer.from("synthetic fixture bytes"),
+  fileSha256: (path) => {
+    const style = Object.values(liberationSansContract.styles).find((entry) => path.endsWith(entry.pathName.replace("APP_DOCUMENT_FONT_", "").replace("APP_DOCUMENT_FONT_FILE", "Regular")));
+    if (style) return style.sha256;
+    if (path.endsWith("LiberationSans-Regular.ttf")) return liberationSansContract.styles.regular.sha256;
+    if (path.endsWith("LiberationSans-Bold.ttf")) return liberationSansContract.styles.bold.sha256;
+    if (path.endsWith("LiberationSans-Italic.ttf")) return liberationSansContract.styles.italic.sha256;
+    if (path.endsWith("LiberationSans-BoldItalic.ttf")) return liberationSansContract.styles.boldItalic.sha256;
+    return digest;
+  },
   execFileSync: (path, args, options) => {
     assert.equal(path, "/usr/bin/fc-match");
-    assert.equal(args[1], "Arial:style=Regular");
     assert.equal(options.timeout, 5000);
-    return "Arial\n/usr/share/fonts/truetype/msttcorefonts/Arial.ttf\n";
+    const style = Object.values(liberationSansContract.styles).find((entry) => entry.query === args[1]);
+    assert.ok(style);
+    const filename = style.pathName === "APP_DOCUMENT_FONT_FILE" ? "LiberationSans-Regular.ttf"
+      : style.pathName === "APP_DOCUMENT_FONT_BOLD_FILE" ? "LiberationSans-Bold.ttf"
+        : style.pathName === "APP_DOCUMENT_FONT_ITALIC_FILE" ? "LiberationSans-Italic.ttf"
+          : "LiberationSans-BoldItalic.ttf";
+    return `Liberation Sans\n/usr/share/fonts/applypack/${filename}\n`;
   },
 };
 
@@ -32,7 +46,11 @@ test("installed bytes are pinned without granting any approval", () => {
   configureRendererRuntime(environment, dependencies);
   assert.equal(environment.APP_LIBREOFFICE_EXECUTABLE, "/usr/bin/soffice");
   assert.equal(environment.APP_PDFINFO_EXECUTABLE_SHA256, digest);
-  assert.equal(environment.APP_DOCUMENT_FONT_FILE_SHA256, digest);
+  assert.equal(environment.APP_DOCUMENT_FONT_FILE_SHA256, liberationSansContract.styles.regular.sha256);
+  assert.equal(environment.APP_DOCUMENT_FONT_BOLD_FILE_SHA256, liberationSansContract.styles.bold.sha256);
+  assert.equal(environment.APP_DOCUMENT_FONT_ITALIC_FILE_SHA256, liberationSansContract.styles.italic.sha256);
+  assert.equal(environment.APP_DOCUMENT_FONT_BOLD_ITALIC_FILE_SHA256, liberationSansContract.styles.boldItalic.sha256);
+  assert.equal(environment.APP_DOCUMENT_FONT_MANIFEST_SHA256, liberationSansContract.manifestSha256);
   assert.equal(environment.APP_DOCUMENT_RENDERER_IDENTITY, "explicit-identity");
   assert.equal(Object.keys(environment).some((name) => /APPROV|CHECKOUT|PAYMENT/.test(name)), false);
 });
@@ -45,7 +63,7 @@ test("explicit mismatched pins fail without partially mutating configuration", (
 test("font fallback and command timeout both fail closed", () => {
   const environment = { APP_RENDERER_RUNTIME_DISCOVERY: "true" };
   assert.throws(() => configureRendererRuntime(environment, { ...dependencies,
-    execFileSync: () => "Liberation Sans\n/usr/share/fonts/fallback.ttf\n" }), /renderer_arial_unavailable/);
+    execFileSync: () => "DejaVu Sans\n/usr/share/fonts/fallback.ttf\n" }), /renderer_liberation_sans_unavailable/);
   assert.throws(() => configureRendererRuntime(environment, { ...dependencies,
     execFileSync: () => { throw new Error("ETIMEDOUT"); } }), /ETIMEDOUT/);
   assert.equal(environment.APP_DOCUMENT_FONT_FILE, undefined);
@@ -111,6 +129,7 @@ test("successful startup discovery preserves pinned configuration and clears fai
   assert.equal(environment[RENDERER_RUNTIME_DISCOVERY_FAILURE_FLAG], undefined);
   assert.equal(environment.APP_LIBREOFFICE_EXECUTABLE, "/usr/bin/soffice");
   assert.equal(environment.APP_PDFINFO_EXECUTABLE_SHA256, digest);
-  assert.equal(environment.APP_DOCUMENT_FONT_FILE_SHA256, digest);
+  assert.equal(environment.APP_DOCUMENT_FONT_FILE_SHA256, liberationSansContract.styles.regular.sha256);
+  assert.equal(environment.APP_DOCUMENT_FONT_MANIFEST_SHA256, liberationSansContract.manifestSha256);
   assert.equal(fixture.spawned[0][2].env, environment);
 });

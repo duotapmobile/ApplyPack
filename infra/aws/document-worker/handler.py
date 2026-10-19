@@ -13,7 +13,7 @@ from xml.etree import ElementTree
 
 import boto3
 
-IDENTITY = "applypack-document-worker-v1"
+IDENTITY = "applypack-document-worker-v2-liberation-sans-2.1.5"
 MAX_SOURCE = 10 * 1024 * 1024
 MAX_MEMORY = 512 * 1024 * 1024
 s3 = boto3.client("s3")
@@ -139,23 +139,41 @@ def _probe_document(data, limits):
         }
 
 
-def _font_sha256():
-    configured = os.environ.get("ARIAL_FONT_PATH")
-    if configured:
+FONT_FAMILY = "Liberation Sans"
+FONT_VERSION = "2.1.5"
+FONT_MANIFEST_SHA256 = "d89582771ff8dde19015f5aa3965810d656f93fcb08cee6280497e780de614bb"
+FONT_STYLES = {
+    "regular": ("Regular", "LIBERATION_SANS_REGULAR_FONT_PATH", "76d04c18ea243f426b7de1f3ad208e927008f961dc5945e5aad352d0dfde8ee8"),
+    "bold": ("Bold", "LIBERATION_SANS_BOLD_FONT_PATH", "788abee4c806d660e8aee46689dd8540cd4bb98da03dcc9d171ce3efd99a9173"),
+    "italic": ("Italic", "LIBERATION_SANS_ITALIC_FONT_PATH", "e5bae5c4cde31f22142753855f4f8fb86da6ff39955ed3c0a11248b0d16948b0"),
+    "boldItalic": ("Bold Italic", "LIBERATION_SANS_BOLD_ITALIC_FONT_PATH", "698da70fc191cc5f33ad4d6d3fe830fe4624b898ea2e3169955928b7c491f1ee"),
+}
+
+
+def _font_attestation():
+    hashes = {}
+    for key, (style, environment_name, expected_hash) in FONT_STYLES.items():
+        configured = os.environ.get(environment_name)
+        if not configured:
+            raise ValueError("document_font_configuration_missing")
         path = Path(configured)
-        if not path.is_file():
-            raise ValueError("font_unavailable")
-        return hashlib.sha256(path.read_bytes()).hexdigest()
-    match = subprocess.run(
-        ["fc-match", "--format=%{family}\n%{file}", "Arial:style=Regular"],
-        capture_output=True, text=True, timeout=5, check=True,
-    ).stdout.strip().splitlines()
-    if len(match) != 2 or "Arial" not in [family.strip() for family in match[0].split(",")]:
-        raise ValueError("arial_font_unavailable")
-    path = Path(match[1])
-    if not path.is_file():
-        raise ValueError("font_unavailable")
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+        if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected_hash:
+            raise ValueError("document_font_identity_mismatch")
+        match = subprocess.run(
+            ["fc-match", "--format=%{family}\n%{file}", f"{FONT_FAMILY}:style={style}"],
+            capture_output=True, text=True, timeout=5, check=True,
+        ).stdout.strip().splitlines()
+        families = [family.strip() for family in match[0].split(",")] if match else []
+        if len(match) != 2 or FONT_FAMILY not in families or Path(match[1]).resolve() != path.resolve():
+            raise ValueError("document_font_fallback_detected")
+        hashes[key] = expected_hash
+    return {
+        "documentFontFamily": FONT_FAMILY,
+        "documentFontVersion": FONT_VERSION,
+        "documentFontManifestSha256": FONT_MANIFEST_SHA256,
+        "documentFontSha256": hashes["regular"],
+        "documentFontStyleSha256": hashes,
+    }
 
 
 def _render_docx(data, event, limits):
@@ -213,7 +231,7 @@ def _render_docx(data, event, limits):
         return {
             "ok": True,
             "pageCount": pages,
-            "documentFontSha256": _font_sha256(),
+            **_font_attestation(),
             "pdfInfo": info.stdout + "\n" + info.stderr,
             "pdfMetadata": metadata.stdout + "\n" + metadata.stderr,
             "structureTree": structure.stdout + "\n" + structure.stderr,
@@ -232,7 +250,7 @@ def lambda_handler(event, context):
     attestation = _runtime_attestation(context)
     if operation == "probe-document":
         return {"ok": True, **_probe_document(data, limits),
-                "documentFontSha256": _font_sha256(), **attestation}
+                **_font_attestation(), **attestation}
     if operation == "render-docx":
         return {**_render_docx(data, event, limits), **attestation}
     if operation != "extract":

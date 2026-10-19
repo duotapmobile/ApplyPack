@@ -14,7 +14,7 @@ import {
 } from "docx";
 import JSZip from "jszip";
 import { isNonfactualNarrative } from "./claim-validation";
-import { DOCUMENT_REQUIREMENTS, DOCUMENT_VERSIONS } from "@/lib/documents/requirements";
+import { DOCUMENT_FONT_CONTRACT, DOCUMENT_REQUIREMENTS, DOCUMENT_VERSIONS } from "@/lib/documents/requirements";
 import {
   MATERIAL_GENERATOR_VERSION,
   assertDeliverableText,
@@ -175,6 +175,19 @@ export type ArtifactProvenance = {
   };
   cacheIdentitySha256: string;
   versions: typeof DOCUMENT_VERSIONS;
+  deliveryFormatDecision?: {
+    format: "PDF" | "DOCX";
+    reason: "DEFAULT_PDF" | "EMPLOYER_REQUIREMENT" | "APPLICANT_REQUEST";
+    employerRuleId: string;
+    applicantRequestId: string | null;
+    requestReferenceSha256: string | null;
+  };
+  documentFontAttestation?: {
+    family: typeof DOCUMENT_FONT_CONTRACT.family;
+    version: typeof DOCUMENT_FONT_CONTRACT.version;
+    manifestSha256: typeof DOCUMENT_FONT_CONTRACT.manifestSha256;
+    styleSha256: typeof DOCUMENT_FONT_CONTRACT.styles;
+  };
   editableSource?: {
     storageBucket: "operator-drafts";
     storagePath: string;
@@ -1089,7 +1102,8 @@ export async function inspectDocxPackage(
     editorIdentityEmpty: !/<cp:lastModifiedBy>\s*[^<\s][\s\S]*?<\/cp:lastModifiedBy>/i.test(coreXml),
     usLetter: /<w:pgSz\b[^>]*\bw:w="12240"[^>]*\bw:h="15840"/i.test(documentXml),
     exactMargins: /<w:pgMar\b[^>]*\bw:top="792"[^>]*\bw:right="1008"[^>]*\bw:bottom="792"[^>]*\bw:left="1008"/i.test(documentXml),
-    approvedFont: /w:(?:ascii|hAnsi|cs)="Arial"/i.test(stylesXml + documentXml),
+    approvedFont: /w:(?:ascii|hAnsi|cs)="Liberation Sans"/i.test(stylesXml + documentXml)
+      && !/w:(?:ascii|hAnsi|cs)="Arial"/i.test(stylesXml + documentXml),
     blackSectionHeadingStyle: /<w:style\b[^>]*\bw:styleId="Heading1"[\s\S]*?<w:color\b[^>]*\bw:val="000000"[\s\S]*?<\/w:style>/i.test(stylesXml),
     automaticHyphenationDisabled: !/<w:autoHyphenation\b/i.test(allXml)
       || /<w:autoHyphenation\b[^>]*\bw:val="(?:false|0)"/i.test(allXml),

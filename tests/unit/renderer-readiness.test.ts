@@ -11,17 +11,20 @@ import {
  rendererFilesMatch,
 } from "@/lib/operations/renderer-readiness";
 import { documentRendererConfiguration } from "@/lib/documents/renderer";
+import { DOCUMENT_FONT_CONTRACT } from "@/lib/documents/requirements";
 import { documentWorkerConfiguration } from "@/lib/files/aws-document-worker";
 const bytes = Buffer.from("approved tool");
 const sha256 = createHash("sha256").update(bytes).digest("hex");
 function runtime(identity = "renderer-v1", path = "/runtime/approved-tool") {
  const tool = { path, sha256 };
- return { identity, ready: true, documentFont: tool,
+ return { identity, ready: true, documentFont: tool, documentFontManifestSha256: DOCUMENT_FONT_CONTRACT.manifestSha256,
+ documentFontStyles: { regular: tool, bold: tool, italic: tool, boldItalic: tool },
  tools: { office: tool, pdfInfo: tool, pdfFonts: tool, pdfText: tool, pdfPpm: tool } } as ReturnType<typeof documentRendererConfiguration>;
 }
 const approval = { materials_generation_approved: true, materials_generation_approval_reference: "review-v1",
- material_output_formats: ["DOCX", "PDF"], document_renderer_identity: "renderer-v1", document_font_family: "Arial",
+ material_output_formats: ["DOCX", "PDF"], document_renderer_identity: "renderer-v1", document_font_family: "Liberation Sans",
  document_font_sha256: sha256, document_safety_policy: "generated-structural-v1",
+ document_font_manifest_sha256: DOCUMENT_FONT_CONTRACT.manifestSha256,
  document_worker_network_attestation_sha256: "a".repeat(64) };
 describe("renderer readiness uses current approval and actual pins", () => {
  it("keeps local and isolated renderers unready after startup discovery failure", () => {
@@ -33,7 +36,11 @@ describe("renderer readiness uses current approval and actual pins", () => {
    APP_PDFFONTS_EXECUTABLE: "/runtime/pdffonts", APP_PDFFONTS_EXECUTABLE_SHA256: sha256,
    APP_PDFTOTEXT_EXECUTABLE: "/runtime/pdftotext", APP_PDFTOTEXT_EXECUTABLE_SHA256: sha256,
    APP_PDFTOPPM_EXECUTABLE: "/runtime/pdftoppm", APP_PDFTOPPM_EXECUTABLE_SHA256: sha256,
-   APP_DOCUMENT_FONT_FILE: "/runtime/arial.ttf", APP_DOCUMENT_FONT_FILE_SHA256: sha256,
+   APP_DOCUMENT_FONT_FILE: "/runtime/LiberationSans-Regular.ttf", APP_DOCUMENT_FONT_FILE_SHA256: DOCUMENT_FONT_CONTRACT.styles.regular,
+   APP_DOCUMENT_FONT_BOLD_FILE: "/runtime/LiberationSans-Bold.ttf", APP_DOCUMENT_FONT_BOLD_FILE_SHA256: DOCUMENT_FONT_CONTRACT.styles.bold,
+   APP_DOCUMENT_FONT_ITALIC_FILE: "/runtime/LiberationSans-Italic.ttf", APP_DOCUMENT_FONT_ITALIC_FILE_SHA256: DOCUMENT_FONT_CONTRACT.styles.italic,
+   APP_DOCUMENT_FONT_BOLD_ITALIC_FILE: "/runtime/LiberationSans-BoldItalic.ttf", APP_DOCUMENT_FONT_BOLD_ITALIC_FILE_SHA256: DOCUMENT_FONT_CONTRACT.styles.boldItalic,
+   APP_DOCUMENT_FONT_MANIFEST_SHA256: DOCUMENT_FONT_CONTRACT.manifestSha256,
   };
   expect(documentRendererConfiguration(toolEnvironment).ready).toBe(false);
  expect(documentWorkerConfiguration({
@@ -41,8 +48,9 @@ describe("renderer readiness uses current approval and actual pins", () => {
    AWS_REGION: "us-east-1",
    APP_DOCUMENT_WORKER_FUNCTION_ARN: "arn:aws:lambda:us-east-1:123456789012:function:applypack-renderer:1",
    APP_DOCUMENT_WORKER_BUCKET: "applypack-renderer-private",
-   APP_DOCUMENT_WORKER_IDENTITY: "applypack-document-worker-v1",
-   APP_DOCUMENT_WORKER_FONT_SHA256: sha256,
+   APP_DOCUMENT_WORKER_IDENTITY: "applypack-document-worker-v2-liberation-sans-2.1.5",
+   APP_DOCUMENT_WORKER_FONT_SHA256: DOCUMENT_FONT_CONTRACT.styles.regular,
+   APP_DOCUMENT_WORKER_FONT_MANIFEST_SHA256: DOCUMENT_FONT_CONTRACT.manifestSha256,
    APP_DOCUMENT_WORKER_IMAGE_DIGEST: sha256,
    APP_DOCUMENT_WORKER_NETWORK_ATTESTATION_SHA256: sha256,
   }).ready).toBe(false);
@@ -60,7 +68,8 @@ describe("renderer readiness uses current approval and actual pins", () => {
  it("rejects revoked approval, wrong policy, wrong font, missing PDF and changed runtime", () => {
   expect(rendererApprovalMatches(approval, runtime())).toBe(true);
   for (const changed of [{ materials_generation_approved: false }, { document_safety_policy: "malware-clean" },
-   { document_font_family: "Liberation Sans" }, { material_output_formats: ["DOCX"] }, { document_renderer_identity: "old-renderer" },
+   { document_font_family: "Arial" }, { document_font_manifest_sha256: "0".repeat(64) },
+   { material_output_formats: ["DOCX"] }, { document_renderer_identity: "old-renderer" },
    { document_font_sha256: "0".repeat(64) }]) expect(rendererApprovalMatches({ ...approval, ...changed }, runtime())).toBe(false);
  });
  it("reads configured files and rejects substituted bytes", async () => {

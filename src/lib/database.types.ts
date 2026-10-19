@@ -153,6 +153,44 @@ export type Database = {
           },
         ]
       }
+      ap_applicant_document_format_requests: {
+        Row: {
+          customer_id: string
+          delivery_format: string
+          id: string
+          material_line_id: string
+          recorded_at: string
+          recorded_by: string
+          request_reference_sha256: string
+        }
+        Insert: {
+          customer_id: string
+          delivery_format: string
+          id: string
+          material_line_id: string
+          recorded_at?: string
+          recorded_by: string
+          request_reference_sha256: string
+        }
+        Update: {
+          customer_id?: string
+          delivery_format?: string
+          id?: string
+          material_line_id?: string
+          recorded_at?: string
+          recorded_by?: string
+          request_reference_sha256?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_applicant_document_format_requests_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: true
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_artifact_quality_reviews: {
         Row: {
           arial_font_sha256: string | null
@@ -1484,6 +1522,7 @@ export type Database = {
           checkout_enabled: boolean | null
           currency: string
           document_font_family: string | null
+          document_font_manifest_sha256: string | null
           document_font_sha256: string | null
           document_renderer_identity: string | null
           document_safety_policy: string | null
@@ -1532,6 +1571,7 @@ export type Database = {
           checkout_enabled?: boolean | null
           currency?: string
           document_font_family?: string | null
+          document_font_manifest_sha256?: string | null
           document_font_sha256?: string | null
           document_renderer_identity?: string | null
           document_safety_policy?: string | null
@@ -1580,6 +1620,7 @@ export type Database = {
           checkout_enabled?: boolean | null
           currency?: string
           document_font_family?: string | null
+          document_font_manifest_sha256?: string | null
           document_font_sha256?: string | null
           document_renderer_identity?: string | null
           document_safety_policy?: string | null
@@ -12228,6 +12269,16 @@ export type Database = {
       }
       ap_reconcile_verified_source_run: {
         Args: { p_actor_id: string; p_run_id: string }
+        Returns: Json
+      }
+      ap_record_applicant_document_format_request: {
+        Args: {
+          p_actor_id: string
+          p_delivery_format: string
+          p_material_line_id: string
+          p_request_id: string
+          p_request_reference_sha256: string
+        }
         Returns: Json
       }
       ap_record_fact_presentation: {

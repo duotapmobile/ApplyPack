@@ -4,6 +4,7 @@ import type Stripe from "stripe";
 import { z } from "zod";
 import { canonicalApplicationOrigin, deterministicUuid, postgresBytea } from "@/lib/commerce/server";
 import { documentRendererConfiguration } from "@/lib/documents/renderer";
+import { DOCUMENT_FONT_CONTRACT } from "@/lib/documents/requirements";
 import { documentWorkerConfiguration } from "@/lib/files/aws-document-worker";
 
 import { careerBreakPresentation, MATERIAL_LINE_PRICE_CENTS, materialTotalCents } from "@/lib/materials/contract";
@@ -89,6 +90,7 @@ type CommerceConfiguration = {
   material_output_formats: string[];
   document_renderer_identity: string | null;
   document_font_sha256: string | null;
+  document_font_manifest_sha256: string | null;
   document_safety_policy: string | null;
 };
 
@@ -151,7 +153,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "The canonical secure site URL is not configured." }, { status: 503 });
   }
   const { data: configuration, error: configurationError } = await admin.from("ap_commerce_configuration")
-    .select("canonical_site_url,tax_configuration_approved,tax_approval_reference,tax_treatment,material_line_price_cents,currency,tax_inclusive,pricing_version,tax_version,materials_rule_ttl_seconds,immediate_payment_methods,checkout_enabled,materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_sha256,document_safety_policy")
+    .select("canonical_site_url,tax_configuration_approved,tax_approval_reference,tax_treatment,material_line_price_cents,currency,tax_inclusive,pricing_version,tax_version,materials_rule_ttl_seconds,immediate_payment_methods,checkout_enabled,materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_sha256,document_font_manifest_sha256,document_safety_policy")
     .eq("singleton", true).maybeSingle();
   const commerce = configuration as CommerceConfiguration | null;
   const renderer = documentRendererConfiguration();
@@ -159,8 +161,10 @@ export async function POST(request: Request) {
   const productionRendererReady = process.env.APP_DEPLOYMENT_ENV === "production"
     ? worker.ready && worker.identity === commerce?.document_renderer_identity
       && worker.fontSha256 === commerce?.document_font_sha256
+      && worker.fontManifestSha256 === commerce?.document_font_manifest_sha256
     : renderer.ready && renderer.identity === commerce?.document_renderer_identity
-      && renderer.documentFont.sha256 === commerce?.document_font_sha256;
+      && renderer.documentFont.sha256 === commerce?.document_font_sha256
+      && commerce?.document_font_manifest_sha256 === DOCUMENT_FONT_CONTRACT.manifestSha256;
 
   if (configurationError || !commerce || !commerce.checkout_enabled
     || commerce.canonical_site_url !== applicationOrigin

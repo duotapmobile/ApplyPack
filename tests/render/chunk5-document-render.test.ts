@@ -35,7 +35,11 @@ type RenderRecord = {
   searchablePdfSha256: string;
   pageImageSha256: string[];
   rendererIdentity: string;
+  documentFontFamily: string;
+  documentFontVersion: string;
+  documentFontManifestSha256: string;
   documentFontSha256: string;
+  documentFontStyleSha256: Record<string, string>;
   documentFontResolved: true;
   taggedPdf: true;
   metadataVerified: true;
@@ -275,7 +279,11 @@ async function renderArtifact(
     searchablePdfSha256: rendered.searchablePdfSha256,
     pageImageSha256: rendered.pageImages.map((page) => page.sha256),
     rendererIdentity: rendered.rendererIdentity,
+    documentFontFamily: rendered.documentFontFamily,
+    documentFontVersion: rendered.documentFontVersion,
+    documentFontManifestSha256: rendered.documentFontManifestSha256,
     documentFontSha256: rendered.documentFontSha256,
+    documentFontStyleSha256: rendered.documentFontStyleSha256,
     documentFontResolved: rendered.documentFontResolved,
     taggedPdf: rendered.taggedPdf,
     metadataVerified: rendered.metadataVerified,
@@ -324,7 +332,7 @@ describe("Chunk 5 real document rendering", () => {
     expect(records).toHaveLength(7);
   });
 
-  it("renders representative one- and two-page DOCX artifacts with exact text and Arial", async () => {
+  it("renders representative one- and two-page DOCX artifacts with exact text and pinned Liberation Sans", async () => {
     const configuration = documentRendererConfiguration();
     expect(configuration.ready).toBe(true);
     const directory = outputDirectory();
@@ -342,6 +350,10 @@ describe("Chunk 5 real document rendering", () => {
     expect(records).toHaveLength(7);
     expect(records.reduce((total, record) => total + record.actualPages, 0)).toBe(8);
     expect(records.every((record) => record.expectedPages === record.actualPages && record.documentFontResolved)).toBe(true);
+    expect(records.every((record) => record.documentFontFamily === "Liberation Sans"
+      && record.documentFontVersion === "2.1.5"
+      && record.documentFontManifestSha256 === "d89582771ff8dde19015f5aa3965810d656f93fcb08cee6280497e780de614bb"
+      && Object.keys(record.documentFontStyleSha256).length === 4)).toBe(true);
     const report = {
       schemaVersion: "applypack-chunk5-render-evidence-v1",
       createdAt: new Date().toISOString(),
@@ -357,6 +369,9 @@ describe("Chunk 5 real document rendering", () => {
         pdfPpm: configuration.tools.pdfPpm.sha256,
         documentFont: configuration.documentFont.sha256,
       },
+      documentFontManifestSha256: configuration.documentFontManifestSha256,
+      documentFontStyleSha256: Object.fromEntries(Object.entries(configuration.documentFontStyles)
+        .map(([style, pin]) => [style, pin.sha256])),
       records,
     };
     await writeFile(resolve(directory, "render-report.json"), JSON.stringify(report, null, 2) + "\n", { flag: "wx" });

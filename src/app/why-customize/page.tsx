@@ -279,7 +279,7 @@ export default function WhyCustomizePage() {
                 </li>
                 <li>
                   <strong>ApplyPack document-generation standard</strong>
-                  <span>Our governed standard requires single-column Arial documents, selectable text, conventional headings, verified factual provenance, and human content and visual approval before release.</span>
+                  <span>Our governed standard requires single-column Liberation Sans documents, selectable text, conventional headings, verified factual provenance, and human content and visual approval before release.</span>
                 </li>
                 <li>
                   <strong>ApplyPack local document-extraction audit, September 7, 2026</strong>
