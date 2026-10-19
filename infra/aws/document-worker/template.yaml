@@ -6,10 +6,10 @@ Parameters:
     AllowedValues: [staging, production]
     Default: production
     Description: Environment boundary for resource identity and KMS encryption context
-  WorkerImageUri:
+  WorkerImageDigest:
     Type: String
-    AllowedPattern: "^[0-9]{12}\\.dkr\\.ecr\\.us-east-1\\.amazonaws\\.com/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$"
-    Description: Immutable ECR image URI including its sha256 digest
+    AllowedPattern: "^sha256:[0-9a-f]{64}$"
+    Description: Immutable image digest from the current account's environment repository
   VpcId:
     Type: AWS::EC2::VPC::Id
   PrivateSubnetIds:
@@ -36,6 +36,10 @@ Parameters:
     Type: String
     MinLength: 1
     AllowedPattern: "^[A-Za-z0-9._:-]{1,64}$"
+  WorkerRolePermissionsBoundaryArn:
+    Type: String
+    AllowedPattern: "^arn:aws:iam::[0-9]{12}:policy/applypack/(staging|production)/applypack-(staging|production)-document-worker-boundary$"
+    Description: Environment-specific permissions boundary for the Lambda execution role
 Rules:
   RegionMustBeUsEast1:
     Assertions:
@@ -47,6 +51,7 @@ Resources:
   TemporaryBucket:
     Type: AWS::S3::Bucket
     Properties:
+      BucketName: !Sub "applypack-${AWS::AccountId}-${DeploymentEnvironment}-document-worker-temp"
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -93,12 +98,17 @@ Resources:
             Principal: "*"
             Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
             Resource: !Sub "${TemporaryBucket.Arn}/ephemeral/*"
+            Condition:
+              Bool: { "aws:SecureTransport": "true" }
       Tags:
         - { Key: Application, Value: ApplyPack }
         - { Key: Environment, Value: !Ref DeploymentEnvironment }
   WorkerRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: !Sub "applypack-${DeploymentEnvironment}-document-worker-execution"
+      Path: !Sub "/applypack/${DeploymentEnvironment}/"
+      PermissionsBoundary: !Ref WorkerRolePermissionsBoundaryArn
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -113,6 +123,8 @@ Resources:
               - Effect: Allow
                 Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
                 Resource: !Sub "${TemporaryBucket.Arn}/ephemeral/*"
+                Condition:
+                  Bool: { "aws:SecureTransport": "true" }
               - Effect: Allow
                 Action:
                   - ec2:CreateNetworkInterface
@@ -122,6 +134,8 @@ Resources:
                   - ec2:AssignPrivateIpAddresses
                   - ec2:UnassignPrivateIpAddresses
                 Resource: "*"
+                Condition:
+                  StringEquals: { "aws:RequestedRegion": us-east-1 }
       Tags:
         - { Key: Application, Value: ApplyPack }
         - { Key: Environment, Value: !Ref DeploymentEnvironment }
@@ -130,7 +144,8 @@ Resources:
     Properties:
       FunctionName: !Sub "applypack-${DeploymentEnvironment}-document-worker"
       PackageType: Image
-      Code: { ImageUri: !Ref WorkerImageUri }
+      Code:
+        ImageUri: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/applypack-${DeploymentEnvironment}-document-worker@${WorkerImageDigest}"
       Role: !GetAtt WorkerRole.Arn
       Architectures: [x86_64]
       MemorySize: 512
@@ -143,7 +158,7 @@ Resources:
       Environment:
         Variables:
           PYTHONUNBUFFERED: "1"
-          APPLYPACK_WORKER_IMAGE_URI: !Ref WorkerImageUri
+          APPLYPACK_WORKER_IMAGE_URI: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/applypack-${DeploymentEnvironment}-document-worker@${WorkerImageDigest}"
           APPLYPACK_WORKER_DEPLOYMENT_ENV: !Ref DeploymentEnvironment
       Tags:
         - { Key: Application, Value: ApplyPack }
@@ -152,7 +167,7 @@ Resources:
     Type: AWS::Lambda::Version
     Properties:
       FunctionName: !Ref Worker
-      Description: !Sub "ApplyPack immutable document worker ${WorkerImageUri}"
+      Description: !Sub "ApplyPack immutable document worker ${WorkerImageDigest}"
   WebRuntimePolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
@@ -168,6 +183,8 @@ Resources:
           - Effect: Allow
             Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
             Resource: !Sub "${TemporaryBucket.Arn}/ephemeral/*"
+            Condition:
+              Bool: { "aws:SecureTransport": "true" }
           - Effect: Allow
             Action: [kms:Encrypt, kms:Decrypt]
             Resource: !Ref KmsKeyArn
@@ -233,13 +250,14 @@ Outputs:
     Value: d89582771ff8dde19015f5aa3965810d656f93fcb08cee6280497e780de614bb
   WorkerImageUri:
     Description: Immutable ECR image URI used by this environment
-    Value: !Ref WorkerImageUri
+    Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/applypack-${DeploymentEnvironment}-document-worker@${WorkerImageDigest}"
   WorkerImageDigest:
     Description: APP_DOCUMENT_WORKER_IMAGE_DIGEST
     Value:
-      Fn::Select:
-        - 1
-        - Fn::Split: ["@sha256:", !Ref WorkerImageUri]
+      Fn::Select: [1, { Fn::Split: [":", !Ref WorkerImageDigest] }]
+  EcrRepositoryName:
+    Description: Exact environment-scoped ECR repository
+    Value: !Sub "applypack-${DeploymentEnvironment}-document-worker"
   KmsKeyIdentity:
     Description: APP_KMS_KEY_IDENTITY
     Value: !Ref KmsKeyArn

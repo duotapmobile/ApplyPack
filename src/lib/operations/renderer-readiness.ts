@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { documentRendererConfiguration } from "@/lib/documents/renderer";
 import { DOCUMENT_FONT_CONTRACT } from "@/lib/documents/requirements";
-import { documentWorkerConfiguration, probeDocumentWorker } from "@/lib/files/aws-document-worker";
+import { documentWorkerConfiguration, documentWorkerExecutionMode, probeDocumentWorker } from "@/lib/files/aws-document-worker";
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 type Renderer = ReturnType<typeof documentRendererConfiguration>;
@@ -52,7 +52,8 @@ export async function checkDocumentRendererReadiness(admin: AdminClient) {
     .eq("singleton", true).maybeSingle();
   if (result.error) return false;
   const approval = result.data as Approval | null;
-  if (process.env.APP_DEPLOYMENT_ENV === "production") {
+  const workerMode = documentWorkerExecutionMode();
+  if (workerMode === "remote") {
     const worker = documentWorkerConfiguration();
     return Boolean(approval && worker.ready && approval.materials_generation_approved
       && approval.materials_generation_approval_reference?.trim()
@@ -65,6 +66,7 @@ export async function checkDocumentRendererReadiness(admin: AdminClient) {
       && ["DOCX", "PDF"].every((format) => approval.material_output_formats.includes(format))
       && await probeDocumentWorker());
   }
+  if (workerMode === "unavailable") return false;
   // The approval is never cached: revocation takes effect on the next readiness read.
   return rendererApprovalMatches(approval, runtime) && await rendererFilesMatch(runtime);
 }

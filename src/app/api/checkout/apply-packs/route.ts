@@ -5,7 +5,7 @@ import { z } from "zod";
 import { canonicalApplicationOrigin, deterministicUuid, postgresBytea } from "@/lib/commerce/server";
 import { documentRendererConfiguration } from "@/lib/documents/renderer";
 import { DOCUMENT_FONT_CONTRACT } from "@/lib/documents/requirements";
-import { documentWorkerConfiguration } from "@/lib/files/aws-document-worker";
+import { documentWorkerConfiguration, documentWorkerExecutionMode } from "@/lib/files/aws-document-worker";
 import { manualLaunchFixedTotalIsSafe, STRIPE_NO_ADDED_TAX } from "@/lib/commerce/fixed-total";
 
 import { careerBreakPresentation, MATERIAL_LINE_PRICE_CENTS, materialTotalCents } from "@/lib/materials/contract";
@@ -158,11 +158,12 @@ export async function POST(request: Request) {
   const commerce = configuration as CommerceConfiguration | null;
   const renderer = documentRendererConfiguration();
   const worker = documentWorkerConfiguration();
-  const productionRendererReady = process.env.APP_DEPLOYMENT_ENV === "production"
+  const workerMode = documentWorkerExecutionMode();
+  const productionRendererReady = workerMode === "remote"
     ? worker.ready && worker.identity === commerce?.document_renderer_identity
       && worker.fontSha256 === commerce?.document_font_sha256
       && worker.fontManifestSha256 === commerce?.document_font_manifest_sha256
-    : renderer.ready && renderer.identity === commerce?.document_renderer_identity
+    : workerMode === "local" && renderer.ready && renderer.identity === commerce?.document_renderer_identity
       && renderer.documentFont.sha256 === commerce?.document_font_sha256
       && commerce?.document_font_manifest_sha256 === DOCUMENT_FONT_CONTRACT.manifestSha256;
 

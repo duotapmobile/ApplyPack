@@ -85,10 +85,12 @@ export function documentRendererConfiguration(environment: Partial<NodeJS.Proces
 }
 
 export async function renderDocumentForQa(input: DocumentRenderInput): Promise<DocumentRenderResult> {
-  if (process.env.APP_DEPLOYMENT_ENV === "production") {
-    const { renderWithDocumentWorker } = await import("@/lib/files/aws-document-worker");
+  const { documentWorkerExecutionMode, renderWithDocumentWorker } = await import("@/lib/files/aws-document-worker");
+  const mode = documentWorkerExecutionMode();
+  if (mode === "remote") {
     return renderWithDocumentWorker(input);
   }
+  if (mode === "unavailable") throw new Error("document_worker_not_configured");
   return renderDocumentLocallyForQa(input);
 }
 

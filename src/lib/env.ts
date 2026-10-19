@@ -57,6 +57,7 @@ const serverSchema = z.object({
   APP_DOCUMENT_FONT_BOLD_ITALIC_FILE_SHA256: z.string().regex(/^[0-9a-f]{64}$/i).optional().or(z.literal("")),
   APP_DOCUMENT_FONT_MANIFEST_SHA256: z.string().regex(/^[0-9a-f]{64}$/i).optional().or(z.literal("")),
   APP_DOCUMENT_WORKER_DEPLOYMENT_ENV: z.enum(["staging", "production"]).optional(),
+  APP_DOCUMENT_WORKER_PREFLIGHT_RECEIPT_SHA256: z.string().regex(/^[0-9a-f]{64}$/i).optional().or(z.literal("")),
   APP_SANDBOXED_PARSER_IDENTITY: z.string().optional(),
   APP_PARSER_MAX_EXPANDED_BYTES: z.preprocess((value) => value === "" ? undefined : value, z.coerce.number().int().positive().optional()),
   APP_PARSER_MAX_PAGES: z.preprocess((value) => value === "" ? undefined : value, z.coerce.number().int().positive().optional()),

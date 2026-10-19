@@ -11,6 +11,7 @@ This runbook deploys the immutable Liberation Sans document worker separately fo
 - Select private subnets whose route tables have no NAT gateway or internet-gateway default route. The template permits worker egress only to the regional S3 managed prefix list over TCP 443 and creates an S3 gateway endpoint.
 - Reserved Lambda concurrency remains `2`, memory `512 MB`, timeout `30 seconds`, temporary S3 objects expire after one day, ECR retains three images, and the account-wide budget remains USD 5 per month.
 - Exactly one stack owns the account-wide `ApplyPack-new-AWS-cost-ceiling` budget. Pass `CreateBudget=true` only for that stack and `false` for the other stack.
+- A `networkIsolationVerified=true` response is not readiness evidence by itself. Each environment requires the canonical preflight receipt digest and the canonical synthetic-probe receipt digest produced by the checked-in harnesses.
 
 Stop before deployment when the principal, MFA, account, region, VPC, subnet route tables, prefix list, KMS key, runtime identity, or budget ownership cannot be verified.
 
@@ -30,28 +31,40 @@ The validator parses the CloudFormation YAML with its version-locked parser and 
 
 ```powershell
 aws cloudformation validate-template --region us-east-1 --template-body file://infra/aws/document-worker/template.yaml
+aws cloudformation validate-template --region us-east-1 --template-body file://infra/aws/document-worker/deployment-role-template.yaml
 ```
+
+## Bootstrap the environment deployment role and repository
+
+An authorized, non-root IAM bootstrap identity creates one service-role stack per environment. The same stack creates the exact `applypack-<environment>-document-worker` repository with immutable tags, scan-on-push, AES-256 encryption, a three-image lifecycle, and a Lambda-only pull policy scoped to the environment function. Do not reuse the staging role, boundaries, or repository for production. This bootstrap is the only step that needs permission to create the named CloudFormation role, boundaries, and repository.
+
+```powershell
+$apRegion = 'us-east-1'
+$apEnvironment = 'staging'
+$apDeploymentRoleStack = "applypack-$apEnvironment-document-worker-deployment-role"
+aws cloudformation deploy --region $apRegion --stack-name $apDeploymentRoleStack --template-file infra/aws/document-worker/deployment-role-template.yaml --capabilities CAPABILITY_NAMED_IAM --parameter-overrides DeploymentEnvironment=$apEnvironment
+if ($LASTEXITCODE -ne 0) { throw 'Environment deployment-role bootstrap failed.' }
+$apDeploymentOutputs = aws cloudformation describe-stacks --region $apRegion --stack-name $apDeploymentRoleStack --query 'Stacks[0].Outputs' --output json | ConvertFrom-Json
+$apDeploymentRoleArn = ($apDeploymentOutputs | Where-Object OutputKey -eq 'DeploymentRoleArn').OutputValue
+$apWorkerRoleBoundaryArn = ($apDeploymentOutputs | Where-Object OutputKey -eq 'WorkerRoleBoundaryArn').OutputValue
+$apRepository = ($apDeploymentOutputs | Where-Object OutputKey -eq 'EcrRepositoryName').OutputValue
+if (!$apDeploymentRoleArn -or !$apWorkerRoleBoundaryArn -or $apRepository -ne "applypack-$apEnvironment-document-worker") { throw 'Deployment-role bootstrap outputs are incomplete or cross-environment.' }
+```
+
+The service role has a permissions boundary attached as both its identity policy and ceiling. `iam:PassRole` is limited to the environment execution role and `lambda.amazonaws.com`; execution-role creation requires the environment worker boundary. Main-stack deployment still declares `CAPABILITY_NAMED_IAM` and passes `--role-arn` so CloudFormation cannot fall back to the operator identity.
 
 ## Build and push an environment image
 
 Set `$apEnvironment` to exactly `staging` or `production`. Do not reuse the other environment's ECR repository.
 
 ```powershell
-$apRegion = 'us-east-1'
-$apEnvironment = 'staging'
-$apRepository = "applypack-$apEnvironment-document-worker"
 $apImageTag = git rev-parse HEAD
 $apAccountId = aws sts get-caller-identity --query Account --output text
 if ($LASTEXITCODE -ne 0 -or $apAccountId -notmatch '^\d{12}$') { throw 'Scoped AWS identity is unavailable.' }
 $apRegistry = "$apAccountId.dkr.ecr.$apRegion.amazonaws.com"
 
 aws ecr describe-repositories --region $apRegion --repository-names $apRepository *> $null
-if ($LASTEXITCODE -ne 0) {
-  aws ecr create-repository --region $apRegion --repository-name $apRepository --image-scanning-configuration scanOnPush=true --encryption-configuration encryptionType=AES256 --tags Key=Application,Value=ApplyPack Key=Environment,Value=$apEnvironment
-  if ($LASTEXITCODE -ne 0) { throw 'The environment ECR repository could not be created safely.' }
-}
-aws ecr put-lifecycle-policy --region $apRegion --repository-name $apRepository --lifecycle-policy-text file://infra/aws/document-worker/ecr-lifecycle-policy.json
-if ($LASTEXITCODE -ne 0) { throw 'The bounded ECR lifecycle could not be applied.' }
+if ($LASTEXITCODE -ne 0) { throw 'The environment ECR repository bootstrap is missing.' }
 
 aws ecr get-login-password --region $apRegion | docker login --username AWS --password-stdin $apRegistry
 if ($LASTEXITCODE -ne 0) { throw 'ECR login failed.' }
@@ -62,10 +75,27 @@ docker push "$apRegistry/${apRepository}:${apImageTag}"
 if ($LASTEXITCODE -ne 0) { throw 'The worker image did not push.' }
 $apImageDigest = aws ecr describe-images --region $apRegion --repository-name $apRepository --image-ids imageTag=$apImageTag --query 'imageDetails[0].imageDigest' --output text
 if ($apImageDigest -notmatch '^sha256:[0-9a-f]{64}$') { throw 'An immutable image digest was not returned.' }
-$apWorkerImageUri = "$apRegistry/$apRepository@$apImageDigest"
 ```
 
-The image is environment-agnostic source, but each environment receives a distinct repository receipt and immutable digest reference.
+The image is environment-agnostic source, but each environment receives a distinct repository receipt and immutable digest reference. The main template accepts only `$apImageDigest`; it constructs the URI from the current `AWS::AccountId`, `us-east-1`, and exact `applypack-$apEnvironment-document-worker` repository, so a caller cannot inject a cross-account or cross-environment image URI.
+
+## Provider-backed read-only preflight receipt
+
+Before either stack deploy, run the checked-in harness under the scoped MFA-authenticated deployment identity. It uses AWS CLI read APIs only. It resolves the AWS-owned `com.amazonaws.us-east-1.s3` managed prefix list, resolves every subnet's effective route-table association, rejects every route except VPC-local and the exact S3 endpoint prefix-list route, and verifies the exact current-account ECR repository, immutable tags, scan-on-push, private/absent repository policy, requested digest and source tag, and a completed scan with zero critical or high findings.
+
+```powershell
+$apSourceSha = git rev-parse HEAD
+$apEvidenceDirectory = Join-Path $env:TEMP "applypack-$apEnvironment-document-worker-evidence"
+node scripts/aws-document-worker-preflight.mjs --environment $apEnvironment --vpc-id $apVpcId --subnet-id '<private-subnet-a>' --subnet-id '<private-subnet-b>' --route-table-id '<effective-route-table-a>' --route-table-id '<effective-route-table-b>' --source-commit-sha $apSourceSha --image-tag $apImageTag --image-digest $apImageDigest --output-directory $apEvidenceDirectory
+if ($LASTEXITCODE -ne 0) { throw 'AWS document-worker provider preflight failed.' }
+$apPreflightDigestLine = Get-Content -Raw -LiteralPath (Join-Path $apEvidenceDirectory "aws-document-worker-preflight-$apEnvironment.sha256")
+$apPreflightReceiptSha256 = ($apPreflightDigestLine -split '\s+')[0]
+if ($apPreflightReceiptSha256 -notmatch '^[0-9a-f]{64}$') { throw 'Canonical preflight receipt digest is missing.' }
+$apS3PrefixListId = aws ec2 describe-managed-prefix-lists --region us-east-1 --filters Name=prefix-list-name,Values=com.amazonaws.us-east-1.s3 --query 'PrefixLists[?OwnerId==`AWS` && State==`create-complete`].PrefixListId | [0]' --output text
+if ($LASTEXITCODE -ne 0 -or $apS3PrefixListId -notmatch '^pl-[a-z0-9]+$') { throw 'AWS-owned S3 prefix list could not be resolved.' }
+```
+
+The JSON receipt contains SHA-256 identities instead of account, principal, VPC, subnet, route-table, or prefix-list IDs. Do not copy the raw CLI inputs into evidence.
 
 ## Staging stack
 
@@ -77,20 +107,33 @@ $apStackName = 'applypack-staging-document-worker'
 $apVpcId = '<approved-private-vpc-id>'
 $apPrivateSubnetIds = '<private-subnet-a>,<private-subnet-b>'
 $apPrivateRouteTableIds = '<private-route-table-a>,<private-route-table-b>'
-$apS3PrefixListId = '<us-east-1-s3-prefix-list-id>'
 $apKmsKeyArn = '<existing-customer-managed-key-arn>'
 $apKmsKeyVersion = '<reviewed-key-version>'
 $apPrimaryAlertEmail = '<primary-budget-recipient>'
 $apSecondaryAlertEmail = '<secondary-budget-recipient>'
 
-aws cloudformation deploy --region us-east-1 --stack-name $apStackName --template-file infra/aws/document-worker/template.yaml --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset --parameter-overrides DeploymentEnvironment=$apEnvironment WorkerImageUri=$apWorkerImageUri VpcId=$apVpcId PrivateSubnetIds=$apPrivateSubnetIds PrivateRouteTableIds=$apPrivateRouteTableIds S3PrefixListId=$apS3PrefixListId KmsKeyArn=$apKmsKeyArn KmsKeyVersion=$apKmsKeyVersion PrimaryAlertEmail=$apPrimaryAlertEmail SecondaryAlertEmail=$apSecondaryAlertEmail CreateBudget=true
+aws cloudformation deploy --region us-east-1 --stack-name $apStackName --template-file infra/aws/document-worker/template.yaml --role-arn $apDeploymentRoleArn --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset --parameter-overrides DeploymentEnvironment=$apEnvironment WorkerImageDigest=$apImageDigest VpcId=$apVpcId PrivateSubnetIds=$apPrivateSubnetIds PrivateRouteTableIds=$apPrivateRouteTableIds S3PrefixListId=$apS3PrefixListId KmsKeyArn=$apKmsKeyArn KmsKeyVersion=$apKmsKeyVersion WorkerRolePermissionsBoundaryArn=$apWorkerRoleBoundaryArn PrimaryAlertEmail=$apPrimaryAlertEmail SecondaryAlertEmail=$apSecondaryAlertEmail CreateBudget=true
 if ($LASTEXITCODE -ne 0) { throw 'Staging document-worker stack deployment failed.' }
 aws cloudformation describe-stacks --region us-east-1 --stack-name $apStackName --query 'Stacks[0].Outputs'
 ```
 
 If the stable account-wide budget already belongs to another reviewed stack, use `CreateBudget=false` instead. Attach only this stack's `WebRuntimePolicyArn` output to the dedicated staging workload identity.
 
-After the synthetic extraction, render, font, immutable-version, S3 cleanup, and outbound-network-denial probes pass, configure only the staging service with:
+After deployment, read the stack outputs locally and run the checked-in probe under the dedicated staging runtime identity, not the deployment role:
+
+```powershell
+$apStackOutputs = aws cloudformation describe-stacks --region us-east-1 --stack-name $apStackName --query 'Stacks[0].Outputs' --output json | ConvertFrom-Json
+$apBucket = ($apStackOutputs | Where-Object OutputKey -eq 'BucketName').OutputValue
+$apFunctionVersionArn = ($apStackOutputs | Where-Object OutputKey -eq 'FunctionVersionArn').OutputValue
+$apImageDigestWithoutPrefix = $apImageDigest -replace '^sha256:', ''
+node scripts/aws-document-worker-synthetic-probe.mjs --environment $apEnvironment --bucket $apBucket --function-version-arn $apFunctionVersionArn --kms-key-arn $apKmsKeyArn --kms-key-version $apKmsKeyVersion --image-digest $apImageDigestWithoutPrefix --preflight-receipt-sha256 $apPreflightReceiptSha256 --source-commit-sha $apSourceSha --output-directory $apEvidenceDirectory
+if ($LASTEXITCODE -ne 0) { throw 'Synthetic worker/KMS probe failed or cleanup was incomplete.' }
+$apProbeDigestLine = Get-Content -Raw -LiteralPath (Join-Path $apEvidenceDirectory "aws-document-worker-synthetic-probe-$apEnvironment.sha256")
+$apProbeReceiptSha256 = ($apProbeDigestLine -split '\s+')[0]
+if ($apProbeReceiptSha256 -notmatch '^[0-9a-f]{64}$') { throw 'Canonical synthetic-probe receipt digest is missing.' }
+```
+
+Configure only the staging service with:
 
 ```text
 APP_DEPLOYMENT_ENV=staging
@@ -102,7 +145,8 @@ APP_DOCUMENT_WORKER_IDENTITY=<WorkerIdentity output>
 APP_DOCUMENT_WORKER_FONT_SHA256=<WorkerFontSha256 output>
 APP_DOCUMENT_WORKER_FONT_MANIFEST_SHA256=<WorkerFontManifestSha256 output>
 APP_DOCUMENT_WORKER_IMAGE_DIGEST=<WorkerImageDigest output>
-APP_DOCUMENT_WORKER_NETWORK_ATTESTATION_SHA256=<sha256 of the sanitized staging probe packet>
+APP_DOCUMENT_WORKER_PREFLIGHT_RECEIPT_SHA256=<canonical preflight receipt SHA-256>
+APP_DOCUMENT_WORKER_NETWORK_ATTESTATION_SHA256=<canonical synthetic-probe receipt SHA-256>
 APP_KMS_PROVIDER=aws
 APP_KMS_KEY_IDENTITY=<reviewed staging-permitted key ARN>
 APP_KMS_KEY_VERSION=<reviewed key version>
@@ -110,7 +154,7 @@ APP_KMS_ENCRYPTION_CONTEXT_VERSION=<reviewed application context version>
 APP_SENSITIVE_PAYLOAD_ENCRYPTION_ENABLED=true
 ```
 
-The network-attestation packet contains only the deployment name, immutable function version ARN, image digest, worker identity, font hashes, `networkIsolationVerified=true`, probe results, and timestamps. It contains no account ID outside the ARN, customer data, object key, bucket name, credentials, or alert address. Store only its SHA-256 in readiness variables and activation records.
+The application uses the AWS worker for staging extraction, probe, readiness, checkout, and generation as soon as this complete exact staging configuration is present. A partial or cross-environment staging configuration fails closed instead of silently falling back to local tools. Production always requires the remote worker. Store only the two receipt SHA-256 values in readiness configuration; the existing activation record stores the synthetic-probe receipt digest.
 
 ## Production stack
 
@@ -123,15 +167,13 @@ $apRepository = 'applypack-production-document-worker'
 $apVpcId = '<approved-production-private-vpc-id>'
 $apPrivateSubnetIds = '<production-private-subnet-a>,<production-private-subnet-b>'
 $apPrivateRouteTableIds = '<production-private-route-table-a>,<production-private-route-table-b>'
-$apS3PrefixListId = '<us-east-1-s3-prefix-list-id>'
 $apKmsKeyArn = '<existing-production-permitted-key-arn>'
 $apKmsKeyVersion = '<reviewed-production-key-version>'
 $apPrimaryAlertEmail = '<primary-budget-recipient>'
 $apSecondaryAlertEmail = '<secondary-budget-recipient>'
 
-# Repeat the build/push section with apEnvironment=production so apWorkerImageUri
-# resolves to the production ECR repository and an immutable digest.
-aws cloudformation deploy --region us-east-1 --stack-name $apStackName --template-file infra/aws/document-worker/template.yaml --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset --parameter-overrides DeploymentEnvironment=$apEnvironment WorkerImageUri=$apWorkerImageUri VpcId=$apVpcId PrivateSubnetIds=$apPrivateSubnetIds PrivateRouteTableIds=$apPrivateRouteTableIds S3PrefixListId=$apS3PrefixListId KmsKeyArn=$apKmsKeyArn KmsKeyVersion=$apKmsKeyVersion PrimaryAlertEmail=$apPrimaryAlertEmail SecondaryAlertEmail=$apSecondaryAlertEmail CreateBudget=false
+# Repeat the build/push, provider preflight, and deployment-role bootstrap sections with apEnvironment=production.
+aws cloudformation deploy --region us-east-1 --stack-name $apStackName --template-file infra/aws/document-worker/template.yaml --role-arn $apDeploymentRoleArn --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset --parameter-overrides DeploymentEnvironment=$apEnvironment WorkerImageDigest=$apImageDigest VpcId=$apVpcId PrivateSubnetIds=$apPrivateSubnetIds PrivateRouteTableIds=$apPrivateRouteTableIds S3PrefixListId=$apS3PrefixListId KmsKeyArn=$apKmsKeyArn KmsKeyVersion=$apKmsKeyVersion WorkerRolePermissionsBoundaryArn=$apWorkerRoleBoundaryArn PrimaryAlertEmail=$apPrimaryAlertEmail SecondaryAlertEmail=$apSecondaryAlertEmail CreateBudget=false
 if ($LASTEXITCODE -ne 0) { throw 'Production document-worker stack deployment failed.' }
 aws cloudformation describe-stacks --region us-east-1 --stack-name $apStackName --query 'Stacks[0].Outputs'
 ```
@@ -145,7 +187,7 @@ For each environment independently:
 1. Verify the function ARN is a numbered immutable version and the name contains the exact environment.
 2. Verify reserved concurrency `2`, memory `512`, timeout `30`, no NAT/default internet route, one S3-only egress rule, a private bucket, one-day object expiry, and the scoped endpoint policy.
 3. Run synthetic DOCX extraction and render probes; require exact four-face Liberation Sans hashes and no fallback.
-4. Require the outbound connection probe to fail and return `networkIsolationVerified=true`.
+4. Require the checked-in probe to report outbound denial and bind its canonical receipt to the exact preflight receipt; a boolean `networkIsolationVerified=true` alone is insufficient.
 5. Verify source and rendered temporary objects are deleted; lifecycle is a backstop, not the primary cleanup path.
 6. Run a synthetic KMS encrypt/decrypt round trip with the exact environment context. A staging ciphertext must not decrypt under production context, and vice versa.
 7. Confirm both budget recipients accepted the AWS notification emails and test alert delivery without recording their addresses.

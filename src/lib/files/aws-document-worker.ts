@@ -16,6 +16,17 @@ type Environment = Partial<NodeJS.ProcessEnv>;
 type WorkerOperation = "extract" | "probe-document" | "render-docx";
 const SHA256 = /^[0-9a-f]{64}$/i;
 const VERSION_ARN = /^arn:aws:lambda:us-east-1:[0-9]{12}:function:(applypack-(staging|production)-document-worker):[1-9][0-9]*$/;
+const WORKER_CONFIGURATION_NAMES = [
+  "APP_DOCUMENT_WORKER_DEPLOYMENT_ENV",
+  "APP_DOCUMENT_WORKER_FUNCTION_ARN",
+  "APP_DOCUMENT_WORKER_BUCKET",
+  "APP_DOCUMENT_WORKER_IDENTITY",
+  "APP_DOCUMENT_WORKER_FONT_SHA256",
+  "APP_DOCUMENT_WORKER_FONT_MANIFEST_SHA256",
+  "APP_DOCUMENT_WORKER_IMAGE_DIGEST",
+  "APP_DOCUMENT_WORKER_PREFLIGHT_RECEIPT_SHA256",
+  "APP_DOCUMENT_WORKER_NETWORK_ATTESTATION_SHA256",
+] as const;
 
 export function documentWorkerConfiguration(environment: Environment = process.env) {
   const region = environment.AWS_REGION?.trim();
@@ -27,6 +38,7 @@ export function documentWorkerConfiguration(environment: Environment = process.e
   const fontSha256 = environment.APP_DOCUMENT_WORKER_FONT_SHA256?.trim().toLowerCase();
   const fontManifestSha256 = environment.APP_DOCUMENT_WORKER_FONT_MANIFEST_SHA256?.trim().toLowerCase();
   const imageDigest = environment.APP_DOCUMENT_WORKER_IMAGE_DIGEST?.trim().toLowerCase();
+  const preflightReceiptSha256 = environment.APP_DOCUMENT_WORKER_PREFLIGHT_RECEIPT_SHA256?.trim().toLowerCase();
   const networkAttestationSha256 = environment.APP_DOCUMENT_WORKER_NETWORK_ATTESTATION_SHA256?.trim().toLowerCase();
   const discoveryFailed = environment.APP_RENDERER_RUNTIME_DISCOVERY_FAILED === "true";
   const functionMatch = functionArn ? VERSION_ARN.exec(functionArn) : null;
@@ -37,9 +49,35 @@ export function documentWorkerConfiguration(environment: Environment = process.e
     && identity === "applypack-document-worker-v2-liberation-sans-2.1.5"
     && fontSha256 === DOCUMENT_FONT_CONTRACT.styles.regular
     && fontManifestSha256 === DOCUMENT_FONT_CONTRACT.manifestSha256
-    && imageDigest && SHA256.test(imageDigest) && networkAttestationSha256 && SHA256.test(networkAttestationSha256));
+    && imageDigest && SHA256.test(imageDigest)
+    && preflightReceiptSha256 && SHA256.test(preflightReceiptSha256)
+    && networkAttestationSha256 && SHA256.test(networkAttestationSha256));
   return { region, deploymentEnvironment, workerDeploymentEnvironment, functionArn, bucket, identity,
-    fontSha256, fontManifestSha256, imageDigest, networkAttestationSha256, ready };
+    fontSha256, fontManifestSha256, imageDigest, preflightReceiptSha256, networkAttestationSha256, ready };
+}
+
+export function documentWorkerExecutionMode(environment: Environment = process.env) {
+  const configuration = documentWorkerConfiguration(environment);
+  const hasWorkerConfiguration = WORKER_CONFIGURATION_NAMES.some((name) => Boolean(environment[name]?.trim()));
+  if (configuration.deploymentEnvironment === "production") return configuration.ready ? "remote" : "unavailable";
+  if (configuration.deploymentEnvironment === "staging") {
+    if (configuration.ready) return "remote";
+    if (hasWorkerConfiguration) return "unavailable";
+  }
+  return "local";
+}
+
+export function workerResponseAttestationMatches(
+  configuration: ReturnType<typeof documentWorkerConfiguration>,
+  response: Record<string, unknown>,
+) {
+  return Boolean(configuration.ready
+    && response.identity === configuration.identity
+    && response.ok === true
+    && response.deploymentEnvironment === configuration.workerDeploymentEnvironment
+    && response.functionVersionArn === configuration.functionArn
+    && response.imageDigest === configuration.imageDigest
+    && response.networkIsolationVerified === true);
 }
 
 function boundedLimits(limits?: ParserLimits) {
@@ -84,11 +122,7 @@ async function invokeWorker(input: {
       throw new Error("document_worker_failed");
     }
     const body = JSON.parse(Buffer.from(response.Payload).toString("utf8")) as Record<string, unknown>;
-    if (body.identity !== configuration.identity || body.ok !== true
-      || body.deploymentEnvironment !== configuration.workerDeploymentEnvironment
-      || body.functionVersionArn !== configuration.functionArn
-      || body.imageDigest !== configuration.imageDigest
-      || body.networkIsolationVerified !== true) throw new Error("document_worker_response_invalid");
+    if (!workerResponseAttestationMatches(configuration, body)) throw new Error("document_worker_response_invalid");
     if (input.operation === "render-docx") {
       const pageCount = Number(body.pageCount);
       if (pageCount !== 1 && pageCount !== 2) throw new Error("document_worker_response_invalid");

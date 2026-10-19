@@ -20,6 +20,8 @@
     "test:rollback": "node scripts/run-supabase-rollback-test.mjs",
     "test:document-render": "vitest run --config vitest.render.config.mts",
     "validate:aws-document-worker": "node scripts/validate-aws-document-worker-template.mjs",
+    "preflight:aws-document-worker": "node scripts/aws-document-worker-preflight.mjs",
+    "probe:aws-document-worker": "node scripts/aws-document-worker-synthetic-probe.mjs",
     "types:database:check": "node scripts/check-database-types.mjs",
     "jobs:sources:validate": "node scripts/validate-job-source-batch.mjs",
     "jobs:sources:export": "node --experimental-strip-types scripts/export-job-source-inventory.mjs",

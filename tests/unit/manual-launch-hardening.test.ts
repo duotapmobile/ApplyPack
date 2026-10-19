@@ -483,7 +483,14 @@ describe("October 2 manual-launch hardening", () => {
     const readiness = source("src/lib/operations/renderer-readiness.ts");
     const launchReadiness = source("src/lib/operations/launch-readiness.ts");
     const workerTemplate = source("infra/aws/document-worker/template.yaml");
+    const deploymentRoleTemplate = source("infra/aws/document-worker/deployment-role-template.yaml");
     const workerImage = source("infra/aws/document-worker/Dockerfile");
+    const renderer = source("src/lib/documents/renderer.ts");
+    const extraction = source("src/lib/files/isolated-extraction.ts");
+    const materialsCheckout = source("src/app/api/checkout/apply-packs/route.ts");
+    const boardMaterialsCheckout = source("src/app/api/checkout/board-materials/[id]/route.ts");
+    const preflight = source("scripts/aws-document-worker-preflight.mjs");
+    const syntheticProbe = source("scripts/aws-document-worker-synthetic-probe.mjs");
     const documentRequirements = source("src/lib/documents/requirements.ts");
     const documentPolicy = source("supabase/migrations/202610030066_locked_document_generation_standard.sql");
     const documentCompatibility = source("supabase/migrations/202610030067_document_source_and_rollback_compatibility.sql");
@@ -497,7 +504,9 @@ describe("October 2 manual-launch hardening", () => {
     expect(worker).toContain('region === "us-east-1"');
     expect(worker).toContain("VERSION_ARN");
     expect(worker).toContain("APP_DOCUMENT_WORKER_IMAGE_DIGEST");
+    expect(worker).toContain("APP_DOCUMENT_WORKER_PREFLIGHT_RECEIPT_SHA256");
     expect(worker).toContain("APP_DOCUMENT_WORKER_NETWORK_ATTESTATION_SHA256");
+    expect(worker).toContain("workerResponseAttestationMatches");
     expect(worker).toContain('InvocationType: "RequestResponse"');
     expect(worker).toContain('LogType: "None"');
     expect(worker).toContain("probe-document");
@@ -518,6 +527,9 @@ describe("October 2 manual-launch hardening", () => {
     const generation = source("src/app/api/admin/material-lines/[id]/generate/route.ts");
     const applicantFormatRequest = source("src/app/api/admin/material-lines/[id]/delivery-format-request/route.ts");
     expect(generation).toContain("renderDocumentForQa");
+    for (const remoteSurface of [renderer, extraction, readiness, generation, materialsCheckout, boardMaterialsCheckout]) {
+      expect(remoteSurface).toContain("documentWorkerExecutionMode");
+    }
     expect(generation).not.toContain("renderDocumentLocallyForQa");
     expect(generation).toContain('storageBucket: "operator-drafts"');
     expect(generation).toContain("editableSourcePath");
@@ -580,11 +592,26 @@ describe("October 2 manual-launch hardening", () => {
     expect(workerTemplate).not.toContain("kms:EncryptionContext:deployment: production");
     expect(workerTemplate).toContain("RegionMustBeUsEast1:");
     expect(workerTemplate).toContain("WorkerImageDigest:");
+    expect(workerTemplate).not.toContain("  WorkerImageUri:\n    Type: String");
+    expect(workerTemplate).toContain("${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/applypack-${DeploymentEnvironment}-document-worker@${WorkerImageDigest}");
+    expect(workerTemplate).toContain("PermissionsBoundary: !Ref WorkerRolePermissionsBoundaryArn");
     expect(workerTemplate).toContain("Attach only to the web runtime identity for this DeploymentEnvironment");
     expect(worker).toContain("APP_DOCUMENT_WORKER_DEPLOYMENT_ENV");
-    expect(worker).toContain("body.deploymentEnvironment !== configuration.workerDeploymentEnvironment");
+    expect(worker).toContain("response.deploymentEnvironment === configuration.workerDeploymentEnvironment");
     expect(handler).toContain('deployment_environment not in ("staging", "production")');
     expect(handler).toContain('"deploymentEnvironment": deployment_environment');
+    expect(deploymentRoleTemplate).toContain("PermissionsBoundary: !Ref DeploymentRoleBoundary");
+    expect(deploymentRoleTemplate).toContain("iam:PassedToService: lambda.amazonaws.com");
+    expect(deploymentRoleTemplate).toContain("iam:PermissionsBoundary: !Ref WorkerRoleBoundary");
+    expect(preflight).toContain("describe-managed-prefix-lists");
+    expect(preflight).toContain("selected_route_tables_do_not_match_subnets");
+    expect(preflight).toContain("route_table_has_non_approved_path");
+    expect(preflight).toContain("imageTagMutability");
+    expect(preflight).toContain("describe-image-scan-findings");
+    expect(syntheticProbe).toContain('operation: "extract"');
+    expect(syntheticProbe).toContain('operation: "render-docx"');
+    expect(syntheticProbe).toContain("kmsCrossEnvironmentDenied");
+    expect(syntheticProbe).toContain("cleanupComplete");
     expect(documentPolicy).toContain("document_font_family='Arial'");
     expect(documentPolicy).toContain("materials_generation_approved=false");
     expect(documentPolicy).toContain("LOCKED_DOCUMENT_GENERATION_STANDARD");

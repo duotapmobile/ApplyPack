@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pipelineConfiguration, runSecureDocumentPipeline, type ParserLimits } from "./secure-pipeline";
 import { validateDocumentBytes } from "./document-safety";
-import { extractWithDocumentWorker, probeDocumentWorker } from "./aws-document-worker";
+import { documentWorkerExecutionMode, extractWithDocumentWorker, probeDocumentWorker } from "./aws-document-worker";
 
 let activeExtractions = 0;
 type IsolationFailureCode = "unsupported_platform" | "source_unavailable" | "executable_unavailable" | "namespace_or_permission_denied" | "timeout" | "malformed_output" | "process_exit" | "processing_busy" | "probe_failed";
@@ -23,9 +23,11 @@ function processFailureReason(stderr: Buffer, errorCode?: string): IsolationFail
 export const STRUCTURAL_POLICY = "isolated-structural-v1";
 export async function extractIsolatedDocument(bytes: Buffer, mimeType: string, limits?: ParserLimits) {
   if (bytes.length > 10 * 1024 * 1024 || !validateDocumentBytes(bytes, mimeType).safe) throw new Error("document_structure_rejected");
-  if (process.env.APP_DEPLOYMENT_ENV === "production") {
+  const workerMode = documentWorkerExecutionMode();
+  if (workerMode === "remote") {
     return extractWithDocumentWorker(bytes, mimeType, limits);
   }
+  if (workerMode === "unavailable") throw new IsolationFailure("probe_failed");
   if (process.platform !== "linux") throw new IsolationFailure("unsupported_platform");
   // Only the interpreter/system libraries are exposed. No application files, keys,
   // home directory, sockets or network namespace are inherited.
@@ -99,11 +101,13 @@ async function runIsolationProbe(): Promise<boolean> {
   let ready = false;
   let reason: IsolationFailureCode = "probe_failed";
   try {
-    if (process.env.APP_DEPLOYMENT_ENV === "production") {
+    const workerMode = documentWorkerExecutionMode();
+    if (workerMode === "remote") {
       ready = await probeDocumentWorker();
       isolationProbe = { at: Date.now(), ready };
       return ready;
     }
+    if (workerMode === "unavailable") throw new IsolationFailure("probe_failed");
     const JSZip = (await import("jszip")).default;
     const zip = new JSZip();
     zip.file("[Content_Types].xml", '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>');

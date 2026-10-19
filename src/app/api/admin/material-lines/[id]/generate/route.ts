@@ -13,7 +13,7 @@ import {
   type ReferenceSheetRecord,
 } from "@/lib/documents/generate";
 import { documentRendererConfiguration, renderDocumentForQa } from "@/lib/documents/renderer";
-import { documentWorkerConfiguration } from "@/lib/files/aws-document-worker";
+import { documentWorkerConfiguration, documentWorkerExecutionMode } from "@/lib/files/aws-document-worker";
 import { validateMaterialClaims } from "@/lib/documents/claim-validation";
 import { DOCUMENT_FONT_CONTRACT, selectDocumentDelivery } from "@/lib/documents/requirements";
 import { materialFilename } from "@/lib/materials/contract";
@@ -123,12 +123,13 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
   }
   const rendererConfiguration = documentRendererConfiguration();
   const workerConfiguration = documentWorkerConfiguration();
-  const rendererReady = process.env.APP_DEPLOYMENT_ENV === "production"
+  const workerMode = documentWorkerExecutionMode();
+  const rendererReady = workerMode === "remote"
     ? workerConfiguration.ready
       && workerConfiguration.identity === generationConfiguration?.document_renderer_identity
       && workerConfiguration.fontSha256 === generationConfiguration?.document_font_sha256
       && workerConfiguration.fontManifestSha256 === generationConfiguration?.document_font_manifest_sha256
-    : rendererConfiguration.ready
+    : workerMode === "local" && rendererConfiguration.ready
       && rendererConfiguration.identity === generationConfiguration?.document_renderer_identity
       && rendererConfiguration.documentFont.sha256 === generationConfiguration?.document_font_sha256
       && generationConfiguration?.document_font_manifest_sha256 === DOCUMENT_FONT_CONTRACT.manifestSha256;

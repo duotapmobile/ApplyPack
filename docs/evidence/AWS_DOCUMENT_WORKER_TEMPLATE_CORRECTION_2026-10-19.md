@@ -26,3 +26,17 @@ The correction introduces an explicit `DeploymentEnvironment` limited to `stagin
 `npm run validate:aws-document-worker` parses the template offline and fails on loss of environment binding, region restriction, digest pins, font pins, private networking, S3 scoping, KMS context, IAM resource binding, concurrency, lifecycle, or budget controls. Focused unit tests cover valid staging/production bindings and rejection of cross-environment, unnamed, preview, missing, and wrong-region workers.
 
 Provider deployment, image digest, Lambda version, KMS round trip, rendered output, network isolation, budget subscription, and staging readiness remain unproved until the commands in `docs/runbooks/AWS_DOCUMENT_WORKER.md` are executed with scoped MFA-authenticated AWS access. This source correction is not a readiness approval.
+
+## Supervisor-remediation revision
+
+The follow-up source revision closes the two review gaps without making provider changes:
+
+- An exact complete staging worker configuration now selects the remote worker for extraction, synthetic isolation probes, renderer readiness, checkout guards, and admin generation. A partial or cross-environment hosted configuration is unavailable rather than a local fallback. Production remains remote-only.
+- Readiness now requires both a provider preflight receipt digest and a synthetic probe receipt digest. Worker responses are bound to the exact environment, numbered function version, image digest, worker identity, and network result.
+- The main template accepts only an image digest and constructs the exact current-account `applypack-${DeploymentEnvironment}-document-worker` ECR URI. Environment-specific bucket, execution role, runtime policy, and permissions boundary identities prevent cross-environment policy reuse.
+- `scripts/aws-document-worker-preflight.mjs` performs read-only AWS identity, subnet-route, AWS-owned S3 prefix-list, repository-policy, immutable-tag, digest, scan-on-push, and image-scan checks and emits canonical sanitized JSON plus its file SHA-256.
+- `scripts/aws-document-worker-synthetic-probe.mjs` uses generated synthetic content only, checks upload/extraction/render/font/network/KMS isolation, deletes every temporary object, and emits a canonical sanitized receipt only after cleanup succeeds.
+- `infra/aws/document-worker/deployment-role-template.yaml` defines separate environment CloudFormation service roles and permissions boundaries. PassRole is limited to the exact worker execution role and Lambda service.
+- Offline validation now checks the exact endpoint, worker-role, runtime-policy, trust, version-only invoke, public-access-block, deployment-boundary, and PassRole contracts. Negative mutation fixtures cover permissive S3, IAM, trust, route, subnet, ECR, and scan changes.
+
+The canonical receipts have not been produced in this source-only task. AWS CLI identity, CloudFormation provider validation, deployment, scan, render, extraction, network, KMS, and cleanup evidence remain outstanding and cannot be inferred from passing local tests.
