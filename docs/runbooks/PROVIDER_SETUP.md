@@ -21,7 +21,7 @@
 6. Set the statement descriptor to APPLYPACK and inspect public receipt details for residential-address exposure.
 7. Verify successful, cancelled, expired, mismatched-price, wrong-mode, in-progress replay, completed replay, refund, and dispute events.
 
-Prices and quantities are server-controlled. Test mode must pass before live configuration. Do not enable Stripe Tax until the recorded tax classification is resolved.
+Prices and quantities are server-controlled. Test mode must pass before live configuration. The October 19 manual-launch contract requires the displayed totals to stay fixed at $18.99 and $7.99, tax-inclusive, with no added tax amount. Keep Stripe automatic tax disabled unless a later written product decision changes that contract and is implemented and reviewed separately; a CPA or Department of Revenue approval reference is not a launch gate.
 
 ## Resend and email
 

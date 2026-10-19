@@ -11,6 +11,7 @@ import { APPLY_PACK_PRICE_CENTS, SEARCH_PRICE_CENTS } from "@/lib/domain/applypa
 import { documentWorkerConfiguration } from "@/lib/files/aws-document-worker";
 import { currentLegalContentBinding } from "@/lib/legal/content-hash";
 import { launchSchemaReadinessIsCurrent } from "@/lib/operations/launch-schema";
+import { manualLaunchFixedTotalIsSafe } from "@/lib/commerce/fixed-total";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 type LaunchCapacityResource = "SEARCH" | "MATERIALS";
@@ -187,18 +188,18 @@ export async function manualLaunchCheckoutGate(
     || !infrastructure.environmentAcceptingOrders || !infrastructure.deployedSha) return false;
   if (resource && !infrastructure.capacityByResource[resource]) return false;
   const { data: configuration, error: configurationError } = await admin.from("ap_commerce_configuration")
-    .select("checkout_enabled,launch_activation_id,launch_release_sha,tax_approval_reference,document_worker_network_attestation_sha256")
+    .select("checkout_enabled,launch_activation_id,launch_release_sha,document_worker_network_attestation_sha256,search_price_cents,material_line_price_cents,currency,tax_inclusive,tax_treatment")
     .eq("singleton", true).maybeSingle();
   if (configurationError || !configuration?.checkout_enabled || !configuration.launch_activation_id
-    || configuration.launch_release_sha !== infrastructure.deployedSha) return false;
+    || configuration.launch_release_sha !== infrastructure.deployedSha
+    || !manualLaunchFixedTotalIsSafe(configuration)) return false;
   const { data: activation, error: activationError } = await admin.from("ap_manual_launch_activations")
-    .select("id,activation_phase,release_sha,tax_approval_reference,worker_network_attestation_sha256,legacy_subscription_retirement_reference,unresolved_p0_count,unresolved_p1_count,canary_reconciled_amount_cents")
+    .select("id,activation_phase,release_sha,worker_network_attestation_sha256,legacy_subscription_retirement_reference,unresolved_p0_count,unresolved_p1_count,canary_reconciled_amount_cents")
     .eq("id", configuration.launch_activation_id).maybeSingle();
   const worker = documentWorkerConfiguration();
   return Boolean(!activationError && activation
     && activation.activation_phase === "PUBLIC"
     && activation.release_sha === infrastructure.deployedSha
-    && activation.tax_approval_reference === configuration.tax_approval_reference
     && activation.worker_network_attestation_sha256 === configuration.document_worker_network_attestation_sha256
     && activation.worker_network_attestation_sha256 === worker.networkAttestationSha256
     && Boolean(activation.legacy_subscription_retirement_reference?.trim())
@@ -224,14 +225,12 @@ export async function manualLaunchCanaryCheckoutGate(
     || (resource === "MATERIALS" && subject.searchDraftId)) return false;
 
   const { data: configuration, error: configurationError } = await admin.from("ap_commerce_configuration")
-    .select("checkout_enabled,launch_activation_id,launch_release_sha,launch_product_scope,tax_configuration_approved,tax_approval_reference,search_price_cents,material_line_price_cents")
+    .select("checkout_enabled,launch_activation_id,launch_release_sha,launch_product_scope,search_price_cents,material_line_price_cents,currency,tax_inclusive,tax_treatment")
     .eq("singleton", true).maybeSingle();
   if (configurationError || !configuration?.checkout_enabled || !configuration.launch_activation_id
     || configuration.launch_release_sha !== infrastructure.deployedSha
     || configuration.launch_product_scope !== "MANUAL_ONLY"
-    || !configuration.tax_configuration_approved || !configuration.tax_approval_reference
-    || configuration.search_price_cents !== SEARCH_PRICE_CENTS
-    || configuration.material_line_price_cents !== APPLY_PACK_PRICE_CENTS) return false;
+    || !manualLaunchFixedTotalIsSafe(configuration)) return false;
 
   const { data: activation, error: activationError } = await admin.from("ap_manual_launch_activations")
     .select("id,activation_phase,release_sha,unresolved_p0_count,unresolved_p1_count,canary_reconciled_amount_cents")

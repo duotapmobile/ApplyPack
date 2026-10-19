@@ -1,5 +1,7 @@
 # October 2, 2026 Manual Launch Amendment
 
+> October 19, 2026 authority: `16_OCTOBER_19_TAX_ACTIVATION_AMENDMENT.md` removes only the separate CPA or Department of Revenue approval/reference launch gate while retaining the exact fixed totals and no-added-tax configuration. The historical text below is preserved.
+
 Status: governing product amendment for the manual launch.
 
 This amendment supersedes conflicting launch-price, subscription-board, checkout, timing, and activation provisions in earlier ApplyPack documents. The September 9 amendment remains preserved as historical authority and is not rewritten.

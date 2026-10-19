@@ -6,6 +6,7 @@ import { assertConfiguredPrice, createStripeOperationalClient, createStripeSearc
 import { canonicalApplicationOrigin } from "./server";
 import { processChunk4Outbox } from "./outbox";
 import { APPLY_PACK_CONTRACT_VERSION, SEARCH_CONTRACT_VERSION, SEARCH_PRICE_CENTS } from "@/lib/domain/applypack";
+import { manualLaunchFixedTotalIsSafe, STRIPE_NO_ADDED_TAX } from "./fixed-total";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 type ScheduledJob = {
@@ -120,11 +121,23 @@ async function handleProvisionalCheckout(admin: AdminClient, job: ScheduledJob, 
     .eq("id", job.reference_id).maybeSingle();
   if (checkoutError || !checkout) throw checkoutError || new Error("provisional_checkout_missing");
   if (checkout.state !== "NONE") return completeExternal(admin, job, owner);
-  const [{ data: quote, error: quoteError }, { data: command, error: commandError }] = await Promise.all([
+  const [
+    { data: quote, error: quoteError },
+    { data: command, error: commandError },
+    { data: commerceConfiguration, error: commerceConfigurationError },
+  ] = await Promise.all([
     admin.from("ap_quotes").select("snapshot_id,expires_at,invalidated_at").eq("id", checkout.quote_id).maybeSingle(),
     admin.from("ap_external_commands").select("provider_idempotency_key,provider_object_id,state").eq("id", checkout.command_id).maybeSingle(),
+    admin.from("ap_commerce_configuration")
+      .select("search_price_cents,material_line_price_cents,currency,tax_inclusive,tax_treatment")
+      .eq("singleton", true).maybeSingle(),
   ]);
-  if (quoteError || commandError || !quote || !command) throw quoteError || commandError || new Error("provisional_checkout_binding_missing");
+  if (quoteError || commandError || commerceConfigurationError || !quote || !command || !commerceConfiguration) {
+    throw quoteError || commandError || commerceConfigurationError || new Error("provisional_checkout_binding_missing");
+  }
+  if (!manualLaunchFixedTotalIsSafe(commerceConfiguration)) {
+    throw new Error("manual_launch_fixed_total_configuration_required");
+  }
   if (quote.invalidated_at || new Date(quote.expires_at).getTime() <= Date.now()) {
     const expired = await admin.rpc("ap_expire_search_checkout", { p_checkout_attempt_id: checkout.id, p_reason: "PROVISIONAL_RECONCILIATION_EXPIRED" });
     if (expired.error) throw expired.error;
@@ -142,6 +155,7 @@ async function handleProvisionalCheckout(admin: AdminClient, job: ScheduledJob, 
   if (command.provider_object_id) session = await stripe.checkout.sessions.retrieve(command.provider_object_id);
   else session = await stripe.checkout.sessions.create({
     mode: "payment",
+    ...STRIPE_NO_ADDED_TAX,
     payment_method_types: ["card"],
     customer_email: snapshot.access_email_normalized,
     expires_at: Math.floor(new Date(quote.expires_at).getTime() / 1_000),

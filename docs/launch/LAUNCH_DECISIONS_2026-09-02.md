@@ -24,16 +24,16 @@ Authoritative references:
 
 ## Sales tax
 
-Stripe Tax is not enabled automatically. Checkout remains server-priced at $20 and $8 with no client-controlled price or quantity.
+Amended October 19, 2026: a separate CPA or Department of Revenue tax-classification approval is not a launch gate. The manual-launch products remain server-priced at exactly $18.99 for ten human-reviewed matches and $7.99 for one tailored resume plus one cover letter per selected job, with no client-controlled price or quantity. Those displayed totals are tax-inclusive and ApplyPack does not add tax at checkout. Stripe automatic tax must remain disabled unless a later written product decision changes this contract and receives its own implementation review.
 
 Current Florida Department of Revenue guidance does not specifically classify a personalized job-search research service combined with customer-specific resume and cover-letter documents. Florida lists particular taxable services and explains that service taxability can depend on whether the service is part of a sale of tangible personal property. That general guidance is not specific enough to make a supportable ApplyPack classification. Other states can impose economic or physical nexus and service-specific rules.
 
-Before the first live customer charge, the operator must obtain one of:
+The following two options were the September 2 launch decision and are retained as historical context only; the October 19 amendment above supersedes them as launch requirements:
 
 1. written classification guidance from the Florida Department of Revenue covering both ApplyPack products and delivery of editable DOCX files; or
 2. written advice from a qualified state-and-local-tax professional covering the operator's state, customer sourcing, current nexus, and registration/collection obligations.
 
-The advice must answer whether either product is taxable, where the sale is sourced, whether existing nexus requires registration before launch, and whether Stripe Tax or a simpler manual configuration is appropriate. Until that evidence exists, live customer payment acceptance is a tax launch blocker. Test-mode checkout, staging, provider configuration, accessibility, migration validation, and all non-live work continue.
+Future advice may still address whether either product is taxable, where the sale is sourced, whether nexus requires registration, and whether a later Stripe Tax configuration is appropriate. Missing that advice does not block the October 19 manual launch. Every non-tax activation, provider, capacity, exact-SHA, worker, accessibility, canary, refund, and operations gate remains unchanged.
 
 Authoritative references:
 

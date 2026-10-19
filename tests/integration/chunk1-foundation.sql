@@ -186,7 +186,8 @@ insert into public.ap_manual_launch_activations(
   'fixture-tenth-man-supervisor','fixture-p2-disposition',0,0,'fixture-canary-reconciliation',2698,
   'fixture-tax-approval-reference',repeat('b',64),repeat('c',64),'10000000-0000-4000-8000-000000000002'
 );
-update public.ap_commerce_configuration set tax_configuration_approved=true,tax_approval_reference='fixture-tax-approval-reference',
+update public.ap_commerce_configuration set tax_treatment='TAX_INCLUSIVE_NO_ADDED_AMOUNT',tax_inclusive=true,
+  tax_configuration_approved=false,tax_approval_reference=null,
   sales_activation_approved=true,sales_activation_reference='manual-launch-activation:82000000-0000-4000-8000-000000000001',
   launch_activation_id='82000000-0000-4000-8000-000000000001',launch_release_sha=repeat('a',40),
   document_worker_network_attestation_sha256=repeat('b',64);

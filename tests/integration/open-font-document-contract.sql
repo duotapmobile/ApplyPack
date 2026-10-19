@@ -28,8 +28,8 @@ select pg_temp.assert_true(
 select pg_temp.assert_true(
   exists(select 1 from public.ap_migration_checkpoints
     where migration_id='202610190081' and checkpoint='OPEN_FONT_DOCUMENT_CONTRACT')
-  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610190081'
-  and (public.ap_manual_launch_schema_readiness()->'requiredMigrations') ? '202610190081',
+  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610190082'
+  and (public.ap_manual_launch_schema_readiness()->'requiredMigrations') ?& array['202610190081','202610190082'],
   'open-font migration is not part of launch schema readiness'
 );
 

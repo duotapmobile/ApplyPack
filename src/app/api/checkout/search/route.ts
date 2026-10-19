@@ -10,6 +10,7 @@ import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { isSameOriginRequest } from "@/lib/security/origin";
 import { assertConfiguredPrice, createStripeSearchClient } from "@/lib/stripe/server";
 import { SEARCH_CONTRACT_VERSION, SEARCH_PRICE_CENTS } from "@/lib/domain/applypack";
+import { manualLaunchFixedTotalIsSafe, STRIPE_NO_ADDED_TAX } from "@/lib/commerce/fixed-total";
 import {
   evaluateLaunchInfrastructure,
   manualLaunchCanaryCheckoutGate,
@@ -26,6 +27,11 @@ const schema = z.object({
 type CommerceConfiguration = {
   canonical_site_url: string | null;
   access_callback_url: string | null;
+  search_price_cents: number;
+  material_line_price_cents: number;
+  currency: string;
+  tax_inclusive: boolean;
+  tax_treatment: string;
   pricing_version: string | null;
   tax_version: string | null;
   terms_version: string | null;
@@ -108,16 +114,17 @@ export async function POST(request: Request) {
   }
 
   const { data: configuration, error: configurationError } = await context.admin.from("ap_commerce_configuration")
-    .select("canonical_site_url,access_callback_url,pricing_version,tax_version,terms_version,privacy_version,payment_provider,payment_api_version,immediate_payment_methods,provider_idempotent_email_approved,provider_email_approval_reference,checkout_enabled")
+    .select("canonical_site_url,access_callback_url,search_price_cents,material_line_price_cents,currency,tax_inclusive,tax_treatment,pricing_version,tax_version,terms_version,privacy_version,payment_provider,payment_api_version,immediate_payment_methods,provider_idempotent_email_approved,provider_email_approval_reference,checkout_enabled")
     .eq("singleton", true).maybeSingle();
   const commerce = configuration as CommerceConfiguration | null;
   if (configurationError || !commerce || !commerce.checkout_enabled
     || commerce.canonical_site_url !== applicationOrigin || commerce.access_callback_url !== `${applicationOrigin}/auth/callback`
+    || !manualLaunchFixedTotalIsSafe(commerce)
     || !commerce.pricing_version || !commerce.tax_version || !commerce.terms_version || !commerce.privacy_version
     || commerce.payment_provider !== "stripe" || !commerce.payment_api_version
     || commerce.immediate_payment_methods.length !== 1 || commerce.immediate_payment_methods[0] !== "card"
     || !commerce.provider_idempotent_email_approved || !commerce.provider_email_approval_reference) {
-    return NextResponse.json({ error: "Checkout is disabled until the required tax, payment, access, and email settings are approved." }, { status: 503 });
+    return NextResponse.json({ error: "Checkout is disabled until the fixed total, payment, access, and email settings are approved." }, { status: 503 });
   }
   try {
     await assertConfiguredPrice(stripe, priceId, { unitAmount: SEARCH_PRICE_CENTS, productName: "Job Match Search" });
@@ -248,6 +255,7 @@ export async function POST(request: Request) {
   try {
     session = await stripe.checkout.sessions.create({
       mode: "payment",
+      ...STRIPE_NO_ADDED_TAX,
       payment_method_types: ["card"],
       customer_email: String(checkout.access_email),
       expires_at: Math.floor(new Date(String(checkout.reservation_expires_at)).getTime() / 1_000),
@@ -309,6 +317,7 @@ export async function POST(request: Request) {
     expiresAt: new Date(session.expires_at * 1_000).toISOString(),
     amountCents: SEARCH_PRICE_CENTS,
     currency: "USD",
+    taxInclusive: true,
   });
   const cookie = checkoutCookieSettings();
   response.cookies.set(cookie.name, serializeCheckoutCapability({

@@ -38,4 +38,4 @@
 
 ## Production boundary
 
-Do not call the service live until all provider evidence is recorded, the tax classification is resolved, both capacities are deliberately enabled, and the exact release SHA is captured. A local build proves code integrity, not live payment, email, DNS, antivirus scanning, backups, storage, or delivery behavior.
+Do not call the service live until all provider evidence is recorded, the fixed $18.99/$7.99 tax-inclusive no-added-tax contract is verified, both capacities are deliberately enabled, and the exact release SHA is captured. A separate CPA or Department of Revenue approval is not a launch gate. A local build proves code integrity, not live payment, email, DNS, antivirus scanning, backups, storage, or delivery behavior.

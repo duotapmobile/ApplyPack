@@ -170,6 +170,8 @@ describe("Chunk 4 commerce contract", () => {
     expect(outbox).toContain('admin.rpc("ap_align_access_capability_to_outbox"');
     expect(outbox).toContain("outboxShouldDeadLetter(message.first_submitted_at)");
     expect(workers).toContain('payment_method_types: ["card"]');
+    expect(workers).toContain("manualLaunchFixedTotalIsSafe(commerceConfiguration)");
+    expect(workers).toContain("...STRIPE_NO_ADDED_TAX");
     expect(workers).toContain('admin.rpc("ap_claim_scheduled_jobs"');
     expect(workers).toContain('admin.rpc("ap_complete_external_scheduled_job"');
     expect(workers).toContain("stripe.refunds.retrieve");

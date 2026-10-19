@@ -24,7 +24,6 @@ const schema = z.object({
     tenthManSupervisorReference: reference,
     acceptedP2DispositionReference: reference,
     canaryReconciliationReference: reference,
-    taxApprovalReference: reference,
     legacySubscriptionRetirementReference: reference,
     workerNetworkAttestationSha256: z.string().regex(/^[a-f0-9]{64}$/),
     evidenceBundleSha256: z.string().regex(/^[a-f0-9]{64}$/),

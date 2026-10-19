@@ -386,7 +386,7 @@ export function ApplyPackSelector({
       </div>
 
       {selected.length ? <div className="cart-review">
-        <div><p className="eyebrow">REVIEW SELECTED JOBS</p><h3>{selected.length} document set{selected.length === 1 ? "" : "s"} × $7.99 each · {"$" + (selected.length * 7.99).toFixed(2)} total</h3><p>Checkout remains locked until the required tax approval and configuration are recorded.</p></div>
+        <div><p className="eyebrow">REVIEW SELECTED JOBS</p><h3>{selected.length} document set{selected.length === 1 ? "" : "s"} × $7.99 each · {"$" + (selected.length * 7.99).toFixed(2)} total</h3><p>The displayed total is fixed. ApplyPack does not add tax at checkout.</p></div>
         <fieldset className="document-contact"><legend>Contact details printed on every selected document</legend>
           <label>Professional name <input required maxLength={120} autoComplete="name" value={contact.displayName} onChange={(event) => updateContact("displayName", event.target.value)} /></label>
           <label>Email <input required maxLength={254} type="email" autoComplete="email" value={contact.email} onChange={(event) => updateContact("email", event.target.value)} /></label>

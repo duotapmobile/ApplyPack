@@ -1,6 +1,6 @@
 # ApplyPack
 
-Manual launch scope: $18.99 for exactly ten distinct, current, human-reviewed job matches and $7.99 per selected job for one tailored resume plus one tailored cover letter. There is no launch subscription or public job board. Search checkout is operator-invited and remains locked until every launch gate passes.
+Manual launch scope: $18.99 for exactly ten distinct, current, human-reviewed job matches and $7.99 per selected job for one tailored resume plus one tailored cover letter. These are fixed customer totals with no tax added at checkout. There is no launch subscription or public job board. Search checkout is operator-invited and remains locked until every non-tax launch gate passes.
 
 ApplyPack is DuoTap LLC's manual-first job-search and application-document service at `applypack.work`.
 

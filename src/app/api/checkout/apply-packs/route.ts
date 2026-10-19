@@ -6,6 +6,7 @@ import { canonicalApplicationOrigin, deterministicUuid, postgresBytea } from "@/
 import { documentRendererConfiguration } from "@/lib/documents/renderer";
 import { DOCUMENT_FONT_CONTRACT } from "@/lib/documents/requirements";
 import { documentWorkerConfiguration } from "@/lib/files/aws-document-worker";
+import { manualLaunchFixedTotalIsSafe, STRIPE_NO_ADDED_TAX } from "@/lib/commerce/fixed-total";
 
 import { careerBreakPresentation, MATERIAL_LINE_PRICE_CENTS, materialTotalCents } from "@/lib/materials/contract";
 import { materialCheckoutRequestKey, materialSelectionSha256 } from "@/lib/materials/server";
@@ -74,8 +75,7 @@ const schema = z.object({
 
 type CommerceConfiguration = {
   canonical_site_url: string | null;
-  tax_configuration_approved: boolean;
-  tax_approval_reference: string | null;
+  search_price_cents: number;
   tax_treatment: string;
   material_line_price_cents: number;
   currency: string;
@@ -153,7 +153,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "The canonical secure site URL is not configured." }, { status: 503 });
   }
   const { data: configuration, error: configurationError } = await admin.from("ap_commerce_configuration")
-    .select("canonical_site_url,tax_configuration_approved,tax_approval_reference,tax_treatment,material_line_price_cents,currency,tax_inclusive,pricing_version,tax_version,materials_rule_ttl_seconds,immediate_payment_methods,checkout_enabled,materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_sha256,document_font_manifest_sha256,document_safety_policy")
+    .select("canonical_site_url,search_price_cents,tax_treatment,material_line_price_cents,currency,tax_inclusive,pricing_version,tax_version,materials_rule_ttl_seconds,immediate_payment_methods,checkout_enabled,materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_sha256,document_font_manifest_sha256,document_safety_policy")
     .eq("singleton", true).maybeSingle();
   const commerce = configuration as CommerceConfiguration | null;
   const renderer = documentRendererConfiguration();
@@ -168,10 +168,7 @@ export async function POST(request: Request) {
 
   if (configurationError || !commerce || !commerce.checkout_enabled
     || commerce.canonical_site_url !== applicationOrigin
-    || !commerce.tax_configuration_approved || !commerce.tax_approval_reference
-    || commerce.tax_treatment !== "TAX_INCLUSIVE_NO_ADDED_AMOUNT"
-    || commerce.material_line_price_cents !== MATERIAL_LINE_PRICE_CENTS
-    || commerce.currency !== "USD" || !commerce.tax_inclusive
+    || !manualLaunchFixedTotalIsSafe(commerce)
     || !commerce.pricing_version || !commerce.tax_version
     || commerce.materials_rule_ttl_seconds !== 3_600
     || commerce.immediate_payment_methods.length !== 1 || commerce.immediate_payment_methods[0] !== "card"
@@ -180,7 +177,7 @@ export async function POST(request: Request) {
     || !productionRendererReady
     || commerce.document_safety_policy !== "generated-structural-v1") {
     return NextResponse.json({
-      error: "Checkout is disabled until the approved tax-inclusive price and production commerce controls are configured.",
+      error: "Checkout is disabled until the fixed total and production commerce controls are configured.",
     }, { status: 503 });
   }
   const priceId = process.env.STRIPE_APPLY_PACK_PRICE_ID;
@@ -344,6 +341,7 @@ export async function POST(request: Request) {
   try {
     session = await stripe.checkout.sessions.create({
       mode: "payment",
+      ...STRIPE_NO_ADDED_TAX,
       payment_method_types: ["card"],
       customer_email: authData.user.email,
       expires_at: Math.floor(new Date(String(checkout.expiresAt)).getTime() / 1_000),

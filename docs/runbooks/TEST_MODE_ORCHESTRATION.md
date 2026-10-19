@@ -4,7 +4,7 @@ Last updated: September 2, 2026
 
 ## Safety boundary
 
-This workflow remains in Stripe test mode. `APP_PAYMENT_MODE=test`, a Stripe test credential, a test webhook event, fixed test price IDs, and `APP_CHECKOUT_ENABLED=true` must all agree. Live mode also requires `APP_LIVE_PAYMENTS_ENABLED=true`, every launch gate, the resolved tax classification, and the explicitly authorized smoke-test phase.
+This workflow remains in Stripe test mode. `APP_PAYMENT_MODE=test`, a Stripe test credential, a test webhook event, fixed test price IDs, and `APP_CHECKOUT_ENABLED=true` must all agree. Live mode also requires `APP_LIVE_PAYMENTS_ENABLED=true`, every non-tax launch gate, the fixed tax-inclusive/no-added-tax configuration, Stripe automatic tax disabled, and the explicitly authorized smoke-test phase. A separate CPA or Department of Revenue tax-approval reference is not required.
 
 The public Railway service currently uses a restricted Stripe test key. Do not replace it with a live key during this runbook.
 
@@ -40,7 +40,7 @@ $env:STRIPE_SECRET_KEY = $railway.STRIPE_SECRET_KEY
 npm.cmd run stripe:configure:test
 ```
 
-Layman's explanation: the first command opens the project folder; the second and third temporarily copy the existing Railway test key into this PowerShell window without printing it; the last command creates or reuses the locked $20 and $8 test prices. It will stop rather than touch live-mode Stripe data.
+Layman's explanation: the first command opens the project folder; the second and third temporarily copy the existing Railway test key into this PowerShell window without printing it; the last command creates or reuses the locked $18.99 and $7.99 test prices. It will stop rather than touch live-mode Stripe data.
 
 The test price IDs are already stored in Railway. If they ever need to be saved again, keep all payment switches fail-closed and prevent an automatic deployment:
 

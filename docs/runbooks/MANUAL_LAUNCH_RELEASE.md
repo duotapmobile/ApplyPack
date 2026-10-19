@@ -73,14 +73,14 @@ Never reset `attempts`, delete the queue row first, mark an object absent withou
 Historical `$20` and `$8` amounts are reconciliation/refund records only. They must never be used for a new canary or public checkout.
 
 1. Complete the full test-mode purchase, delivery, correction, conflict, refund, email, tenant-isolation, accessibility, backup/restore, and failure-recovery matrix. Record exact-SHA evidence and zero unresolved P0/P1 findings.
-2. Store the tax approval, legacy subscription zero-state, AWS worker/network attestation, maintenance, backup, inventory, accessibility, supervisor, and accepted-P2 evidence references. Both AWS Budget notification recipients must have accepted their verification emails.
+2. Store the legacy subscription zero-state, AWS worker/network attestation, maintenance, backup, inventory, accessibility, supervisor, and accepted-P2 evidence references. Confirm the commerce configuration is fixed at $18.99 for SEARCH and $7.99 for MATERIALS, USD, `TAX_INCLUSIVE_NO_ADDED_AMOUNT`, and tax-inclusive. A separate tax-approval reference is not required. Both AWS Budget notification recipients must have accepted their verification emails.
 3. With both checkout flags still false, use the MFA-protected Admin Capacity controls to enable the authoritative `SEARCH` and `MATERIALS` pools. The limits remain fixed at one search and two Apply Packs per rolling 24 hours; record the audit reason.
 4. POST the complete evidence bundle with `activationPhase: "CANARY"` to `/api/admin/manual-launch/activations`. This creates an immutable exact-SHA CANARY activation. It does not open checkout.
 5. Create the founder-authenticated synthetic customer's short-lived search authorization through `/api/admin/manual-launch/canary-authorizations`, including the exact completed intake draft. Set `APP_CANARY_CHECKOUT_ENABLED=true`, redeploy, and verify `APP_CHECKOUT_ENABLED=false`.
 6. Complete exactly one real `$18.99` search charge, webhook, ten-match human review, exact-ten delivery, customer email, portal access, and download. Then create the same customer's short-lived MATERIALS authorization and complete exactly one real `$7.99` one-job Apply Pack charge and delivery.
 7. Queue both canary refunds through `/api/admin/manual-launch/canary-refunds`; verify Stripe and the local ledger both report the two full successful refunds totaling exactly `$26.98`.
 8. Set `APP_CANARY_CHECKOUT_ENABLED=false` and redeploy. POST the final evidence bundle with `activationPhase: "PUBLIC"` to `/api/admin/manual-launch/activations`. The database rejects PUBLIC activation unless the exact release has one successful SEARCH refund and one successful MATERIALS refund totaling 2,698 cents.
-9. Confirm `/api/health` is HTTP 200 at the exact SHA, `acceptingOrders` is still false, all supervisors signed, tax approval is stored, capacity is available, and the canary refunds settled. Only then set `APP_CHECKOUT_ENABLED=true` and redeploy for public invitation-based checkout.
+9. Confirm `/api/health` is HTTP 200 at the exact SHA, `acceptingOrders` is still false, all supervisors signed, the fixed-total/no-added-tax configuration is active, capacity is available, and the canary refunds settled. Only then set `APP_CHECKOUT_ENABLED=true` and redeploy for public invitation-based checkout.
 
 ## Canary retry and emergency stop
 

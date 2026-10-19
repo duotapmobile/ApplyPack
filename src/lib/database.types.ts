@@ -3818,7 +3818,7 @@ export type Database = {
           product_supervisor_reference: string
           release_sha: string
           security_supervisor_reference: string
-          tax_approval_reference: string
+          tax_approval_reference: string | null
           tenth_man_supervisor_reference: string
           unresolved_p0_count: number
           unresolved_p1_count: number
@@ -3848,7 +3848,7 @@ export type Database = {
           product_supervisor_reference: string
           release_sha: string
           security_supervisor_reference: string
-          tax_approval_reference: string
+          tax_approval_reference?: string | null
           tenth_man_supervisor_reference: string
           unresolved_p0_count: number
           unresolved_p1_count: number
@@ -3878,7 +3878,7 @@ export type Database = {
           product_supervisor_reference?: string
           release_sha?: string
           security_supervisor_reference?: string
-          tax_approval_reference?: string
+          tax_approval_reference?: string | null
           tenth_man_supervisor_reference?: string
           unresolved_p0_count?: number
           unresolved_p1_count?: number

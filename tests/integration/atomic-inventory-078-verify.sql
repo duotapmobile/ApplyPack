@@ -3,9 +3,13 @@ begin
   if public.ap_manual_launch_schema_readiness()->>'ready' is distinct from 'true' then
     raise exception 'runtime_launch_schema_readiness_not_current';
   end if;
-  if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610190081' then
+  if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610190082' then
     raise exception 'runtime_launch_schema_version_not_current';
   end if;
+  if not exists(
+    select 1 from public.ap_migration_checkpoints
+    where migration_id='202610190082' and checkpoint='TAX_ACTIVATION_DECISION'
+  ) then raise exception 'migration_082_checkpoint_missing'; end if;
   if not exists(
     select 1 from public.ap_migration_checkpoints
     where migration_id='202610040080' and checkpoint='PERSISTENT_INVENTORY_IDENTITY_GUARD'

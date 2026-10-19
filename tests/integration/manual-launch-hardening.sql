@@ -22,11 +22,11 @@ select pg_temp.assert_true(
 
 select pg_temp.assert_true(
   public.ap_manual_launch_schema_readiness()->>'ready'='true'
-  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610190081'
+  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610190082'
   and not has_function_privilege('anon','public.ap_manual_launch_schema_readiness()','execute')
   and not has_function_privilege('authenticated','public.ap_manual_launch_schema_readiness()','execute')
   and has_function_privilege('service_role','public.ap_manual_launch_schema_readiness()','execute'),
-  'launch schema readiness must bind service-only runtime health to migrations 077 through 081'
+  'launch schema readiness must bind service-only runtime health to migrations 077 through 082'
 );
 savepoint before_schema_floor_checkpoint_removal;
 delete from public.ap_migration_checkpoints where migration_id='202610040080';
@@ -129,6 +129,16 @@ select pg_temp.assert_true(
   and position('successful_canary_customers<>1' in pg_get_functiondef(
     'public.ap_record_manual_launch_activation(text,text,jsonb,uuid)'::regprocedure))>0,
   'PUBLIC activation must require both refunded products to belong to one customer'
+);
+select pg_temp.assert_true(
+  exists(select 1 from information_schema.columns
+    where table_schema='public' and table_name='ap_manual_launch_activations'
+      and column_name='tax_approval_reference' and is_nullable='YES')
+  and position('taxApprovalReference' in pg_get_functiondef(
+    'public.ap_record_manual_launch_activation(text,text,jsonb,uuid)'::regprocedure))=0
+  and position('manual_launch_fixed_total_configuration_required' in pg_get_functiondef(
+    'public.ap_record_manual_launch_activation(text,text,jsonb,uuid)'::regprocedure))>0,
+  'activation must not require separate tax approval evidence and must retain the fixed-total guard'
 );
 
 select pg_temp.assert_true(
@@ -368,5 +378,74 @@ select pg_temp.assert_true(
    ) function_source),
   'canary refunds must require an exact-release designation and delivered current-price product'
 );
+
+savepoint before_tax_activation_decision;
+update public.ap_commerce_configuration set
+  tax_treatment='UNSET_BLOCKING',tax_inclusive=true,currency='USD',
+  search_price_cents=1899,material_line_price_cents=799
+where singleton;
+do $$ begin
+  perform public.ap_record_manual_launch_activation(
+    'CANARY',repeat('a',40),jsonb_build_object(
+      'healthEvidenceReference','fixture-evidence-reference',
+      'databaseEvidenceReference','fixture-evidence-reference',
+      'paymentEvidenceReference','fixture-evidence-reference',
+      'emailEvidenceReference','fixture-evidence-reference',
+      'kmsEvidenceReference','fixture-evidence-reference',
+      'workerEvidenceReference','fixture-evidence-reference',
+      'maintenanceEvidenceReference','fixture-evidence-reference',
+      'backupRestoreEvidenceReference','fixture-evidence-reference',
+      'inventoryEvidenceReference','fixture-evidence-reference',
+      'accessibilityEvidenceReference','fixture-evidence-reference',
+      'productSupervisorReference','fixture-evidence-reference',
+      'securitySupervisorReference','fixture-evidence-reference',
+      'operationsSupervisorReference','fixture-evidence-reference',
+      'tenthManSupervisorReference','fixture-evidence-reference',
+      'acceptedP2DispositionReference','fixture-evidence-reference',
+      'canaryReconciliationReference','fixture-evidence-reference',
+      'legacySubscriptionRetirementReference','fixture-evidence-reference',
+      'workerNetworkAttestationSha256',repeat('c',64),
+      'evidenceBundleSha256',repeat('b',64)
+    ),'f1000000-0000-4000-8000-000000000001'
+  );
+  raise exception 'unsafe added-tax activation was accepted';
+exception when others then
+  if sqlerrm='unsafe added-tax activation was accepted' then raise; end if;
+  if sqlerrm<>'manual_launch_fixed_total_configuration_required' then raise; end if;
+end $$;
+update public.ap_commerce_configuration set
+  tax_treatment='TAX_INCLUSIVE_NO_ADDED_AMOUNT'
+where singleton;
+select public.ap_record_manual_launch_activation(
+  'CANARY',repeat('a',40),jsonb_build_object(
+    'healthEvidenceReference','fixture-evidence-reference',
+    'databaseEvidenceReference','fixture-evidence-reference',
+    'paymentEvidenceReference','fixture-evidence-reference',
+    'emailEvidenceReference','fixture-evidence-reference',
+    'kmsEvidenceReference','fixture-evidence-reference',
+    'workerEvidenceReference','fixture-evidence-reference',
+    'maintenanceEvidenceReference','fixture-evidence-reference',
+    'backupRestoreEvidenceReference','fixture-evidence-reference',
+    'inventoryEvidenceReference','fixture-evidence-reference',
+    'accessibilityEvidenceReference','fixture-evidence-reference',
+    'productSupervisorReference','fixture-evidence-reference',
+    'securitySupervisorReference','fixture-evidence-reference',
+    'operationsSupervisorReference','fixture-evidence-reference',
+    'tenthManSupervisorReference','fixture-evidence-reference',
+    'acceptedP2DispositionReference','fixture-evidence-reference',
+    'canaryReconciliationReference','fixture-evidence-reference',
+    'legacySubscriptionRetirementReference','fixture-evidence-reference',
+    'workerNetworkAttestationSha256',repeat('c',64),
+    'evidenceBundleSha256',repeat('b',64)
+  ),'f1000000-0000-4000-8000-000000000001'
+);
+select pg_temp.assert_true(
+  (select checkout_enabled and not tax_configuration_approved and tax_approval_reference is null
+    from public.ap_commerce_configuration where singleton)
+  and exists(select 1 from public.ap_manual_launch_activations
+    where release_sha=repeat('a',40) and tax_approval_reference is null),
+  'otherwise-ready activation must succeed without a separate tax approval or reference'
+);
+rollback to savepoint before_tax_activation_decision;
 
 rollback;
