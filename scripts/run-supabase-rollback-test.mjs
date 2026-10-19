@@ -94,7 +94,11 @@ const requiredCleanupSignals = [
   'storageBucket: "operator-render-previews"',
   'storageBucket: "customer-deliveries"',
   'reason: "material_sensitive_upload_intent"',
-  "p_claim_provenance: { ...input.artifact.provenance, editableSource, uploadCleanup }",
+  "p_claim_provenance: {",
+  "...input.artifact.provenance",
+  "documentFontAttestation: {",
+  "editableSource",
+  "uploadCleanup",
 ];
 const materialIntentIndex = generationAtTarget.stdout.indexOf('const cleanupIntent = await input.admin.from("storage_cleanup_queue").upsert');
 const materialUploadIndex = generationAtTarget.stdout.indexOf("const sourceUpload = await input.admin.storage");
