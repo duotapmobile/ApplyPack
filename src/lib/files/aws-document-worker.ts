@@ -15,10 +15,12 @@ import type { ParserLimits } from "./secure-pipeline";
 type Environment = Partial<NodeJS.ProcessEnv>;
 type WorkerOperation = "extract" | "probe-document" | "render-docx";
 const SHA256 = /^[0-9a-f]{64}$/i;
-const VERSION_ARN = /^arn:aws:lambda:us-east-1:[0-9]{12}:function:[A-Za-z0-9-_]+:[1-9][0-9]*$/;
+const VERSION_ARN = /^arn:aws:lambda:us-east-1:[0-9]{12}:function:(applypack-(staging|production)-document-worker):[1-9][0-9]*$/;
 
 export function documentWorkerConfiguration(environment: Environment = process.env) {
   const region = environment.AWS_REGION?.trim();
+  const deploymentEnvironment = environment.APP_DEPLOYMENT_ENV?.trim();
+  const workerDeploymentEnvironment = environment.APP_DOCUMENT_WORKER_DEPLOYMENT_ENV?.trim();
   const functionArn = environment.APP_DOCUMENT_WORKER_FUNCTION_ARN?.trim();
   const bucket = environment.APP_DOCUMENT_WORKER_BUCKET?.trim();
   const identity = environment.APP_DOCUMENT_WORKER_IDENTITY?.trim();
@@ -27,12 +29,17 @@ export function documentWorkerConfiguration(environment: Environment = process.e
   const imageDigest = environment.APP_DOCUMENT_WORKER_IMAGE_DIGEST?.trim().toLowerCase();
   const networkAttestationSha256 = environment.APP_DOCUMENT_WORKER_NETWORK_ATTESTATION_SHA256?.trim().toLowerCase();
   const discoveryFailed = environment.APP_RENDERER_RUNTIME_DISCOVERY_FAILED === "true";
-  const ready = Boolean(!discoveryFailed && region === "us-east-1" && functionArn && VERSION_ARN.test(functionArn) && bucket
+  const functionMatch = functionArn ? VERSION_ARN.exec(functionArn) : null;
+  const ready = Boolean(!discoveryFailed && region === "us-east-1"
+    && ["staging", "production"].includes(deploymentEnvironment || "")
+    && workerDeploymentEnvironment === deploymentEnvironment
+    && functionMatch?.[2] === deploymentEnvironment && bucket
     && identity === "applypack-document-worker-v2-liberation-sans-2.1.5"
     && fontSha256 === DOCUMENT_FONT_CONTRACT.styles.regular
     && fontManifestSha256 === DOCUMENT_FONT_CONTRACT.manifestSha256
     && imageDigest && SHA256.test(imageDigest) && networkAttestationSha256 && SHA256.test(networkAttestationSha256));
-  return { region, functionArn, bucket, identity, fontSha256, fontManifestSha256, imageDigest, networkAttestationSha256, ready };
+  return { region, deploymentEnvironment, workerDeploymentEnvironment, functionArn, bucket, identity,
+    fontSha256, fontManifestSha256, imageDigest, networkAttestationSha256, ready };
 }
 
 function boundedLimits(limits?: ParserLimits) {
@@ -78,6 +85,7 @@ async function invokeWorker(input: {
     }
     const body = JSON.parse(Buffer.from(response.Payload).toString("utf8")) as Record<string, unknown>;
     if (body.identity !== configuration.identity || body.ok !== true
+      || body.deploymentEnvironment !== configuration.workerDeploymentEnvironment
       || body.functionVersionArn !== configuration.functionArn
       || body.imageDigest !== configuration.imageDigest
       || body.networkIsolationVerified !== true) throw new Error("document_worker_response_invalid");

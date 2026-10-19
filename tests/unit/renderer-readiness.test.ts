@@ -45,8 +45,10 @@ describe("renderer readiness uses current approval and actual pins", () => {
   expect(documentRendererConfiguration(toolEnvironment).ready).toBe(false);
  expect(documentWorkerConfiguration({
    APP_RENDERER_RUNTIME_DISCOVERY_FAILED: "true",
+   APP_DEPLOYMENT_ENV: "staging",
+   APP_DOCUMENT_WORKER_DEPLOYMENT_ENV: "staging",
    AWS_REGION: "us-east-1",
-   APP_DOCUMENT_WORKER_FUNCTION_ARN: "arn:aws:lambda:us-east-1:123456789012:function:applypack-renderer:1",
+   APP_DOCUMENT_WORKER_FUNCTION_ARN: "arn:aws:lambda:us-east-1:123456789012:function:applypack-staging-document-worker:1",
    APP_DOCUMENT_WORKER_BUCKET: "applypack-renderer-private",
    APP_DOCUMENT_WORKER_IDENTITY: "applypack-document-worker-v2-liberation-sans-2.1.5",
    APP_DOCUMENT_WORKER_FONT_SHA256: DOCUMENT_FONT_CONTRACT.styles.regular,

@@ -21,9 +21,12 @@ s3 = boto3.client("s3")
 
 def _runtime_attestation(context):
     image_uri = os.environ.get("APPLYPACK_WORKER_IMAGE_URI", "")
+    deployment_environment = os.environ.get("APPLYPACK_WORKER_DEPLOYMENT_ENV", "")
     digest = re.search(r"@sha256:([0-9a-f]{64})$", image_uri)
     function_arn = getattr(context, "invoked_function_arn", "")
-    if not digest or not re.fullmatch(r"arn:aws:lambda:us-east-1:[0-9]{12}:function:[A-Za-z0-9-_]+:[1-9][0-9]*", function_arn):
+    expected_function = f"applypack-{deployment_environment}-document-worker"
+    expected_arn = rf"arn:aws:lambda:us-east-1:[0-9]{{12}}:function:{re.escape(expected_function)}:[1-9][0-9]*"
+    if deployment_environment not in ("staging", "production") or not digest or not re.fullmatch(expected_arn, function_arn):
         raise ValueError("worker_attestation_missing")
     network_isolation_verified = False
     try:
@@ -35,6 +38,7 @@ def _runtime_attestation(context):
         raise ValueError("worker_outbound_network_available")
     return {
         "identity": IDENTITY,
+        "deploymentEnvironment": deployment_environment,
         "functionVersionArn": function_arn,
         "imageDigest": digest.group(1),
         "networkIsolationVerified": True,
