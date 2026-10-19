@@ -88,6 +88,43 @@ if (
   process.exit(rollbackSchemaBinding.status || rollbackReadiness.status || 1);
 }
 
+const rollbackLegacyBoardUpgradeRunner = capture("git", [
+  "show",
+  `${resolvedRollbackTarget}:scripts/run-supabase-legacy-board-upgrade-test.mjs`,
+]);
+const rollbackLegacyBoardUpgradeSeed = capture("git", [
+  "show",
+  `${resolvedRollbackTarget}:tests/integration/legacy-board-083-upgrade-seed.sql`,
+]);
+const rollbackLegacyBoardUpgradeVerify = capture("git", [
+  "show",
+  `${resolvedRollbackTarget}:tests/integration/legacy-board-084-upgrade-verify.sql`,
+]);
+const rollbackPackage = capture("git", ["show", `${resolvedRollbackTarget}:package.json`]);
+const legacyBoardUpgradeSignals = [
+  [rollbackLegacyBoardUpgradeRunner, '"--version", "202610190083"'],
+  [rollbackLegacyBoardUpgradeRunner, '["migration", "up", "--local"]'],
+  [rollbackLegacyBoardUpgradeRunner, "LEGACY_BOARD_083_UPGRADE_SEED_OK"],
+  [rollbackLegacyBoardUpgradeRunner, "LEGACY_BOARD_084_UPGRADE_VERIFY_OK"],
+  [rollbackLegacyBoardUpgradeSeed, "LEGACY_BOARD_083_UPGRADE_SEED_OK"],
+  [rollbackLegacyBoardUpgradeSeed, "pre-084 stale-event failure"],
+  [rollbackLegacyBoardUpgradeVerify, "LEGACY_BOARD_084_UPGRADE_VERIFY_OK"],
+  [rollbackLegacyBoardUpgradeVerify, "legacy_board_terminal_event_replay_mismatch"],
+  [rollbackLegacyBoardUpgradeVerify, "last_provider_event_id='evt_upgrade_refund_newer'"],
+  [rollbackPackage, "node scripts/run-supabase-legacy-board-upgrade-test.mjs"],
+];
+const missingLegacyBoardUpgradeSignal = legacyBoardUpgradeSignals.find(
+  ([result, signal]) => result.error || result.status !== 0 || !result.stdout.includes(signal),
+);
+if (missingLegacyBoardUpgradeSignal) {
+  const [result] = missingLegacyBoardUpgradeSignal;
+  if (result.stderr) process.stderr.write(result.stderr);
+  console.error(
+    `Rollback target ${resolvedRollbackTarget} does not retain the executable migration 083-to-084 legacy-board upgrade proof.`,
+  );
+  process.exit(result.status || 1);
+}
+
 const generationAtTarget = capture("git", [
   "show",
   `${resolvedRollbackTarget}:src/app/api/admin/material-lines/[id]/generate/route.ts`,

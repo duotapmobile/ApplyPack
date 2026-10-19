@@ -241,4 +241,21 @@ describe("retired paid filtered job board", () => {
     expect(events).toContain("last_reconciled_at: source.reconciledAt");
     expect(events).not.toContain("legacy.subscription.reconciliation");
   });
+
+  it("executes a real migration-083 to migration-084 legacy entitlement upgrade", () => {
+    const packageJson = readFileSync("package.json", "utf8");
+    const runner = readFileSync("scripts/run-supabase-legacy-board-upgrade-test.mjs", "utf8");
+    const seed = readFileSync("tests/integration/legacy-board-083-upgrade-seed.sql", "utf8");
+    const verify = readFileSync("tests/integration/legacy-board-084-upgrade-verify.sql", "utf8");
+    const rollback = readFileSync("scripts/run-supabase-rollback-test.mjs", "utf8");
+    expect(packageJson).toContain("node scripts/run-supabase-legacy-board-upgrade-test.mjs");
+    expect(runner).toContain('"--version", "202610190083"');
+    expect(runner).toContain('["migration", "up", "--local"]');
+    expect(seed).toContain("LEGACY_BOARD_083_UPGRADE_SEED_OK");
+    expect(seed).toContain("column_name='last_reconciled_at'");
+    expect(verify).toContain("LEGACY_BOARD_084_UPGRADE_VERIFY_OK");
+    expect(verify).toContain("legacy_board_terminal_event_replay_mismatch");
+    expect(verify).toContain("last_provider_event_id='evt_upgrade_refund_newer'");
+    expect(rollback).toContain("LEGACY_BOARD_084_UPGRADE_VERIFY_OK");
+  });
 });
