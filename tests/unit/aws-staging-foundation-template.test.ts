@@ -234,6 +234,12 @@ describe("AWS staging foundation template", () => {
         ["provider-receipt", "cloudformation get-template", "cloudformation describe-template"],
         ["provider-body-hash", "$apProviderTemplateBodySha256 -ne $apReviewedTemplateBodySha256", "$false"],
         ["change-set-create", "cloudformation create-change-set", "cloudformation prepare-change-set"],
+        ["governed-create-action", "apiAction = 'CreateChangeSet'", "apiAction = 'UpdateStack'"],
+        ["governed-create-type", "changeSetType = 'CREATE'", "changeSetType = 'UPDATE'"],
+        ["governed-create-failure-policy", "onStackFailure = 'ROLLBACK'", "onStackFailure = 'DO_NOTHING'"],
+        ["governed-create-hash", "$apCurrentCreateRequestSha256 -ne $apGovernedCreateRequestSha256", "$apCurrentCreateRequestSha256 -eq $apGovernedCreateRequestSha256"],
+        ["explicit-no-nested", "--no-include-nested-stacks", "--include-nested-stacks"],
+        ["explicit-no-import", "--no-import-existing-resources", "--import-existing-resources"],
         ["change-set-execute", "cloudformation execute-change-set", "cloudformation run-change-set"],
         ["change-set-cleanup", "cloudformation delete-change-set", "cloudformation discard-change-set"],
         ["stack-id-return", "$apCreateChangeSet.StackId", "$apCreateChangeSet.StackName"],
@@ -251,7 +257,7 @@ describe("AWS staging foundation template", () => {
         ["resource-only", "$_.Type -ne 'Resource'", "$_.Type -ne 'Unsupported'"],
         ["no-replacement", "$null -ne $apResource.Replacement", "$false"],
         ["no-capabilities", "$ChangeSet.Capabilities.Count -ne 0", "$ChangeSet.Capabilities.Count -gt 99"],
-        ["no-import", "$ChangeSet.ImportExistingResources -eq $true", "$ChangeSet.ImportExistingResources -eq $false"],
+        ["no-import", "$apImportExistingResources -eq $true", "$apImportExistingResources -eq $false"],
         ["receipt-recompute", "$apExecuteReceiptJson -cne $apChangeSetReceiptJson", "$apExecuteReceiptJson -ceq $apChangeSetReceiptJson"],
         ["stored-receipt-binding", "$apStoredReceiptJson -cne $apExecuteReceiptJson", "$apStoredReceiptJson -ceq $apExecuteReceiptJson"],
         ["placeholder-unprotect", "--no-enable-termination-protection", "--enable-termination-protection"],
@@ -282,10 +288,16 @@ describe("AWS staging foundation template", () => {
 
       const capabilityRunbook = join(work, "iam-capability-runbook.md");
       writeFileSync(capabilityRunbook, originalRunbook.replace(
-        "--change-set-type CREATE `",
-        "--change-set-type CREATE `\n  --capabilities CAPABILITY_NAMED_IAM `",
+        "--change-set-type $apGovernedCreateRequest.changeSetType `",
+        "--change-set-type $apGovernedCreateRequest.changeSetType `\n  --capabilities CAPABILITY_NAMED_IAM `",
       ), "utf8");
       expect(validationFails(template, capabilityRunbook)).toBe(true);
+
+      const fabricatedProviderTypeRunbook = join(work, "fabricated-provider-change-set-type-runbook.md");
+      writeFileSync(fabricatedProviderTypeRunbook,
+        `${originalRunbook}\n\`\`\`powershell\nif ($ChangeSet.ChangeSetType -ne 'CREATE') { throw 'unavailable provider field' }\n\`\`\`\n`,
+        "utf8");
+      expect(validationFails(template, fabricatedProviderTypeRunbook)).toBe(true);
     } finally {
       rmSync(work, { recursive: true, force: true });
     }

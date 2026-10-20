@@ -185,6 +185,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Provider rejected the exact reviewed template.
 
 This section is documentation, not current authorization. Re-run every preceding gate immediately before it. Create the change set from the immutable extracted template, review and receipt the exact provider plan, obtain two independent approvals bound to that receipt, and execute only the exact returned change-set ID. Do not use a direct stack-create or deployment shortcut.
 
+`ChangeSetType` is an input to `CreateChangeSet`; AWS does not return it from `DescribeChangeSet`. The workflow therefore writes a read-only, hashed receipt of the exact governed request before the API call and never fabricates a provider-returned type. It independently requires the exact returned IDs, matching description and failure policy, an empty new-stack `REVIEW_IN_PROGRESS` placeholder, no nested/import/drift fields, and the exact nine-resource Add-only plan. A change set created without that immutable request receipt is not executable under this procedure.
+
 ```powershell
 $apExpectedChanges = [ordered]@{
   StagingVpc = 'AWS::EC2::VPC'
@@ -203,13 +205,25 @@ function Get-FoundationChangeSetReceipt {
     [Parameter(Mandatory)] $ChangeSet,
     [Parameter(Mandatory)] [bool] $TerminationProtectionEnabled
   )
+  Assert-GovernedFoundationCreateRequest
+  $apImportExistingResourcesProperty = $ChangeSet.PSObject.Properties['ImportExistingResources']
+  $apIncludeNestedStacksProperty = $ChangeSet.PSObject.Properties['IncludeNestedStacks']
+  $apImportExistingResources = $null -ne $apImportExistingResourcesProperty -and
+    $null -ne $apImportExistingResourcesProperty.Value -and [bool]$apImportExistingResourcesProperty.Value
+  $apIncludeNestedStacks = $null -ne $apIncludeNestedStacksProperty -and
+    $null -ne $apIncludeNestedStacksProperty.Value -and [bool]$apIncludeNestedStacksProperty.Value
   if ($ChangeSet.ChangeSetId -ne $apChangeSetId -or $ChangeSet.StackId -ne $apStackId -or
-    $ChangeSet.ChangeSetType -ne 'CREATE' -or $ChangeSet.Status -ne 'CREATE_COMPLETE' -or
-    $ChangeSet.ExecutionStatus -ne 'AVAILABLE') {
+    $ChangeSet.StackName -ne $apGovernedCreateRequest.stackName -or
+    $ChangeSet.ChangeSetName -ne $apGovernedCreateRequest.changeSetName -or
+    $ChangeSet.Description -ne $apGovernedCreateRequest.description -or
+    $ChangeSet.OnStackFailure -ne $apGovernedCreateRequest.onStackFailure -or
+    $ChangeSet.Status -ne 'CREATE_COMPLETE' -or $ChangeSet.ExecutionStatus -ne 'AVAILABLE') {
     throw 'Provider change set identity or state is not executable.'
   }
   if ($ChangeSet.Capabilities.Count -ne 0 -or $ChangeSet.Parameters.Count -ne 0 -or
-    $ChangeSet.IncludeNestedStacks -eq $true -or $ChangeSet.ImportExistingResources -eq $true) {
+    $apIncludeNestedStacks -eq $true -or $apImportExistingResources -eq $true -or
+    $null -ne $ChangeSet.ParentChangeSetId -or $null -ne $ChangeSet.RootChangeSetId -or
+    $null -ne $ChangeSet.DeploymentMode) {
     throw 'Unexpected IAM capability, parameter, nested-stack, or import request in foundation change set.'
   }
   if ($ChangeSet.Changes.Count -ne 9) { throw 'CREATE change set must contain exactly the expected nine resources.' }
@@ -236,7 +250,7 @@ function Get-FoundationChangeSetReceipt {
     }
   } | Sort-Object logicalResourceId)
   [ordered]@{
-    schemaVersion = 2
+    schemaVersion = 3
     approvedCommitSha = $apApprovedSha
     approvedTreeOid = $apApprovedTree
     approvedTemplateBlobOid = $apApprovedTemplateBlob
@@ -246,14 +260,15 @@ function Get-FoundationChangeSetReceipt {
     stackId = $apStackId
     stackName = $apStackName
     region = $apRegion
-    changeSetType = $ChangeSet.ChangeSetType
+    governedCreateRequestSha256 = $apGovernedCreateRequestSha256
+    requestedChangeSetType = $apGovernedCreateRequest.changeSetType
     status = $ChangeSet.Status
     executionStatus = $ChangeSet.ExecutionStatus
     terminationProtectionEnabled = $TerminationProtectionEnabled
     capabilities = @($ChangeSet.Capabilities)
     parameters = @($ChangeSet.Parameters)
-    includeNestedStacks = [bool]$ChangeSet.IncludeNestedStacks
-    importExistingResources = [bool]$ChangeSet.ImportExistingResources
+    includeNestedStacks = $apIncludeNestedStacks
+    importExistingResources = $apImportExistingResources
     changes = $apSanitizedChanges
   }
 }
@@ -268,16 +283,44 @@ function Get-Utf8Sha256 {
   }
 }
 
+function Assert-GovernedFoundationCreateRequest {
+  $apCurrentCreateRequestJson = $apGovernedCreateRequest | ConvertTo-Json -Depth 10 -Compress
+  $apCurrentCreateRequestSha256 = Get-Utf8Sha256 -Text $apCurrentCreateRequestJson
+  if ($apGovernedCreateRequest.schemaVersion -ne 1 -or
+    $apGovernedCreateRequest.apiAction -ne 'CreateChangeSet' -or
+    $apGovernedCreateRequest.stackName -ne $apStackName -or
+    $apGovernedCreateRequest.changeSetName -ne $apChangeSetName -or
+    $apGovernedCreateRequest.changeSetType -ne 'CREATE' -or
+    $apGovernedCreateRequest.onStackFailure -ne 'ROLLBACK' -or
+    $apGovernedCreateRequest.includeNestedStacks -ne $false -or
+    $apGovernedCreateRequest.importExistingResources -ne $false -or
+    $apGovernedCreateRequest.capabilities.Count -ne 0 -or
+    $apGovernedCreateRequest.parameters.Count -ne 0 -or
+    $apGovernedCreateRequest.resourcesToImport.Count -ne 0 -or
+    $apCurrentCreateRequestSha256 -ne $apGovernedCreateRequestSha256 -or
+    !(Test-Path -LiteralPath $apGovernedCreateRequestPath -PathType Leaf) -or
+    !((Get-Item -LiteralPath $apGovernedCreateRequestPath).Attributes -band [IO.FileAttributes]::ReadOnly) -or
+    [IO.File]::ReadAllText($apGovernedCreateRequestPath, [Text.UTF8Encoding]::new($false)) -cne $apCurrentCreateRequestJson -or
+    (Get-FileHash -Algorithm SHA256 -LiteralPath $apGovernedCreateRequestPath).Hash.ToLowerInvariant() -ne $apGovernedCreateRequestSha256) {
+    throw 'Immutable governed CREATE request is missing, changed, or not CREATE-only.'
+  }
+}
+
 function Remove-UnexecutedFoundationCreate {
   param(
     [Parameter(Mandatory)] [string] $ChangeSetId,
     [Parameter(Mandatory)] [string] $StackId
   )
+  Assert-GovernedFoundationCreateRequest
   $apDeleteState = (& $apAws cloudformation describe-change-set --profile $apProfile --region $apRegion --change-set-name $ChangeSetId --output json | ConvertFrom-Json)
   $apSafelyUnexecuted = ($apDeleteState.Status -eq 'CREATE_COMPLETE' -and $apDeleteState.ExecutionStatus -eq 'AVAILABLE') -or
     ($apDeleteState.Status -eq 'FAILED' -and $apDeleteState.ExecutionStatus -eq 'UNAVAILABLE')
   if ($LASTEXITCODE -ne 0 -or $apDeleteState.ChangeSetId -ne $ChangeSetId -or $apDeleteState.StackId -ne $StackId -or
-    $apDeleteState.ChangeSetType -ne 'CREATE' -or !$apSafelyUnexecuted) {
+    $ChangeSetId -ne $apChangeSetId -or $StackId -ne $apStackId -or
+    $apDeleteState.StackName -ne $apGovernedCreateRequest.stackName -or
+    $apDeleteState.ChangeSetName -ne $apGovernedCreateRequest.changeSetName -or
+    $apDeleteState.Description -ne $apGovernedCreateRequest.description -or
+    $apDeleteState.OnStackFailure -ne $apGovernedCreateRequest.onStackFailure -or !$apSafelyUnexecuted) {
     throw 'Exact unexecuted CREATE change set is not in a safely deletable state.'
   }
   $apPlaceholder = (& $apAws cloudformation describe-stacks --profile $apProfile --region $apRegion --stack-name $StackId --output json | ConvertFrom-Json).Stacks[0]
@@ -285,6 +328,9 @@ function Remove-UnexecutedFoundationCreate {
   if ($LASTEXITCODE -ne 0 -or $apPlaceholder.StackId -ne $StackId -or $apPlaceholder.StackStatus -ne 'REVIEW_IN_PROGRESS' -or
     $apPlaceholderResources.Count -ne 0) {
     throw 'Exact REVIEW_IN_PROGRESS placeholder is not empty; cleanup stopped.'
+  }
+  if ($apDeleteState.Status -eq 'CREATE_COMPLETE') {
+    $null = Get-FoundationChangeSetReceipt -ChangeSet $apDeleteState -TerminationProtectionEnabled ([bool]$apPlaceholder.EnableTerminationProtection)
   }
   & $apAws cloudformation delete-change-set --profile $apProfile --region $apRegion --change-set-name $ChangeSetId
   if ($LASTEXITCODE -ne 0) { throw 'Exact unexecuted CREATE change set deletion failed.' }
@@ -311,16 +357,49 @@ function Remove-UnexecutedFoundationCreate {
 }
 
 $apChangeSetName = "applypack-staging-foundation-create-$($apApprovedSha.Substring(0, 12))"
+$apCreateTagArguments = @(
+  'Key=Application,Value=ApplyPack',
+  'Key=Environment,Value=staging',
+  'Key=ManagedBy,Value=CloudFormation'
+)
+$apGovernedCreateRequest = [ordered]@{
+  schemaVersion = 1
+  apiAction = 'CreateChangeSet'
+  approvedCommitSha = $apApprovedSha
+  approvedTreeOid = $apApprovedTree
+  approvedTemplateBlobOid = $apApprovedTemplateBlob
+  reviewedTemplateBodySha256 = $apReviewedTemplateBodySha256
+  reviewedNormalizedTemplateSha256 = $apReviewedNormalizedTemplateSha256
+  stackName = $apStackName
+  changeSetName = $apChangeSetName
+  changeSetType = 'CREATE'
+  description = "ApplyPack staging foundation exact commit $apApprovedSha"
+  onStackFailure = 'ROLLBACK'
+  includeNestedStacks = $false
+  importExistingResources = $false
+  capabilities = @()
+  parameters = @()
+  resourcesToImport = @()
+  tags = @($apCreateTagArguments)
+}
+$apGovernedCreateRequestJson = $apGovernedCreateRequest | ConvertTo-Json -Depth 10 -Compress
+$apGovernedCreateRequestSha256 = Get-Utf8Sha256 -Text $apGovernedCreateRequestJson
+$apGovernedCreateRequestPath = Join-Path $apEvidenceDirectory 'aws-staging-foundation-create-request.json'
+[IO.File]::WriteAllText($apGovernedCreateRequestPath, $apGovernedCreateRequestJson, [Text.UTF8Encoding]::new($false))
+[IO.File]::SetAttributes($apGovernedCreateRequestPath, [IO.FileAttributes]::ReadOnly)
+Assert-GovernedFoundationCreateRequest
 $apCreateChangeSet = (& $apAws cloudformation create-change-set `
   --profile $apProfile `
   --region $apRegion `
-  --stack-name $apStackName `
-  --change-set-name $apChangeSetName `
-  --change-set-type CREATE `
-  --description "ApplyPack staging foundation exact commit $apApprovedSha" `
+  --stack-name $apGovernedCreateRequest.stackName `
+  --change-set-name $apGovernedCreateRequest.changeSetName `
+  --change-set-type $apGovernedCreateRequest.changeSetType `
+  --description $apGovernedCreateRequest.description `
   --template-body $apReviewedTemplateUri `
-  --on-stack-failure ROLLBACK `
-  --tags Key=Application,Value=ApplyPack Key=Environment,Value=staging Key=ManagedBy,Value=CloudFormation `
+  --on-stack-failure $apGovernedCreateRequest.onStackFailure `
+  --no-include-nested-stacks `
+  --no-import-existing-resources `
+  --tags $apCreateTagArguments `
   --output json | ConvertFrom-Json)
 if ($LASTEXITCODE -ne 0 -or $apCreateChangeSet.Id -notmatch '^arn:aws:cloudformation:us-east-1:838445019912:changeSet/' -or
   $apCreateChangeSet.StackId -notmatch '^arn:aws:cloudformation:us-east-1:838445019912:stack/applypack-staging-foundation/') {
