@@ -23,8 +23,10 @@ import {
 } from "../../scripts/rollback-legal-contract.mjs";
 import {
   environmentWithoutPreflightSecrets,
+  PREFLIGHT_DEPLOYMENT_PROJECT_REFS,
   validateAndCanonicalizePreflightConnection,
 } from "../../scripts/inventory-preflight-connection.mjs";
+import { runInventoryIdentityPreflight } from "../../scripts/check-inventory-identity-conflicts.mjs";
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
@@ -288,6 +290,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(preflightRunner).toContain("AP_PREMIGRATION_EXPECTED_DATABASE");
     expect(preflightRunner).toContain("AP_PREMIGRATION_EXPECTED_LOGIN_USER");
     expect(preflightRunner).toContain("AP_PREMIGRATION_EXPECTED_CURRENT_USER");
+    expect(preflightRunner).toContain("AP_DEPLOYMENT_ENV");
     expect(preflightRunner).toContain("current_user='${connection.expectedCurrentUser}'");
     expect(preflightRunner).not.toContain("current_user='${connection.expectedLoginUser}'");
     expect(preflightRunner).toContain("pg_catalog.pg_stat_ssl");
@@ -297,7 +300,10 @@ describe("October 2 manual-launch hardening", () => {
     const manualLaunchRunbook = source("docs/runbooks/MANUAL_LAUNCH_RELEASE.md");
     expect(manualLaunchRunbook).toContain("AP_PREMIGRATION_EXPECTED_LOGIN_USER");
     expect(manualLaunchRunbook).toContain("AP_PREMIGRATION_EXPECTED_CURRENT_USER");
+    expect(manualLaunchRunbook).toContain("AP_DEPLOYMENT_ENV");
     expect(manualLaunchRunbook).not.toMatch(/`AP_PREMIGRATION_EXPECTED_USER`/);
+    expect(manualLaunchRunbook).toContain("AP_DEPLOYMENT_ENV=staging");
+    expect(manualLaunchRunbook).toContain("No production project reference is currently checked in");
     expect(manualLaunchRunbook).toContain("normally equal for a direct database endpoint");
     expect(manualLaunchRunbook).toContain("login may be tenant-qualified while `current_user` is the underlying database role");
     expect(manualLaunchRunbook).toContain("expected login user, expected current user");
@@ -315,62 +321,71 @@ describe("October 2 manual-launch hardening", () => {
   it("strictly canonicalizes only the authorized remote inventory preflight target", () => {
     const password = "p@ss:word";
     const encodedPassword = "p%40ss%3Aword";
+    const stagingProjectRef = "fmugizadzdnqfckujqlw";
+    const poolerHost = "aws-0-us-west-2.pooler.supabase.com";
+    expect(PREFLIGHT_DEPLOYMENT_PROJECT_REFS).toEqual({ staging: stagingProjectRef });
     const expectedTarget = {
-      expectedHost: "db.example.test",
+      deploymentEnvironment: "staging",
+      expectedHost: poolerHost,
       expectedPort: "5432",
       expectedDatabase: "postgres",
-      expectedLoginUser: "operator.pooler",
-      expectedCurrentUser: "operator",
+      expectedLoginUser: `postgres.${stagingProjectRef}`,
+      expectedCurrentUser: "postgres",
     };
     expect(validateAndCanonicalizePreflightConnection({
-      uri: `postgresql://operator.pooler:${encodedPassword}@DB.Example.Test:5432/postgres?sslmode=VERIFY-FULL`,
+      uri: `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@AWS-0-US-WEST-2.POOLER.SUPABASE.COM:5432/postgres?sslmode=VERIFY-FULL`,
       ...expectedTarget,
     })).toEqual({
-      canonicalUri: `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full`,
+      canonicalUri: `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres?sslmode=verify-full`,
       password: encodedPassword,
       decodedPassword: password,
+      expectedProjectRef: stagingProjectRef,
+      endpointType: "session-pooler",
       ...expectedTarget,
     });
 
     const directTarget = {
-      expectedHost: "db.example.test",
+      deploymentEnvironment: "staging",
+      expectedHost: `db.${stagingProjectRef}.supabase.co`,
       expectedPort: "5432",
       expectedDatabase: "postgres",
-      expectedLoginUser: "operator",
-      expectedCurrentUser: "operator",
+      expectedLoginUser: "postgres",
+      expectedCurrentUser: "postgres",
     };
     expect(validateAndCanonicalizePreflightConnection({
-      uri: `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full`,
+      uri: `postgresql://postgres:${encodedPassword}@db.${stagingProjectRef}.supabase.co:5432/postgres?sslmode=verify-full`,
       ...directTarget,
     })).toEqual({
-      canonicalUri: `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full`,
+      canonicalUri: `postgresql://postgres:${encodedPassword}@db.${stagingProjectRef}.supabase.co:5432/postgres?sslmode=verify-full`,
       password: encodedPassword,
       decodedPassword: password,
+      expectedProjectRef: stagingProjectRef,
+      endpointType: "direct",
       ...directTarget,
     });
 
     const weakUrls = [
-      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres`,
-      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=disable`,
-      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=allow`,
-      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=prefer`,
-      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=require`,
-      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-ca`,
-      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full&sslmode=disable`,
-      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?host=%2Fvar%2Frun%2Fpostgresql&sslmode=verify-full`,
-      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?hostaddr=127.0.0.1&sslmode=verify-full`,
-      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?service=wrong-target&sslmode=verify-full`,
-      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?servicefile=wrong-target&sslmode=verify-full`,
-      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?gssencmode=prefer&sslmode=verify-full`,
-      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslrootcert=system&sslmode=verify-full`,
-      `postgresql://operator.pooler:${encodedPassword}@%2Fvar%2Frun%2Fpostgresql:5432/postgres?sslmode=verify-full`,
-      `postgresql://operator.pooler:${encodedPassword}@db.example.test,other.example.test:5432/postgres?sslmode=verify-full`,
-      `postgresql://operator.pooler:${encodedPassword}@other.example.test:5432/postgres?sslmode=verify-full`,
-      `postgresql://operator.pooler:${encodedPassword}@db.example.test:6543/postgres?sslmode=verify-full`,
-      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/wrong_database?sslmode=verify-full`,
-      `postgresql://wrong_user:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full`,
-      "postgresql://operator.pooler@db.example.test:5432/postgres?sslmode=verify-full",
-      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full#ignored`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres?sslmode=disable`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres?sslmode=allow`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres?sslmode=prefer`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres?sslmode=require`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres?sslmode=verify-ca`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres?sslmode=verify-full&sslmode=disable`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres?host=%2Fvar%2Frun%2Fpostgresql&sslmode=verify-full`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres?hostaddr=127.0.0.1&sslmode=verify-full`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres?service=wrong-target&sslmode=verify-full`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres?servicefile=wrong-target&sslmode=verify-full`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres?gssencmode=prefer&sslmode=verify-full`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres?sslrootcert=system&sslmode=verify-full`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@%2Fvar%2Frun%2Fpostgresql:5432/postgres?sslmode=verify-full`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost},other.example.test:5432/postgres?sslmode=verify-full`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@other.example.test:5432/postgres?sslmode=verify-full`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:6543/postgres?sslmode=verify-full`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/wrong_database?sslmode=verify-full`,
+      `postgresql://wrong_user:${encodedPassword}@${poolerHost}:5432/postgres?sslmode=verify-full`,
+      `postgresql://postgres.${stagingProjectRef}@${poolerHost}:5432/postgres?sslmode=verify-full`,
+      `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres?sslmode=verify-full#ignored`,
     ];
     for (const databaseUrl of weakUrls) {
       expect(() => validateAndCanonicalizePreflightConnection({ uri: databaseUrl, ...expectedTarget }))
@@ -387,16 +402,34 @@ describe("October 2 manual-launch hardening", () => {
       { ...expectedTarget, expectedCurrentUser: "operator other" },
     ]) {
       expect(() => validateAndCanonicalizePreflightConnection({
-        uri: `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full`,
+        uri: `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres?sslmode=verify-full`,
         ...badExpectedTarget,
       })).toThrow("expected-target identifiers");
     }
+
+    const wrongProjectRef = "aaaaaaaaaaaaaaaaaaaa";
+    expect(() => validateAndCanonicalizePreflightConnection({
+      ...expectedTarget,
+      expectedLoginUser: `postgres.${wrongProjectRef}`,
+      uri: `postgresql://postgres.${wrongProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres?sslmode=verify-full`,
+    })).toThrow("checked-in deployment project binding");
+    expect(() => validateAndCanonicalizePreflightConnection({
+      ...directTarget,
+      expectedHost: `db.${wrongProjectRef}.supabase.co`,
+      uri: `postgresql://postgres:${encodedPassword}@db.${wrongProjectRef}.supabase.co:5432/postgres?sslmode=verify-full`,
+    })).toThrow("checked-in deployment project binding");
+    expect(() => validateAndCanonicalizePreflightConnection({
+      ...expectedTarget,
+      deploymentEnvironment: "production",
+      uri: `postgresql://postgres.${stagingProjectRef}:${encodedPassword}@${poolerHost}:5432/postgres?sslmode=verify-full`,
+    })).toThrow("checked-in deployment project binding");
   });
 
   it("removes remote-preflight secrets from a Windows-style mixed-case environment", () => {
     expect(environmentWithoutPreflightSecrets({
       Path: "C:\\Windows\\System32",
       SAFE_VALUE: "preserved",
+      AP_DEPLOYMENT_ENV: "staging",
       AP_PREMIGRATION_DATABASE_URL: "secret-one",
       Ap_PrEmIgRaTiOn_Expected_Host: "secret-two",
       ap_premigration_expected_login_user: "secret-three",
@@ -404,12 +437,15 @@ describe("October 2 manual-launch hardening", () => {
     })).toEqual({
       Path: "C:\\Windows\\System32",
       SAFE_VALUE: "preserved",
+      AP_DEPLOYMENT_ENV: "staging",
     });
   });
 
   it("rejects a representative wrapper query override without printing credentials", () => {
     const password = "preflight-super-secret";
-    const databaseUrl = `postgresql://operator:${password}@db.example.test:5432/postgres?host=%2Fvar%2Frun%2Fpostgresql&sslmode=verify-full`;
+    const projectRef = "fmugizadzdnqfckujqlw";
+    const poolerHost = "aws-0-us-west-2.pooler.supabase.com";
+    const databaseUrl = `postgresql://postgres.${projectRef}:${password}@${poolerHost}:5432/postgres?host=%2Fvar%2Frun%2Fpostgresql&sslmode=verify-full`;
     const result = spawnSync(
       process.execPath,
       [resolve(process.cwd(), "scripts/check-inventory-identity-conflicts.mjs"), "--remote"],
@@ -418,12 +454,13 @@ describe("October 2 manual-launch hardening", () => {
         encoding: "utf8",
         env: {
           ...process.env,
+          AP_DEPLOYMENT_ENV: "staging",
           AP_PREMIGRATION_DATABASE_URL: databaseUrl,
-          AP_PREMIGRATION_EXPECTED_HOST: "db.example.test",
+          AP_PREMIGRATION_EXPECTED_HOST: poolerHost,
           AP_PREMIGRATION_EXPECTED_PORT: "5432",
           AP_PREMIGRATION_EXPECTED_DATABASE: "postgres",
-          AP_PREMIGRATION_EXPECTED_LOGIN_USER: "operator",
-          AP_PREMIGRATION_EXPECTED_CURRENT_USER: "operator",
+          AP_PREMIGRATION_EXPECTED_LOGIN_USER: `postgres.${projectRef}`,
+          AP_PREMIGRATION_EXPECTED_CURRENT_USER: "postgres",
         },
       },
     );
@@ -432,6 +469,106 @@ describe("October 2 manual-launch hardening", () => {
     expect(output).toContain("expected host, port, database, and login user");
     expect(output).not.toContain(databaseUrl);
     expect(output).not.toContain(password);
+  });
+
+  it("executes the bound staging pooler preflight with verify-full through a scrubbed psql spawn", () => {
+    const projectRef = "fmugizadzdnqfckujqlw";
+    const password = "fake-spawn-password";
+    const poolerHost = "aws-0-us-west-2.pooler.supabase.com";
+    let spawnCount = 0;
+    const result = runInventoryIdentityPreflight({
+      mode: "--remote",
+      environment: {
+        ...process.env,
+        AP_DEPLOYMENT_ENV: "staging",
+        AP_PREMIGRATION_DATABASE_URL: `postgresql://postgres.${projectRef}:${password}@${poolerHost}:5432/postgres?sslmode=verify-full`,
+        AP_PREMIGRATION_EXPECTED_HOST: poolerHost,
+        AP_PREMIGRATION_EXPECTED_PORT: "5432",
+        AP_PREMIGRATION_EXPECTED_DATABASE: "postgres",
+        AP_PREMIGRATION_EXPECTED_LOGIN_USER: `postgres.${projectRef}`,
+        AP_PREMIGRATION_EXPECTED_CURRENT_USER: "postgres",
+      },
+      spawn: ((command: string, args: string[], options: { input: string; env: Record<string, string> }) => {
+        spawnCount += 1;
+        expect(command).toBe("docker");
+        expect(args).toEqual(["exec", "-i", "supabase_db_applypack", "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"]);
+        expect(options.input).toContain(`\\connect 'postgresql://postgres.${projectRef}:${password}@${poolerHost}:5432/postgres?sslmode=verify-full'`);
+        expect(options.input).toContain("pg_catalog.pg_stat_ssl");
+        expect(options.input).toContain("current_user='postgres'");
+        expect(options.env.AP_DEPLOYMENT_ENV).toBe("staging");
+        expect(Object.keys(options.env).some((key) => key.startsWith("AP_PREMIGRATION_"))).toBe(false);
+        return {
+          status: 0,
+          stdout: "INVENTORY_IDENTITY_PREFLIGHT_CONNECTION_ATTESTED\nINVENTORY_IDENTITY_PREFLIGHT_CLEAN\n",
+          stderr: "",
+        };
+      }) as typeof spawnSync,
+    });
+    expect(spawnCount).toBe(1);
+    expect(result).toEqual({
+      status: 0,
+      stdout: "INVENTORY_IDENTITY_PREFLIGHT_CONNECTION_ATTESTED\nINVENTORY_IDENTITY_PREFLIGHT_CLEAN\n",
+      stderr: "",
+    });
+  });
+
+  it("fails the executable psql attestation for a wrong server current_user", () => {
+    const projectRef = "fmugizadzdnqfckujqlw";
+    const poolerHost = "aws-0-us-west-2.pooler.supabase.com";
+    const result = runInventoryIdentityPreflight({
+      mode: "--remote",
+      environment: {
+        ...process.env,
+        AP_DEPLOYMENT_ENV: "staging",
+        AP_PREMIGRATION_DATABASE_URL: `postgresql://postgres.${projectRef}:fake-password@${poolerHost}:5432/postgres?sslmode=verify-full`,
+        AP_PREMIGRATION_EXPECTED_HOST: poolerHost,
+        AP_PREMIGRATION_EXPECTED_PORT: "5432",
+        AP_PREMIGRATION_EXPECTED_DATABASE: "postgres",
+        AP_PREMIGRATION_EXPECTED_LOGIN_USER: `postgres.${projectRef}`,
+        AP_PREMIGRATION_EXPECTED_CURRENT_USER: "postgres",
+      },
+      spawn: ((_command: string, _args: string[], options: { input: string }) => {
+        expect(options.input).toContain("current_user='postgres'");
+        const actualServerCurrentUser = "wrong_server_role";
+        const attested = options.input.includes(`current_user='${actualServerCurrentUser}'`);
+        return {
+          status: attested ? 0 : 1,
+          stdout: attested
+            ? "INVENTORY_IDENTITY_PREFLIGHT_CONNECTION_ATTESTED\n"
+            : "INVENTORY_IDENTITY_PREFLIGHT_CONNECTION_REJECTED\n",
+          stderr: "",
+        };
+      }) as typeof spawnSync,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain("INVENTORY_IDENTITY_PREFLIGHT_CONNECTION_REJECTED");
+    expect(result.stdout).not.toContain("INVENTORY_IDENTITY_PREFLIGHT_CONNECTION_ATTESTED");
+  });
+
+  it("rejects matched wrong-project pooler inputs before spawning psql", () => {
+    const wrongProjectRef = "aaaaaaaaaaaaaaaaaaaa";
+    const poolerHost = "aws-0-us-west-2.pooler.supabase.com";
+    let spawned = false;
+    const result = runInventoryIdentityPreflight({
+      mode: "--remote",
+      environment: {
+        ...process.env,
+        AP_DEPLOYMENT_ENV: "staging",
+        AP_PREMIGRATION_DATABASE_URL: `postgresql://postgres.${wrongProjectRef}:fake-password@${poolerHost}:5432/postgres?sslmode=verify-full`,
+        AP_PREMIGRATION_EXPECTED_HOST: poolerHost,
+        AP_PREMIGRATION_EXPECTED_PORT: "5432",
+        AP_PREMIGRATION_EXPECTED_DATABASE: "postgres",
+        AP_PREMIGRATION_EXPECTED_LOGIN_USER: `postgres.${wrongProjectRef}`,
+        AP_PREMIGRATION_EXPECTED_CURRENT_USER: "postgres",
+      },
+      spawn: () => {
+        spawned = true;
+        throw new Error("psql must not run for an unbound project");
+      },
+    });
+    expect(spawned).toBe(false);
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("checked-in deployment project binding");
   });
 
   it("runs real document-render CI on pinned Windows Liberation Sans through the strict harness", () => {

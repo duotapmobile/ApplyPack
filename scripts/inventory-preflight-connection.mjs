@@ -1,5 +1,10 @@
 const exactTargetError = "Remote preflight URI must exactly match the expected host, port, database, and login user and may contain only sslmode=verify-full.";
 const expectedTargetError = "All remote preflight expected-target identifiers are required and must be canonical.";
+const deploymentBindingError = "Remote preflight target does not match the checked-in deployment project binding.";
+
+export const PREFLIGHT_DEPLOYMENT_PROJECT_REFS = Object.freeze({
+  staging: "fmugizadzdnqfckujqlw",
+});
 
 const canonicalDnsHostname = (value) => {
   const hostname = value.trim().toLowerCase();
@@ -29,12 +34,16 @@ export function environmentWithoutPreflightSecrets(environment) {
 
 export function validateAndCanonicalizePreflightConnection({
   uri,
+  deploymentEnvironment,
   expectedHost,
   expectedPort,
   expectedDatabase,
   expectedLoginUser,
   expectedCurrentUser,
 }) {
+  const normalizedDeploymentEnvironment = deploymentEnvironment.trim().toLowerCase();
+  const expectedProjectRef = PREFLIGHT_DEPLOYMENT_PROJECT_REFS[normalizedDeploymentEnvironment];
+  if (!expectedProjectRef) throw new Error(deploymentBindingError);
   const normalizedHost = canonicalDnsHostname(expectedHost);
   const normalizedPort = expectedPort.trim();
   const normalizedDatabase = expectedDatabase.trim();
@@ -84,6 +93,13 @@ export function validateAndCanonicalizePreflightConnection({
     throw new Error(exactTargetError);
   }
 
+  const directHost = `db.${expectedProjectRef}.supabase.co`;
+  const isDirect = normalizedHost === directHost;
+  const isPooler = normalizedHost.endsWith(".pooler.supabase.com")
+    && normalizedLoginUser.endsWith(`.${expectedProjectRef}`)
+    && normalizedLoginUser.length > expectedProjectRef.length + 1;
+  if (!isDirect && !isPooler) throw new Error(deploymentBindingError);
+
   const canonical = new URL("postgresql://placeholder.invalid");
   canonical.username = normalizedLoginUser;
   canonical.password = decodedPassword;
@@ -95,6 +111,9 @@ export function validateAndCanonicalizePreflightConnection({
     canonicalUri: canonical.toString(),
     password: canonical.password,
     decodedPassword,
+    deploymentEnvironment: normalizedDeploymentEnvironment,
+    expectedProjectRef,
+    endpointType: isDirect ? "direct" : "session-pooler",
     expectedHost: normalizedHost,
     expectedPort: normalizedPort,
     expectedDatabase: normalizedDatabase,
