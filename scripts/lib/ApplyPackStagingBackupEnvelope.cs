@@ -357,6 +357,26 @@ namespace ApplyPack.Security
             }
         }
 
+        public string IdentityToken
+        {
+            get
+            {
+                ThrowIfDisposed();
+                return _volumeSerial.ToString("X8") + ":" + _fileIndex.ToString("X16");
+            }
+        }
+
+        public void AssertIdentity(string expectedIdentityToken, string expectedFinalPath)
+        {
+            ThrowIfDisposed();
+            if (String.IsNullOrWhiteSpace(expectedIdentityToken)
+                || String.IsNullOrWhiteSpace(expectedFinalPath)
+                || !String.Equals(IdentityToken, expectedIdentityToken, StringComparison.Ordinal)
+                || !String.Equals(_finalPath, expectedFinalPath, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("OUTPUT_DIRECTORY_IDENTITY_CHANGED");
+            AssertUnchanged();
+        }
+
         public static OutputDirectoryGuard Capture(string directoryPath)
         {
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))

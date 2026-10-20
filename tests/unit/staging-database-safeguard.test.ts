@@ -14,6 +14,10 @@ const helperPath = path.join(
 );
 const script = readFileSync(scriptPath, "utf8");
 const helper = readFileSync(helperPath, "utf8");
+const ciWorkflow = readFileSync(
+  path.join(repoRoot, ".github", "workflows", "ci.yml"),
+  "utf8",
+);
 
 function resolvePowerShell(): string | undefined {
   const explicit = process.env.PWSH_EXE;
@@ -68,6 +72,9 @@ describe("Windows staging database safeguard", () => {
     );
     expect(script).toContain("AP_PREMIGRATION_EXPECTED_RELEASE_SHA");
     expect(script).toContain("SAFEGUARD_SOURCE_NOT_AT_RELEASE_SHA");
+    expect(script).toContain("Assert-EnvelopeReleaseBinding -Metadata $metadata");
+    expect(script).toContain("sourceReleaseSha = $releaseSha");
+    expect(script).toContain("ENVELOPE_RELEASE_SHA_MISMATCH");
     expect(script).toContain("PGSSLMODE=verify-full");
     expect(script).toContain(
       "public.ecr.aws/supabase/postgres@sha256:b3bfedb107413abb3b8cb0d0874b0414a1dceb3d55bc0c778de6ad22d1f7dc86",
@@ -80,6 +87,9 @@ describe("Windows staging database safeguard", () => {
     expect(script).toContain("OUTPUT_INSIDE_GIT_WORKTREE");
     expect(script).toContain("OUTPUT_REPARSE_PATH_REJECTED");
     expect(script).toContain("OutputDirectoryGuard]::Capture");
+    expect(script).toContain("Assert-GuardedOutputDirectory");
+    expect(script).toContain("DirectoryIdentityToken = $guard.IdentityToken");
+    expect(helper).toContain("public void AssertIdentity(");
     expect(script).toContain("OpenRegularFileForDeletion");
     expect(script).toContain("MarkDeleteOnClose");
     expect(script).toContain("[IO.FileShare]::None");
@@ -88,6 +98,14 @@ describe("Windows staging database safeguard", () => {
     expect(script).toContain("'--network', 'none'");
     expect(script).toContain("publishedPorts = 0");
     expect(script).not.toMatch(/'--publish'|'-p'/u);
+  });
+
+  it("runs the dynamic DPAPI safeguard on a dedicated Windows CI job", () => {
+    expect(ciWorkflow).toMatch(/staging-database-safeguard:\s*\n\s*runs-on: windows-latest/u);
+    expect(ciWorkflow).toContain("npm run test:staging-database-safeguard");
+    expect(ciWorkflow).not.toMatch(
+      /staging-database-safeguard:[\s\S]*?secrets\./u,
+    );
   });
 
   it("preserves primary failures and compares privacy-safe row-count evidence", () => {
@@ -116,6 +134,8 @@ describe("Windows staging database safeguard", () => {
       const report = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
       expect(report.envelopeHandlePinned).toBe(true);
       expect(report.outputPathRaceRejected).toBe(true);
+      expect(report.preCaptureSwapRejected).toBe(true);
+      expect(report.releaseBindingVerified).toBe(true);
       expect(report.processFailureCleanupVerified).toBe(true);
       expect(report.credentialBufferCleared).toBe(true);
       expect(report.restoreFailurePrecedenceVerified).toBe(true);

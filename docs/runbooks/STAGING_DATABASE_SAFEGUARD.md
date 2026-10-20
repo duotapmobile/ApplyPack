@@ -14,9 +14,9 @@ The implementation provides these controls:
 - Forces libpq `verify-full` with the reviewed provider CA.
 - Streams `pg_dump --format=custom` directly into an authenticated encrypted envelope. No plaintext dump is written to disk.
 - Protects a random per-backup 64-byte data key with Windows DPAPI `CurrentUser`. The envelope uses AES-256-CBC plus HMAC-SHA-256 encrypt-then-MAC. Restore authenticates the complete envelope before releasing plaintext.
-- Writes only to an explicit existing directory outside every Git worktree, rejects reparse-point ancestors, holds a non-delete-sharing directory identity handle throughout each write, validates the opened file handle as a direct child before and after publication, creates the ciphertext as a same-directory partial file, flushes it, and atomically renames it. Failure cleanup deletes the verified partial by handle.
+- Writes only to an explicit existing directory outside every Git repository or worktree, rejects `.git` and reparse-point ancestors, binds the directory identity approved during path validation to the later long-lived non-delete-sharing handle, and repeats the complete repository/reparse/worktree exclusion while that handle is held. It validates the opened file handle as a direct child before and after publication, creates the ciphertext as a same-directory partial file, flushes it, and atomically renames it. A directory substituted between approval and handle capture is rejected before file creation; failure cleanup deletes only the verified partial by handle.
 - On every backup-stream, encryption, output, flush, or process failure, terminates the complete child process tree, waits for exit, drains redirected streams, disposes handles, clears credential buffers, removes the named source container, and independently verifies its absence before returning.
-- Opens the encrypted restore source once with `FileShare.None` and keeps that handle through metadata authentication, archive-list validation, and restore. A second valid CurrentUser envelope cannot replace the authenticated bytes between phases.
+- Opens the encrypted restore source once with `FileShare.None` and keeps that handle through metadata authentication, archive-list validation, and restore. A second valid CurrentUser envelope cannot replace the authenticated bytes between phases. Restore independently repeats the clean exact-release helper gate, requires `AP_PREMIGRATION_EXPECTED_RELEASE_SHA` to be the full current `HEAD`, rejects an otherwise valid envelope from any other release, and records only that verified value in its receipt.
 - Restores only into the pinned PostgreSQL 17.6 container with `--network none`, no published ports, and a temporary in-memory data directory. The container is removed and absence is verified before a success receipt is written. A primary restore error remains primary if teardown also fails; the controlled cleanup code is attached separately.
 - Records sanitized counts, a deterministic SHA-256 over sorted per-public-table row counts, tool versions, image identity, release SHA, RLS/schema/ledger integrity, and teardown evidence. It records no row contents, identifiers, URLs, document data, password, or connection URI.
 
@@ -59,7 +59,7 @@ Required marker:
 STAGING_DATABASE_SAFEGUARD_SELF_TEST_OK
 ```
 
-The self-test uses only synthetic bytes, a local disposable child process, and a temporary directory. It proves a DPAPI round trip, authenticated encrypt/decrypt, tamper rejection, truncation rejection, non-shareable envelope-handle pinning, repository-path and directory-race rejection, partial-file cleanup, process-tree termination and wait, simulated container cleanup, credential-buffer clearing, restore-error precedence, and secret-log redaction. It does not read Credential Manager, run Docker, or contact a database.
+The self-test uses only synthetic bytes, a local disposable child process, a local disposable Git fixture, and a temporary directory. It proves a DPAPI round trip, authenticated encrypt/decrypt, tamper rejection, truncation rejection, non-shareable envelope-handle pinning, rejection of an authenticated older-release envelope, mismatched release-SHA rejection, dirty-helper rejection, repository-path rejection, both pre-capture directory substitution and held-handle directory-race rejection, partial-file cleanup, process-tree termination and wait, simulated container cleanup, credential-buffer clearing, restore-error precedence, and secret-log redaction. It does not read Credential Manager, run Docker, or contact a database. The dedicated `windows-latest` CI safeguard job runs this dynamic test without secrets; Linux CI gates remain unchanged.
 
 ## Bind the immutable staging identity
 
@@ -125,7 +125,7 @@ $restoreReceipt = "C:\ApplyPack-Staging-Evidence\applypack-staging-pre-081-$stam
   -ReceiptPath $restoreReceipt
 ```
 
-Required status: `STAGING_RESTORE_DRILL_VERIFIED`. Restore holds one non-shareable source handle across metadata authentication, safe archive-list validation, and streaming restore into a disposable container; each consumer authenticates the complete envelope before releasing plaintext. It compares aggregate schema, migration-ledger, RLS-policy, trigger, function, index, and readiness evidence plus exact per-public-table row counts and their deterministic SHA-256 with the authenticated source metadata. It never publishes a container port or enables container networking.
+Required status: `STAGING_RESTORE_DRILL_VERIFIED`. Restore first proves that the two helper sources are tracked and clean at the exact full SHA in `AP_PREMIGRATION_EXPECTED_RELEASE_SHA`; it then holds one non-shareable source handle across metadata authentication, exact equality of the authenticated envelope `releaseSha` to that verified SHA, safe archive-list validation, and streaming restore into a disposable container. Each consumer authenticates the complete envelope before releasing plaintext. It compares aggregate schema, migration-ledger, RLS-policy, trigger, function, index, and readiness evidence plus exact per-public-table row counts and their deterministic SHA-256 with the authenticated source metadata. It never publishes a container port or enables container networking. An envelope made by an older or different valid release is deliberately rejected and must be restored only by its separately reviewed exact release.
 
 After success, independently verify that no container whose name starts with `applypack-staging-restore-` remains. The signed-off evidence packet contains the backup receipt, restore receipt, their SHA-256 values, the exact reviewed release SHA, operator and supervisor signatures, writer-quiescence proof, and the later migration/readiness receipts. Do not commit the `.apdb` file or receipts.
 
@@ -138,7 +138,8 @@ Stop without applying migrations when any of these occurs:
 - The Credential Manager user name differs or the password contains a line break.
 - Authentication fails or SSL cannot be proven.
 - Source migration ledger is not exactly pre-081.
-- Output path is inside a Git worktree, crosses a reparse point, exists already, or has the wrong extension.
+- Output path is inside a Git repository or worktree, crosses a reparse point, changes directory identity between approval and capture, exists already, or has the wrong extension.
+- Restore helper sources are untracked or dirty, the expected release value is not the exact full current SHA, or the authenticated envelope release differs from it.
 - Encryption, authentication, flush, hash, atomic move, restore, aggregate comparison, or container teardown fails.
 - Any receipt contains a database URI, password, customer row, document content, job URL, or customer identifier.
 

@@ -29,6 +29,20 @@ jobs:
       - run: node --test scripts/test-maintenance-runner.test.mjs scripts/test-renderer-runtime.test.mjs scripts/railway-staging-iac-cutover.test.mjs
       - run: npm run build
 
+  staging-database-safeguard:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run DPAPI staging safeguard self-test
+        shell: pwsh
+        run: npm run test:staging-database-safeguard
+
   browser:
     runs-on: ubuntu-latest
     timeout-minutes: 25

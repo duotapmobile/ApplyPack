@@ -46,7 +46,7 @@ $script:PublicErrorCodes = [Collections.Generic.HashSet[string]]::new([StringCom
     'OUTPUT_PATHS_MUST_DIFFER', 'BACKUP_PROCESS_START_FAILED', 'BACKUP_CREDENTIAL_PIPE_FAILED',
     'BACKUP_STREAM_FAILED', 'BACKUP_PROCESS_TEARDOWN_FAILED', 'BACKUP_CONTAINER_TEARDOWN_FAILED',
     'PG_DUMP_FAILED', 'BACKUP_FILE_INVALID',
-    'ENVELOPE_METADATA_INVALID', 'ENVELOPE_BINDING_INVALID', 'PG_RESTORE_LIST_FAILED',
+    'ENVELOPE_METADATA_INVALID', 'ENVELOPE_BINDING_INVALID', 'ENVELOPE_RELEASE_SHA_MISMATCH', 'PG_RESTORE_LIST_FAILED',
     'RESTORE_CONTAINER_START_FAILED', 'RESTORE_CONTAINER_START_INVALID', 'RESTORE_CONTAINER_NOT_READY',
     'PG_RESTORE_FAILED', 'RESTORE_EVIDENCE_QUERY_FAILED', 'RESTORE_EVIDENCE_INVALID',
     'RESTORE_AGGREGATE_MISMATCH', 'RESTORE_INTEGRITY_INVALID', 'RESTORE_CONTAINER_TEARDOWN_FAILED',
@@ -59,7 +59,8 @@ $script:PublicErrorCodes = [Collections.Generic.HashSet[string]]::new([StringCom
     'SELF_TEST_TRUNCATION_FAILED', 'SELF_TEST_PATH_REJECTION_FAILED',
     'SELF_TEST_LOG_REDACTION_FAILED', 'SELF_TEST_FAILURE_CLEANUP_FAILED',
     'SELF_TEST_PROCESS_CLEANUP_FAILED', 'SELF_TEST_PATH_RACE_FAILED',
-    'SELF_TEST_RESTORE_PRECEDENCE_FAILED', 'SELF_TEST_CREDENTIAL_INVALID', 'SAFEGUARD_FAILED'
+    'SELF_TEST_RELEASE_BINDING_FAILED', 'SELF_TEST_RESTORE_PRECEDENCE_FAILED',
+    'SELF_TEST_CREDENTIAL_INVALID', 'SAFEGUARD_FAILED'
 ) | ForEach-Object { [void]$script:PublicErrorCodes.Add($_) }
 
 function Throw-Controlled {
@@ -70,8 +71,11 @@ function Throw-Controlled {
 
 function Get-ControlledCode {
     param([Parameter(Mandatory = $true)][Management.Automation.ErrorRecord]$Record)
-    $message = $Record.Exception.Message
-    if ($script:PublicErrorCodes.Contains($message)) { return $message }
+    $exception = $Record.Exception
+    while ($null -ne $exception) {
+        if ($script:PublicErrorCodes.Contains($exception.Message)) { return $exception.Message }
+        $exception = $exception.InnerException
+    }
     return 'SAFEGUARD_FAILED'
 }
 
@@ -159,13 +163,84 @@ function Get-WorktreeRoots {
     $stdout = $process.StandardOutput.ReadToEnd()
     $stderrTask = $process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
     $process.WaitForExit()
-    $stderrTask.GetAwaiter().GetResult()
+    [void]$stderrTask.GetAwaiter().GetResult()
     if ($process.ExitCode -ne 0) { Throw-Controlled 'GIT_WORKTREE_DISCOVERY_FAILED' }
     return @(
         $stdout -split "`r?`n" |
             Where-Object { $_.StartsWith('worktree ', [StringComparison]::Ordinal) } |
             ForEach-Object { [IO.Path]::GetFullPath($_.Substring(9)) }
     )
+}
+
+function Test-IsGitRepository {
+    param([Parameter(Mandatory = $true)][string]$DirectoryPath)
+    $start = New-ProcessStartInfo -FileName 'git' -Arguments @(
+        '-C', $DirectoryPath, 'rev-parse', '--git-dir'
+    ) -RedirectOutput $true
+    $process = $null
+    $stdoutTask = $null
+    $stderrTask = $null
+    try {
+        $process = [Diagnostics.Process]::Start($start)
+        $stdoutTask = $process.StandardOutput.BaseStream.CopyToAsync([IO.Stream]::Null)
+        $stderrTask = $process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
+        if (-not $process.WaitForExit(15000)) { Throw-Controlled 'GIT_WORKTREE_DISCOVERY_FAILED' }
+        $exitCode = $process.ExitCode
+        if (-not (Complete-RedirectedProcess -Process $process -StandardErrorTask $stderrTask -StandardOutputTask $stdoutTask -ForceTermination $false)) {
+            $process = $null
+            Throw-Controlled 'GIT_WORKTREE_DISCOVERY_FAILED'
+        }
+        $process = $null
+        return $exitCode -eq 0
+    }
+    catch {
+        if ($null -ne $process) {
+            [void](Complete-RedirectedProcess -Process $process -StandardErrorTask $stderrTask -StandardOutputTask $stdoutTask -ForceTermination $true)
+        }
+        $code = Get-ControlledCode $_
+        if ($code -eq 'SAFEGUARD_FAILED') { Throw-Controlled 'GIT_WORKTREE_DISCOVERY_FAILED' }
+        throw
+    }
+}
+
+function Assert-DirectoryOutsideRepositories {
+    param([Parameter(Mandatory = $true)][string]$DirectoryPath)
+    $directory = [IO.Path]::GetFullPath($DirectoryPath)
+    foreach ($worktree in (Get-WorktreeRoots)) {
+        if (Test-PathWithin -Candidate $directory -Root $worktree) {
+            Throw-Controlled 'OUTPUT_INSIDE_GIT_WORKTREE'
+        }
+    }
+    $cursor = [IO.DirectoryInfo]::new($directory)
+    while ($null -ne $cursor) {
+        $cursor.Refresh()
+        if (-not $cursor.Exists) { Throw-Controlled 'OUTPUT_DIRECTORY_IDENTITY_CHANGED' }
+        if (($cursor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Throw-Controlled 'OUTPUT_REPARSE_PATH_REJECTED'
+        }
+        if ((Test-Path -LiteralPath (Join-Path $cursor.FullName '.git')) -or
+            (Test-IsGitRepository -DirectoryPath $cursor.FullName)) {
+            Throw-Controlled 'OUTPUT_INSIDE_GIT_WORKTREE'
+        }
+        $cursor = $cursor.Parent
+    }
+}
+
+function Assert-GuardedOutputDirectory {
+    param(
+        [Parameter(Mandatory = $true)][ApplyPack.Security.OutputDirectoryGuard]$Guard,
+        [string]$ExpectedIdentityToken,
+        [string]$ExpectedFinalPath
+    )
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedIdentityToken) -or
+        -not [string]::IsNullOrWhiteSpace($ExpectedFinalPath)) {
+        $Guard.AssertIdentity($ExpectedIdentityToken, $ExpectedFinalPath)
+    }
+    else {
+        $Guard.AssertUnchanged()
+    }
+    Assert-DirectoryOutsideRepositories -DirectoryPath $Guard.FinalPath
+    $Guard.AssertUnchanged()
 }
 
 function Assert-SafeOutputPath {
@@ -182,31 +257,24 @@ function Assert-SafeOutputPath {
     if ([string]::IsNullOrWhiteSpace($parent) -or -not (Test-Path -LiteralPath $parent -PathType Container)) {
         Throw-Controlled 'OUTPUT_PARENT_MISSING'
     }
-    foreach ($worktree in (Get-WorktreeRoots)) {
-        if (Test-PathWithin -Candidate $fullPath -Root $worktree) {
-            Throw-Controlled 'OUTPUT_INSIDE_GIT_WORKTREE'
-        }
-    }
-    $cursor = [IO.DirectoryInfo]::new($parent)
-    while ($null -ne $cursor) {
-        if (($cursor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-            Throw-Controlled 'OUTPUT_REPARSE_PATH_REJECTED'
-        }
-        if (Test-Path -LiteralPath (Join-Path $cursor.FullName '.git')) {
-            Throw-Controlled 'OUTPUT_INSIDE_GIT_WORKTREE'
-        }
-        $cursor = $cursor.Parent
-    }
     $guard = [ApplyPack.Security.OutputDirectoryGuard]::Capture($parent)
-    try { $guard.AssertUnchanged() } finally { $guard.Dispose() }
-    return $fullPath
+    try {
+        Assert-GuardedOutputDirectory -Guard $guard
+        return [PSCustomObject]@{
+            FullPath = $fullPath
+            DirectoryFinalPath = $guard.FinalPath
+            DirectoryIdentityToken = $guard.IdentityToken
+        }
+    }
+    finally { $guard.Dispose() }
 }
 
 function Invoke-AtomicFile {
     param(
-        [Parameter(Mandatory = $true)][string]$FinalPath,
+        [Parameter(Mandatory = $true)]$Target,
         [Parameter(Mandatory = $true)][scriptblock]$Writer
     )
+    $FinalPath = [string]$Target.FullPath
     $parent = [IO.Path]::GetDirectoryName($FinalPath)
     $temporaryLeaf = "$([IO.Path]::GetFileName($FinalPath)).partial-$([Guid]::NewGuid().ToString('N'))"
     $temporaryPath = Join-Path $parent $temporaryLeaf
@@ -216,12 +284,10 @@ function Invoke-AtomicFile {
     $primaryFailure = $null
     $cleanupFailure = $null
     try {
-        $guard.AssertUnchanged()
-        foreach ($worktree in (Get-WorktreeRoots)) {
-            if (Test-PathWithin -Candidate (Join-Path $guard.FinalPath $temporaryLeaf) -Root $worktree) {
-                Throw-Controlled 'OUTPUT_INSIDE_GIT_WORKTREE'
-            }
-        }
+        Assert-GuardedOutputDirectory `
+            -Guard $guard `
+            -ExpectedIdentityToken ([string]$Target.DirectoryIdentityToken) `
+            -ExpectedFinalPath ([string]$Target.DirectoryFinalPath)
         $stream = [IO.FileStream]::new(
             $temporaryPath,
             [IO.FileMode]::CreateNew,
@@ -233,6 +299,10 @@ function Invoke-AtomicFile {
         $guard.AssertFileIsDirectChild($stream.SafeFileHandle, $temporaryLeaf)
         & $Writer $stream
         $stream.Flush($true)
+        Assert-GuardedOutputDirectory `
+            -Guard $guard `
+            -ExpectedIdentityToken ([string]$Target.DirectoryIdentityToken) `
+            -ExpectedFinalPath ([string]$Target.DirectoryFinalPath)
         $guard.AssertFileIsDirectChild($stream.SafeFileHandle, $temporaryLeaf)
         if (Test-Path -LiteralPath $FinalPath) { Throw-Controlled 'OUTPUT_ALREADY_EXISTS' }
         [IO.File]::Move($temporaryPath, $FinalPath)
@@ -264,12 +334,17 @@ function Invoke-AtomicFile {
 }
 
 function Remove-VerifiedOutputFile {
-    param([Parameter(Mandatory = $true)][string]$Path)
+    param([Parameter(Mandatory = $true)]$Target)
+    $Path = [string]$Target.FullPath
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
     $parent = [IO.Path]::GetDirectoryName($Path)
     $guard = [ApplyPack.Security.OutputDirectoryGuard]::Capture($parent)
     $deleteHandle = $null
     try {
+        Assert-GuardedOutputDirectory `
+            -Guard $guard `
+            -ExpectedIdentityToken ([string]$Target.DirectoryIdentityToken) `
+            -ExpectedFinalPath ([string]$Target.DirectoryFinalPath)
         $deleteHandle = [ApplyPack.Security.OutputDirectoryGuard]::OpenRegularFileForDeletion($Path)
         $guard.AssertFileIsDirectChild($deleteHandle, [IO.Path]::GetFileName($Path))
         [ApplyPack.Security.OutputDirectoryGuard]::MarkDeleteOnClose($deleteHandle)
@@ -348,7 +423,7 @@ function Invoke-SafeNativeText {
     $stdoutTask = $process.StandardOutput.ReadToEndAsync()
     $stderrTask = $process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
     $process.WaitForExit()
-    $stderrTask.GetAwaiter().GetResult()
+    [void]$stderrTask.GetAwaiter().GetResult()
     $stdout = $stdoutTask.GetAwaiter().GetResult()
     if ($process.ExitCode -ne 0) { Throw-Controlled $FailureCode }
     return $stdout.Trim()
@@ -444,27 +519,52 @@ function Ensure-ContainerAbsent {
     if (-not [string]::IsNullOrWhiteSpace($remaining)) { Throw-Controlled $FailureCode }
 }
 
-function Get-ReleaseSha {
-    $sha = Invoke-SafeNativeText -FileName 'git' -Arguments @('-C', $script:RepoRoot, 'rev-parse', 'HEAD') -FailureCode 'RELEASE_SHA_UNAVAILABLE'
+function Get-CleanReleaseSha {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+        [Parameter(Mandatory = $true)][string]$ExpectedSha,
+        [Parameter(Mandatory = $true)][string[]]$RequiredPaths
+    )
+    $sha = Invoke-SafeNativeText -FileName 'git' -Arguments @('-C', $RepositoryRoot, 'rev-parse', 'HEAD') -FailureCode 'RELEASE_SHA_UNAVAILABLE'
     if ($sha -notmatch '^[0-9a-f]{40}$') { Throw-Controlled 'RELEASE_SHA_INVALID' }
-    $expectedSha = [Environment]::GetEnvironmentVariable('AP_PREMIGRATION_EXPECTED_RELEASE_SHA', 'Process')
-    if ($expectedSha -notmatch '^[0-9a-f]{40}$' -or
-        -not [string]::Equals($sha, $expectedSha, [StringComparison]::Ordinal)) {
+    if ($ExpectedSha -notmatch '^[0-9a-f]{40}$' -or
+        -not [string]::Equals($sha, $ExpectedSha, [StringComparison]::Ordinal)) {
         Throw-Controlled 'RELEASE_SHA_BINDING_INVALID'
     }
-    foreach ($path in @('scripts/staging-database-safeguard.ps1', 'scripts/lib/ApplyPackStagingBackupEnvelope.cs')) {
+    foreach ($path in $RequiredPaths) {
         [void](Invoke-SafeNativeText -FileName 'git' -Arguments @(
-            '-C', $script:RepoRoot, 'ls-files', '--error-unmatch', '--', $path
+            '-C', $RepositoryRoot, 'ls-files', '--error-unmatch', '--', $path
         ) -FailureCode 'SAFEGUARD_SOURCE_NOT_TRACKED')
         $start = New-ProcessStartInfo -FileName 'git' -Arguments @(
-            '-C', $script:RepoRoot, 'diff', '--quiet', 'HEAD', '--', $path
+            '-C', $RepositoryRoot, 'diff', '--quiet', 'HEAD', '--', $path
         )
         $process = [Diagnostics.Process]::Start($start)
         $stderrTask = $process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
-        $process.WaitForExit(); $stderrTask.GetAwaiter().GetResult()
+        $process.WaitForExit(); [void]$stderrTask.GetAwaiter().GetResult()
         if ($process.ExitCode -ne 0) { Throw-Controlled 'SAFEGUARD_SOURCE_NOT_AT_RELEASE_SHA' }
     }
     return $sha
+}
+
+function Get-ReleaseSha {
+    return Get-CleanReleaseSha `
+        -RepositoryRoot $script:RepoRoot `
+        -ExpectedSha ([Environment]::GetEnvironmentVariable('AP_PREMIGRATION_EXPECTED_RELEASE_SHA', 'Process')) `
+        -RequiredPaths @(
+            'scripts/staging-database-safeguard.ps1',
+            'scripts/lib/ApplyPackStagingBackupEnvelope.cs'
+        )
+}
+
+function Assert-EnvelopeReleaseBinding {
+    param(
+        [Parameter(Mandatory = $true)]$Metadata,
+        [Parameter(Mandatory = $true)][string]$ReleaseSha
+    )
+    if ($Metadata.releaseSha -notmatch '^[0-9a-f]{40}$' -or
+        -not [string]::Equals([string]$Metadata.releaseSha, $ReleaseSha, [StringComparison]::Ordinal)) {
+        Throw-Controlled 'ENVELOPE_RELEASE_SHA_MISMATCH'
+    }
 }
 
 function Assert-CaCertificate {
@@ -735,8 +835,10 @@ function New-SanitizedMetadata {
 }
 
 function Invoke-Backup {
-    $resolvedBackup = Assert-SafeOutputPath -Path $BackupPath -ExpectedExtension '.apdb'
-    $resolvedReceipt = Assert-SafeOutputPath -Path $ReceiptPath -ExpectedExtension '.json'
+    $backupTarget = Assert-SafeOutputPath -Path $BackupPath -ExpectedExtension '.apdb'
+    $receiptTarget = Assert-SafeOutputPath -Path $ReceiptPath -ExpectedExtension '.json'
+    $resolvedBackup = [string]$backupTarget.FullPath
+    $resolvedReceipt = [string]$receiptTarget.FullPath
     if ([string]::Equals($resolvedBackup, $resolvedReceipt, [StringComparison]::OrdinalIgnoreCase)) {
         Throw-Controlled 'OUTPUT_PATHS_MUST_DIFFER'
     }
@@ -759,7 +861,7 @@ function Invoke-Backup {
             '--port', $script:DatabasePort, '--username', $script:LoginUser, '--dbname', $script:DatabaseName
         )
 
-        Invoke-AtomicFile -FinalPath $resolvedBackup -Writer {
+        Invoke-AtomicFile -Target $backupTarget -Writer {
             param($output)
             $start = New-ProcessStartInfo -FileName $DockerExecutable -Arguments $dumpArguments -RedirectInput $true -RedirectOutput $true
             Invoke-EncryptedBackupProcess `
@@ -783,10 +885,10 @@ function Invoke-Backup {
                 postgresImageDigest = $script:PostgresImageDigest
                 sourceEvidence = $evidence
             }
-            Invoke-AtomicFile -FinalPath $resolvedReceipt -Writer { param($output) Write-JsonStream -Stream $output -Value $receipt }
+            Invoke-AtomicFile -Target $receiptTarget -Writer { param($output) Write-JsonStream -Stream $output -Value $receipt }
         }
         catch {
-            Remove-VerifiedOutputFile -Path $resolvedBackup
+            Remove-VerifiedOutputFile -Target $backupTarget
             throw
         }
     }
@@ -875,10 +977,12 @@ function Assert-RestoreEvidence {
 
 function Invoke-Restore {
     Assert-StagingBinding
+    $releaseSha = Get-ReleaseSha
     $resolvedBackup = Get-FullPath $BackupPath
     if (-not (Test-Path -LiteralPath $resolvedBackup -PathType Leaf) -or
         [IO.Path]::GetExtension($resolvedBackup) -ne '.apdb') { Throw-Controlled 'BACKUP_FILE_INVALID' }
-    $resolvedReceipt = Assert-SafeOutputPath -Path $ReceiptPath -ExpectedExtension '.json'
+    $receiptTarget = Assert-SafeOutputPath -Path $ReceiptPath -ExpectedExtension '.json'
+    $resolvedReceipt = [string]$receiptTarget.FullPath
     [void](Assert-PinnedImage)
     $containerName = "applypack-staging-restore-$([Guid]::NewGuid().ToString('N'))"
     $listContainerName = "applypack-staging-restore-list-$([Guid]::NewGuid().ToString('N'))"
@@ -902,6 +1006,7 @@ function Invoke-Restore {
         $envelopeSha256 = Get-StreamSha256 $envelopeStream
         $info = [ApplyPack.Security.StagingBackupEnvelope]::AuthenticateAndReadMetadata($envelopeStream)
         try { $metadata = $info.MetadataJson | ConvertFrom-Json } catch { Throw-Controlled 'ENVELOPE_METADATA_INVALID' }
+        Assert-EnvelopeReleaseBinding -Metadata $metadata -ReleaseSha $releaseSha
         if ($metadata.format -ne 'ApplyPackStagingDatabaseBackup' -or
             [int]$metadata.formatVersion -ne 1 -or
             $metadata.deploymentEnvironment -ne 'staging' -or
@@ -982,7 +1087,7 @@ function Invoke-Restore {
     $receipt = [ordered]@{
         operation = 'isolated-staging-restore-drill'
         completedAt = [DateTimeOffset]::UtcNow.ToString('O')
-        sourceReleaseSha = $metadata.releaseSha
+        sourceReleaseSha = $releaseSha
         envelopeSha256 = $envelopeSha256
         postgresImageDigest = $script:PostgresImageDigest
         networkMode = 'none'
@@ -991,7 +1096,7 @@ function Invoke-Restore {
         tableRowCountSha256 = $restoredEvidence.tableRowCountSha256
         teardownVerified = $true
     }
-    Invoke-AtomicFile -FinalPath $resolvedReceipt -Writer { param($output) Write-JsonStream -Stream $output -Value $receipt }
+    Invoke-AtomicFile -Target $receiptTarget -Writer { param($output) Write-JsonStream -Stream $output -Value $receipt }
     [ordered]@{ status = 'STAGING_RESTORE_DRILL_VERIFIED'; receiptPath = $resolvedReceipt; envelopeSha256 = $envelopeSha256 } | ConvertTo-Json -Compress
 }
 
@@ -1076,6 +1181,71 @@ function Invoke-SelfTest {
         try { [void](Assert-SafeOutputPath -Path (Join-Path $script:RepoRoot 'forbidden.apdb') -ExpectedExtension '.apdb') } catch { $rejected = $_.Exception.Message -eq 'OUTPUT_INSIDE_GIT_WORKTREE' }
         if (-not $rejected) { Throw-Controlled 'SELF_TEST_PATH_REJECTION_FAILED' }
 
+        # Prove that both the explicit full release SHA and the helper bytes are
+        # immutable inputs to backup/restore authorization. This fixture is an
+        # isolated local Git repository and never touches the canonical checkout.
+        $releaseRepo = Join-Path $testRoot 'release-fixture'
+        $releaseHooks = Join-Path $releaseRepo 'empty-hooks'
+        $releaseScriptPath = Join-Path $releaseRepo 'scripts\staging-database-safeguard.ps1'
+        $releaseHelperPath = Join-Path $releaseRepo 'scripts\lib\ApplyPackStagingBackupEnvelope.cs'
+        [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($releaseHelperPath)) | Out-Null
+        [IO.Directory]::CreateDirectory($releaseHooks) | Out-Null
+        [IO.File]::WriteAllText($releaseScriptPath, 'fixture script')
+        [IO.File]::WriteAllText($releaseHelperPath, 'fixture helper')
+        [void](Invoke-SafeNativeText -FileName 'git' -Arguments @('-C', $releaseRepo, 'init', '--quiet'))
+        [void](Invoke-SafeNativeText -FileName 'git' -Arguments @(
+            '-C', $releaseRepo, 'add', '--',
+            'scripts/staging-database-safeguard.ps1',
+            'scripts/lib/ApplyPackStagingBackupEnvelope.cs'
+        ))
+        [void](Invoke-SafeNativeText -FileName 'git' -Arguments @(
+            '-C', $releaseRepo,
+            '-c', 'user.name=ApplyPack Self Test',
+            '-c', 'user.email=applypack-self-test.invalid',
+            '-c', 'commit.gpgsign=false',
+            '-c', "core.hooksPath=$releaseHooks",
+            'commit', '--quiet', '-m', 'fixture'
+        ))
+        $releaseFixtureSha = Invoke-SafeNativeText -FileName 'git' -Arguments @('-C', $releaseRepo, 'rev-parse', 'HEAD')
+        $releasePaths = @(
+            'scripts/staging-database-safeguard.ps1',
+            'scripts/lib/ApplyPackStagingBackupEnvelope.cs'
+        )
+        if ((Get-CleanReleaseSha -RepositoryRoot $releaseRepo -ExpectedSha $releaseFixtureSha -RequiredPaths $releasePaths) -ne $releaseFixtureSha) {
+            Throw-Controlled 'SELF_TEST_RELEASE_BINDING_FAILED'
+        }
+        $mismatchedShaRejected = $false
+        try {
+            [void](Get-CleanReleaseSha -RepositoryRoot $releaseRepo -ExpectedSha ('0' * 40) -RequiredPaths $releasePaths)
+        }
+        catch { $mismatchedShaRejected = (Get-ControlledCode $_) -eq 'RELEASE_SHA_BINDING_INVALID' }
+        if (-not $mismatchedShaRejected) { Throw-Controlled 'SELF_TEST_RELEASE_BINDING_FAILED' }
+        [IO.File]::AppendAllText($releaseHelperPath, ' dirty')
+        $dirtyHelperRejected = $false
+        try {
+            [void](Get-CleanReleaseSha -RepositoryRoot $releaseRepo -ExpectedSha $releaseFixtureSha -RequiredPaths $releasePaths)
+        }
+        catch { $dirtyHelperRejected = (Get-ControlledCode $_) -eq 'SAFEGUARD_SOURCE_NOT_AT_RELEASE_SHA' }
+        if (-not $dirtyHelperRejected) { Throw-Controlled 'SELF_TEST_RELEASE_BINDING_FAILED' }
+
+        $oldReleaseSha = '1111111111111111111111111111111111111111'
+        $oldMetadata = [ordered]@{ format = 'self-test'; releaseSha = $oldReleaseSha } | ConvertTo-Json -Compress
+        $oldEnvelope = Join-Path $testRoot 'old-release-valid.apdb'
+        $oldDestination = [IO.FileStream]::new($oldEnvelope, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        $oldSource = [IO.MemoryStream]::new($plain, $false)
+        try {
+            [ApplyPack.Security.StagingBackupEnvelope]::Encrypt($oldSource, $oldDestination, $oldMetadata)
+            $oldDestination.Flush($true)
+        }
+        finally { $oldSource.Dispose(); $oldDestination.Dispose() }
+        $oldInfo = [ApplyPack.Security.StagingBackupEnvelope]::AuthenticateAndReadMetadata($oldEnvelope)
+        $oldReleaseRejected = $false
+        try {
+            Assert-EnvelopeReleaseBinding -Metadata ($oldInfo.MetadataJson | ConvertFrom-Json) -ReleaseSha $releaseFixtureSha
+        }
+        catch { $oldReleaseRejected = (Get-ControlledCode $_) -eq 'ENVELOPE_RELEASE_SHA_MISMATCH' }
+        if (-not $oldReleaseRejected) { Throw-Controlled 'SELF_TEST_RELEASE_BINDING_FAILED' }
+
         $raceParent = Join-Path $testRoot 'race-parent'
         $raceMoved = Join-Path $testRoot 'race-parent-moved'
         [IO.Directory]::CreateDirectory($raceParent) | Out-Null
@@ -1091,10 +1261,33 @@ function Invoke-SelfTest {
         finally { $raceGuard.Dispose() }
         if (-not $raceRejected) { Throw-Controlled 'SELF_TEST_PATH_RACE_FAILED' }
 
+        # Prove a swap that occurs after approval but before the long-lived write
+        # guard is captured cannot redirect output into the substitute directory.
+        $preCaptureParent = Join-Path $testRoot 'pre-capture-parent'
+        $preCaptureMoved = Join-Path $testRoot 'pre-capture-parent-approved'
+        [IO.Directory]::CreateDirectory($preCaptureParent) | Out-Null
+        $preCaptureTarget = Assert-SafeOutputPath -Path (Join-Path $preCaptureParent 'rejected.apdb') -ExpectedExtension '.apdb'
+        [IO.Directory]::Move($preCaptureParent, $preCaptureMoved)
+        [IO.Directory]::CreateDirectory($preCaptureParent) | Out-Null
+        $preCaptureRejected = $false
+        try {
+            Invoke-AtomicFile -Target $preCaptureTarget -Writer {
+                param($output)
+                $output.WriteByte(42)
+            }
+        }
+        catch { $preCaptureRejected = (Get-ControlledCode $_) -eq 'OUTPUT_DIRECTORY_IDENTITY_CHANGED' }
+        if (-not $preCaptureRejected -or
+            (Test-Path -LiteralPath $preCaptureTarget.FullPath) -or
+            (Test-Path -LiteralPath (Join-Path $preCaptureMoved 'rejected.apdb'))) {
+            Throw-Controlled 'SELF_TEST_PATH_RACE_FAILED'
+        }
+
         $failurePath = Join-Path $testRoot 'failed.apdb'
+        $failureTarget = Assert-SafeOutputPath -Path $failurePath -ExpectedExtension '.apdb'
         $caughtCode = $null
         try {
-            Invoke-AtomicFile -FinalPath $failurePath -Writer {
+            Invoke-AtomicFile -Target $failureTarget -Writer {
                 param($output)
                 $output.Write([byte[]](1, 2, 3), 0, 3)
                 throw $marker
@@ -1137,6 +1330,7 @@ while ($true) {
         $syntheticSecret = $marker.ToCharArray()
         $syntheticCredential = [ApplyPack.Security.WindowsCredentialStore]::CreateSyntheticForSelfTest($syntheticSecret)
         $processFailurePath = Join-Path $testRoot 'process-failure.apdb'
+        $processFailureTarget = Assert-SafeOutputPath -Path $processFailurePath -ExpectedExtension '.apdb'
         $processCaughtCode = $null
         $cleanupOverride = {
             param($ignoredContainerName)
@@ -1145,7 +1339,7 @@ while ($true) {
             }
         }
         try {
-            Invoke-AtomicFile -FinalPath $processFailurePath -Writer {
+            Invoke-AtomicFile -Target $processFailureTarget -Writer {
                 param($output)
                 $failingOutput = [ApplyPack.Security.DeterministicFailingWriteStream]::new($output, 4096)
                 try {
@@ -1215,6 +1409,8 @@ while ($true) {
             envelopeHandlePinned = $true
             repositoryOutputRejected = $true
             outputPathRaceRejected = $true
+            preCaptureSwapRejected = $true
+            releaseBindingVerified = $true
             failureCleanupVerified = $true
             processFailureCleanupVerified = $true
             credentialBufferCleared = $true
