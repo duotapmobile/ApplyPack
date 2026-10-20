@@ -298,14 +298,14 @@ function Get-Utf8Sha256 {
   }
 }
 
-function Get-OptionalProviderPropertyValue {
+function Get-OptionalProviderProperty {
   param(
     [Parameter(Mandatory)] $Object,
     [Parameter(Mandatory)] [string] $Name
   )
   $apProperty = $Object.PSObject.Properties[$Name]
   if ($null -eq $apProperty) { return $null }
-  $apProperty.Value
+  $apProperty
 }
 
 function Get-FoundationProviderCollectionCount {
@@ -315,7 +315,15 @@ function Get-FoundationProviderCollectionCount {
 }
 
 function Assert-FoundationSafeDeploymentConfig {
-  param($DeploymentConfig)
+  param($DeploymentConfigProperty)
+  if ($null -eq $DeploymentConfigProperty) { return $null }
+  if ($DeploymentConfigProperty -isnot [Management.Automation.PSPropertyInfo]) {
+    throw 'Provider deployment configuration was not supplied as a property envelope.'
+  }
+  $DeploymentConfig = $DeploymentConfigProperty.Value
+  if ($DeploymentConfig -is [array]) {
+    throw 'Provider deployment configuration arrays are forbidden.'
+  }
   if ($null -eq $DeploymentConfig) { return $null }
   if ($DeploymentConfig -isnot [pscustomobject]) {
     throw 'Provider deployment configuration is not a supported object.'
@@ -329,6 +337,21 @@ function Assert-FoundationSafeDeploymentConfig {
     throw 'Provider deployment configuration is not the safe materialized default.'
   }
   [ordered]@{ Mode = 'STANDARD'; DisableRollback = $false }
+}
+
+function Assert-FoundationNullProviderProperty {
+  param(
+    $Property,
+    [Parameter(Mandatory)] [string] $Name
+  )
+  if ($null -eq $Property) { return }
+  if ($Property -isnot [Management.Automation.PSPropertyInfo]) {
+    throw "Provider $Name was not supplied as a property envelope."
+  }
+  $apValue = $Property.Value
+  if ($apValue -is [array] -or $null -ne $apValue) {
+    throw "Provider $Name must be absent or null."
+  }
 }
 
 Assert-FoundationPowerShell7
@@ -589,11 +612,14 @@ function Get-FoundationChangeSetReceipt {
     $null -ne $apImportExistingResourcesProperty.Value -and [bool]$apImportExistingResourcesProperty.Value
   $apIncludeNestedStacks = $null -ne $apIncludeNestedStacksProperty -and
     $null -ne $apIncludeNestedStacksProperty.Value -and [bool]$apIncludeNestedStacksProperty.Value
-  $apParentChangeSetId = Get-OptionalProviderPropertyValue -Object $ChangeSet -Name 'ParentChangeSetId'
-  $apRootChangeSetId = Get-OptionalProviderPropertyValue -Object $ChangeSet -Name 'RootChangeSetId'
-  $apDeploymentMode = Get-OptionalProviderPropertyValue -Object $ChangeSet -Name 'DeploymentMode'
+  $apParentChangeSetIdProperty = Get-OptionalProviderProperty -Object $ChangeSet -Name 'ParentChangeSetId'
+  $apRootChangeSetIdProperty = Get-OptionalProviderProperty -Object $ChangeSet -Name 'RootChangeSetId'
+  $apDeploymentModeProperty = Get-OptionalProviderProperty -Object $ChangeSet -Name 'DeploymentMode'
+  Assert-FoundationNullProviderProperty -Property $apParentChangeSetIdProperty -Name 'ParentChangeSetId'
+  Assert-FoundationNullProviderProperty -Property $apRootChangeSetIdProperty -Name 'RootChangeSetId'
+  Assert-FoundationNullProviderProperty -Property $apDeploymentModeProperty -Name 'DeploymentMode'
   $apDeploymentConfig = Assert-FoundationSafeDeploymentConfig `
-    -DeploymentConfig (Get-OptionalProviderPropertyValue -Object $ChangeSet -Name 'DeploymentConfig')
+    -DeploymentConfigProperty (Get-OptionalProviderProperty -Object $ChangeSet -Name 'DeploymentConfig')
   $apParameterCount = Get-FoundationProviderCollectionCount -Value $ChangeSet.Parameters
   $apProviderTags = @($ChangeSet.Tags | ForEach-Object { "Key=$($_.Key),Value=$($_.Value)" } | Sort-Object)
   $apExpectedTags = @($apGovernedCreateRequest.tags | Sort-Object)
@@ -608,8 +634,6 @@ function Get-FoundationChangeSetReceipt {
   }
   if (@($ChangeSet.Capabilities).Count -ne 0 -or $apParameterCount -ne 0 -or
     $apIncludeNestedStacks -eq $true -or $apImportExistingResources -eq $true -or
-    $null -ne $apParentChangeSetId -or $null -ne $apRootChangeSetId -or
-    $null -ne $apDeploymentMode -or
     $ProviderTemplateReceipt.normalizedSha256 -ne $apGovernedCreateRequest.reviewedNormalizedTemplateSha256) {
     throw 'Unexpected IAM, parameter, nested, import, deployment, or template state in foundation change set.'
   }
@@ -662,7 +686,7 @@ function Get-FoundationChangeSetReceipt {
     parameterCount = $apParameterCount
     includeNestedStacks = $apIncludeNestedStacks
     importExistingResources = $apImportExistingResources
-    deploymentMode = $apDeploymentMode
+    deploymentMode = $null
     requestedDeploymentConfig = $apGovernedCreateRequest.deploymentConfig
     providerDeploymentConfig = $apDeploymentConfig
     tags = $apProviderTags
@@ -682,9 +706,10 @@ function Remove-UnexecutedFoundationCreate {
   )
   $null = Confirm-GovernedFoundationIdentityAndTemplate
   $apDeleteState = (& $apAws cloudformation describe-change-set --profile $apGovernedCreateRequest.profile --region $apGovernedCreateRequest.region --change-set-name $ChangeSetId --output json | ConvertFrom-Json)
-  $apDeleteDeploymentMode = Get-OptionalProviderPropertyValue -Object $apDeleteState -Name 'DeploymentMode'
+  $apDeleteDeploymentModeProperty = Get-OptionalProviderProperty -Object $apDeleteState -Name 'DeploymentMode'
+  Assert-FoundationNullProviderProperty -Property $apDeleteDeploymentModeProperty -Name 'DeploymentMode'
   $apDeleteDeploymentConfig = Assert-FoundationSafeDeploymentConfig `
-    -DeploymentConfig (Get-OptionalProviderPropertyValue -Object $apDeleteState -Name 'DeploymentConfig')
+    -DeploymentConfigProperty (Get-OptionalProviderProperty -Object $apDeleteState -Name 'DeploymentConfig')
   $apDeleteParameterCount = Get-FoundationProviderCollectionCount -Value $apDeleteState.Parameters
   $apSafelyUnexecuted = ($apDeleteState.Status -eq 'CREATE_COMPLETE' -and $apDeleteState.ExecutionStatus -eq 'AVAILABLE') -or
     ($apDeleteState.Status -eq 'FAILED' -and $apDeleteState.ExecutionStatus -eq 'UNAVAILABLE')
@@ -694,7 +719,7 @@ function Remove-UnexecutedFoundationCreate {
     $apDeleteState.ChangeSetName -ne $apGovernedCreateRequest.changeSetName -or
     $apDeleteState.Description -ne $apGovernedCreateRequest.description -or
     $apDeleteState.OnStackFailure -ne $apGovernedCreateRequest.onStackFailure -or
-    $null -ne $apDeleteDeploymentMode -or $apDeleteParameterCount -ne 0 -or !$apSafelyUnexecuted) {
+    $apDeleteParameterCount -ne 0 -or !$apSafelyUnexecuted) {
     throw 'Exact unexecuted CREATE change set is not in a safely deletable state.'
   }
   $apInitialChangeSets = (& $apAws cloudformation list-change-sets --profile $apGovernedCreateRequest.profile --region $apGovernedCreateRequest.region --stack-name $StackId --output json | ConvertFrom-Json).Summaries
@@ -977,17 +1002,18 @@ function Get-ExactLegacyFoundationCleanupReceipt {
   }
   $apLegacyImport = $apLegacyChangeSet.PSObject.Properties['ImportExistingResources']
   $apLegacyNested = $apLegacyChangeSet.PSObject.Properties['IncludeNestedStacks']
-  $apLegacyParent = Get-OptionalProviderPropertyValue -Object $apLegacyChangeSet -Name 'ParentChangeSetId'
-  $apLegacyRoot = Get-OptionalProviderPropertyValue -Object $apLegacyChangeSet -Name 'RootChangeSetId'
-  $apLegacyDeploymentMode = Get-OptionalProviderPropertyValue -Object $apLegacyChangeSet -Name 'DeploymentMode'
+  $apLegacyParentProperty = Get-OptionalProviderProperty -Object $apLegacyChangeSet -Name 'ParentChangeSetId'
+  $apLegacyRootProperty = Get-OptionalProviderProperty -Object $apLegacyChangeSet -Name 'RootChangeSetId'
+  $apLegacyDeploymentModeProperty = Get-OptionalProviderProperty -Object $apLegacyChangeSet -Name 'DeploymentMode'
+  Assert-FoundationNullProviderProperty -Property $apLegacyParentProperty -Name 'ParentChangeSetId'
+  Assert-FoundationNullProviderProperty -Property $apLegacyRootProperty -Name 'RootChangeSetId'
+  Assert-FoundationNullProviderProperty -Property $apLegacyDeploymentModeProperty -Name 'DeploymentMode'
   $apLegacyDeploymentConfig = Assert-FoundationSafeDeploymentConfig `
-    -DeploymentConfig (Get-OptionalProviderPropertyValue -Object $apLegacyChangeSet -Name 'DeploymentConfig')
+    -DeploymentConfigProperty (Get-OptionalProviderProperty -Object $apLegacyChangeSet -Name 'DeploymentConfig')
   $apLegacyParameterCount = Get-FoundationProviderCollectionCount -Value $apLegacyChangeSet.Parameters
   if (@($apLegacyChangeSet.Capabilities).Count -ne 0 -or $apLegacyParameterCount -ne 0 -or
     ($null -ne $apLegacyImport -and $null -ne $apLegacyImport.Value -and [bool]$apLegacyImport.Value) -or
-    ($null -ne $apLegacyNested -and $null -ne $apLegacyNested.Value -and [bool]$apLegacyNested.Value) -or
-    $null -ne $apLegacyParent -or $null -ne $apLegacyRoot -or
-    $null -ne $apLegacyDeploymentMode) {
+    ($null -ne $apLegacyNested -and $null -ne $apLegacyNested.Value -and [bool]$apLegacyNested.Value)) {
     throw 'Legacy cleanup encountered import, nested, IAM, parameter, or deployment state.'
   }
   $apLegacyExpectedTags = @('Key=Application,Value=ApplyPack','Key=Environment,Value=staging','Key=ManagedBy,Value=CloudFormation') | Sort-Object
@@ -1038,7 +1064,7 @@ function Get-ExactLegacyFoundationCleanupReceipt {
     mfaDeviceCount=@($apLegacyMfa).Count; accessKeyInventory=$apLegacyAccessKeyInventoryStatus
     changeSetId=$apLegacyChangeSetId; stackId=$apLegacyStackId; status='CREATE_COMPLETE'; executionStatus='AVAILABLE'
     onStackFailure='ROLLBACK'; stackStatus='REVIEW_IN_PROGRESS'; terminationProtectionEnabled=$false
-    parameters=@(); parameterCount=$apLegacyParameterCount; deploymentMode=$apLegacyDeploymentMode
+    parameters=@(); parameterCount=$apLegacyParameterCount; deploymentMode=$null
     requestedDeploymentConfig=$null; providerDeploymentConfig=$apLegacyDeploymentConfig
     resourceCount=0; remainingChangeSetCount=1; tags=$apLegacyActualTags
     providerNormalizedTemplateSha256=$apLegacyProviderNormalizedSha256; changes=$apLegacySanitizedChanges

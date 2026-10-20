@@ -182,21 +182,34 @@ function Invoke-ApplyPackMockAws {
     $providerChangeSetId = if ($script:apMockScenario -eq 'foreign-id') {
       'arn:aws:cloudformation:us-east-1:838445019912:changeSet/foreign/ffffffff-ffff-ffff-ffff-ffffffffffff'
     } else { $changeSetId }
-    $executionStatus = switch ($script:apMockScenario) {
-      'executed-plan' { 'EXECUTE_COMPLETE' }
-      'unavailable-plan' { 'UNAVAILABLE' }
-      default { 'AVAILABLE' }
+    $failedDeploymentArrayScenario = $script:apMockScenario -like 'failed-deployment-array-*'
+    $status = if ($failedDeploymentArrayScenario) { 'FAILED' } else { 'CREATE_COMPLETE' }
+    $executionStatus = if ($failedDeploymentArrayScenario) { 'UNAVAILABLE' } else {
+      switch ($script:apMockScenario) {
+        'executed-plan' { 'EXECUTE_COMPLETE' }
+        'unavailable-plan' { 'UNAVAILABLE' }
+        default { 'AVAILABLE' }
+      }
     }
     $parameters = if ($script:apMockScenario -eq 'parameter-present') {
       @([pscustomobject]@{ ParameterKey='Unapproved'; ParameterValue='redacted' })
     } else { $null }
-    $deploymentConfig = switch ($script:apMockScenario) {
-      'deployment-express' { [pscustomobject]@{ Mode='EXPRESS'; DisableRollback=$false } }
-      default { [pscustomobject]@{ Mode='STANDARD'; DisableRollback=$false } }
+    $deploymentConfig = [pscustomobject]@{ Mode='STANDARD'; DisableRollback=$false }
+    if ($script:apMockScenario -eq 'deployment-express') {
+      $deploymentConfig = [pscustomobject]@{ Mode='EXPRESS'; DisableRollback=$false }
+    } elseif ($script:apMockScenario -in @('deployment-array-empty','failed-deployment-array-empty')) {
+      $deploymentConfig = [object[]]::new(0)
+    } elseif ($script:apMockScenario -in @('deployment-array-single','failed-deployment-array-single')) {
+      $deploymentConfig = [object[]]@([pscustomobject]@{ Mode='STANDARD'; DisableRollback=$false })
+    } elseif ($script:apMockScenario -in @('deployment-array-multi','failed-deployment-array-multi')) {
+      $deploymentConfig = [object[]]@(
+        [pscustomobject]@{ Mode='STANDARD'; DisableRollback=$false },
+        [pscustomobject]@{ Mode='STANDARD'; DisableRollback=$false }
+      )
     }
     $providerState = @{
       ChangeSetId=$providerChangeSetId; StackId=$stackId; StackName=$stackName; ChangeSetName=$changeSetName
-      Description=$description; OnStackFailure='ROLLBACK'; Status='CREATE_COMPLETE'; ExecutionStatus=$executionStatus
+      Description=$description; OnStackFailure='ROLLBACK'; Status=$status; ExecutionStatus=$executionStatus
       Capabilities=@(); Parameters=$parameters; DeploymentConfig=$deploymentConfig
       Tags=$script:apMockTags; Changes=$script:apMockChanges
     }
@@ -463,11 +476,21 @@ try {
   }
   $changeSet.Parameters = $null
 
-  if ($null -ne (Assert-FoundationSafeDeploymentConfig -DeploymentConfig $null)) {
+  $absentDeploymentConfigFixture = [pscustomobject]@{}
+  if ($null -ne (Assert-FoundationSafeDeploymentConfig -DeploymentConfigProperty `
+      (Get-OptionalProviderProperty -Object $absentDeploymentConfigFixture -Name 'DeploymentConfig'))) {
     throw 'Null provider deployment configuration was not accepted as absent.'
   }
+  $nullDeploymentConfigFixture = [pscustomobject]@{ DeploymentConfig=$null }
+  if ($null -ne (Assert-FoundationSafeDeploymentConfig -DeploymentConfigProperty `
+      (Get-OptionalProviderProperty -Object $nullDeploymentConfigFixture -Name 'DeploymentConfig'))) {
+    throw 'Null provider deployment configuration property was not accepted.'
+  }
+  $safeDeploymentConfigFixture = [pscustomobject]@{
+    DeploymentConfig=[pscustomobject]@{ Mode='STANDARD'; DisableRollback=$false }
+  }
   $safeDeploymentConfig = Assert-FoundationSafeDeploymentConfig `
-    -DeploymentConfig ([pscustomobject]@{ Mode='STANDARD'; DisableRollback=$false })
+    -DeploymentConfigProperty (Get-OptionalProviderProperty -Object $safeDeploymentConfigFixture -Name 'DeploymentConfig')
   if ($safeDeploymentConfig.Mode -cne 'STANDARD' -or $safeDeploymentConfig.DisableRollback -ne $false) {
     throw 'Safe provider deployment configuration fixture failed.'
   }
@@ -487,10 +510,29 @@ try {
     ) }
   )
   foreach ($badDeploymentConfig in $badDeploymentConfigs) {
+    $badDeploymentConfigFixture = [pscustomobject]@{ DeploymentConfig=$badDeploymentConfig.Value }
     Assert-Throws -Label $badDeploymentConfig.Label -Action {
-      $null = Assert-FoundationSafeDeploymentConfig -DeploymentConfig $badDeploymentConfig.Value
+      $null = Assert-FoundationSafeDeploymentConfig -DeploymentConfigProperty `
+        (Get-OptionalProviderProperty -Object $badDeploymentConfigFixture -Name 'DeploymentConfig')
     }
   }
+
+  $changeSet.DeploymentConfig = [object[]]::new(0)
+  Assert-Throws -Label 'receipt deployment config empty array' -Action {
+    $null = Get-FoundationChangeSetReceipt -ChangeSet $changeSet -TerminationProtectionEnabled $true -ProviderTemplateReceipt $providerTemplateReceipt
+  }
+  $changeSet.DeploymentConfig = [object[]]@([pscustomobject]@{ Mode='STANDARD'; DisableRollback=$false })
+  Assert-Throws -Label 'receipt deployment config single array' -Action {
+    $null = Get-FoundationChangeSetReceipt -ChangeSet $changeSet -TerminationProtectionEnabled $true -ProviderTemplateReceipt $providerTemplateReceipt
+  }
+  $changeSet.DeploymentConfig = [object[]]@(
+    [pscustomobject]@{ Mode='STANDARD'; DisableRollback=$false },
+    [pscustomobject]@{ Mode='STANDARD'; DisableRollback=$false }
+  )
+  Assert-Throws -Label 'receipt deployment config multi array' -Action {
+    $null = Get-FoundationChangeSetReceipt -ChangeSet $changeSet -TerminationProtectionEnabled $true -ProviderTemplateReceipt $providerTemplateReceipt
+  }
+  $changeSet.DeploymentConfig = [pscustomobject]@{ Mode = 'STANDARD'; DisableRollback = $false }
 
   $changeSet.Tags[0].Value = 'Tampered'
   Assert-Throws -Label 'provider tag divergence' -Action { $null = Get-FoundationChangeSetReceipt -ChangeSet $changeSet -TerminationProtectionEnabled $true -ProviderTemplateReceipt $providerTemplateReceipt }
@@ -542,6 +584,12 @@ try {
     @{ Scenario='profile-alternate'; Label='mock normal cleanup alternate profile source' },
     @{ Scenario='template-mismatch'; Label='mock normal cleanup provider template mismatch' },
     @{ Scenario='deployment-express'; Label='mock normal cleanup unsafe deployment config' },
+    @{ Scenario='deployment-array-empty'; Label='mock normal cleanup deployment config empty array' },
+    @{ Scenario='deployment-array-single'; Label='mock normal cleanup deployment config single array' },
+    @{ Scenario='deployment-array-multi'; Label='mock normal cleanup deployment config multi array' },
+    @{ Scenario='failed-deployment-array-empty'; Label='mock failed-plan cleanup deployment config empty array' },
+    @{ Scenario='failed-deployment-array-single'; Label='mock failed-plan cleanup deployment config single array' },
+    @{ Scenario='failed-deployment-array-multi'; Label='mock failed-plan cleanup deployment config multi array' },
     @{ Scenario='deployment-mode-present'; Label='mock normal cleanup deployment mode' },
     @{ Scenario='parameter-present'; Label='mock normal cleanup parameter object' }
   )) {
@@ -607,6 +655,9 @@ try {
     @{ Scenario='access-key-present'; Label='mock legacy cleanup access key present' },
     @{ Scenario='template-mismatch'; Label='mock legacy cleanup provider template mismatch' },
     @{ Scenario='deployment-express'; Label='mock legacy cleanup unsafe deployment config' },
+    @{ Scenario='deployment-array-empty'; Label='mock legacy cleanup deployment config empty array' },
+    @{ Scenario='deployment-array-single'; Label='mock legacy cleanup deployment config single array' },
+    @{ Scenario='deployment-array-multi'; Label='mock legacy cleanup deployment config multi array' },
     @{ Scenario='deployment-mode-present'; Label='mock legacy cleanup deployment mode' },
     @{ Scenario='parameter-present'; Label='mock legacy cleanup parameter object' }
   )) {

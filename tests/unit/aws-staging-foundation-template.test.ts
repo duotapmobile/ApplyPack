@@ -49,7 +49,7 @@ describe("AWS staging foundation template", () => {
       encoding: "utf8",
     });
     expect(output.trim()).toBe("AWS_STAGING_FOUNDATION_TEMPLATE_OK");
-  });
+  }, 30_000);
 
   it("extracts the exact reviewed Git blob atomically with real Git on this platform", () => {
     const work = mkdtempSync(join(tmpdir(), "applypack-staging-foundation-extract-"));

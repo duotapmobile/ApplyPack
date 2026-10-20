@@ -428,10 +428,10 @@ for (const required of [
   "$apResource.Replacement",
   "@($ChangeSet.Capabilities).Count -ne 0",
   "$apImportExistingResources -eq $true",
-  "$apParentChangeSetId = Get-OptionalProviderPropertyValue",
-  "$null -ne $apParentChangeSetId",
-  "$null -ne $apRootChangeSetId",
-  "$null -ne $apDeploymentMode",
+  "$apParentChangeSetIdProperty = Get-OptionalProviderProperty",
+  "Assert-FoundationNullProviderProperty -Property $apParentChangeSetIdProperty",
+  "Assert-FoundationNullProviderProperty -Property $apRootChangeSetIdProperty",
+  "Assert-FoundationNullProviderProperty -Property $apDeploymentModeProperty",
   "Assert-FoundationSafeDeploymentConfig",
   "Get-FoundationProviderCollectionCount",
   "$apParameterCount -ne 0",
@@ -544,6 +544,9 @@ assert(controlSelfTest.includes("AWS_STAGING_FOUNDATION_CONTROLS_OK")
   && controlSelfTest.includes("Label='deployment config mode wrong type'")
   && controlSelfTest.includes("Label='deployment config string'")
   && controlSelfTest.includes("Label='deployment config array'")
+  && controlSelfTest.includes("Assert-Throws -Label 'receipt deployment config empty array'")
+  && controlSelfTest.includes("Assert-Throws -Label 'receipt deployment config single array'")
+  && controlSelfTest.includes("Assert-Throws -Label 'receipt deployment config multi array'")
   && controlSelfTest.includes("Assert-Throws -Label 'wrong browser login_session identity'")
   && controlSelfTest.includes("Assert-Throws -Label 'resolved credential TYPE non-login'")
   && controlSelfTest.includes("Assert-Throws -Label 'alternate profile credential mechanism'")
@@ -563,6 +566,12 @@ assert(controlSelfTest.includes("AWS_STAGING_FOUNDATION_CONTROLS_OK")
   && controlSelfTest.includes("Label='mock normal cleanup zero after'")
   && controlSelfTest.includes("Label='mock normal cleanup provider template mismatch'")
   && controlSelfTest.includes("Label='mock normal cleanup unsafe deployment config'")
+  && controlSelfTest.includes("Label='mock normal cleanup deployment config empty array'")
+  && controlSelfTest.includes("Label='mock normal cleanup deployment config single array'")
+  && controlSelfTest.includes("Label='mock normal cleanup deployment config multi array'")
+  && controlSelfTest.includes("Label='mock failed-plan cleanup deployment config empty array'")
+  && controlSelfTest.includes("Label='mock failed-plan cleanup deployment config single array'")
+  && controlSelfTest.includes("Label='mock failed-plan cleanup deployment config multi array'")
   && controlSelfTest.includes("Label='mock normal cleanup deployment mode'")
   && controlSelfTest.includes("Label='mock normal cleanup parameter object'")
   && controlSelfTest.includes("Label='mock legacy cleanup foreign ID'")
@@ -575,6 +584,9 @@ assert(controlSelfTest.includes("AWS_STAGING_FOUNDATION_CONTROLS_OK")
   && controlSelfTest.includes("Label='mock legacy cleanup MFA count'")
   && controlSelfTest.includes("Label='mock legacy cleanup provider template mismatch'")
   && controlSelfTest.includes("Label='mock legacy cleanup unsafe deployment config'")
+  && controlSelfTest.includes("Label='mock legacy cleanup deployment config empty array'")
+  && controlSelfTest.includes("Label='mock legacy cleanup deployment config single array'")
+  && controlSelfTest.includes("Label='mock legacy cleanup deployment config multi array'")
   && controlSelfTest.includes("Label='mock legacy cleanup deployment mode'")
   && controlSelfTest.includes("Label='mock legacy cleanup parameter object'")
   && controlSelfTest.includes("-Scenario access-key-denied")
@@ -585,11 +597,14 @@ assert(controlSelfTest.includes("AWS_STAGING_FOUNDATION_CONTROLS_OK")
 const deploymentConfigValidatorDefinitions = runbook.match(/^function Assert-FoundationSafeDeploymentConfig\s*\{/gm) ?? [];
 assert(deploymentConfigValidatorDefinitions.length === 1
   && (runbook.match(/Assert-FoundationSafeDeploymentConfig/g) ?? []).length >= 4
+  && runbook.includes("$DeploymentConfigProperty -isnot [Management.Automation.PSPropertyInfo]")
+  && runbook.includes("$DeploymentConfig = $DeploymentConfigProperty.Value")
+  && runbook.includes("$DeploymentConfig -is [array]")
   && runbook.includes("$DeploymentConfig.Mode -isnot [string]")
   && runbook.includes("$DeploymentConfig.Mode -cne 'STANDARD'")
   && runbook.includes("$DeploymentConfig.DisableRollback -isnot [bool]")
   && runbook.includes("$DeploymentConfig.DisableRollback -ne $false")
-  && runbook.includes("$null -ne $apDeploymentMode")
+  && !runbook.includes("function Get-OptionalProviderPropertyValue")
   && !runbook.includes("@($ChangeSet.Parameters).Count")
   && !runbook.includes("@($apLegacyChangeSet.Parameters).Count"),
 "one strict deployment-default validator and null-safe parameter counting must govern all provider paths");
@@ -609,8 +624,9 @@ assert(!/\$[A-Za-z][A-Za-z0-9]*\.ChangeSetType\b/.test(runbook),
   "runbook must not trust a ChangeSetType field that DescribeChangeSet does not return");
 assert(!/git\s+show\b[^\r\n]*--output/u.test(runbook),
   "runbook must not use git show --output for reviewed template extraction");
-assert(foundationTest.includes("}, 240_000);") && foundationTest.includes("}, 300_000);"),
-  "real extraction and mutation tests must retain measured Windows-safe internal timeouts");
+assert(foundationTest.includes("}, 30_000);")
+  && foundationTest.includes("}, 240_000);") && foundationTest.includes("}, 300_000);"),
+  "deterministic, real extraction, and mutation tests must retain explicit measured internal timeouts");
 
 const changeSetCreateIndex = runbook.indexOf("$apCreateChangeSet = (& $apAws @apCreateChangeSetArguments");
 const changeSetDescribeIndex = runbook.indexOf("cloudformation describe-change-set", changeSetCreateIndex);
