@@ -19,8 +19,10 @@ import yaml from "js-yaml";
 const expectedOrigin = "https://github.com/duotapmobile/ApplyPack.git";
 const templateRelativePath = "infra/aws/staging-foundation/template.yaml";
 const ownedPaths = [
+  ".github/workflows/ci.yml",
   "docs/runbooks/AWS_STAGING_FOUNDATION.md",
   templateRelativePath,
+  "scripts/test-aws-staging-foundation-controls.ps1",
   "scripts/validate-aws-staging-foundation-template.mjs",
   "tests/unit/aws-staging-foundation-template.test.ts",
 ];
@@ -166,6 +168,8 @@ if (process.argv.includes("--extract-reviewed-template")) {
 
 const templatePath = argument("--template", "infra/aws/staging-foundation/template.yaml");
 const runbookPath = argument("--runbook", "docs/runbooks/AWS_STAGING_FOUNDATION.md");
+const controlSelfTestPath = argument("--control-self-test", "scripts/test-aws-staging-foundation-controls.ps1");
+const ciPath = argument("--ci", ".github/workflows/ci.yml");
 const intrinsic = (name, kind) => new yaml.Type(`!${name}`, {
   kind,
   construct: (value) => ({ [`Fn::${name}`]: value }),
@@ -180,6 +184,8 @@ const schema = yaml.DEFAULT_SCHEMA.extend([
 
 const source = readFileSync(templatePath, "utf8");
 const runbook = readFileSync(runbookPath, "utf8");
+const controlSelfTest = readFileSync(controlSelfTestPath, "utf8");
+const ci = readFileSync(ciPath, "utf8");
 const template = yaml.load(source, { schema, filename: templatePath });
 
 function json(value) {
@@ -372,25 +378,39 @@ for (const required of [
   "reviewedTemplateBodySha256",
   "providerNormalizedTemplateSha256",
   "$apProviderTemplateBodySha256 -ne $apReviewedTemplateBodySha256",
-  "cloudformation create-change-set",
+  "'cloudformation', 'create-change-set'",
+  "$apCreateChangeSetArguments = Get-GovernedFoundationCreateChangeSetArguments",
+  "& $apAws @apCreateChangeSetArguments",
   "changeSetType = 'CREATE'",
   "apiAction = 'CreateChangeSet'",
+  "profile = $apProfile",
+  "region = $apRegion",
+  "expectedAccount = $apExpectedAccount",
+  "expectedArn = $apExpectedArn",
+  "reviewedTemplatePath = $apReviewedTemplatePath",
+  "templateUri = $apReviewedTemplateUri",
+  "clientToken = \"applypack-foundation-$($apApprovedSha.Substring(0, 32))\"",
   "onStackFailure = 'ROLLBACK'",
   "includeNestedStacks = $false",
   "importExistingResources = $false",
   "resourcesToImport = @()",
+  "deploymentMode = $null",
+  "deploymentConfig = $null",
   "Key=Application,Value=ApplyPack",
   "Key=Environment,Value=staging",
   "Key=ManagedBy,Value=CloudFormation",
-  "--stack-name $apGovernedCreateRequest.stackName",
-  "--change-set-name $apGovernedCreateRequest.changeSetName",
-  "--change-set-type $apGovernedCreateRequest.changeSetType",
-  "--no-include-nested-stacks",
-  "--no-import-existing-resources",
+  "'--stack-name', $apGovernedCreateRequest.stackName",
+  "'--change-set-name', $apGovernedCreateRequest.changeSetName",
+  "'--change-set-type', $apGovernedCreateRequest.changeSetType",
+  "'--template-body', $apGovernedCreateRequest.templateUri",
+  "'--no-include-nested-stacks', '--no-import-existing-resources'",
   "aws-staging-foundation-create-request.json",
   "$apGovernedCreateRequestSha256",
   "$apCurrentCreateRequestSha256 -ne $apGovernedCreateRequestSha256",
   "Assert-GovernedFoundationCreateRequest",
+  "Confirm-GovernedFoundationIdentityAndTemplate",
+  "sts get-caller-identity --profile $apGovernedCreateRequest.profile",
+  "$apFreshBodySha256 -ne $apGovernedCreateRequest.reviewedTemplateBodySha256",
   "change-set-create-complete",
   "cloudformation describe-change-set",
   "$apCreateChangeSet.StackId",
@@ -404,11 +424,16 @@ for (const required of [
   "Compare-Object -ReferenceObject $apExpectedLogicalIds -DifferenceObject $apActualLogicalIds",
   "$apResource.Action -ne 'Add'",
   "$apResource.Replacement",
-  "$ChangeSet.Capabilities.Count -ne 0",
+  "@($ChangeSet.Capabilities).Count -ne 0",
   "$apImportExistingResources -eq $true",
-  "$null -ne $ChangeSet.ParentChangeSetId",
-  "$null -ne $ChangeSet.RootChangeSetId",
-  "$null -ne $ChangeSet.DeploymentMode",
+  "$apParentChangeSetId = Get-OptionalProviderPropertyValue",
+  "$null -ne $apParentChangeSetId",
+  "$null -ne $apRootChangeSetId",
+  "$null -ne $apDeploymentMode",
+  "$null -ne $apDeploymentConfig",
+  "Compare-Object -ReferenceObject $apExpectedTags -DifferenceObject $apProviderTags",
+  "Get-FoundationProviderTemplateReceipt",
+  "--change-set-name $ChangeSetId --template-stage Original",
   "$_.Type -ne 'Resource'",
   "changeSetId = $apChangeSetId",
   "stackId = $apStackId",
@@ -416,6 +441,8 @@ for (const required of [
   "parameters = @($ChangeSet.Parameters)",
   "includeNestedStacks = $apIncludeNestedStacks",
   "importExistingResources = $apImportExistingResources",
+  "deploymentConfig = $null",
+  "tags = $apProviderTags",
   "aws-staging-foundation-change-set-receipt.json",
   "$apSupervisorOneApprovedChangeSetReceiptSha256",
   "$apSupervisorTwoApprovedChangeSetReceiptSha256",
@@ -425,13 +452,48 @@ for (const required of [
   "REVIEW_IN_PROGRESS",
   "cloudformation list-stack-resources",
   "cloudformation delete-change-set",
+  "Assert-NoRemainingFoundationChangeSets",
+  "@($apInitialChangeSets).Count -ne 1",
   "--no-enable-termination-protection",
   "cloudformation delete-stack",
   "stack-delete-complete",
   "cloudformation execute-change-set",
   "update-termination-protection",
   "$apCreatedStack.EnableTerminationProtection -ne $true",
+  "scripts/test-aws-staging-foundation-controls.ps1",
+  "arn:aws:cloudformation:us-east-1:838445019912:changeSet/applypack-staging-foundation-create-8754e1ec334c/89fd9205-daca-4779-a235-1c8d06092ae8",
+  "arn:aws:cloudformation:us-east-1:838445019912:stack/applypack-staging-foundation/56601160-cc81-11f1-8a7c-12ffddd7e50d",
+  "iam list-mfa-devices",
+  "configure get login_session --profile $apLegacyProfile",
+  "configure get region --profile $apLegacyProfile",
+  "configure get aws_access_key_id --profile $apLegacyProfile",
+  "configure get aws_secret_access_key --profile $apLegacyProfile",
+  "configure get aws_session_token --profile $apLegacyProfile",
+  "Assert-FoundationBrowserLoginCredentialPosture",
+  "AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY','AWS_SESSION_TOKEN','AWS_PROFILE','AWS_DEFAULT_PROFILE",
+  "credentialSource=$apLegacyCredentialPosture.credentialSource",
+  "staticCredentialKeyCount=$apLegacyCredentialPosture.staticCredentialKeyCount",
+  "processCredentialOverrideCount=$apLegacyCredentialPosture.processCredentialOverrideCount",
+  "@($apLegacyMfa).Count -ne 1",
+  "$apLegacySupervisorOneApprovedReceiptSha256",
+  "$apLegacySupervisorTwoApprovedReceiptSha256",
+  "$apLegacyStack.EnableTerminationProtection -ne $false",
+  "@($apLegacySummaries).Count -ne 1",
 ]) assert(runbook.includes(required), `runbook is missing required control: ${required}`);
+assert(controlSelfTest.includes("AWS_STAGING_FOUNDATION_CONTROLS_OK")
+  && controlSelfTest.includes("Assert-Throws -Label 'request tag tamper'")
+  && controlSelfTest.includes("Assert-Throws -Label 'fresh template raw hash divergence'")
+  && controlSelfTest.includes("Assert-Throws -Label 'provider tag divergence'")
+  && controlSelfTest.includes("Assert-Throws -Label 'non-Add provider plan'")
+  && controlSelfTest.includes("Assert-Throws -Label 'non-null deployment configuration'")
+  && controlSelfTest.includes("Assert-Throws -Label 'wrong browser login_session identity'")
+  && controlSelfTest.includes("Assert-Throws -Label 'static profile credential key'")
+  && controlSelfTest.includes("Assert-Throws -Label 'process credential override'")
+  && controlSelfTest.includes("Assert-Throws -Label 'remaining change set before placeholder deletion'"),
+"PowerShell control self-test must execute every required fail-closed negative case");
+assert(ci.includes("Run AWS staging foundation control self-test")
+  && ci.includes(".\\scripts\\test-aws-staging-foundation-controls.ps1"),
+"Windows CI must execute the AWS foundation PowerShell control self-test");
 assert(runbook.includes("No command in this runbook targets production"), "runbook must state the production boundary");
 assert(!/cloudformation\s+(?:create-stack|deploy)\b/.test(runbook),
   "runbook must not contain a direct create-stack or deploy command");
@@ -441,7 +503,7 @@ assert(!/\$[A-Za-z][A-Za-z0-9]*\.ChangeSetType\b/.test(runbook),
 assert(!/git\s+show\b[^\r\n]*--output/u.test(runbook),
   "runbook must not use git show --output for reviewed template extraction");
 
-const changeSetCreateIndex = runbook.indexOf("cloudformation create-change-set");
+const changeSetCreateIndex = runbook.indexOf("$apCreateChangeSet = (& $apAws @apCreateChangeSetArguments");
 const changeSetDescribeIndex = runbook.indexOf("cloudformation describe-change-set", changeSetCreateIndex);
 const terminationProtectionIndex = runbook.indexOf("--enable-termination-protection", changeSetDescribeIndex);
 const initialReceiptIndex = runbook.indexOf("$apChangeSetReceipt =", terminationProtectionIndex);
@@ -457,8 +519,8 @@ assert(changeSetCreateIndex >= 0 && changeSetDescribeIndex > changeSetCreateInde
   && executeReceiptIndex > executeDescribeIndex && changeSetExecuteIndex > executeReceiptIndex
   && finalProtectionIndex > changeSetExecuteIndex && providerReceiptIndex > finalProtectionIndex,
 "runbook must review the CREATE change set, protect its empty stack, bind approvals to a fresh receipt, execute its exact ID, and verify the provider template");
-assert(runbook.includes("--template-body $apReviewedTemplateUri"),
-  "change set must use the immutable reviewed template URI");
+assert(runbook.includes("'--template-body', $apGovernedCreateRequest.templateUri"),
+  "change set must use only the immutable URI in the governed request");
 assert(runbook.includes("--change-set-name $apChangeSetId"),
   "change-set describe, delete, and execution steps must remain bound to the exact returned ID");
 

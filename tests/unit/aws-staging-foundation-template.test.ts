@@ -62,8 +62,10 @@ describe("AWS staging foundation template", () => {
     const wrongTreeOutput = join(work, "wrong-tree-template.yaml");
     const insideRepoOutput = join(fixture, "reviewed-template.yaml");
     const fixturePaths = [
+      ".github/workflows/ci.yml",
       "docs/runbooks/AWS_STAGING_FOUNDATION.md",
       "infra/aws/staging-foundation/template.yaml",
+      "scripts/test-aws-staging-foundation-controls.ps1",
       "scripts/validate-aws-staging-foundation-template.mjs",
       "tests/unit/aws-staging-foundation-template.test.ts",
     ];
@@ -233,7 +235,7 @@ describe("AWS staging foundation template", () => {
         ["rollback-state", "PendingDeletion", "PendingRemoval"],
         ["provider-receipt", "cloudformation get-template", "cloudformation describe-template"],
         ["provider-body-hash", "$apProviderTemplateBodySha256 -ne $apReviewedTemplateBodySha256", "$false"],
-        ["change-set-create", "cloudformation create-change-set", "cloudformation prepare-change-set"],
+        ["change-set-create", "'cloudformation', 'create-change-set'", "'cloudformation', 'prepare-change-set'"],
         ["governed-create-action", "apiAction = 'CreateChangeSet'", "apiAction = 'UpdateStack'"],
         ["governed-create-type", "changeSetType = 'CREATE'", "changeSetType = 'UPDATE'"],
         ["governed-create-failure-policy", "onStackFailure = 'ROLLBACK'", "onStackFailure = 'DO_NOTHING'"],
@@ -256,14 +258,14 @@ describe("AWS staging foundation template", () => {
         ["add-only", "$apResource.Action -ne 'Add'", "$apResource.Action -ne 'Modify'"],
         ["resource-only", "$_.Type -ne 'Resource'", "$_.Type -ne 'Unsupported'"],
         ["no-replacement", "$null -ne $apResource.Replacement", "$false"],
-        ["no-capabilities", "$ChangeSet.Capabilities.Count -ne 0", "$ChangeSet.Capabilities.Count -gt 99"],
+        ["no-capabilities", "@($ChangeSet.Capabilities).Count -ne 0", "@($ChangeSet.Capabilities).Count -gt 99"],
         ["no-import", "$apImportExistingResources -eq $true", "$apImportExistingResources -eq $false"],
         ["receipt-recompute", "$apExecuteReceiptJson -cne $apChangeSetReceiptJson", "$apExecuteReceiptJson -ceq $apChangeSetReceiptJson"],
         ["stored-receipt-binding", "$apStoredReceiptJson -cne $apExecuteReceiptJson", "$apStoredReceiptJson -ceq $apExecuteReceiptJson"],
         ["placeholder-unprotect", "--no-enable-termination-protection", "--enable-termination-protection"],
         ["placeholder-delete", "cloudformation delete-stack", "cloudformation retain-stack"],
         ["placeholder-delete-wait", "stack-delete-complete", "stack-delete-started"],
-        ["immutable-template", "--template-body $apReviewedTemplateUri", "--template-body file://infra/aws/staging-foundation/template.yaml"],
+        ["immutable-template", "'--template-body', $apGovernedCreateRequest.templateUri", "'--template-body', 'file://infra/aws/staging-foundation/template.yaml'"],
         ["exact-change-set-id", "--change-set-name $apChangeSetId", "--change-set-name $apChangeSetName"],
       ] as const;
       for (const [name, before, after] of runbookMutations) {
@@ -288,8 +290,8 @@ describe("AWS staging foundation template", () => {
 
       const capabilityRunbook = join(work, "iam-capability-runbook.md");
       writeFileSync(capabilityRunbook, originalRunbook.replace(
-        "--change-set-type $apGovernedCreateRequest.changeSetType `",
-        "--change-set-type $apGovernedCreateRequest.changeSetType `\n  --capabilities CAPABILITY_NAMED_IAM `",
+        "'--change-set-type', $apGovernedCreateRequest.changeSetType,",
+        "'--change-set-type', $apGovernedCreateRequest.changeSetType,\n    '--capabilities', 'CAPABILITY_NAMED_IAM',",
       ), "utf8");
       expect(validationFails(template, capabilityRunbook)).toBe(true);
 

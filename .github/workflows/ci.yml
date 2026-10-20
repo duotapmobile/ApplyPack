@@ -42,6 +42,9 @@ jobs:
       - name: Run DPAPI staging safeguard self-test
         shell: pwsh
         run: npm run test:staging-database-safeguard
+      - name: Run AWS staging foundation control self-test
+        shell: pwsh
+        run: .\scripts\test-aws-staging-foundation-controls.ps1
 
   browser:
     runs-on: ubuntu-latest
