@@ -31,7 +31,10 @@ $script:PublicErrorCodes = [Collections.Generic.HashSet[string]]::new([StringCom
     'WINDOWS_REQUIRED', 'POWERSHELL_7_REQUIRED', 'ENVELOPE_HELPER_MISSING',
     'OUTPUT_PATH_MUST_BE_ABSOLUTE', 'GIT_WORKTREE_DISCOVERY_FAILED', 'OUTPUT_EXTENSION_INVALID',
     'OUTPUT_ALREADY_EXISTS', 'OUTPUT_PARENT_MISSING', 'OUTPUT_INSIDE_GIT_WORKTREE',
-    'OUTPUT_REPARSE_PATH_REJECTED', 'ATOMIC_OUTPUT_MISSING', 'STAGING_BINDING_INVALID',
+    'OUTPUT_REPARSE_PATH_REJECTED', 'OUTPUT_DIRECTORY_OPEN_FAILED',
+    'OUTPUT_DIRECTORY_IDENTITY_CHANGED', 'OUTPUT_IDENTITY_QUERY_FAILED',
+    'OUTPUT_FILE_HANDLE_INVALID', 'OUTPUT_FILE_NAME_INVALID', 'OUTPUT_FILE_IDENTITY_CHANGED',
+    'OUTPUT_HANDLE_CLEANUP_FAILED', 'ATOMIC_OUTPUT_MISSING', 'STAGING_BINDING_INVALID',
     'CHECKOUT_FLAG_NOT_FALSE', 'NATIVE_COMMAND_FAILED', 'RELEASE_SHA_UNAVAILABLE',
     'RELEASE_SHA_INVALID', 'RELEASE_SHA_BINDING_INVALID', 'SAFEGUARD_SOURCE_NOT_TRACKED',
     'SAFEGUARD_SOURCE_NOT_AT_RELEASE_SHA', 'CA_PATH_REQUIRED', 'CA_FILE_MISSING', 'CA_HASH_MISMATCH',
@@ -40,7 +43,9 @@ $script:PublicErrorCodes = [Collections.Generic.HashSet[string]]::new([StringCom
     'CREDENTIAL_NOT_FOUND', 'CREDENTIAL_TARGET_MISMATCH', 'CREDENTIAL_SECRET_INVALID',
     'CREDENTIAL_TARGET_INVALID', 'CREDENTIAL_IDENTITY_INVALID', 'DATABASE_ATTESTATION_FAILED',
     'DATABASE_EVIDENCE_INVALID', 'SOURCE_EVIDENCE_INVALID', 'OUTPUT_PATHS_REQUIRED',
-    'OUTPUT_PATHS_MUST_DIFFER', 'PG_DUMP_FAILED', 'BACKUP_FILE_INVALID',
+    'OUTPUT_PATHS_MUST_DIFFER', 'BACKUP_PROCESS_START_FAILED', 'BACKUP_CREDENTIAL_PIPE_FAILED',
+    'BACKUP_STREAM_FAILED', 'BACKUP_PROCESS_TEARDOWN_FAILED', 'BACKUP_CONTAINER_TEARDOWN_FAILED',
+    'PG_DUMP_FAILED', 'BACKUP_FILE_INVALID',
     'ENVELOPE_METADATA_INVALID', 'ENVELOPE_BINDING_INVALID', 'PG_RESTORE_LIST_FAILED',
     'RESTORE_CONTAINER_START_FAILED', 'RESTORE_CONTAINER_START_INVALID', 'RESTORE_CONTAINER_NOT_READY',
     'PG_RESTORE_FAILED', 'RESTORE_EVIDENCE_QUERY_FAILED', 'RESTORE_EVIDENCE_INVALID',
@@ -52,7 +57,9 @@ $script:PublicErrorCodes = [Collections.Generic.HashSet[string]]::new([StringCom
     'PLAINTEXT_DESTINATION_INVALID',
     'SELF_TEST_METADATA_FAILED', 'SELF_TEST_ROUNDTRIP_FAILED', 'SELF_TEST_TAMPER_FAILED',
     'SELF_TEST_TRUNCATION_FAILED', 'SELF_TEST_PATH_REJECTION_FAILED',
-    'SELF_TEST_LOG_REDACTION_FAILED', 'SELF_TEST_FAILURE_CLEANUP_FAILED', 'SAFEGUARD_FAILED'
+    'SELF_TEST_LOG_REDACTION_FAILED', 'SELF_TEST_FAILURE_CLEANUP_FAILED',
+    'SELF_TEST_PROCESS_CLEANUP_FAILED', 'SELF_TEST_PATH_RACE_FAILED',
+    'SELF_TEST_RESTORE_PRECEDENCE_FAILED', 'SELF_TEST_CREDENTIAL_INVALID', 'SAFEGUARD_FAILED'
 ) | ForEach-Object { [void]$script:PublicErrorCodes.Add($_) }
 
 function Throw-Controlled {
@@ -66,6 +73,49 @@ function Get-ControlledCode {
     $message = $Record.Exception.Message
     if ($script:PublicErrorCodes.Contains($message)) { return $message }
     return 'SAFEGUARD_FAILED'
+}
+
+function New-ControlledOperationException {
+    param(
+        [Parameter(Mandatory = $true)][string]$PrimaryCode,
+        [Exception]$Cause,
+        [string]$CleanupCode
+    )
+    if (-not $script:PublicErrorCodes.Contains($PrimaryCode)) { $PrimaryCode = 'SAFEGUARD_FAILED' }
+    $exception = [InvalidOperationException]::new($PrimaryCode, $Cause)
+    if (-not [string]::IsNullOrWhiteSpace($CleanupCode)) {
+        if (-not $script:PublicErrorCodes.Contains($CleanupCode)) { $CleanupCode = 'SAFEGUARD_FAILED' }
+        $exception.Data['ApplyPackCleanupCode'] = $CleanupCode
+    }
+    return $exception
+}
+
+function Resolve-OperationFailures {
+    param(
+        [Management.Automation.ErrorRecord]$PrimaryFailure,
+        [Management.Automation.ErrorRecord]$CleanupFailure,
+        [string]$PrimaryFallback = 'SAFEGUARD_FAILED',
+        [string]$CleanupFallback = 'SAFEGUARD_FAILED'
+    )
+    if ($null -ne $PrimaryFailure) {
+        $primaryCode = Get-ControlledCode $PrimaryFailure
+        if ($primaryCode -eq 'SAFEGUARD_FAILED') { $primaryCode = $PrimaryFallback }
+        $cleanupCode = $null
+        $attachedCleanup = $PrimaryFailure.Exception.Data['ApplyPackCleanupCode']
+        if ($attachedCleanup -is [string] -and $script:PublicErrorCodes.Contains($attachedCleanup)) {
+            $cleanupCode = $attachedCleanup
+        }
+        if ($null -ne $CleanupFailure) {
+            $cleanupCode = Get-ControlledCode $CleanupFailure
+            if ($cleanupCode -eq 'SAFEGUARD_FAILED') { $cleanupCode = $CleanupFallback }
+        }
+        throw (New-ControlledOperationException -PrimaryCode $primaryCode -Cause $PrimaryFailure.Exception -CleanupCode $cleanupCode)
+    }
+    if ($null -ne $CleanupFailure) {
+        $cleanupCode = Get-ControlledCode $CleanupFailure
+        if ($cleanupCode -eq 'SAFEGUARD_FAILED') { $cleanupCode = $CleanupFallback }
+        throw (New-ControlledOperationException -PrimaryCode $cleanupCode -Cause $CleanupFailure.Exception)
+    }
 }
 
 function Assert-WindowsRuntime {
@@ -147,6 +197,8 @@ function Assert-SafeOutputPath {
         }
         $cursor = $cursor.Parent
     }
+    $guard = [ApplyPack.Security.OutputDirectoryGuard]::Capture($parent)
+    try { $guard.AssertUnchanged() } finally { $guard.Dispose() }
     return $fullPath
 }
 
@@ -155,19 +207,76 @@ function Invoke-AtomicFile {
         [Parameter(Mandatory = $true)][string]$FinalPath,
         [Parameter(Mandatory = $true)][scriptblock]$Writer
     )
-    $temporaryPath = "$FinalPath.partial-$([Guid]::NewGuid().ToString('N'))"
+    $parent = [IO.Path]::GetDirectoryName($FinalPath)
+    $temporaryLeaf = "$([IO.Path]::GetFileName($FinalPath)).partial-$([Guid]::NewGuid().ToString('N'))"
+    $temporaryPath = Join-Path $parent $temporaryLeaf
+    $guard = [ApplyPack.Security.OutputDirectoryGuard]::Capture($parent)
+    $stream = $null
+    $completed = $false
+    $primaryFailure = $null
+    $cleanupFailure = $null
     try {
-        & $Writer $temporaryPath
-        if (-not (Test-Path -LiteralPath $temporaryPath -PathType Leaf)) {
-            Throw-Controlled 'ATOMIC_OUTPUT_MISSING'
+        $guard.AssertUnchanged()
+        foreach ($worktree in (Get-WorktreeRoots)) {
+            if (Test-PathWithin -Candidate (Join-Path $guard.FinalPath $temporaryLeaf) -Root $worktree) {
+                Throw-Controlled 'OUTPUT_INSIDE_GIT_WORKTREE'
+            }
         }
+        $stream = [IO.FileStream]::new(
+            $temporaryPath,
+            [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write,
+            [IO.FileShare]::Delete,
+            65536,
+            [IO.FileOptions]::WriteThrough
+        )
+        $guard.AssertFileIsDirectChild($stream.SafeFileHandle, $temporaryLeaf)
+        & $Writer $stream
+        $stream.Flush($true)
+        $guard.AssertFileIsDirectChild($stream.SafeFileHandle, $temporaryLeaf)
+        if (Test-Path -LiteralPath $FinalPath) { Throw-Controlled 'OUTPUT_ALREADY_EXISTS' }
         [IO.File]::Move($temporaryPath, $FinalPath)
+        $guard.AssertFileIsDirectChild($stream.SafeFileHandle, [IO.Path]::GetFileName($FinalPath))
+        $completed = $true
     }
-    catch {
-        if (Test-Path -LiteralPath $temporaryPath) {
-            Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+    catch { $primaryFailure = $_ }
+    finally {
+        if ($null -ne $stream) {
+            if (-not $completed) {
+                $deleteHandle = $null
+                try {
+                    $deleteHandle = [ApplyPack.Security.OutputDirectoryGuard]::OpenRegularFileForDeletion($temporaryPath)
+                    $guard.AssertFileIsDirectChild($deleteHandle, $temporaryLeaf)
+                    [ApplyPack.Security.OutputDirectoryGuard]::MarkDeleteOnClose($deleteHandle)
+                }
+                catch { $cleanupFailure = $_ }
+                finally { if ($null -ne $deleteHandle) { $deleteHandle.Dispose() } }
+            }
+            try { $stream.Dispose() } catch { if ($null -eq $cleanupFailure) { $cleanupFailure = $_ } }
         }
-        throw
+        try { $guard.Dispose() } catch { if ($null -eq $cleanupFailure) { $cleanupFailure = $_ } }
+    }
+    Resolve-OperationFailures `
+        -PrimaryFailure $primaryFailure `
+        -CleanupFailure $cleanupFailure `
+        -PrimaryFallback 'SAFEGUARD_FAILED' `
+        -CleanupFallback 'OUTPUT_HANDLE_CLEANUP_FAILED'
+}
+
+function Remove-VerifiedOutputFile {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
+    $parent = [IO.Path]::GetDirectoryName($Path)
+    $guard = [ApplyPack.Security.OutputDirectoryGuard]::Capture($parent)
+    $deleteHandle = $null
+    try {
+        $deleteHandle = [ApplyPack.Security.OutputDirectoryGuard]::OpenRegularFileForDeletion($Path)
+        $guard.AssertFileIsDirectChild($deleteHandle, [IO.Path]::GetFileName($Path))
+        [ApplyPack.Security.OutputDirectoryGuard]::MarkDeleteOnClose($deleteHandle)
+    }
+    finally {
+        if ($null -ne $deleteHandle) { $deleteHandle.Dispose() }
+        $guard.Dispose()
     }
 }
 
@@ -198,6 +307,17 @@ function Assert-StagingBinding {
 function Get-Sha256 {
     param([Parameter(Mandatory = $true)][string]$Path)
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToUpperInvariant()
+}
+
+function Get-StreamSha256 {
+    param([Parameter(Mandatory = $true)][IO.FileStream]$Stream)
+    $Stream.Position = 0
+    $hash = [Security.Cryptography.SHA256]::HashData($Stream)
+    try { return [Convert]::ToHexString($hash) }
+    finally {
+        [Array]::Clear($hash, 0, $hash.Length)
+        $Stream.Position = 0
+    }
 }
 
 function New-ProcessStartInfo {
@@ -232,6 +352,96 @@ function Invoke-SafeNativeText {
     $stdout = $stdoutTask.GetAwaiter().GetResult()
     if ($process.ExitCode -ne 0) { Throw-Controlled $FailureCode }
     return $stdout.Trim()
+}
+
+function Complete-RedirectedProcess {
+    param(
+        [Diagnostics.Process]$Process,
+        [Threading.Tasks.Task]$StandardErrorTask,
+        [Threading.Tasks.Task]$StandardOutputTask,
+        [bool]$ForceTermination
+    )
+    if ($null -eq $Process) { return $true }
+    $clean = $true
+    try { $Process.StandardInput.Close() } catch {}
+    if ($ForceTermination) {
+        try { if (-not $Process.HasExited) { $Process.Kill($true) } } catch { $clean = $false }
+    }
+    try {
+        if (-not $Process.WaitForExit(15000)) {
+            $clean = $false
+            try { $Process.Kill($true) } catch {}
+            try { if (-not $Process.WaitForExit(15000)) { $clean = $false } } catch { $clean = $false }
+        }
+    }
+    catch { $clean = $false }
+    foreach ($task in @($StandardErrorTask, $StandardOutputTask)) {
+        if ($null -eq $task) { continue }
+        try { if (-not $task.Wait(15000)) { $clean = $false } } catch { $clean = $false }
+    }
+    try { $Process.StandardOutput.Dispose() } catch {}
+    try { $Process.StandardError.Dispose() } catch {}
+    try { $Process.StandardInput.Dispose() } catch {}
+    $Process.Dispose()
+    return $clean
+}
+
+function Invoke-NativeDiscarded {
+    param(
+        [Parameter(Mandatory = $true)][string]$FileName,
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [Parameter(Mandatory = $true)][string]$FailureCode
+    )
+    $process = $null
+    $stdoutTask = $null
+    $stderrTask = $null
+    try {
+        $start = New-ProcessStartInfo -FileName $FileName -Arguments $Arguments -RedirectOutput $true
+        $process = [Diagnostics.Process]::Start($start)
+        $stdoutTask = $process.StandardOutput.BaseStream.CopyToAsync([IO.Stream]::Null)
+        $stderrTask = $process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
+        if (-not $process.WaitForExit(15000)) { Throw-Controlled $FailureCode }
+        $exitCode = $process.ExitCode
+        if (-not (Complete-RedirectedProcess -Process $process -StandardErrorTask $stderrTask -StandardOutputTask $stdoutTask -ForceTermination $false)) {
+            $process = $null
+            Throw-Controlled $FailureCode
+        }
+        $process = $null
+        return $exitCode
+    }
+    catch {
+        if ($null -ne $process) {
+            [void](Complete-RedirectedProcess -Process $process -StandardErrorTask $stderrTask -StandardOutputTask $stdoutTask -ForceTermination $true)
+        }
+        $code = Get-ControlledCode $_
+        if ($code -eq 'SAFEGUARD_FAILED') { Throw-Controlled $FailureCode }
+        throw
+    }
+}
+
+function Ensure-ContainerAbsent {
+    param(
+        [Parameter(Mandatory = $true)][string]$ContainerName,
+        [Parameter(Mandatory = $true)][string]$FailureCode,
+        [scriptblock]$CleanupOverride
+    )
+    if ($null -ne $CleanupOverride) {
+        & $CleanupOverride $ContainerName
+        return
+    }
+    try {
+        [void](Invoke-NativeDiscarded -FileName $DockerExecutable -Arguments @(
+            'rm', '--force', $ContainerName
+        ) -FailureCode $FailureCode)
+    }
+    catch {
+        # Absence verification below is authoritative. A remove command failure
+        # does not fail cleanup if the independent listing proves no container remains.
+    }
+    $remaining = Invoke-SafeNativeText -FileName $DockerExecutable -Arguments @(
+        'ps', '--all', '--filter', "name=^/$ContainerName$", '--format', '{{.Names}}'
+    ) -FailureCode $FailureCode
+    if (-not [string]::IsNullOrWhiteSpace($remaining)) { Throw-Controlled $FailureCode }
 }
 
 function Get-ReleaseSha {
@@ -282,6 +492,24 @@ function Assert-PinnedImage {
 
 function Get-SourceEvidenceSql {
     return @"
+with public_tables as materialized (
+  select n.nspname as schema_name, c.relname as table_name
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and c.relkind in ('r','p')
+), table_counts as materialized (
+  select table_name,
+    ((xpath(
+      '//row_count/text()',
+      query_to_xml(
+        format('select count(*)::bigint as row_count from %I.%I', schema_name, table_name),
+        false,
+        true,
+        ''
+      )
+    ))[1]::text)::bigint as row_count
+  from public_tables
+)
 select json_build_object(
   'database', current_database(),
   'currentUser', current_user,
@@ -297,20 +525,43 @@ select json_build_object(
   'latestMigration', (select max(version) from supabase_migrations.schema_migrations),
   'migration080Present', (select exists(select 1 from supabase_migrations.schema_migrations where version='202610040080')),
   'migrations081084Count', (select count(*) from supabase_migrations.schema_migrations where version in ('202610190081','202610190082','202610190083','202610190084')),
+  'tableRowCounts', (select coalesce(jsonb_object_agg(table_name, row_count order by table_name), '{}'::jsonb) from table_counts),
   'readiness', public.ap_manual_launch_schema_readiness()
 )::text;
 "@
+}
+
+function Add-RowCountDigest {
+    param([Parameter(Mandatory = $true)]$Evidence)
+    if ($null -eq $Evidence.tableRowCounts) { Throw-Controlled 'DATABASE_EVIDENCE_INVALID' }
+    $canonical = [ordered]@{}
+    foreach ($property in @($Evidence.tableRowCounts.PSObject.Properties | Sort-Object Name)) {
+        $canonical[$property.Name] = [long]$property.Value
+    }
+    if ($canonical.Count -eq 0) { Throw-Controlled 'DATABASE_EVIDENCE_INVALID' }
+    $json = $canonical | ConvertTo-Json -Compress
+    $bytes = [Text.UTF8Encoding]::new($false).GetBytes($json)
+    try {
+        $hash = [Security.Cryptography.SHA256]::HashData($bytes)
+        try { $digest = [Convert]::ToHexString($hash).ToLowerInvariant() }
+        finally { [Array]::Clear($hash, 0, $hash.Length) }
+    }
+    finally { [Array]::Clear($bytes, 0, $bytes.Length) }
+    $Evidence | Add-Member -NotePropertyName tableRowCountSha256 -NotePropertyValue $digest -Force
+    return $Evidence
 }
 
 function Get-DockerConnectionArguments {
     param(
         [Parameter(Mandatory = $true)][string]$CaPath,
         [Parameter(Mandatory = $true)][string]$Tool,
+        [string]$ContainerName,
         [Parameter(Mandatory = $true)][string[]]$ToolArguments
     )
     $shell = 'IFS= read -r PGPASSWORD; export PGPASSWORD; export PGSSLMODE=verify-full; export PGSSLROOTCERT=/certs/root.crt; export PGCONNECT_TIMEOUT=15; exec "$@"'
-    return @(
-        'run', '--rm', '-i', '--pull', 'never',
+    $arguments = @('run', '--rm', '-i', '--pull', 'never')
+    if (-not [string]::IsNullOrWhiteSpace($ContainerName)) { $arguments += @('--name', $ContainerName) }
+    return $arguments + @(
         '--volume', "${CaPath}:/certs/root.crt:ro",
         '--entrypoint', 'sh', $script:PostgresImage,
         '-ec', $shell, '--', $Tool
@@ -321,17 +572,88 @@ function Invoke-CredentialedText {
     param(
         [Parameter(Mandatory = $true)][ApplyPack.Security.CredentialMaterial]$Credential,
         [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [Parameter(Mandatory = $true)][string]$ContainerName,
         [Parameter(Mandatory = $true)][string]$FailureCode
     )
-    $process = [Diagnostics.Process]::Start((New-ProcessStartInfo -FileName $DockerExecutable -Arguments $Arguments -RedirectInput $true -RedirectOutput $true))
-    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-    $stderrTask = $process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
-    try { $Credential.WriteLineTo($process.StandardInput); $process.StandardInput.Close() } catch { try { $process.Kill($true) } catch {}; throw }
-    $process.WaitForExit()
-    $stderrTask.GetAwaiter().GetResult()
-    $stdout = $stdoutTask.GetAwaiter().GetResult().Trim()
-    if ($process.ExitCode -ne 0) { Throw-Controlled $FailureCode }
+    $process = $null
+    $stdoutTask = $null
+    $stderrTask = $null
+    $primaryFailure = $null
+    $cleanupFailure = $null
+    $stdout = $null
+    try {
+        $process = [Diagnostics.Process]::Start((New-ProcessStartInfo -FileName $DockerExecutable -Arguments $Arguments -RedirectInput $true -RedirectOutput $true))
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
+        $Credential.WriteUtf8LineTo($process.StandardInput.BaseStream)
+        $process.StandardInput.Close()
+        if (-not $process.WaitForExit(30000)) { Throw-Controlled $FailureCode }
+        $exitCode = $process.ExitCode
+        $stdout = $stdoutTask.GetAwaiter().GetResult().Trim()
+        if ($exitCode -ne 0) { Throw-Controlled $FailureCode }
+    }
+    catch { $primaryFailure = $_ }
+    finally {
+        if ($null -ne $process) {
+            if (-not (Complete-RedirectedProcess -Process $process -StandardErrorTask $stderrTask -StandardOutputTask $stdoutTask -ForceTermination ($null -ne $primaryFailure))) {
+                try { Throw-Controlled $FailureCode } catch { if ($null -eq $cleanupFailure) { $cleanupFailure = $_ } }
+            }
+        }
+        try { Ensure-ContainerAbsent -ContainerName $ContainerName -FailureCode $FailureCode } catch { if ($null -eq $cleanupFailure) { $cleanupFailure = $_ } }
+    }
+    Resolve-OperationFailures -PrimaryFailure $primaryFailure -CleanupFailure $cleanupFailure -PrimaryFallback $FailureCode -CleanupFallback $FailureCode
     return $stdout
+}
+
+function Invoke-EncryptedBackupProcess {
+    param(
+        [Parameter(Mandatory = $true)][Diagnostics.ProcessStartInfo]$StartInfo,
+        [Parameter(Mandatory = $true)][ApplyPack.Security.CredentialMaterial]$Credential,
+        [Parameter(Mandatory = $true)][IO.Stream]$Destination,
+        [Parameter(Mandatory = $true)][string]$MetadataJson,
+        [Parameter(Mandatory = $true)][string]$ContainerName,
+        [scriptblock]$ContainerCleanupOverride
+    )
+    $process = $null
+    $stderrTask = $null
+    $stdoutDrainTask = $null
+    $primaryFailure = $null
+    $cleanupFailure = $null
+    $stageFailureCode = 'BACKUP_PROCESS_START_FAILED'
+    try {
+        $process = [Diagnostics.Process]::Start($StartInfo)
+        $stderrTask = $process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
+        $stageFailureCode = 'BACKUP_CREDENTIAL_PIPE_FAILED'
+        $Credential.WriteUtf8LineTo($process.StandardInput.BaseStream)
+        $process.StandardInput.Close()
+        $stageFailureCode = 'BACKUP_STREAM_FAILED'
+        [ApplyPack.Security.StagingBackupEnvelope]::Encrypt($process.StandardOutput.BaseStream, $Destination, $MetadataJson)
+        $Destination.Flush()
+        $stageFailureCode = 'BACKUP_PROCESS_TEARDOWN_FAILED'
+        if (-not $process.WaitForExit(15000)) { Throw-Controlled 'BACKUP_PROCESS_TEARDOWN_FAILED' }
+        if ($process.ExitCode -ne 0) { Throw-Controlled 'PG_DUMP_FAILED' }
+    }
+    catch { $primaryFailure = $_ }
+    finally {
+        if ($null -ne $process) {
+            if ($null -ne $primaryFailure) {
+                try { $stdoutDrainTask = [ApplyPack.Security.StagingBackupEnvelope]::DrainAsync($process.StandardOutput.BaseStream) } catch {}
+            }
+            if (-not (Complete-RedirectedProcess -Process $process -StandardErrorTask $stderrTask -StandardOutputTask $stdoutDrainTask -ForceTermination ($null -ne $primaryFailure))) {
+                try { Throw-Controlled 'BACKUP_PROCESS_TEARDOWN_FAILED' } catch { if ($null -eq $cleanupFailure) { $cleanupFailure = $_ } }
+            }
+        }
+        try {
+            Ensure-ContainerAbsent -ContainerName $ContainerName -FailureCode 'BACKUP_CONTAINER_TEARDOWN_FAILED' -CleanupOverride $ContainerCleanupOverride
+        }
+        catch { if ($null -eq $cleanupFailure) { $cleanupFailure = $_ } }
+        $Credential.Dispose()
+    }
+    Resolve-OperationFailures `
+        -PrimaryFailure $primaryFailure `
+        -CleanupFailure $cleanupFailure `
+        -PrimaryFallback $stageFailureCode `
+        -CleanupFallback 'BACKUP_CONTAINER_TEARDOWN_FAILED'
 }
 
 function Assert-SourceEvidence {
@@ -345,6 +667,7 @@ function Assert-SourceEvidence {
         [int]$Evidence.rlsPolicyCount -le 0 -or
         [int]$Evidence.invalidIndexCount -ne 0 -or
         [int]$Evidence.migrationCount -le 0 -or
+        $Evidence.tableRowCountSha256 -notmatch '^[0-9a-f]{64}$' -or
         $Evidence.latestMigration -ne $script:ExpectedSchemaVersion -or
         $Evidence.migration080Present -ne $true -or
         [int]$Evidence.migrations081084Count -ne 0 -or
@@ -359,25 +682,26 @@ function Get-SourceEvidence {
         [Parameter(Mandatory = $true)][ApplyPack.Security.CredentialMaterial]$Credential,
         [Parameter(Mandatory = $true)][string]$CaPath
     )
-    $arguments = Get-DockerConnectionArguments -CaPath $CaPath -Tool 'psql' -ToolArguments @(
+    $containerName = "applypack-staging-evidence-$([Guid]::NewGuid().ToString('N'))"
+    $arguments = Get-DockerConnectionArguments -CaPath $CaPath -Tool 'psql' -ContainerName $containerName -ToolArguments @(
         '--no-password', '--no-psqlrc', '--tuples-only', '--no-align', '--quiet', '--set', 'ON_ERROR_STOP=1',
         '--host', $script:DatabaseHost, '--port', $script:DatabasePort,
         '--username', $script:LoginUser, '--dbname', $script:DatabaseName,
         '--command', (Get-SourceEvidenceSql)
     )
-    $text = Invoke-CredentialedText -Credential $Credential -Arguments $arguments -FailureCode 'DATABASE_ATTESTATION_FAILED'
+    $text = Invoke-CredentialedText -Credential $Credential -Arguments $arguments -ContainerName $containerName -FailureCode 'DATABASE_ATTESTATION_FAILED'
     try { $evidence = $text | ConvertFrom-Json } catch { Throw-Controlled 'DATABASE_EVIDENCE_INVALID' }
+    $evidence = Add-RowCountDigest $evidence
     Assert-SourceEvidence $evidence
     return $evidence
 }
 
-function Write-JsonFile {
-    param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)]$Value)
+function Write-JsonStream {
+    param([Parameter(Mandatory = $true)][IO.Stream]$Stream, [Parameter(Mandatory = $true)]$Value)
     $json = $Value | ConvertTo-Json -Depth 12 -Compress
     $bytes = [Text.UTF8Encoding]::new($false).GetBytes($json)
     try {
-        $stream = [IO.FileStream]::new($Path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
-        try { $stream.Write($bytes, 0, $bytes.Length); $stream.Flush($true) } finally { $stream.Dispose() }
+        $Stream.Write($bytes, 0, $bytes.Length)
     }
     finally { [Array]::Clear($bytes, 0, $bytes.Length) }
 }
@@ -429,25 +753,21 @@ function Invoke-Backup {
         $evidence = Get-SourceEvidence -Credential $credential -CaPath $caPath
         $metadata = New-SanitizedMetadata -Evidence $evidence -ReleaseSha $releaseSha -PgDumpVersion $pgDumpVersion
         $metadataJson = $metadata | ConvertTo-Json -Depth 12 -Compress
-        $dumpArguments = Get-DockerConnectionArguments -CaPath $caPath -Tool 'pg_dump' -ToolArguments @(
+        $dumpContainerName = "applypack-staging-backup-$([Guid]::NewGuid().ToString('N'))"
+        $dumpArguments = Get-DockerConnectionArguments -CaPath $caPath -Tool 'pg_dump' -ContainerName $dumpContainerName -ToolArguments @(
             '--format=custom', '--no-password', '--host', $script:DatabaseHost,
             '--port', $script:DatabasePort, '--username', $script:LoginUser, '--dbname', $script:DatabaseName
         )
 
         Invoke-AtomicFile -FinalPath $resolvedBackup -Writer {
-            param($temporaryPath)
-            $process = [Diagnostics.Process]::Start((New-ProcessStartInfo -FileName $DockerExecutable -Arguments $dumpArguments -RedirectInput $true -RedirectOutput $true))
-            $stderrTask = $process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
-            try { $credential.WriteLineTo($process.StandardInput); $process.StandardInput.Close() } catch { try { $process.Kill($true) } catch {}; throw }
-            $output = [IO.FileStream]::new($temporaryPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
-            try {
-                [ApplyPack.Security.StagingBackupEnvelope]::Encrypt($process.StandardOutput.BaseStream, $output, $metadataJson)
-                $output.Flush($true)
-            }
-            finally { $output.Dispose() }
-            $process.WaitForExit()
-            $stderrTask.GetAwaiter().GetResult()
-            if ($process.ExitCode -ne 0) { Throw-Controlled 'PG_DUMP_FAILED' }
+            param($output)
+            $start = New-ProcessStartInfo -FileName $DockerExecutable -Arguments $dumpArguments -RedirectInput $true -RedirectOutput $true
+            Invoke-EncryptedBackupProcess `
+                -StartInfo $start `
+                -Credential $credential `
+                -Destination $output `
+                -MetadataJson $metadataJson `
+                -ContainerName $dumpContainerName
         }
 
         try {
@@ -463,10 +783,10 @@ function Invoke-Backup {
                 postgresImageDigest = $script:PostgresImageDigest
                 sourceEvidence = $evidence
             }
-            Invoke-AtomicFile -FinalPath $resolvedReceipt -Writer { param($temporaryPath) Write-JsonFile -Path $temporaryPath -Value $receipt }
+            Invoke-AtomicFile -FinalPath $resolvedReceipt -Writer { param($output) Write-JsonStream -Stream $output -Value $receipt }
         }
         catch {
-            Remove-Item -LiteralPath $resolvedBackup -Force -ErrorAction SilentlyContinue
+            Remove-VerifiedOutputFile -Path $resolvedBackup
             throw
         }
     }
@@ -476,26 +796,40 @@ function Invoke-Backup {
 
 function Invoke-DecryptToProcess {
     param(
-        [Parameter(Mandatory = $true)][string]$EnvelopePath,
+        [Parameter(Mandatory = $true)][IO.FileStream]$EnvelopeStream,
         [Parameter(Mandatory = $true)][Diagnostics.ProcessStartInfo]$StartInfo,
-        [Parameter(Mandatory = $true)][string]$FailureCode
+        [Parameter(Mandatory = $true)][string]$FailureCode,
+        [string]$EphemeralContainerName
     )
-    $process = [Diagnostics.Process]::Start($StartInfo)
-    $stdoutTask = if ($StartInfo.RedirectStandardOutput) { $process.StandardOutput.BaseStream.CopyToAsync([IO.Stream]::Null) } else { $null }
-    $stderrTask = $process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
+    $process = $null
+    $stdoutTask = $null
+    $stderrTask = $null
+    $primaryFailure = $null
+    $cleanupFailure = $null
     try {
-        [void][ApplyPack.Security.StagingBackupEnvelope]::DecryptAuthenticated($EnvelopePath, $process.StandardInput.BaseStream)
+        $process = [Diagnostics.Process]::Start($StartInfo)
+        $stdoutTask = if ($StartInfo.RedirectStandardOutput) { $process.StandardOutput.BaseStream.CopyToAsync([IO.Stream]::Null) } else { $null }
+        $stderrTask = $process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
+        [void][ApplyPack.Security.StagingBackupEnvelope]::DecryptAuthenticated($EnvelopeStream, $process.StandardInput.BaseStream)
         $process.StandardInput.Close()
+        if (-not $process.WaitForExit(30000)) { Throw-Controlled $FailureCode }
+        if ($process.ExitCode -ne 0) { Throw-Controlled $FailureCode }
     }
-    catch {
-        try { $process.StandardInput.Close() } catch {}
-        try { $process.Kill($true) } catch {}
-        throw
+    catch { $primaryFailure = $_ }
+    finally {
+        if ($null -ne $process) {
+            if (-not (Complete-RedirectedProcess -Process $process -StandardErrorTask $stderrTask -StandardOutputTask $stdoutTask -ForceTermination ($null -ne $primaryFailure))) {
+                try { Throw-Controlled $FailureCode } catch { if ($null -eq $cleanupFailure) { $cleanupFailure = $_ } }
+            }
+        }
+        if (-not [string]::IsNullOrWhiteSpace($EphemeralContainerName)) {
+            try {
+                Ensure-ContainerAbsent -ContainerName $EphemeralContainerName -FailureCode $FailureCode
+            }
+            catch { if ($null -eq $cleanupFailure) { $cleanupFailure = $_ } }
+        }
     }
-    $process.WaitForExit()
-    $stderrTask.GetAwaiter().GetResult()
-    if ($null -ne $stdoutTask) { $stdoutTask.GetAwaiter().GetResult() }
-    if ($process.ExitCode -ne 0) { Throw-Controlled $FailureCode }
+    Resolve-OperationFailures -PrimaryFailure $primaryFailure -CleanupFailure $cleanupFailure -PrimaryFallback $FailureCode -CleanupFallback $FailureCode
 }
 
 function Get-RestoreEvidence {
@@ -505,7 +839,8 @@ function Get-RestoreEvidence {
         'exec', $ContainerName, 'psql', '--no-psqlrc', '--tuples-only', '--no-align', '--quiet',
         '--set', 'ON_ERROR_STOP=1', '--username', 'postgres', '--dbname', 'postgres', '--command', $query
     ) -FailureCode 'RESTORE_EVIDENCE_QUERY_FAILED'
-    try { return $text | ConvertFrom-Json } catch { Throw-Controlled 'RESTORE_EVIDENCE_INVALID' }
+    try { $evidence = $text | ConvertFrom-Json } catch { Throw-Controlled 'RESTORE_EVIDENCE_INVALID' }
+    return Add-RowCountDigest $evidence
 }
 
 function Assert-RestoreEvidence {
@@ -515,6 +850,18 @@ function Assert-RestoreEvidence {
         'publicFunctionCount', 'migrationCount', 'latestMigration', 'migration080Present', 'migrations081084Count'
     )) {
         if ([string]$Source.$field -ne [string]$Restored.$field) { Throw-Controlled 'RESTORE_AGGREGATE_MISMATCH' }
+    }
+    if ($Source.tableRowCountSha256 -ne $Restored.tableRowCountSha256) {
+        Throw-Controlled 'RESTORE_AGGREGATE_MISMATCH'
+    }
+    $sourceCounts = @($Source.tableRowCounts.PSObject.Properties | Sort-Object Name)
+    $restoredCounts = @($Restored.tableRowCounts.PSObject.Properties | Sort-Object Name)
+    if ($sourceCounts.Count -ne $restoredCounts.Count) { Throw-Controlled 'RESTORE_AGGREGATE_MISMATCH' }
+    for ($index = 0; $index -lt $sourceCounts.Count; $index += 1) {
+        if ($sourceCounts[$index].Name -ne $restoredCounts[$index].Name -or
+            [long]$sourceCounts[$index].Value -ne [long]$restoredCounts[$index].Value) {
+            Throw-Controlled 'RESTORE_AGGREGATE_MISMATCH'
+        }
     }
     if ([int]$Restored.invalidIndexCount -ne 0 -or
         $Restored.latestMigration -ne $script:ExpectedSchemaVersion -or
@@ -533,34 +880,55 @@ function Invoke-Restore {
         [IO.Path]::GetExtension($resolvedBackup) -ne '.apdb') { Throw-Controlled 'BACKUP_FILE_INVALID' }
     $resolvedReceipt = Assert-SafeOutputPath -Path $ReceiptPath -ExpectedExtension '.json'
     [void](Assert-PinnedImage)
-
-    $info = [ApplyPack.Security.StagingBackupEnvelope]::AuthenticateAndReadMetadata($resolvedBackup)
-    try { $metadata = $info.MetadataJson | ConvertFrom-Json } catch { Throw-Controlled 'ENVELOPE_METADATA_INVALID' }
-    if ($metadata.format -ne 'ApplyPackStagingDatabaseBackup' -or
-        [int]$metadata.formatVersion -ne 1 -or
-        $metadata.deploymentEnvironment -ne 'staging' -or
-        $metadata.projectRef -ne $script:ProjectRef -or
-        $metadata.host -ne $script:DatabaseHost -or
-        $metadata.database -ne $script:DatabaseName -or
-        $metadata.loginUser -ne $script:LoginUser -or
-        $metadata.expectedCurrentUser -ne $script:CurrentUser -or
-        $metadata.postgresImageDigest -ne $script:PostgresImageDigest -or
-        $metadata.caSha256 -ne $script:CaSha256 -or
-        $metadata.sourceEvidence.latestMigration -ne $script:ExpectedSchemaVersion -or
-        [int]$metadata.sourceEvidence.migrations081084Count -ne 0) {
-        Throw-Controlled 'ENVELOPE_BINDING_INVALID'
-    }
-
-    $listStart = New-ProcessStartInfo -FileName $DockerExecutable -Arguments @(
-        'run', '--rm', '-i', '--network', 'none', '--pull', 'never',
-        '--entrypoint', 'pg_restore', $script:PostgresImage, '--list'
-    ) -RedirectInput $true -RedirectOutput $true
-    Invoke-DecryptToProcess -EnvelopePath $resolvedBackup -StartInfo $listStart -FailureCode 'PG_RESTORE_LIST_FAILED'
-
     $containerName = "applypack-staging-restore-$([Guid]::NewGuid().ToString('N'))"
-    $started = $false
+    $listContainerName = "applypack-staging-restore-list-$([Guid]::NewGuid().ToString('N'))"
+    $containerAttempted = $false
     $restoredEvidence = $null
+    $metadata = $null
+    $envelopeSha256 = $null
+    $envelopeStream = $null
+    $primaryFailure = $null
+    $cleanupFailure = $null
     try {
+        $envelopeStream = [IO.FileStream]::new(
+            $resolvedBackup,
+            [IO.FileMode]::Open,
+            [IO.FileAccess]::Read,
+            [IO.FileShare]::None,
+            65536,
+            [IO.FileOptions]::SequentialScan
+        )
+        [ApplyPack.Security.OutputDirectoryGuard]::AssertRegularFileHandle($envelopeStream.SafeFileHandle)
+        $envelopeSha256 = Get-StreamSha256 $envelopeStream
+        $info = [ApplyPack.Security.StagingBackupEnvelope]::AuthenticateAndReadMetadata($envelopeStream)
+        try { $metadata = $info.MetadataJson | ConvertFrom-Json } catch { Throw-Controlled 'ENVELOPE_METADATA_INVALID' }
+        if ($metadata.format -ne 'ApplyPackStagingDatabaseBackup' -or
+            [int]$metadata.formatVersion -ne 1 -or
+            $metadata.deploymentEnvironment -ne 'staging' -or
+            $metadata.projectRef -ne $script:ProjectRef -or
+            $metadata.host -ne $script:DatabaseHost -or
+            $metadata.database -ne $script:DatabaseName -or
+            $metadata.loginUser -ne $script:LoginUser -or
+            $metadata.expectedCurrentUser -ne $script:CurrentUser -or
+            $metadata.postgresImageDigest -ne $script:PostgresImageDigest -or
+            $metadata.caSha256 -ne $script:CaSha256 -or
+            $metadata.sourceEvidence.latestMigration -ne $script:ExpectedSchemaVersion -or
+            [int]$metadata.sourceEvidence.migrations081084Count -ne 0 -or
+            $metadata.sourceEvidence.tableRowCountSha256 -notmatch '^[0-9a-f]{64}$') {
+            Throw-Controlled 'ENVELOPE_BINDING_INVALID'
+        }
+
+        $listStart = New-ProcessStartInfo -FileName $DockerExecutable -Arguments @(
+            'run', '--rm', '--name', $listContainerName, '-i', '--network', 'none', '--pull', 'never',
+            '--entrypoint', 'pg_restore', $script:PostgresImage, '--list'
+        ) -RedirectInput $true -RedirectOutput $true
+        Invoke-DecryptToProcess `
+            -EnvelopeStream $envelopeStream `
+            -StartInfo $listStart `
+            -FailureCode 'PG_RESTORE_LIST_FAILED' `
+            -EphemeralContainerName $listContainerName
+
+        $containerAttempted = $true
         $containerId = Invoke-SafeNativeText -FileName $DockerExecutable -Arguments @(
             'run', '--detach', '--rm', '--name', $containerName, '--network', 'none',
             '--tmpfs', '/var/lib/postgresql/data:rw,nosuid,nodev,size=4g',
@@ -569,7 +937,6 @@ function Invoke-Restore {
             'postgres', '-D', '/var/lib/postgresql/data'
         ) -FailureCode 'RESTORE_CONTAINER_START_FAILED'
         if ($containerId -notmatch '^[0-9a-f]{12,64}$') { Throw-Controlled 'RESTORE_CONTAINER_START_INVALID' }
-        $started = $true
         $ready = $false
         for ($attempt = 0; $attempt -lt 45; $attempt += 1) {
             try {
@@ -590,41 +957,50 @@ function Invoke-Restore {
             'exec', '-i', $containerName, 'pg_restore', '--exit-on-error', '--no-owner', '--no-privileges',
             '--clean', '--if-exists', '--username', 'postgres', '--dbname', 'postgres'
         ) -RedirectInput $true -RedirectOutput $true
-        Invoke-DecryptToProcess -EnvelopePath $resolvedBackup -StartInfo $restoreStart -FailureCode 'PG_RESTORE_FAILED'
+        Invoke-DecryptToProcess -EnvelopeStream $envelopeStream -StartInfo $restoreStart -FailureCode 'PG_RESTORE_FAILED'
         $restoredEvidence = Get-RestoreEvidence -ContainerName $containerName
         Assert-RestoreEvidence -Source $metadata.sourceEvidence -Restored $restoredEvidence
     }
+    catch { $primaryFailure = $_ }
     finally {
-        if ($started) {
-            try { [void](Invoke-SafeNativeText -FileName $DockerExecutable -Arguments @('rm', '--force', $containerName) -FailureCode 'RESTORE_CONTAINER_TEARDOWN_FAILED') } catch { throw }
-            $inspectStart = New-ProcessStartInfo -FileName $DockerExecutable -Arguments @('inspect', $containerName) -RedirectOutput $true
-            $inspect = [Diagnostics.Process]::Start($inspectStart)
-            $outTask = $inspect.StandardOutput.BaseStream.CopyToAsync([IO.Stream]::Null)
-            $errTask = $inspect.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
-            $inspect.WaitForExit(); $outTask.GetAwaiter().GetResult(); $errTask.GetAwaiter().GetResult()
-            if ($inspect.ExitCode -eq 0) { Throw-Controlled 'RESTORE_CONTAINER_TEARDOWN_FAILED' }
+        if ($containerAttempted) {
+            try {
+                Ensure-ContainerAbsent -ContainerName $containerName -FailureCode 'RESTORE_CONTAINER_TEARDOWN_FAILED'
+            }
+            catch { $cleanupFailure = $_ }
+        }
+        if ($null -ne $envelopeStream) {
+            try { $envelopeStream.Dispose() } catch { if ($null -eq $cleanupFailure) { $cleanupFailure = $_ } }
         }
     }
+    Resolve-OperationFailures `
+        -PrimaryFailure $primaryFailure `
+        -CleanupFailure $cleanupFailure `
+        -PrimaryFallback 'SAFEGUARD_FAILED' `
+        -CleanupFallback 'RESTORE_CONTAINER_TEARDOWN_FAILED'
 
     $receipt = [ordered]@{
         operation = 'isolated-staging-restore-drill'
         completedAt = [DateTimeOffset]::UtcNow.ToString('O')
         sourceReleaseSha = $metadata.releaseSha
-        envelopeSha256 = Get-Sha256 $resolvedBackup
+        envelopeSha256 = $envelopeSha256
         postgresImageDigest = $script:PostgresImageDigest
         networkMode = 'none'
         publishedPorts = 0
         aggregateEvidence = $restoredEvidence
+        tableRowCountSha256 = $restoredEvidence.tableRowCountSha256
         teardownVerified = $true
     }
-    Invoke-AtomicFile -FinalPath $resolvedReceipt -Writer { param($temporaryPath) Write-JsonFile -Path $temporaryPath -Value $receipt }
-    [ordered]@{ status = 'STAGING_RESTORE_DRILL_VERIFIED'; receiptPath = $resolvedReceipt; envelopeSha256 = Get-Sha256 $resolvedBackup } | ConvertTo-Json -Compress
+    Invoke-AtomicFile -FinalPath $resolvedReceipt -Writer { param($output) Write-JsonStream -Stream $output -Value $receipt }
+    [ordered]@{ status = 'STAGING_RESTORE_DRILL_VERIFIED'; receiptPath = $resolvedReceipt; envelopeSha256 = $envelopeSha256 } | ConvertTo-Json -Compress
 }
 
 function Invoke-SelfTest {
     $testRoot = Join-Path ([IO.Path]::GetTempPath()) "applypack-staging-safeguard-$([Guid]::NewGuid().ToString('N'))"
     [IO.Directory]::CreateDirectory($testRoot) | Out-Null
     $marker = 'SELF_TEST_SECRET_DO_NOT_LOG_76291'
+    $plain = $null
+    $syntheticSecret = $null
     try {
         $plain = [Text.UTF8Encoding]::new($false).GetBytes('deterministic synthetic pg_dump payload v1')
         $metadata = '{"format":"self-test","fixture":1}'
@@ -641,6 +1017,42 @@ function Invoke-SelfTest {
             if (-not [Linq.Enumerable]::SequenceEqual[byte]($plain, $roundtrip.ToArray())) { Throw-Controlled 'SELF_TEST_ROUNDTRIP_FAILED' }
         }
         finally { $roundtrip.Dispose() }
+
+        # Keep one non-shareable handle across every authentication/decryption
+        # phase. A second valid CurrentUser envelope cannot replace the verified
+        # bytes while this handle is alive.
+        $replacement = Join-Path $testRoot 'replacement.apdb'
+        $replacementPlain = [Text.UTF8Encoding]::new($false).GetBytes('different valid replacement payload')
+        $replacementDestination = [IO.FileStream]::new($replacement, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        $replacementSource = [IO.MemoryStream]::new($replacementPlain, $false)
+        try {
+            [ApplyPack.Security.StagingBackupEnvelope]::Encrypt($replacementSource, $replacementDestination, '{"format":"self-test","fixture":2}')
+            $replacementDestination.Flush($true)
+        }
+        finally {
+            $replacementSource.Dispose()
+            $replacementDestination.Dispose()
+            [Array]::Clear($replacementPlain, 0, $replacementPlain.Length)
+        }
+        $heldEnvelope = [IO.FileStream]::new($envelope, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
+        try {
+            $heldInfo = [ApplyPack.Security.StagingBackupEnvelope]::AuthenticateAndReadMetadata($heldEnvelope)
+            if ($heldInfo.MetadataJson -ne $metadata) { Throw-Controlled 'SELF_TEST_METADATA_FAILED' }
+            $replacementRejected = $false
+            try { [IO.File]::Move($replacement, $envelope, $true) } catch { $replacementRejected = $true }
+            if (-not $replacementRejected) { Throw-Controlled 'SELF_TEST_PATH_RACE_FAILED' }
+            foreach ($pass in 1..2) {
+                $heldRoundtrip = [IO.MemoryStream]::new()
+                try {
+                    [void][ApplyPack.Security.StagingBackupEnvelope]::DecryptAuthenticated($heldEnvelope, $heldRoundtrip)
+                    if (-not [Linq.Enumerable]::SequenceEqual[byte]($plain, $heldRoundtrip.ToArray())) {
+                        Throw-Controlled 'SELF_TEST_ROUNDTRIP_FAILED'
+                    }
+                }
+                finally { $heldRoundtrip.Dispose() }
+            }
+        }
+        finally { $heldEnvelope.Dispose() }
 
         $tampered = Join-Path $testRoot 'tampered.apdb'
         [IO.File]::Copy($envelope, $tampered)
@@ -664,12 +1076,27 @@ function Invoke-SelfTest {
         try { [void](Assert-SafeOutputPath -Path (Join-Path $script:RepoRoot 'forbidden.apdb') -ExpectedExtension '.apdb') } catch { $rejected = $_.Exception.Message -eq 'OUTPUT_INSIDE_GIT_WORKTREE' }
         if (-not $rejected) { Throw-Controlled 'SELF_TEST_PATH_REJECTION_FAILED' }
 
+        $raceParent = Join-Path $testRoot 'race-parent'
+        $raceMoved = Join-Path $testRoot 'race-parent-moved'
+        [IO.Directory]::CreateDirectory($raceParent) | Out-Null
+        $raceGuard = [ApplyPack.Security.OutputDirectoryGuard]::Capture($raceParent)
+        $raceRejected = $false
+        try {
+            try { [IO.Directory]::Move($raceParent, $raceMoved) } catch { $raceRejected = $true }
+            if (-not $raceRejected) {
+                [IO.Directory]::CreateDirectory($raceParent) | Out-Null
+                try { $raceGuard.AssertUnchanged() } catch { $raceRejected = $true }
+            }
+        }
+        finally { $raceGuard.Dispose() }
+        if (-not $raceRejected) { Throw-Controlled 'SELF_TEST_PATH_RACE_FAILED' }
+
         $failurePath = Join-Path $testRoot 'failed.apdb'
         $caughtCode = $null
         try {
             Invoke-AtomicFile -FinalPath $failurePath -Writer {
-                param($temporaryPath)
-                [IO.File]::WriteAllBytes($temporaryPath, [byte[]](1, 2, 3))
+                param($output)
+                $output.Write([byte[]](1, 2, 3), 0, 3)
                 throw $marker
             }
         }
@@ -679,19 +1106,125 @@ function Invoke-SelfTest {
         if (@(Get-ChildItem -LiteralPath $testRoot -Filter '*.partial-*' -Force).Count -ne 0) { Throw-Controlled 'SELF_TEST_FAILURE_CLEANUP_FAILED' }
         if (($info.MetadataJson + ($caughtCode ?? '')).Contains($marker)) { Throw-Controlled 'SELF_TEST_LOG_REDACTION_FAILED' }
 
-        [Array]::Clear($plain, 0, $plain.Length)
+        # Inject an output failure after a real child process has started and
+        # begun streaming. The lifecycle helper must kill the full process tree,
+        # wait/drain/dispose it, clear the supplied char[], invoke container
+        # cleanup, and leave no final or partial envelope.
+        $pidFile = Join-Path $testRoot 'synthetic-child.pid'
+        $containerMarker = Join-Path $testRoot 'synthetic-container.marker'
+        [IO.File]::WriteAllText($containerMarker, 'present')
+        $childScript = @'
+$null = [Console]::In.ReadLine()
+[IO.File]::WriteAllText($env:AP_SELF_TEST_PID_FILE, $PID.ToString())
+$chunk = [Text.Encoding]::UTF8.GetBytes(('x' * 65536))
+$stdout = [Console]::OpenStandardOutput()
+while ($true) {
+    $stdout.Write($chunk, 0, $chunk.Length)
+    $stdout.Flush()
+    Start-Sleep -Milliseconds 5
+}
+'@
+        $childBytes = [Text.Encoding]::Unicode.GetBytes($childScript)
+        try { $encodedChild = [Convert]::ToBase64String($childBytes) }
+        finally { [Array]::Clear($childBytes, 0, $childBytes.Length) }
+        $pwshExecutable = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+        $processStart = New-ProcessStartInfo `
+            -FileName $pwshExecutable `
+            -Arguments @('-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', $encodedChild) `
+            -RedirectInput $true `
+            -RedirectOutput $true
+        $processStart.Environment['AP_SELF_TEST_PID_FILE'] = $pidFile
+        $syntheticSecret = $marker.ToCharArray()
+        $syntheticCredential = [ApplyPack.Security.WindowsCredentialStore]::CreateSyntheticForSelfTest($syntheticSecret)
+        $processFailurePath = Join-Path $testRoot 'process-failure.apdb'
+        $processCaughtCode = $null
+        $cleanupOverride = {
+            param($ignoredContainerName)
+            if (Test-Path -LiteralPath $containerMarker) {
+                Remove-Item -LiteralPath $containerMarker -Force
+            }
+        }
+        try {
+            Invoke-AtomicFile -FinalPath $processFailurePath -Writer {
+                param($output)
+                $failingOutput = [ApplyPack.Security.DeterministicFailingWriteStream]::new($output, 4096)
+                try {
+                    Invoke-EncryptedBackupProcess `
+                        -StartInfo $processStart `
+                        -Credential $syntheticCredential `
+                        -Destination $failingOutput `
+                        -MetadataJson '{"format":"self-test-process-failure"}' `
+                        -ContainerName 'applypack-self-test-container' `
+                        -ContainerCleanupOverride $cleanupOverride
+                }
+                finally { $failingOutput.Dispose() }
+            }
+        }
+        catch { $processCaughtCode = Get-ControlledCode $_ }
+        if ($processCaughtCode -ne 'BACKUP_STREAM_FAILED') { Throw-Controlled 'SELF_TEST_PROCESS_CLEANUP_FAILED' }
+        if (-not (Test-Path -LiteralPath $pidFile -PathType Leaf)) { Throw-Controlled 'SELF_TEST_PROCESS_CLEANUP_FAILED' }
+        $childPid = [int]([IO.File]::ReadAllText($pidFile))
+        if ($null -ne (Get-Process -Id $childPid -ErrorAction SilentlyContinue)) { Throw-Controlled 'SELF_TEST_PROCESS_CLEANUP_FAILED' }
+        if ((Test-Path -LiteralPath $containerMarker) -or (Test-Path -LiteralPath $processFailurePath)) {
+            Throw-Controlled 'SELF_TEST_PROCESS_CLEANUP_FAILED'
+        }
+        if (@(Get-ChildItem -LiteralPath $testRoot -Filter '*.partial-*' -Force).Count -ne 0) {
+            Throw-Controlled 'SELF_TEST_PROCESS_CLEANUP_FAILED'
+        }
+        if (@($syntheticSecret | Where-Object { $_ -ne [char]0 }).Count -ne 0) {
+            Throw-Controlled 'SELF_TEST_PROCESS_CLEANUP_FAILED'
+        }
+        if (($processCaughtCode ?? '').Contains($marker)) { Throw-Controlled 'SELF_TEST_LOG_REDACTION_FAILED' }
+
+        $restorePrimary = $null
+        $restoreCleanup = $null
+        try { Throw-Controlled 'PG_RESTORE_FAILED' } catch { $restorePrimary = $_ }
+        try { Throw-Controlled 'RESTORE_CONTAINER_TEARDOWN_FAILED' } catch { $restoreCleanup = $_ }
+        $precedenceVerified = $false
+        try {
+            Resolve-OperationFailures `
+                -PrimaryFailure $restorePrimary `
+                -CleanupFailure $restoreCleanup `
+                -PrimaryFallback 'PG_RESTORE_FAILED' `
+                -CleanupFallback 'RESTORE_CONTAINER_TEARDOWN_FAILED'
+        }
+        catch {
+            $precedenceVerified = (
+                (Get-ControlledCode $_) -eq 'PG_RESTORE_FAILED' -and
+                $_.Exception.Data['ApplyPackCleanupCode'] -eq 'RESTORE_CONTAINER_TEARDOWN_FAILED'
+            )
+        }
+        if (-not $precedenceVerified) { Throw-Controlled 'SELF_TEST_RESTORE_PRECEDENCE_FAILED' }
+
+        $cleanupOnlyVerified = $false
+        try {
+            Resolve-OperationFailures `
+                -PrimaryFailure $null `
+                -CleanupFailure $restoreCleanup `
+                -CleanupFallback 'RESTORE_CONTAINER_TEARDOWN_FAILED'
+        }
+        catch { $cleanupOnlyVerified = (Get-ControlledCode $_) -eq 'RESTORE_CONTAINER_TEARDOWN_FAILED' }
+        if (-not $cleanupOnlyVerified) { Throw-Controlled 'SELF_TEST_RESTORE_PRECEDENCE_FAILED' }
+
         [ordered]@{
             status = 'STAGING_DATABASE_SAFEGUARD_SELF_TEST_OK'
             dpapiCurrentUser = $true
             authenticatedEncryption = $true
             tamperRejected = $true
             truncationRejected = $true
+            envelopeHandlePinned = $true
             repositoryOutputRejected = $true
+            outputPathRaceRejected = $true
             failureCleanupVerified = $true
+            processFailureCleanupVerified = $true
+            credentialBufferCleared = $true
+            restoreFailurePrecedenceVerified = $true
             secretLoggingRejected = $true
         } | ConvertTo-Json -Compress
     }
     finally {
+        if ($null -ne $plain) { [Array]::Clear($plain, 0, $plain.Length) }
+        if ($null -ne $syntheticSecret) { [Array]::Clear($syntheticSecret, 0, $syntheticSecret.Length) }
         if (Test-Path -LiteralPath $testRoot) { Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
@@ -711,6 +1244,13 @@ try {
     }
 }
 catch {
-    [Console]::Error.WriteLine((Get-ControlledCode $_))
+    $code = Get-ControlledCode $_
+    $cleanupCode = $_.Exception.Data['ApplyPackCleanupCode']
+    if ($cleanupCode -is [string] -and $script:PublicErrorCodes.Contains($cleanupCode)) {
+        [Console]::Error.WriteLine(([ordered]@{ error = $code; cleanupError = $cleanupCode } | ConvertTo-Json -Compress))
+    }
+    else {
+        [Console]::Error.WriteLine($code)
+    }
     exit 1
 }

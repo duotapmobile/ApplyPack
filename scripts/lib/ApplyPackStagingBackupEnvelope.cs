@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Win32.SafeHandles;
 
 namespace ApplyPack.Security
 {
@@ -30,12 +31,22 @@ namespace ApplyPack.Security
             }
         }
 
-        public void WriteLineTo(TextWriter writer)
+        public void WriteUtf8LineTo(Stream stream)
         {
             if (_secret == null) throw new ObjectDisposedException("CredentialMaterial");
-            writer.Write(_secret, 0, _secret.Length);
-            writer.Write('\n');
-            writer.Flush();
+            if (stream == null || !stream.CanWrite) throw new InvalidOperationException("CREDENTIAL_PIPE_INVALID");
+            byte[] buffer = new byte[Encoding.UTF8.GetMaxByteCount(_secret.Length) + 1];
+            try
+            {
+                int count = Encoding.UTF8.GetBytes(_secret, 0, _secret.Length, buffer, 0);
+                buffer[count] = (byte)'\n';
+                stream.Write(buffer, 0, count + 1);
+                stream.Flush();
+            }
+            finally
+            {
+                Array.Clear(buffer, 0, buffer.Length);
+            }
         }
 
         public void Dispose()
@@ -127,6 +138,13 @@ namespace ApplyPack.Security
                 if (secretChars != null) Array.Clear(secretChars, 0, secretChars.Length);
                 CredFree(credentialPtr);
             }
+        }
+
+        public static CredentialMaterial CreateSyntheticForSelfTest(char[] secret)
+        {
+            if (secret == null || secret.Length == 0)
+                throw new InvalidOperationException("SELF_TEST_CREDENTIAL_INVALID");
+            return new CredentialMaterial("__APPLYPACK_SELF_TEST__", secret);
         }
     }
 
@@ -245,6 +263,312 @@ namespace ApplyPack.Security
         {
             for (int index = 0; index < length; index += 1)
                 Marshal.WriteByte(pointer, index, 0);
+        }
+    }
+
+    public sealed class OutputDirectoryGuard : IDisposable
+    {
+        private const uint FileReadAttributes = 0x80;
+        private const uint DeleteAccess = 0x00010000;
+        private const uint FileShareRead = 0x1;
+        private const uint FileShareWrite = 0x2;
+        private const uint FileShareDelete = 0x4;
+        private const uint OpenExisting = 3;
+        private const uint FileFlagBackupSemantics = 0x02000000;
+        private const uint FileFlagOpenReparsePoint = 0x00200000;
+        private const uint FileAttributeReparsePoint = 0x400;
+        private const uint FileAttributeDirectory = 0x10;
+        private const int FileDispositionInfo = 4;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ByHandleFileInformation
+        {
+            public uint FileAttributes;
+            public System.Runtime.InteropServices.ComTypes.FILETIME CreationTime;
+            public System.Runtime.InteropServices.ComTypes.FILETIME LastAccessTime;
+            public System.Runtime.InteropServices.ComTypes.FILETIME LastWriteTime;
+            public uint VolumeSerialNumber;
+            public uint FileSizeHigh;
+            public uint FileSizeLow;
+            public uint NumberOfLinks;
+            public uint FileIndexHigh;
+            public uint FileIndexLow;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FileDispositionInformation
+        {
+            [MarshalAs(UnmanagedType.Bool)]
+            public bool DeleteFile;
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern SafeFileHandle CreateFile(
+            string fileName,
+            uint desiredAccess,
+            uint shareMode,
+            IntPtr securityAttributes,
+            uint creationDisposition,
+            uint flagsAndAttributes,
+            IntPtr templateFile
+        );
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetFileInformationByHandle(
+            SafeFileHandle file,
+            out ByHandleFileInformation information
+        );
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern uint GetFinalPathNameByHandle(
+            SafeFileHandle file,
+            StringBuilder path,
+            uint pathLength,
+            uint flags
+        );
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool SetFileInformationByHandle(
+            SafeFileHandle file,
+            int informationClass,
+            ref FileDispositionInformation information,
+            uint bufferSize
+        );
+
+        private SafeFileHandle _directory;
+        private readonly uint _volumeSerial;
+        private readonly ulong _fileIndex;
+        private readonly string _finalPath;
+
+        private OutputDirectoryGuard(SafeFileHandle directory, ByHandleFileInformation information, string finalPath)
+        {
+            _directory = directory;
+            _volumeSerial = information.VolumeSerialNumber;
+            _fileIndex = ((ulong)information.FileIndexHigh << 32) | information.FileIndexLow;
+            _finalPath = finalPath;
+        }
+
+        public string FinalPath
+        {
+            get
+            {
+                ThrowIfDisposed();
+                return _finalPath;
+            }
+        }
+
+        public static OutputDirectoryGuard Capture(string directoryPath)
+        {
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                throw new InvalidOperationException("WINDOWS_REQUIRED");
+            SafeFileHandle handle = OpenDirectory(directoryPath);
+            try
+            {
+                ByHandleFileInformation information = ReadInformation(handle);
+                if ((information.FileAttributes & FileAttributeReparsePoint) != 0)
+                    throw new InvalidOperationException("OUTPUT_REPARSE_PATH_REJECTED");
+                return new OutputDirectoryGuard(handle, information, ReadFinalPath(handle));
+            }
+            catch
+            {
+                handle.Dispose();
+                throw;
+            }
+        }
+
+        public void AssertUnchanged()
+        {
+            ThrowIfDisposed();
+            ByHandleFileInformation held = ReadInformation(_directory);
+            if (held.VolumeSerialNumber != _volumeSerial || GetFileIndex(held) != _fileIndex)
+                throw new InvalidOperationException("OUTPUT_DIRECTORY_IDENTITY_CHANGED");
+
+            SafeFileHandle current = OpenDirectory(_finalPath);
+            try
+            {
+                ByHandleFileInformation information = ReadInformation(current);
+                if ((information.FileAttributes & FileAttributeReparsePoint) != 0
+                    || information.VolumeSerialNumber != _volumeSerial
+                    || GetFileIndex(information) != _fileIndex
+                    || !String.Equals(ReadFinalPath(current), _finalPath, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("OUTPUT_DIRECTORY_IDENTITY_CHANGED");
+            }
+            finally
+            {
+                current.Dispose();
+            }
+        }
+
+        public void AssertFileIsDirectChild(SafeFileHandle file, string leafName)
+        {
+            ThrowIfDisposed();
+            if (file == null || file.IsInvalid || file.IsClosed)
+                throw new InvalidOperationException("OUTPUT_FILE_HANDLE_INVALID");
+            if (String.IsNullOrWhiteSpace(leafName)
+                || !String.Equals(Path.GetFileName(leafName), leafName, StringComparison.Ordinal))
+                throw new InvalidOperationException("OUTPUT_FILE_NAME_INVALID");
+            AssertUnchanged();
+            ByHandleFileInformation information = ReadInformation(file);
+            if ((information.FileAttributes & FileAttributeReparsePoint) != 0)
+                throw new InvalidOperationException("OUTPUT_REPARSE_PATH_REJECTED");
+            string expected = Path.Combine(_finalPath, leafName);
+            if (!String.Equals(ReadFinalPath(file), expected, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("OUTPUT_FILE_IDENTITY_CHANGED");
+        }
+
+        public static void AssertRegularFileHandle(SafeFileHandle file)
+        {
+            if (file == null || file.IsInvalid || file.IsClosed)
+                throw new InvalidOperationException("OUTPUT_FILE_HANDLE_INVALID");
+            ByHandleFileInformation information = ReadInformation(file);
+            if ((information.FileAttributes & FileAttributeReparsePoint) != 0)
+                throw new InvalidOperationException("OUTPUT_REPARSE_PATH_REJECTED");
+        }
+
+        public static SafeFileHandle OpenRegularFileForDeletion(string path)
+        {
+            SafeFileHandle handle = CreateFile(
+                path,
+                DeleteAccess | FileReadAttributes,
+                FileShareRead | FileShareWrite | FileShareDelete,
+                IntPtr.Zero,
+                OpenExisting,
+                FileFlagOpenReparsePoint,
+                IntPtr.Zero
+            );
+            if (handle == null || handle.IsInvalid)
+            {
+                if (handle != null) handle.Dispose();
+                throw new InvalidOperationException("OUTPUT_HANDLE_CLEANUP_FAILED");
+            }
+            try
+            {
+                ByHandleFileInformation information = ReadInformation(handle);
+                if ((information.FileAttributes & (FileAttributeReparsePoint | FileAttributeDirectory)) != 0)
+                    throw new InvalidOperationException("OUTPUT_REPARSE_PATH_REJECTED");
+                return handle;
+            }
+            catch
+            {
+                handle.Dispose();
+                throw;
+            }
+        }
+
+        public static void MarkDeleteOnClose(SafeFileHandle file)
+        {
+            if (file == null || file.IsInvalid || file.IsClosed) return;
+            FileDispositionInformation information = new FileDispositionInformation { DeleteFile = true };
+            if (!SetFileInformationByHandle(
+                file,
+                FileDispositionInfo,
+                ref information,
+                (uint)Marshal.SizeOf(typeof(FileDispositionInformation))))
+                throw new InvalidOperationException("OUTPUT_HANDLE_CLEANUP_FAILED");
+        }
+
+        public void Dispose()
+        {
+            if (_directory != null)
+            {
+                _directory.Dispose();
+                _directory = null;
+            }
+        }
+
+        private static SafeFileHandle OpenDirectory(string path)
+        {
+            SafeFileHandle handle = CreateFile(
+                path,
+                FileReadAttributes,
+                // Deliberately deny delete sharing while the guard is alive. On
+                // Windows this prevents the guarded directory from being renamed
+                // or deleted between validation, write, flush, and atomic publish.
+                FileShareRead | FileShareWrite,
+                IntPtr.Zero,
+                OpenExisting,
+                FileFlagBackupSemantics | FileFlagOpenReparsePoint,
+                IntPtr.Zero
+            );
+            if (handle == null || handle.IsInvalid)
+            {
+                if (handle != null) handle.Dispose();
+                throw new InvalidOperationException("OUTPUT_DIRECTORY_OPEN_FAILED");
+            }
+            return handle;
+        }
+
+        private static ByHandleFileInformation ReadInformation(SafeFileHandle handle)
+        {
+            ByHandleFileInformation information;
+            if (!GetFileInformationByHandle(handle, out information))
+                throw new InvalidOperationException("OUTPUT_IDENTITY_QUERY_FAILED");
+            return information;
+        }
+
+        private static ulong GetFileIndex(ByHandleFileInformation information)
+        {
+            return ((ulong)information.FileIndexHigh << 32) | information.FileIndexLow;
+        }
+
+        private static string ReadFinalPath(SafeFileHandle handle)
+        {
+            StringBuilder path = new StringBuilder(1024);
+            uint length = GetFinalPathNameByHandle(handle, path, (uint)path.Capacity, 0);
+            if (length == 0) throw new InvalidOperationException("OUTPUT_IDENTITY_QUERY_FAILED");
+            if (length >= path.Capacity)
+            {
+                path = new StringBuilder((int)length + 1);
+                length = GetFinalPathNameByHandle(handle, path, (uint)path.Capacity, 0);
+                if (length == 0 || length >= path.Capacity)
+                    throw new InvalidOperationException("OUTPUT_IDENTITY_QUERY_FAILED");
+            }
+            string value = path.ToString();
+            if (value.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
+                return @"\\" + value.Substring(8).TrimEnd('\\');
+            if (value.StartsWith(@"\\?\", StringComparison.OrdinalIgnoreCase))
+                return value.Substring(4).TrimEnd('\\');
+            return value.TrimEnd('\\');
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_directory == null || _directory.IsClosed || _directory.IsInvalid)
+                throw new ObjectDisposedException("OutputDirectoryGuard");
+        }
+    }
+
+    public sealed class DeterministicFailingWriteStream : Stream
+    {
+        private readonly Stream _inner;
+        private readonly long _failAfter;
+        private long _written;
+
+        public DeterministicFailingWriteStream(Stream inner, long failAfter)
+        {
+            if (inner == null || !inner.CanWrite || failAfter < 0)
+                throw new ArgumentException("SYNTHETIC_OUTPUT_STREAM_INVALID");
+            _inner = inner;
+            _failAfter = failAfter;
+        }
+
+        public override bool CanRead { get { return false; } }
+        public override bool CanSeek { get { return false; } }
+        public override bool CanWrite { get { return true; } }
+        public override long Length { get { throw new NotSupportedException(); } }
+        public override long Position { get { throw new NotSupportedException(); } set { throw new NotSupportedException(); } }
+        public override void Flush() { _inner.Flush(); }
+        public override int Read(byte[] buffer, int offset, int count) { throw new NotSupportedException(); }
+        public override long Seek(long offset, SeekOrigin origin) { throw new NotSupportedException(); }
+        public override void SetLength(long value) { throw new NotSupportedException(); }
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            long allowed = _failAfter - _written;
+            if (allowed <= 0) throw new IOException("SYNTHETIC_OUTPUT_FAILURE");
+            int accepted = (int)Math.Min((long)count, allowed);
+            _inner.Write(buffer, offset, accepted);
+            _written += accepted;
+            if (accepted != count) throw new IOException("SYNTHETIC_OUTPUT_FAILURE");
         }
     }
 
@@ -428,6 +752,15 @@ namespace ApplyPack.Security
         public static EnvelopeInfo AuthenticateAndReadMetadata(string path)
         {
             using (FileStream input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                return AuthenticateAndReadMetadata(input);
+            }
+        }
+
+        public static EnvelopeInfo AuthenticateAndReadMetadata(FileStream input)
+        {
+            if (input == null || !input.CanRead || !input.CanSeek)
+                throw new InvalidOperationException("ENVELOPE_STREAM_INVALID");
             using (ParsedEnvelope parsed = Parse(input))
             {
                 Authenticate(input, parsed);
@@ -442,8 +775,17 @@ namespace ApplyPack.Security
 
         public static EnvelopeInfo DecryptAuthenticated(string path, Stream destination)
         {
-            if (destination == null || !destination.CanWrite) throw new InvalidOperationException("PLAINTEXT_DESTINATION_INVALID");
             using (FileStream input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                return DecryptAuthenticated(input, destination);
+            }
+        }
+
+        public static EnvelopeInfo DecryptAuthenticated(FileStream input, Stream destination)
+        {
+            if (destination == null || !destination.CanWrite) throw new InvalidOperationException("PLAINTEXT_DESTINATION_INVALID");
+            if (input == null || !input.CanRead || !input.CanSeek)
+                throw new InvalidOperationException("ENVELOPE_STREAM_INVALID");
             using (ParsedEnvelope parsed = Parse(input))
             {
                 // Authenticate and decrypt through one handle. FileShare.Read denies

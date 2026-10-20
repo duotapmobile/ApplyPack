@@ -41,6 +41,9 @@ describe("Windows staging database safeguard", () => {
     expect(helper).not.toContain("ReadExactGeneric(string target)");
     expect(helper).toContain('EntryPoint = "CredReadW"');
     expect(helper).not.toContain("CredEnumerate");
+    expect(helper).toContain("WriteUtf8LineTo(Stream stream)");
+    expect(helper).not.toContain("WriteLineTo(TextWriter writer)");
+    expect(helper).not.toContain("new StreamWriter");
   });
 
   it("uses a DPAPI CurrentUser envelope with encrypt-then-MAC streaming", () => {
@@ -51,8 +54,11 @@ describe("Windows staging database safeguard", () => {
     expect(helper).toContain("CryptoStreamMode.Write");
     expect(helper).toContain("Authenticate(input, parsed)");
     expect(script).toContain(
-      "[ApplyPack.Security.StagingBackupEnvelope]::Encrypt($process.StandardOutput.BaseStream, $output, $metadataJson)",
+      "[ApplyPack.Security.StagingBackupEnvelope]::Encrypt($process.StandardOutput.BaseStream, $Destination, $MetadataJson)",
     );
+    expect(script).toContain("Complete-RedirectedProcess");
+    expect(script).toContain("$Process.Kill($true)");
+    expect(script).toContain("Ensure-ContainerAbsent");
   });
 
   it("fails closed on staging identity, TLS, image, and checkout bindings", () => {
@@ -73,11 +79,25 @@ describe("Windows staging database safeguard", () => {
   it("rejects Git/reparse outputs and keeps restore isolated", () => {
     expect(script).toContain("OUTPUT_INSIDE_GIT_WORKTREE");
     expect(script).toContain("OUTPUT_REPARSE_PATH_REJECTED");
-    expect(script).toContain("Remove-Item -LiteralPath $temporaryPath");
-    expect(script).toContain("AuthenticateAndReadMetadata($resolvedBackup)");
+    expect(script).toContain("OutputDirectoryGuard]::Capture");
+    expect(script).toContain("OpenRegularFileForDeletion");
+    expect(script).toContain("MarkDeleteOnClose");
+    expect(script).toContain("[IO.FileShare]::None");
+    expect(script).toContain("AuthenticateAndReadMetadata($envelopeStream)");
+    expect(script).toContain("DecryptAuthenticated($EnvelopeStream");
     expect(script).toContain("'--network', 'none'");
     expect(script).toContain("publishedPorts = 0");
     expect(script).not.toMatch(/'--publish'|'-p'/u);
+  });
+
+  it("preserves primary failures and compares privacy-safe row-count evidence", () => {
+    expect(script).toContain("Resolve-OperationFailures");
+    expect(script).toContain("ApplyPackCleanupCode");
+    expect(script).toContain("RESTORE_CONTAINER_TEARDOWN_FAILED");
+    expect(script).toContain("tableRowCounts");
+    expect(script).toContain("tableRowCountSha256");
+    expect(script).toContain("jsonb_object_agg(table_name, row_count order by table_name)");
+    expect(script).not.toContain("select * from %I.%I");
   });
 
   it.runIf(process.platform === "win32")(
@@ -93,6 +113,12 @@ describe("Windows staging database safeguard", () => {
 
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toContain("STAGING_DATABASE_SAFEGUARD_SELF_TEST_OK");
+      const report = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
+      expect(report.envelopeHandlePinned).toBe(true);
+      expect(report.outputPathRaceRejected).toBe(true);
+      expect(report.processFailureCleanupVerified).toBe(true);
+      expect(report.credentialBufferCleared).toBe(true);
+      expect(report.restoreFailurePrecedenceVerified).toBe(true);
       expect(`${result.stdout}${result.stderr}`).not.toContain(
         "SELF_TEST_SECRET_DO_NOT_LOG_76291",
       );

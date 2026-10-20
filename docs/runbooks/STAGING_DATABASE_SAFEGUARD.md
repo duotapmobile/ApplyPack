@@ -9,16 +9,18 @@ This helper does **not** apply migrations. It expects the source database to be 
 The implementation provides these controls:
 
 - Reads exactly the Windows Generic Credential Manager target `ApplyPack/Supabase/Staging/Database` with `CredReadW`. It does not enumerate credentials.
-- Keeps the password in memory, passes it to the database client over standard input, and clears managed and unmanaged buffers best-effort. It never logs or persists the password or a database URI.
+- Keeps the password in memory, encodes it into an explicit temporary byte buffer, passes that buffer to the database client over standard input, and clears managed and unmanaged buffers best-effort. It does not use a buffered text writer and never logs or persists the password or a database URI.
 - Pins the staging project reference, session-pooler endpoint, port, database, tenant-qualified login, connected `current_user`, provider CA hash, PostgreSQL 17.6 client image, and image digest.
 - Forces libpq `verify-full` with the reviewed provider CA.
 - Streams `pg_dump --format=custom` directly into an authenticated encrypted envelope. No plaintext dump is written to disk.
 - Protects a random per-backup 64-byte data key with Windows DPAPI `CurrentUser`. The envelope uses AES-256-CBC plus HMAC-SHA-256 encrypt-then-MAC. Restore authenticates the complete envelope before releasing plaintext.
-- Writes only to an explicit existing directory outside every Git worktree, rejects reparse-point ancestors, creates the ciphertext as a same-directory partial file, flushes it, and atomically renames it. A failed operation removes the partial file.
-- Restores only into the pinned PostgreSQL 17.6 container with `--network none`, no published ports, and a temporary in-memory data directory. The container is removed and absence is verified before a success receipt is written.
-- Records sanitized counts, hashes, tool versions, image identity, release SHA, RLS/schema/ledger integrity, and teardown evidence. It records no row contents, identifiers, URLs, document data, password, or connection URI.
+- Writes only to an explicit existing directory outside every Git worktree, rejects reparse-point ancestors, holds a non-delete-sharing directory identity handle throughout each write, validates the opened file handle as a direct child before and after publication, creates the ciphertext as a same-directory partial file, flushes it, and atomically renames it. Failure cleanup deletes the verified partial by handle.
+- On every backup-stream, encryption, output, flush, or process failure, terminates the complete child process tree, waits for exit, drains redirected streams, disposes handles, clears credential buffers, removes the named source container, and independently verifies its absence before returning.
+- Opens the encrypted restore source once with `FileShare.None` and keeps that handle through metadata authentication, archive-list validation, and restore. A second valid CurrentUser envelope cannot replace the authenticated bytes between phases.
+- Restores only into the pinned PostgreSQL 17.6 container with `--network none`, no published ports, and a temporary in-memory data directory. The container is removed and absence is verified before a success receipt is written. A primary restore error remains primary if teardown also fails; the controlled cleanup code is attached separately.
+- Records sanitized counts, a deterministic SHA-256 over sorted per-public-table row counts, tool versions, image identity, release SHA, RLS/schema/ledger integrity, and teardown evidence. It records no row contents, identifiers, URLs, document data, password, or connection URI.
 
-The encrypted file is bound to the Windows user profile that created it. A different Windows user cannot decrypt it. Preserve the Windows profile and test recovery under the same operator account. DPAPI is an operator-machine safeguard, not a replacement for the provider's retained backups.
+The encrypted file is bound to the Windows user profile that created it. A different Windows user cannot decrypt it. Preserve the Windows profile and test recovery under the same operator account. DPAPI `CurrentUser` does **not** protect against malware, an attacker already running as that same Windows user, a compromised interactive session, or an administrator able to act as that user. Run this workflow only from a clean, patched operator machine; lock the session when unattended; restrict the evidence directory ACL; and move the encrypted evidence to controlled offline storage after verification. DPAPI is an operator-machine safeguard, not a replacement for the provider's retained backups.
 
 ## Prerequisites
 
@@ -57,7 +59,7 @@ Required marker:
 STAGING_DATABASE_SAFEGUARD_SELF_TEST_OK
 ```
 
-The self-test uses only synthetic bytes and a temporary directory. It proves a DPAPI round trip, authenticated encrypt/decrypt, tamper rejection, truncation rejection, repository-path rejection, partial-file cleanup, and secret-log redaction. It does not read Credential Manager, run Docker, or contact a database.
+The self-test uses only synthetic bytes, a local disposable child process, and a temporary directory. It proves a DPAPI round trip, authenticated encrypt/decrypt, tamper rejection, truncation rejection, non-shareable envelope-handle pinning, repository-path and directory-race rejection, partial-file cleanup, process-tree termination and wait, simulated container cleanup, credential-buffer clearing, restore-error precedence, and secret-log redaction. It does not read Credential Manager, run Docker, or contact a database.
 
 ## Bind the immutable staging identity
 
@@ -107,7 +109,7 @@ The source attestation must prove:
 - Migration 080 exists and migrations 081 through 084 are absent.
 - `ap_manual_launch_schema_readiness()` reports version `202610040080` and `ready: true`.
 - No invalid public index exists.
-- The receipt includes the release SHA, envelope SHA-256, encrypted byte counts, CA hash, image digest, tool versions, and safe schema/RLS/ledger counts only.
+- The receipt includes the release SHA, envelope SHA-256, encrypted byte counts, CA hash, image digest, tool versions, safe schema/RLS/ledger counts, per-public-table row counts, and their deterministic SHA-256 only. Table names and counts are retained; row contents and identifiers are never selected.
 
 ## Isolated restore drill
 
@@ -123,7 +125,7 @@ $restoreReceipt = "C:\ApplyPack-Staging-Evidence\applypack-staging-pre-081-$stam
   -ReceiptPath $restoreReceipt
 ```
 
-Required status: `STAGING_RESTORE_DRILL_VERIFIED`. Restore performs two authenticated reads: a safe archive-list validation, then a streaming restore into a disposable container. It compares only aggregate schema, migration-ledger, RLS-policy, trigger, function, index, and readiness evidence with the encrypted source metadata. It never publishes a container port or enables container networking.
+Required status: `STAGING_RESTORE_DRILL_VERIFIED`. Restore holds one non-shareable source handle across metadata authentication, safe archive-list validation, and streaming restore into a disposable container; each consumer authenticates the complete envelope before releasing plaintext. It compares aggregate schema, migration-ledger, RLS-policy, trigger, function, index, and readiness evidence plus exact per-public-table row counts and their deterministic SHA-256 with the authenticated source metadata. It never publishes a container port or enables container networking.
 
 After success, independently verify that no container whose name starts with `applypack-staging-restore-` remains. The signed-off evidence packet contains the backup receipt, restore receipt, their SHA-256 values, the exact reviewed release SHA, operator and supervisor signatures, writer-quiescence proof, and the later migration/readiness receipts. Do not commit the `.apdb` file or receipts.
 
@@ -146,6 +148,6 @@ On failure, preserve the controlled error code and sanitized operator timestamp 
 
 - A backup failure removes the ciphertext partial file. Correct the cause, choose new output filenames, and rerun only after checking that writers are still quiesced.
 - A receipt failure removes the completed backup so an unreceipted artifact cannot be mistaken for governed evidence.
-- A restore failure removes the disposable container in `finally`; if teardown itself reports failure, remove the named container manually and document the sanitized container name and result before any retry.
+- A restore failure removes the disposable container in `finally` and independently verifies absence. If restore and teardown both fail, the restore code remains primary and the teardown code is attached as `cleanupError`; if teardown alone fails, it is the primary controlled error. Remove the named container manually and document only the sanitized container name and result before any retry.
 - A tampered, truncated, or wrong-Windows-user envelope fails authentication before plaintext is emitted. It is not recoverable from that copy; use another verified encrypted copy or the provider backup.
 - Never weaken TLS, change the pinned identity, bypass the ledger check, decrypt to a file, or reverse a published migration to make a drill pass.
