@@ -1,5 +1,8 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+  throw 'AWS staging foundation controls require PowerShell 7 or newer.'
+}
 
 $repo = (git rev-parse --show-toplevel).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Repository root unavailable.' }
@@ -184,11 +187,21 @@ function Invoke-ApplyPackMockAws {
       'unavailable-plan' { 'UNAVAILABLE' }
       default { 'AVAILABLE' }
     }
-    @{
+    $parameters = if ($script:apMockScenario -eq 'parameter-present') {
+      @([pscustomobject]@{ ParameterKey='Unapproved'; ParameterValue='redacted' })
+    } else { $null }
+    $deploymentConfig = switch ($script:apMockScenario) {
+      'deployment-express' { [pscustomobject]@{ Mode='EXPRESS'; DisableRollback=$false } }
+      default { [pscustomobject]@{ Mode='STANDARD'; DisableRollback=$false } }
+    }
+    $providerState = @{
       ChangeSetId=$providerChangeSetId; StackId=$stackId; StackName=$stackName; ChangeSetName=$changeSetName
       Description=$description; OnStackFailure='ROLLBACK'; Status='CREATE_COMPLETE'; ExecutionStatus=$executionStatus
-      Capabilities=@(); Parameters=@(); Tags=$script:apMockTags; Changes=$script:apMockChanges
-    } | ConvertTo-Json -Depth 20 -Compress
+      Capabilities=@(); Parameters=$parameters; DeploymentConfig=$deploymentConfig
+      Tags=$script:apMockTags; Changes=$script:apMockChanges
+    }
+    if ($script:apMockScenario -eq 'deployment-mode-present') { $providerState.DeploymentMode = 'UNAPPROVED' }
+    $providerState | ConvertTo-Json -Depth 20 -Compress
     return
   }
   if ($service -eq 'cloudformation' -and $operation -eq 'list-change-sets') {
@@ -405,7 +418,7 @@ try {
     $parts = $_ -split ',', 2
     [pscustomobject]@{ Key = $parts[0].Substring(4); Value = $parts[1].Substring(6) }
   })
-  # Optional nullable provider fields are deliberately absent in this controlled response.
+  # Match the live sanitized provider shape: null Parameters and materialized safe deployment defaults.
   $changeSet = [pscustomobject]@{
     ChangeSetId = $apChangeSetId
     StackId = $apStackId
@@ -416,7 +429,8 @@ try {
     Status = 'CREATE_COMPLETE'
     ExecutionStatus = 'AVAILABLE'
     Capabilities = @()
-    Parameters = @()
+    Parameters = $null
+    DeploymentConfig = [pscustomobject]@{ Mode = 'STANDARD'; DisableRollback = $false }
     Tags = $tags
     Changes = $changes
   }
@@ -431,6 +445,52 @@ try {
   if ($receiptOneJson -cne $receiptTwoJson -or (Get-Utf8Sha256 -Text $receiptOneJson) -ne (Get-Utf8Sha256 -Text $receiptTwoJson)) {
     throw 'Controlled receipt recomputation is not deterministic.'
   }
+  if ($receiptOne.parameterCount -ne 0 -or @($receiptOne.parameters).Count -ne 0 -or
+    $null -ne $receiptOne.requestedDeploymentConfig -or
+    $receiptOne.providerDeploymentConfig.Mode -cne 'STANDARD' -or
+    $receiptOne.providerDeploymentConfig.DisableRollback -ne $false) {
+    throw 'Controlled receipt did not record the safe provider default honestly.'
+  }
+  if ((Get-FoundationProviderCollectionCount -Value $null) -ne 0 -or
+    (Get-FoundationProviderCollectionCount -Value @()) -ne 0) {
+    throw 'Provider collection count is not null-safe.'
+  }
+  $changeSet.Parameters = @()
+  $null = Get-FoundationChangeSetReceipt -ChangeSet $changeSet -TerminationProtectionEnabled $true -ProviderTemplateReceipt $providerTemplateReceipt
+  $changeSet.Parameters = @([pscustomobject]@{ ParameterKey='Unapproved'; ParameterValue='redacted' })
+  Assert-Throws -Label 'provider parameter object' -Action {
+    $null = Get-FoundationChangeSetReceipt -ChangeSet $changeSet -TerminationProtectionEnabled $true -ProviderTemplateReceipt $providerTemplateReceipt
+  }
+  $changeSet.Parameters = $null
+
+  if ($null -ne (Assert-FoundationSafeDeploymentConfig -DeploymentConfig $null)) {
+    throw 'Null provider deployment configuration was not accepted as absent.'
+  }
+  $safeDeploymentConfig = Assert-FoundationSafeDeploymentConfig `
+    -DeploymentConfig ([pscustomobject]@{ Mode='STANDARD'; DisableRollback=$false })
+  if ($safeDeploymentConfig.Mode -cne 'STANDARD' -or $safeDeploymentConfig.DisableRollback -ne $false) {
+    throw 'Safe provider deployment configuration fixture failed.'
+  }
+  $badDeploymentConfigs = @(
+    @{ Label='deployment config EXPRESS mode'; Value=[pscustomobject]@{ Mode='EXPRESS'; DisableRollback=$false } },
+    @{ Label='deployment config rollback true'; Value=[pscustomobject]@{ Mode='STANDARD'; DisableRollback=$true } },
+    @{ Label='deployment config rollback string'; Value=[pscustomobject]@{ Mode='STANDARD'; DisableRollback='false' } },
+    @{ Label='deployment config rollback null'; Value=[pscustomobject]@{ Mode='STANDARD'; DisableRollback=$null } },
+    @{ Label='deployment config missing mode'; Value=[pscustomobject]@{ DisableRollback=$false } },
+    @{ Label='deployment config missing rollback'; Value=[pscustomobject]@{ Mode='STANDARD' } },
+    @{ Label='deployment config extra field'; Value=[pscustomobject]@{ Mode='STANDARD'; DisableRollback=$false; Extra='unsafe' } },
+    @{ Label='deployment config mode wrong type'; Value=[pscustomobject]@{ Mode=1; DisableRollback=$false } },
+    @{ Label='deployment config string'; Value='STANDARD' },
+    @{ Label='deployment config array'; Value=@(
+      [pscustomobject]@{ Mode='STANDARD'; DisableRollback=$false },
+      [pscustomobject]@{ Mode='STANDARD'; DisableRollback=$false }
+    ) }
+  )
+  foreach ($badDeploymentConfig in $badDeploymentConfigs) {
+    Assert-Throws -Label $badDeploymentConfig.Label -Action {
+      $null = Assert-FoundationSafeDeploymentConfig -DeploymentConfig $badDeploymentConfig.Value
+    }
+  }
 
   $changeSet.Tags[0].Value = 'Tampered'
   Assert-Throws -Label 'provider tag divergence' -Action { $null = Get-FoundationChangeSetReceipt -ChangeSet $changeSet -TerminationProtectionEnabled $true -ProviderTemplateReceipt $providerTemplateReceipt }
@@ -438,9 +498,9 @@ try {
   $changeSet.Changes[0].ResourceChange.Action = 'Modify'
   Assert-Throws -Label 'non-Add provider plan' -Action { $null = Get-FoundationChangeSetReceipt -ChangeSet $changeSet -TerminationProtectionEnabled $true -ProviderTemplateReceipt $providerTemplateReceipt }
   $changeSet.Changes[0].ResourceChange.Action = 'Add'
-  Add-Member -InputObject $changeSet -NotePropertyName DeploymentConfig -NotePropertyValue ([pscustomobject]@{ Unsafe = $true })
-  Assert-Throws -Label 'non-null deployment configuration' -Action { $null = Get-FoundationChangeSetReceipt -ChangeSet $changeSet -TerminationProtectionEnabled $true -ProviderTemplateReceipt $providerTemplateReceipt }
-  $changeSet.PSObject.Properties.Remove('DeploymentConfig')
+  $changeSet.DeploymentConfig = [pscustomobject]@{ Unsafe = $true }
+  Assert-Throws -Label 'unsafe provider deployment configuration' -Action { $null = Get-FoundationChangeSetReceipt -ChangeSet $changeSet -TerminationProtectionEnabled $true -ProviderTemplateReceipt $providerTemplateReceipt }
+  $changeSet.DeploymentConfig = [pscustomobject]@{ Mode = 'STANDARD'; DisableRollback = $false }
   Assert-NoRemainingFoundationChangeSets -Summaries @()
   Assert-Throws -Label 'remaining change set before placeholder deletion' -Action {
     Assert-NoRemainingFoundationChangeSets -Summaries @([pscustomobject]@{ ChangeSetId = $apChangeSetId })
@@ -480,7 +540,10 @@ try {
     @{ Scenario='unavailable-plan'; Label='mock normal cleanup unavailable plan' },
     @{ Scenario='credential-non-login'; Label='mock normal cleanup credential TYPE non-login' },
     @{ Scenario='profile-alternate'; Label='mock normal cleanup alternate profile source' },
-    @{ Scenario='template-mismatch'; Label='mock normal cleanup provider template mismatch' }
+    @{ Scenario='template-mismatch'; Label='mock normal cleanup provider template mismatch' },
+    @{ Scenario='deployment-express'; Label='mock normal cleanup unsafe deployment config' },
+    @{ Scenario='deployment-mode-present'; Label='mock normal cleanup deployment mode' },
+    @{ Scenario='parameter-present'; Label='mock normal cleanup parameter object' }
   )) {
     Reset-ApplyPackMockAws -Mode normal -Scenario $normalFailure.Scenario
     Assert-Throws -Label $normalFailure.Label -Action {
@@ -518,7 +581,14 @@ try {
   $apLegacyReviewedNormalizedSha256 = $apReviewedNormalizedTemplateSha256
 
   Reset-ApplyPackMockAws -Mode legacy -Scenario success
-  $approvedLegacyReceiptJson = (Get-ExactLegacyFoundationCleanupReceipt | ConvertTo-Json -Depth 10 -Compress)
+  $approvedLegacyReceipt = Get-ExactLegacyFoundationCleanupReceipt
+  if ($approvedLegacyReceipt.schemaVersion -ne 2 -or $approvedLegacyReceipt.parameterCount -ne 0 -or
+    @($approvedLegacyReceipt.parameters).Count -ne 0 -or $null -ne $approvedLegacyReceipt.requestedDeploymentConfig -or
+    $approvedLegacyReceipt.providerDeploymentConfig.Mode -cne 'STANDARD' -or
+    $approvedLegacyReceipt.providerDeploymentConfig.DisableRollback -ne $false) {
+    throw 'Legacy receipt did not record the safe provider default honestly.'
+  }
+  $approvedLegacyReceiptJson = ($approvedLegacyReceipt | ConvertTo-Json -Depth 10 -Compress)
   $approvedLegacyReceiptSha256 = Get-Utf8Sha256 -Text $approvedLegacyReceiptJson
   Reset-ApplyPackMockAws -Mode legacy -Scenario access-key-denied
   $limitedLegacyReceipt = Get-ExactLegacyFoundationCleanupReceipt
@@ -535,7 +605,10 @@ try {
     @{ Scenario='profile-alternate'; Label='mock legacy cleanup alternate profile source' },
     @{ Scenario='mfa-count'; Label='mock legacy cleanup MFA count' },
     @{ Scenario='access-key-present'; Label='mock legacy cleanup access key present' },
-    @{ Scenario='template-mismatch'; Label='mock legacy cleanup provider template mismatch' }
+    @{ Scenario='template-mismatch'; Label='mock legacy cleanup provider template mismatch' },
+    @{ Scenario='deployment-express'; Label='mock legacy cleanup unsafe deployment config' },
+    @{ Scenario='deployment-mode-present'; Label='mock legacy cleanup deployment mode' },
+    @{ Scenario='parameter-present'; Label='mock legacy cleanup parameter object' }
   )) {
     Reset-ApplyPackMockAws -Mode legacy -Scenario $legacyFailure.Scenario
     Assert-Throws -Label $legacyFailure.Label -Action { $null = Get-ExactLegacyFoundationCleanupReceipt }

@@ -432,7 +432,9 @@ for (const required of [
   "$null -ne $apParentChangeSetId",
   "$null -ne $apRootChangeSetId",
   "$null -ne $apDeploymentMode",
-  "$null -ne $apDeploymentConfig",
+  "Assert-FoundationSafeDeploymentConfig",
+  "Get-FoundationProviderCollectionCount",
+  "$apParameterCount -ne 0",
   "Compare-Object -ReferenceObject $apExpectedTags -DifferenceObject $apProviderTags",
   "Get-FoundationProviderTemplateReceipt",
   "--change-set-name $ChangeSetId --template-stage Original",
@@ -440,10 +442,12 @@ for (const required of [
   "changeSetId = $apChangeSetId",
   "stackId = $apStackId",
   "terminationProtectionEnabled = $TerminationProtectionEnabled",
-  "parameters = @($ChangeSet.Parameters)",
+  "parameters = @()",
+  "parameterCount = $apParameterCount",
   "includeNestedStacks = $apIncludeNestedStacks",
   "importExistingResources = $apImportExistingResources",
-  "deploymentConfig = $null",
+  "requestedDeploymentConfig = $apGovernedCreateRequest.deploymentConfig",
+  "providerDeploymentConfig = $apDeploymentConfig",
   "tags = $apProviderTags",
   "aws-staging-foundation-change-set-receipt.json",
   "$apSupervisorOneApprovedChangeSetReceiptSha256",
@@ -526,7 +530,20 @@ assert(controlSelfTest.includes("AWS_STAGING_FOUNDATION_CONTROLS_OK")
   && controlSelfTest.includes("Assert-Throws -Label 'fresh template raw hash divergence'")
   && controlSelfTest.includes("Assert-Throws -Label 'provider tag divergence'")
   && controlSelfTest.includes("Assert-Throws -Label 'non-Add provider plan'")
-  && controlSelfTest.includes("Assert-Throws -Label 'non-null deployment configuration'")
+  && controlSelfTest.includes("Assert-Throws -Label 'unsafe provider deployment configuration'")
+  && controlSelfTest.includes("Assert-Throws -Label 'provider parameter object'")
+  && controlSelfTest.includes("Provider collection count is not null-safe.")
+  && controlSelfTest.includes("Controlled receipt did not record the safe provider default honestly.")
+  && controlSelfTest.includes("Label='deployment config EXPRESS mode'")
+  && controlSelfTest.includes("Label='deployment config rollback true'")
+  && controlSelfTest.includes("Label='deployment config rollback string'")
+  && controlSelfTest.includes("Label='deployment config rollback null'")
+  && controlSelfTest.includes("Label='deployment config missing mode'")
+  && controlSelfTest.includes("Label='deployment config missing rollback'")
+  && controlSelfTest.includes("Label='deployment config extra field'")
+  && controlSelfTest.includes("Label='deployment config mode wrong type'")
+  && controlSelfTest.includes("Label='deployment config string'")
+  && controlSelfTest.includes("Label='deployment config array'")
   && controlSelfTest.includes("Assert-Throws -Label 'wrong browser login_session identity'")
   && controlSelfTest.includes("Assert-Throws -Label 'resolved credential TYPE non-login'")
   && controlSelfTest.includes("Assert-Throws -Label 'alternate profile credential mechanism'")
@@ -545,6 +562,9 @@ assert(controlSelfTest.includes("AWS_STAGING_FOUNDATION_CONTROLS_OK")
   && controlSelfTest.includes("Label='mock normal cleanup foreign ID'")
   && controlSelfTest.includes("Label='mock normal cleanup zero after'")
   && controlSelfTest.includes("Label='mock normal cleanup provider template mismatch'")
+  && controlSelfTest.includes("Label='mock normal cleanup unsafe deployment config'")
+  && controlSelfTest.includes("Label='mock normal cleanup deployment mode'")
+  && controlSelfTest.includes("Label='mock normal cleanup parameter object'")
   && controlSelfTest.includes("Label='mock legacy cleanup foreign ID'")
   && controlSelfTest.includes("Label='mock legacy cleanup exactly one before'")
   && controlSelfTest.includes("Label='mock legacy cleanup populated stack'")
@@ -554,11 +574,29 @@ assert(controlSelfTest.includes("AWS_STAGING_FOUNDATION_CONTROLS_OK")
   && controlSelfTest.includes("Label='mock legacy cleanup alternate profile source'")
   && controlSelfTest.includes("Label='mock legacy cleanup MFA count'")
   && controlSelfTest.includes("Label='mock legacy cleanup provider template mismatch'")
+  && controlSelfTest.includes("Label='mock legacy cleanup unsafe deployment config'")
+  && controlSelfTest.includes("Label='mock legacy cleanup deployment mode'")
+  && controlSelfTest.includes("Label='mock legacy cleanup parameter object'")
   && controlSelfTest.includes("-Scenario access-key-denied")
   && controlSelfTest.includes("accessKeyInventory -ne 'not-authorized'")
   && controlSelfTest.includes("Assert-Throws -Label 'mock legacy cleanup zero after'")
   && controlSelfTest.includes("Assert-Throws -Label 'remaining change set before placeholder deletion'"),
 "PowerShell control self-test must execute every required fail-closed negative case");
+const deploymentConfigValidatorDefinitions = runbook.match(/^function Assert-FoundationSafeDeploymentConfig\s*\{/gm) ?? [];
+assert(deploymentConfigValidatorDefinitions.length === 1
+  && (runbook.match(/Assert-FoundationSafeDeploymentConfig/g) ?? []).length >= 4
+  && runbook.includes("$DeploymentConfig.Mode -isnot [string]")
+  && runbook.includes("$DeploymentConfig.Mode -cne 'STANDARD'")
+  && runbook.includes("$DeploymentConfig.DisableRollback -isnot [bool]")
+  && runbook.includes("$DeploymentConfig.DisableRollback -ne $false")
+  && runbook.includes("$null -ne $apDeploymentMode")
+  && !runbook.includes("@($ChangeSet.Parameters).Count")
+  && !runbook.includes("@($apLegacyChangeSet.Parameters).Count"),
+"one strict deployment-default validator and null-safe parameter counting must govern all provider paths");
+assert(runbook.includes("if ($PSVersionTable.PSVersion.Major -lt 7)")
+  && runbook.includes("function Assert-FoundationPowerShell7")
+  && controlSelfTest.includes("if ($PSVersionTable.PSVersion.Major -lt 7)"),
+"runbook and executable control tests must fail early below PowerShell 7");
 assert(ci.includes("Run AWS staging foundation control self-test")
   && ci.includes(".\\scripts\\test-aws-staging-foundation-controls.ps1"),
 "Windows CI must execute the AWS foundation PowerShell control self-test");

@@ -36,6 +36,9 @@ The existing account-level $5 ApplyPack budget is evidence only. This template d
 From the canonical repository and reviewed commit:
 
 ```powershell
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+  throw 'AWS staging foundation controls require PowerShell 7 or newer.'
+}
 node scripts/validate-aws-staging-foundation-template.mjs
 npx.cmd vitest run tests/unit/aws-staging-foundation-template.test.ts
 $apAws = 'C:\Program Files\Amazon\AWSCLIV2\aws.exe'
@@ -279,6 +282,12 @@ $apExpectedChanges = [ordered]@{
 }
 
 # APPLYPACK_FOUNDATION_CONTROL_FUNCTIONS_BEGIN
+function Assert-FoundationPowerShell7 {
+  if ($PSVersionTable.PSVersion.Major -lt 7) {
+    throw 'AWS staging foundation controls require PowerShell 7 or newer.'
+  }
+}
+
 function Get-Utf8Sha256 {
   param([Parameter(Mandatory)] [string] $Text)
   $apBytes = [Text.Encoding]::UTF8.GetBytes($Text)
@@ -298,6 +307,31 @@ function Get-OptionalProviderPropertyValue {
   if ($null -eq $apProperty) { return $null }
   $apProperty.Value
 }
+
+function Get-FoundationProviderCollectionCount {
+  param($Value)
+  if ($null -eq $Value) { return 0 }
+  @($Value).Count
+}
+
+function Assert-FoundationSafeDeploymentConfig {
+  param($DeploymentConfig)
+  if ($null -eq $DeploymentConfig) { return $null }
+  if ($DeploymentConfig -isnot [pscustomobject]) {
+    throw 'Provider deployment configuration is not a supported object.'
+  }
+  $apDeploymentConfigPropertyNames = @($DeploymentConfig.PSObject.Properties.Name | Sort-Object)
+  $apExpectedDeploymentConfigPropertyNames = @('DisableRollback','Mode')
+  if (@(Compare-Object -ReferenceObject $apExpectedDeploymentConfigPropertyNames `
+      -DifferenceObject $apDeploymentConfigPropertyNames -SyncWindow 0).Count -ne 0 -or
+    $DeploymentConfig.Mode -isnot [string] -or $DeploymentConfig.Mode -cne 'STANDARD' -or
+    $DeploymentConfig.DisableRollback -isnot [bool] -or $DeploymentConfig.DisableRollback -ne $false) {
+    throw 'Provider deployment configuration is not the safe materialized default.'
+  }
+  [ordered]@{ Mode = 'STANDARD'; DisableRollback = $false }
+}
+
+Assert-FoundationPowerShell7
 
 function Assert-FoundationBrowserLoginCredentialPosture {
   param(
@@ -558,7 +592,9 @@ function Get-FoundationChangeSetReceipt {
   $apParentChangeSetId = Get-OptionalProviderPropertyValue -Object $ChangeSet -Name 'ParentChangeSetId'
   $apRootChangeSetId = Get-OptionalProviderPropertyValue -Object $ChangeSet -Name 'RootChangeSetId'
   $apDeploymentMode = Get-OptionalProviderPropertyValue -Object $ChangeSet -Name 'DeploymentMode'
-  $apDeploymentConfig = Get-OptionalProviderPropertyValue -Object $ChangeSet -Name 'DeploymentConfig'
+  $apDeploymentConfig = Assert-FoundationSafeDeploymentConfig `
+    -DeploymentConfig (Get-OptionalProviderPropertyValue -Object $ChangeSet -Name 'DeploymentConfig')
+  $apParameterCount = Get-FoundationProviderCollectionCount -Value $ChangeSet.Parameters
   $apProviderTags = @($ChangeSet.Tags | ForEach-Object { "Key=$($_.Key),Value=$($_.Value)" } | Sort-Object)
   $apExpectedTags = @($apGovernedCreateRequest.tags | Sort-Object)
   if ($ChangeSet.ChangeSetId -ne $apChangeSetId -or $ChangeSet.StackId -ne $apStackId -or
@@ -570,10 +606,10 @@ function Get-FoundationChangeSetReceipt {
     @(Compare-Object -ReferenceObject $apExpectedTags -DifferenceObject $apProviderTags -SyncWindow 0).Count -ne 0) {
     throw 'Provider change set identity, tags, or state is not executable.'
   }
-  if (@($ChangeSet.Capabilities).Count -ne 0 -or @($ChangeSet.Parameters).Count -ne 0 -or
+  if (@($ChangeSet.Capabilities).Count -ne 0 -or $apParameterCount -ne 0 -or
     $apIncludeNestedStacks -eq $true -or $apImportExistingResources -eq $true -or
     $null -ne $apParentChangeSetId -or $null -ne $apRootChangeSetId -or
-    $null -ne $apDeploymentMode -or $null -ne $apDeploymentConfig -or
+    $null -ne $apDeploymentMode -or
     $ProviderTemplateReceipt.normalizedSha256 -ne $apGovernedCreateRequest.reviewedNormalizedTemplateSha256) {
     throw 'Unexpected IAM, parameter, nested, import, deployment, or template state in foundation change set.'
   }
@@ -601,7 +637,7 @@ function Get-FoundationChangeSetReceipt {
     }
   } | Sort-Object logicalResourceId)
   [ordered]@{
-    schemaVersion = 4
+    schemaVersion = 5
     approvedCommitSha = $apGovernedCreateRequest.approvedCommitSha
     approvedTreeOid = $apGovernedCreateRequest.approvedTreeOid
     approvedTemplateBlobOid = $apGovernedCreateRequest.approvedTemplateBlobOid
@@ -622,11 +658,13 @@ function Get-FoundationChangeSetReceipt {
     executionStatus = $ChangeSet.ExecutionStatus
     terminationProtectionEnabled = $TerminationProtectionEnabled
     capabilities = @($ChangeSet.Capabilities)
-    parameters = @($ChangeSet.Parameters)
+    parameters = @()
+    parameterCount = $apParameterCount
     includeNestedStacks = $apIncludeNestedStacks
     importExistingResources = $apImportExistingResources
     deploymentMode = $apDeploymentMode
-    deploymentConfig = $apDeploymentConfig
+    requestedDeploymentConfig = $apGovernedCreateRequest.deploymentConfig
+    providerDeploymentConfig = $apDeploymentConfig
     tags = $apProviderTags
     changes = $apSanitizedChanges
   }
@@ -644,6 +682,10 @@ function Remove-UnexecutedFoundationCreate {
   )
   $null = Confirm-GovernedFoundationIdentityAndTemplate
   $apDeleteState = (& $apAws cloudformation describe-change-set --profile $apGovernedCreateRequest.profile --region $apGovernedCreateRequest.region --change-set-name $ChangeSetId --output json | ConvertFrom-Json)
+  $apDeleteDeploymentMode = Get-OptionalProviderPropertyValue -Object $apDeleteState -Name 'DeploymentMode'
+  $apDeleteDeploymentConfig = Assert-FoundationSafeDeploymentConfig `
+    -DeploymentConfig (Get-OptionalProviderPropertyValue -Object $apDeleteState -Name 'DeploymentConfig')
+  $apDeleteParameterCount = Get-FoundationProviderCollectionCount -Value $apDeleteState.Parameters
   $apSafelyUnexecuted = ($apDeleteState.Status -eq 'CREATE_COMPLETE' -and $apDeleteState.ExecutionStatus -eq 'AVAILABLE') -or
     ($apDeleteState.Status -eq 'FAILED' -and $apDeleteState.ExecutionStatus -eq 'UNAVAILABLE')
   if ($LASTEXITCODE -ne 0 -or $apDeleteState.ChangeSetId -ne $ChangeSetId -or $apDeleteState.StackId -ne $StackId -or
@@ -651,7 +693,8 @@ function Remove-UnexecutedFoundationCreate {
     $apDeleteState.StackName -ne $apGovernedCreateRequest.stackName -or
     $apDeleteState.ChangeSetName -ne $apGovernedCreateRequest.changeSetName -or
     $apDeleteState.Description -ne $apGovernedCreateRequest.description -or
-    $apDeleteState.OnStackFailure -ne $apGovernedCreateRequest.onStackFailure -or !$apSafelyUnexecuted) {
+    $apDeleteState.OnStackFailure -ne $apGovernedCreateRequest.onStackFailure -or
+    $null -ne $apDeleteDeploymentMode -or $apDeleteParameterCount -ne 0 -or !$apSafelyUnexecuted) {
     throw 'Exact unexecuted CREATE change set is not in a safely deletable state.'
   }
   $apInitialChangeSets = (& $apAws cloudformation list-change-sets --profile $apGovernedCreateRequest.profile --region $apGovernedCreateRequest.region --stack-name $StackId --output json | ConvertFrom-Json).Summaries
@@ -937,12 +980,14 @@ function Get-ExactLegacyFoundationCleanupReceipt {
   $apLegacyParent = Get-OptionalProviderPropertyValue -Object $apLegacyChangeSet -Name 'ParentChangeSetId'
   $apLegacyRoot = Get-OptionalProviderPropertyValue -Object $apLegacyChangeSet -Name 'RootChangeSetId'
   $apLegacyDeploymentMode = Get-OptionalProviderPropertyValue -Object $apLegacyChangeSet -Name 'DeploymentMode'
-  $apLegacyDeploymentConfig = Get-OptionalProviderPropertyValue -Object $apLegacyChangeSet -Name 'DeploymentConfig'
-  if (@($apLegacyChangeSet.Capabilities).Count -ne 0 -or @($apLegacyChangeSet.Parameters).Count -ne 0 -or
+  $apLegacyDeploymentConfig = Assert-FoundationSafeDeploymentConfig `
+    -DeploymentConfig (Get-OptionalProviderPropertyValue -Object $apLegacyChangeSet -Name 'DeploymentConfig')
+  $apLegacyParameterCount = Get-FoundationProviderCollectionCount -Value $apLegacyChangeSet.Parameters
+  if (@($apLegacyChangeSet.Capabilities).Count -ne 0 -or $apLegacyParameterCount -ne 0 -or
     ($null -ne $apLegacyImport -and $null -ne $apLegacyImport.Value -and [bool]$apLegacyImport.Value) -or
     ($null -ne $apLegacyNested -and $null -ne $apLegacyNested.Value -and [bool]$apLegacyNested.Value) -or
     $null -ne $apLegacyParent -or $null -ne $apLegacyRoot -or
-    $null -ne $apLegacyDeploymentMode -or $null -ne $apLegacyDeploymentConfig) {
+    $null -ne $apLegacyDeploymentMode) {
     throw 'Legacy cleanup encountered import, nested, IAM, parameter, or deployment state.'
   }
   $apLegacyExpectedTags = @('Key=Application,Value=ApplyPack','Key=Environment,Value=staging','Key=ManagedBy,Value=CloudFormation') | Sort-Object
@@ -981,7 +1026,7 @@ function Get-ExactLegacyFoundationCleanupReceipt {
     if (Test-Path -LiteralPath $apLegacyProviderPath) { Remove-Item -LiteralPath $apLegacyProviderPath -Force }
   }
   [ordered]@{
-    schemaVersion=1; procedureCommit=$apLegacyApprovedProcedureCommit; procedureTree=$apLegacyApprovedProcedureTree
+    schemaVersion=2; procedureCommit=$apLegacyApprovedProcedureCommit; procedureTree=$apLegacyApprovedProcedureTree
     procedureRunbookBlob=$apLegacyApprovedRunbookBlob; planCommit=$apLegacyPlanCommit; templateBlob=$apLegacyTemplateBlob
     account=$apLegacyIdentity.Account; arn=$apLegacyIdentity.Arn
     profile=$apLegacyCredentialPosture.profile; credentialSource=$apLegacyCredentialPosture.credentialSource
@@ -993,6 +1038,8 @@ function Get-ExactLegacyFoundationCleanupReceipt {
     mfaDeviceCount=@($apLegacyMfa).Count; accessKeyInventory=$apLegacyAccessKeyInventoryStatus
     changeSetId=$apLegacyChangeSetId; stackId=$apLegacyStackId; status='CREATE_COMPLETE'; executionStatus='AVAILABLE'
     onStackFailure='ROLLBACK'; stackStatus='REVIEW_IN_PROGRESS'; terminationProtectionEnabled=$false
+    parameters=@(); parameterCount=$apLegacyParameterCount; deploymentMode=$apLegacyDeploymentMode
+    requestedDeploymentConfig=$null; providerDeploymentConfig=$apLegacyDeploymentConfig
     resourceCount=0; remainingChangeSetCount=1; tags=$apLegacyActualTags
     providerNormalizedTemplateSha256=$apLegacyProviderNormalizedSha256; changes=$apLegacySanitizedChanges
   }
