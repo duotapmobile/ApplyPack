@@ -294,6 +294,13 @@ describe("October 2 manual-launch hardening", () => {
     expect(preflightRunner).toContain("INVENTORY_IDENTITY_PREFLIGHT_CONNECTION_ATTESTED");
     expect(preflightRunner).toContain("[REDACTED_DATABASE_CREDENTIAL]");
     expect(preflightRunner).toContain('process.argv.length !== 3');
+    const manualLaunchRunbook = source("docs/runbooks/MANUAL_LAUNCH_RELEASE.md");
+    expect(manualLaunchRunbook).toContain("AP_PREMIGRATION_EXPECTED_LOGIN_USER");
+    expect(manualLaunchRunbook).toContain("AP_PREMIGRATION_EXPECTED_CURRENT_USER");
+    expect(manualLaunchRunbook).not.toMatch(/`AP_PREMIGRATION_EXPECTED_USER`/);
+    expect(manualLaunchRunbook).toContain("normally equal for a direct database endpoint");
+    expect(manualLaunchRunbook).toContain("login may be tenant-qualified while `current_user` is the underlying database role");
+    expect(manualLaunchRunbook).toContain("expected login user, expected current user");
     const upgradeTest = source("scripts/run-supabase-inventory-upgrade-test.mjs");
     expect(upgradeTest).toContain("INVENTORY_IDENTITY_PREFLIGHT_CLEAN");
     expect(upgradeTest).toContain("INVENTORY_IDENTITY_PREFLIGHT_CONFLICT");
@@ -323,6 +330,23 @@ describe("October 2 manual-launch hardening", () => {
       password: encodedPassword,
       decodedPassword: password,
       ...expectedTarget,
+    });
+
+    const directTarget = {
+      expectedHost: "db.example.test",
+      expectedPort: "5432",
+      expectedDatabase: "postgres",
+      expectedLoginUser: "operator",
+      expectedCurrentUser: "operator",
+    };
+    expect(validateAndCanonicalizePreflightConnection({
+      uri: `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full`,
+      ...directTarget,
+    })).toEqual({
+      canonicalUri: `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full`,
+      password: encodedPassword,
+      decodedPassword: password,
+      ...directTarget,
     });
 
     const weakUrls = [
