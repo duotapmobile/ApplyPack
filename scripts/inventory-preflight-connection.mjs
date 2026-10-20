@@ -1,4 +1,4 @@
-const exactTargetError = "Remote preflight URI must exactly match the expected host, port, database, and user and may contain only sslmode=verify-full.";
+const exactTargetError = "Remote preflight URI must exactly match the expected host, port, database, and login user and may contain only sslmode=verify-full.";
 const expectedTargetError = "All remote preflight expected-target identifiers are required and must be canonical.";
 
 const canonicalDnsHostname = (value) => {
@@ -32,18 +32,21 @@ export function validateAndCanonicalizePreflightConnection({
   expectedHost,
   expectedPort,
   expectedDatabase,
-  expectedUser,
+  expectedLoginUser,
+  expectedCurrentUser,
 }) {
   const normalizedHost = canonicalDnsHostname(expectedHost);
   const normalizedPort = expectedPort.trim();
   const normalizedDatabase = expectedDatabase.trim();
-  const normalizedUser = expectedUser.trim();
+  const normalizedLoginUser = expectedLoginUser.trim();
+  const normalizedCurrentUser = expectedCurrentUser.trim();
   if (
     !/^\d{1,5}$/.test(normalizedPort)
     || Number(normalizedPort) < 1
     || Number(normalizedPort) > 65_535
     || !/^[A-Za-z0-9_.-]+$/.test(normalizedDatabase)
-    || !/^[A-Za-z0-9_.-]+$/.test(normalizedUser)
+    || !/^[A-Za-z0-9_.-]+$/.test(normalizedLoginUser)
+    || !/^[A-Za-z0-9_.-]+$/.test(normalizedCurrentUser)
   ) {
     throw new Error(expectedTargetError);
   }
@@ -75,14 +78,14 @@ export function validateAndCanonicalizePreflightConnection({
     || queryEntries[0][0] !== "sslmode"
     || queryEntries[0][1].toLowerCase() !== "verify-full"
     || database !== normalizedDatabase
-    || username !== normalizedUser
+    || username !== normalizedLoginUser
     || decodedPassword.length === 0
   ) {
     throw new Error(exactTargetError);
   }
 
   const canonical = new URL("postgresql://placeholder.invalid");
-  canonical.username = normalizedUser;
+  canonical.username = normalizedLoginUser;
   canonical.password = decodedPassword;
   canonical.hostname = normalizedHost;
   canonical.port = normalizedPort;
@@ -95,6 +98,7 @@ export function validateAndCanonicalizePreflightConnection({
     expectedHost: normalizedHost,
     expectedPort: normalizedPort,
     expectedDatabase: normalizedDatabase,
-    expectedUser: normalizedUser,
+    expectedLoginUser: normalizedLoginUser,
+    expectedCurrentUser: normalizedCurrentUser,
   };
 }

@@ -286,7 +286,10 @@ describe("October 2 manual-launch hardening", () => {
     expect(preflightRunner).toContain("AP_PREMIGRATION_EXPECTED_HOST");
     expect(preflightRunner).toContain("AP_PREMIGRATION_EXPECTED_PORT");
     expect(preflightRunner).toContain("AP_PREMIGRATION_EXPECTED_DATABASE");
-    expect(preflightRunner).toContain("AP_PREMIGRATION_EXPECTED_USER");
+    expect(preflightRunner).toContain("AP_PREMIGRATION_EXPECTED_LOGIN_USER");
+    expect(preflightRunner).toContain("AP_PREMIGRATION_EXPECTED_CURRENT_USER");
+    expect(preflightRunner).toContain("current_user='${connection.expectedCurrentUser}'");
+    expect(preflightRunner).not.toContain("current_user='${connection.expectedLoginUser}'");
     expect(preflightRunner).toContain("pg_catalog.pg_stat_ssl");
     expect(preflightRunner).toContain("INVENTORY_IDENTITY_PREFLIGHT_CONNECTION_ATTESTED");
     expect(preflightRunner).toContain("[REDACTED_DATABASE_CREDENTIAL]");
@@ -309,44 +312,45 @@ describe("October 2 manual-launch hardening", () => {
       expectedHost: "db.example.test",
       expectedPort: "5432",
       expectedDatabase: "postgres",
-      expectedUser: "operator",
+      expectedLoginUser: "operator.pooler",
+      expectedCurrentUser: "operator",
     };
     expect(validateAndCanonicalizePreflightConnection({
-      uri: `postgresql://operator:${encodedPassword}@DB.Example.Test:5432/postgres?sslmode=VERIFY-FULL`,
+      uri: `postgresql://operator.pooler:${encodedPassword}@DB.Example.Test:5432/postgres?sslmode=VERIFY-FULL`,
       ...expectedTarget,
     })).toEqual({
-      canonicalUri: `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full`,
+      canonicalUri: `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full`,
       password: encodedPassword,
       decodedPassword: password,
       ...expectedTarget,
     });
 
     const weakUrls = [
-      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres`,
-      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=disable`,
-      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=allow`,
-      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=prefer`,
-      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=require`,
-      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-ca`,
-      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full&sslmode=disable`,
-      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?host=%2Fvar%2Frun%2Fpostgresql&sslmode=verify-full`,
-      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?hostaddr=127.0.0.1&sslmode=verify-full`,
-      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?service=wrong-target&sslmode=verify-full`,
-      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?servicefile=wrong-target&sslmode=verify-full`,
-      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?gssencmode=prefer&sslmode=verify-full`,
-      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslrootcert=system&sslmode=verify-full`,
-      `postgresql://operator:${encodedPassword}@%2Fvar%2Frun%2Fpostgresql:5432/postgres?sslmode=verify-full`,
-      `postgresql://operator:${encodedPassword}@db.example.test,other.example.test:5432/postgres?sslmode=verify-full`,
-      `postgresql://operator:${encodedPassword}@other.example.test:5432/postgres?sslmode=verify-full`,
-      `postgresql://operator:${encodedPassword}@db.example.test:6543/postgres?sslmode=verify-full`,
-      `postgresql://operator:${encodedPassword}@db.example.test:5432/wrong_database?sslmode=verify-full`,
+      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres`,
+      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=disable`,
+      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=allow`,
+      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=prefer`,
+      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=require`,
+      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-ca`,
+      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full&sslmode=disable`,
+      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?host=%2Fvar%2Frun%2Fpostgresql&sslmode=verify-full`,
+      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?hostaddr=127.0.0.1&sslmode=verify-full`,
+      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?service=wrong-target&sslmode=verify-full`,
+      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?servicefile=wrong-target&sslmode=verify-full`,
+      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?gssencmode=prefer&sslmode=verify-full`,
+      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslrootcert=system&sslmode=verify-full`,
+      `postgresql://operator.pooler:${encodedPassword}@%2Fvar%2Frun%2Fpostgresql:5432/postgres?sslmode=verify-full`,
+      `postgresql://operator.pooler:${encodedPassword}@db.example.test,other.example.test:5432/postgres?sslmode=verify-full`,
+      `postgresql://operator.pooler:${encodedPassword}@other.example.test:5432/postgres?sslmode=verify-full`,
+      `postgresql://operator.pooler:${encodedPassword}@db.example.test:6543/postgres?sslmode=verify-full`,
+      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/wrong_database?sslmode=verify-full`,
       `postgresql://wrong_user:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full`,
-      "postgresql://operator@db.example.test:5432/postgres?sslmode=verify-full",
-      `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full#ignored`,
+      "postgresql://operator.pooler@db.example.test:5432/postgres?sslmode=verify-full",
+      `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full#ignored`,
     ];
     for (const databaseUrl of weakUrls) {
       expect(() => validateAndCanonicalizePreflightConnection({ uri: databaseUrl, ...expectedTarget }))
-        .toThrow("expected host, port, database, and user");
+        .toThrow("expected host, port, database, and login user");
     }
 
     for (const badExpectedTarget of [
@@ -355,10 +359,11 @@ describe("October 2 manual-launch hardening", () => {
       { ...expectedTarget, expectedPort: "0" },
       { ...expectedTarget, expectedPort: "65536" },
       { ...expectedTarget, expectedDatabase: "postgres/other" },
-      { ...expectedTarget, expectedUser: "operator other" },
+      { ...expectedTarget, expectedLoginUser: "operator other" },
+      { ...expectedTarget, expectedCurrentUser: "operator other" },
     ]) {
       expect(() => validateAndCanonicalizePreflightConnection({
-        uri: `postgresql://operator:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full`,
+        uri: `postgresql://operator.pooler:${encodedPassword}@db.example.test:5432/postgres?sslmode=verify-full`,
         ...badExpectedTarget,
       })).toThrow("expected-target identifiers");
     }
@@ -370,7 +375,8 @@ describe("October 2 manual-launch hardening", () => {
       SAFE_VALUE: "preserved",
       AP_PREMIGRATION_DATABASE_URL: "secret-one",
       Ap_PrEmIgRaTiOn_Expected_Host: "secret-two",
-      ap_premigration_expected_user: "secret-three",
+      ap_premigration_expected_login_user: "secret-three",
+      AP_PREMIGRATION_EXPECTED_CURRENT_USER: "secret-four",
     })).toEqual({
       Path: "C:\\Windows\\System32",
       SAFE_VALUE: "preserved",
@@ -392,13 +398,14 @@ describe("October 2 manual-launch hardening", () => {
           AP_PREMIGRATION_EXPECTED_HOST: "db.example.test",
           AP_PREMIGRATION_EXPECTED_PORT: "5432",
           AP_PREMIGRATION_EXPECTED_DATABASE: "postgres",
-          AP_PREMIGRATION_EXPECTED_USER: "operator",
+          AP_PREMIGRATION_EXPECTED_LOGIN_USER: "operator",
+          AP_PREMIGRATION_EXPECTED_CURRENT_USER: "operator",
         },
       },
     );
     const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
     expect(result.status).toBe(2);
-    expect(output).toContain("expected host, port, database, and user");
+    expect(output).toContain("expected host, port, database, and login user");
     expect(output).not.toContain(databaseUrl);
     expect(output).not.toContain(password);
   });

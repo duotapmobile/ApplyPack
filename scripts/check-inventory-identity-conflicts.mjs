@@ -30,7 +30,8 @@ if (mode === "--remote") {
       expectedHost: process.env.AP_PREMIGRATION_EXPECTED_HOST ?? "",
       expectedPort: process.env.AP_PREMIGRATION_EXPECTED_PORT ?? "",
       expectedDatabase: process.env.AP_PREMIGRATION_EXPECTED_DATABASE ?? "",
-      expectedUser: process.env.AP_PREMIGRATION_EXPECTED_USER ?? "",
+      expectedLoginUser: process.env.AP_PREMIGRATION_EXPECTED_LOGIN_USER ?? "",
+      expectedCurrentUser: process.env.AP_PREMIGRATION_EXPECTED_CURRENT_USER ?? "",
     });
   } catch (error) {
     console.error(error instanceof Error ? error.message : "Remote preflight target validation failed.");
@@ -44,7 +45,7 @@ select (
     select ssl from pg_catalog.pg_stat_ssl where pid=pg_catalog.pg_backend_pid()
   ),false)
   and pg_catalog.current_database()='${connection.expectedDatabase}'
-  and current_user='${connection.expectedUser}'
+  and current_user='${connection.expectedCurrentUser}'
 ) as connection_attested
 \\gset
 \\if :connection_attested
