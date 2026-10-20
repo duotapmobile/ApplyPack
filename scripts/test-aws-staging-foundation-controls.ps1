@@ -195,7 +195,7 @@ try {
     'AWS_CONFIG_FILE','AWS_SHARED_CREDENTIALS_FILE','AWS_ROLE_ARN','AWS_WEB_IDENTITY_TOKEN_FILE','AWS_ROLE_SESSION_NAME',
     'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI','AWS_CONTAINER_CREDENTIALS_FULL_URI','AWS_CONTAINER_AUTHORIZATION_TOKEN',
     'AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE','AWS_ENDPOINT_URL','AWS_ENDPOINT_URL_CLOUDFORMATION','AWS_ENDPOINT_URL_IAM',
-    'AWS_ENDPOINT_URL_STS','AWS_CA_BUNDLE','AWS_DATA_PATH','AWS_REGION','AWS_DEFAULT_REGION'
+    'AWS_ENDPOINT_URL_STS','AWS_CA_BUNDLE','AWS_DATA_PATH','AWS_REGION','AWS_DEFAULT_REGION','AWS_LOGIN_CACHE_DIRECTORY'
   )) { $emptyCredentialEnvironment[$overrideName] = $null }
   $emptyForbiddenProfileMechanisms = @{}
   foreach ($profileKey in @(
@@ -379,7 +379,7 @@ try {
     'AWS_CONFIG_FILE','AWS_SHARED_CREDENTIALS_FILE','AWS_ROLE_ARN','AWS_WEB_IDENTITY_TOKEN_FILE','AWS_ROLE_SESSION_NAME',
     'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI','AWS_CONTAINER_CREDENTIALS_FULL_URI','AWS_CONTAINER_AUTHORIZATION_TOKEN',
     'AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE','AWS_ENDPOINT_URL','AWS_ENDPOINT_URL_CLOUDFORMATION','AWS_ENDPOINT_URL_IAM',
-    'AWS_ENDPOINT_URL_STS','AWS_CA_BUNDLE','AWS_DATA_PATH','AWS_REGION','AWS_DEFAULT_REGION',
+    'AWS_ENDPOINT_URL_STS','AWS_CA_BUNDLE','AWS_DATA_PATH','AWS_REGION','AWS_DEFAULT_REGION','AWS_LOGIN_CACHE_DIRECTORY',
     'AWS_IGNORE_CONFIGURED_ENDPOINT_URLS'
   )
   $savedAwsEnvironment = @{}
@@ -417,6 +417,12 @@ try {
     Remove-UnexecutedFoundationCreate -ChangeSetId $apChangeSetId -StackId $apStackId
   }
   [Environment]::SetEnvironmentVariable('AWS_ROLE_ARN', $null, 'Process')
+  Reset-ApplyPackMockAws -Mode normal -Scenario success
+  [Environment]::SetEnvironmentVariable('AWS_LOGIN_CACHE_DIRECTORY', (Join-Path $work 'attacker-controlled-login-cache'), 'Process')
+  Assert-Throws -Label 'mock normal cleanup login cache override' -Action {
+    Remove-UnexecutedFoundationCreate -ChangeSetId $apChangeSetId -StackId $apStackId
+  }
+  [Environment]::SetEnvironmentVariable('AWS_LOGIN_CACHE_DIRECTORY', $null, 'Process')
 
   $apLegacyApprovedProcedureCommit = '1111111111111111111111111111111111111111'
   $apLegacyApprovedProcedureTree = '2222222222222222222222222222222222222222'

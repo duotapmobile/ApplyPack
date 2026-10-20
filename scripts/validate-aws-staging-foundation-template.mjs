@@ -484,6 +484,7 @@ for (const required of [
   "AWS_ENDPOINT_URL_STS",
   "AWS_CA_BUNDLE",
   "AWS_DATA_PATH",
+  "AWS_LOGIN_CACHE_DIRECTORY",
   "credential_process",
   "source_profile",
   "credential_source",
@@ -516,6 +517,7 @@ assert(controlSelfTest.includes("AWS_STAGING_FOUNDATION_CONTROLS_OK")
   && controlSelfTest.includes("Assert-Throws -Label 'resolved credential TYPE non-login'")
   && controlSelfTest.includes("Assert-Throws -Label 'alternate profile credential mechanism'")
   && controlSelfTest.includes("Assert-Throws -Label 'process credential override'")
+  && controlSelfTest.includes("Assert-Throws -Label 'mock normal cleanup login cache override'")
   && controlSelfTest.includes("Label='mock normal cleanup foreign ID'")
   && controlSelfTest.includes("Label='mock normal cleanup zero after'")
   && controlSelfTest.includes("Label='mock normal cleanup provider template mismatch'")
