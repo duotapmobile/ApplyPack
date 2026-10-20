@@ -9,6 +9,17 @@ import {
 import { DOCUMENT_FONT_CONTRACT } from "@/lib/documents/requirements";
 
 const digest = "a".repeat(64);
+const workerConfigurationNames = [
+  "APP_DOCUMENT_WORKER_DEPLOYMENT_ENV",
+  "APP_DOCUMENT_WORKER_FUNCTION_ARN",
+  "APP_DOCUMENT_WORKER_BUCKET",
+  "APP_DOCUMENT_WORKER_IDENTITY",
+  "APP_DOCUMENT_WORKER_FONT_SHA256",
+  "APP_DOCUMENT_WORKER_FONT_MANIFEST_SHA256",
+  "APP_DOCUMENT_WORKER_IMAGE_DIGEST",
+  "APP_DOCUMENT_WORKER_PREFLIGHT_RECEIPT_SHA256",
+  "APP_DOCUMENT_WORKER_NETWORK_ATTESTATION_SHA256",
+] as const;
 function workerEnvironment(deployment: "staging" | "production") {
   return {
     APP_DEPLOYMENT_ENV: deployment,
@@ -41,6 +52,7 @@ describe("AWS document worker environment binding", () => {
       { APP_DOCUMENT_WORKER_FUNCTION_ARN: "arn:aws:lambda:us-east-1:123456789012:function:applypack-production-document-worker:1" },
       { APP_DOCUMENT_WORKER_FUNCTION_ARN: "arn:aws:lambda:us-east-1:123456789012:function:applypack-document-worker:1" },
       { APP_DEPLOYMENT_ENV: "preview" },
+      { APP_DEPLOYMENT_ENV: " staging " },
       { APP_DEPLOYMENT_ENV: "" },
       { AWS_REGION: "us-west-2" },
     ]) {
@@ -51,10 +63,30 @@ describe("AWS document worker environment binding", () => {
   it("routes exact staging and production bindings remotely and fails closed on partial hosted bindings", () => {
     expect(documentWorkerExecutionMode(workerEnvironment("staging"))).toBe("remote");
     expect(documentWorkerExecutionMode(workerEnvironment("production"))).toBe("remote");
-    expect(documentWorkerExecutionMode({ APP_DEPLOYMENT_ENV: "staging" })).toBe("local");
+    expect(documentWorkerExecutionMode({ APP_DEPLOYMENT_ENV: "staging" })).toBe("unavailable");
     expect(documentWorkerExecutionMode({ APP_DEPLOYMENT_ENV: "staging", APP_DOCUMENT_WORKER_DEPLOYMENT_ENV: "production" }))
       .toBe("unavailable");
     expect(documentWorkerExecutionMode({ APP_DEPLOYMENT_ENV: "production" })).toBe("unavailable");
+  });
+
+  it("allows local rendering only for an explicit development or test runtime with no AWS worker values", () => {
+    expect(documentWorkerExecutionMode({ NODE_ENV: "development" })).toBe("local");
+    expect(documentWorkerExecutionMode({ NODE_ENV: "test" })).toBe("local");
+    expect(documentWorkerExecutionMode({})).toBe("unavailable");
+    expect(documentWorkerExecutionMode({ NODE_ENV: "production" })).toBe("unavailable");
+    expect(documentWorkerExecutionMode({ NODE_ENV: "test", APP_DEPLOYMENT_ENV: "preview" })).toBe("unavailable");
+  });
+
+  it.each(workerConfigurationNames)("fails closed when %s exists without an exact hosted deployment marker", (name) => {
+    for (const workerValue of ["configured", "", " "]) {
+      for (const deploymentMarker of [undefined, "", "preview", " staging "]) {
+        expect(documentWorkerExecutionMode({
+          NODE_ENV: "test",
+          APP_DEPLOYMENT_ENV: deploymentMarker,
+          [name]: workerValue,
+        })).toBe("unavailable");
+      }
+    }
   });
 
   it("rejects cross-environment and cross-version worker responses", () => {

@@ -16,6 +16,8 @@ const handlerPath = resolve(root, "infra/aws/document-worker/handler.py");
 const lifecyclePath = resolve(root, "infra/aws/document-worker/ecr-lifecycle-policy.json");
 const preflightPath = resolve(root, "scripts/aws-document-worker-preflight.mjs");
 const probePath = resolve(root, "scripts/aws-document-worker-synthetic-probe.mjs");
+const probeFixturePath = resolve(root, "scripts/test-aws-document-worker-synthetic-probe.mjs");
+const runbookPath = resolve(root, "docs/runbooks/AWS_DOCUMENT_WORKER.md");
 
 const intrinsic = (name, kind) => new yaml.Type(`!${name}`, {
   kind,
@@ -35,6 +37,8 @@ const dockerfile = readFileSync(dockerfilePath, "utf8");
 const handler = readFileSync(handlerPath, "utf8");
 const preflight = readFileSync(preflightPath, "utf8");
 const probe = readFileSync(probePath, "utf8");
+const probeFixture = readFileSync(probeFixturePath, "utf8");
+const runbook = readFileSync(runbookPath, "utf8");
 const lifecycle = JSON.parse(readFileSync(lifecyclePath, "utf8"));
 const template = yaml.load(source, { schema, filename: templatePath });
 const deploymentTemplate = yaml.load(deploymentSource, { schema, filename: deploymentTemplatePath });
@@ -232,11 +236,43 @@ assert(handler.includes('deployment_environment not in ("staging", "production")
 assert(handler.includes('"deploymentEnvironment": deployment_environment'), "handler must return its environment attestation");
 assert(preflight.includes("describe-route-tables") && preflight.includes("describe-managed-prefix-lists")
   && preflight.includes("imageTagMutability") && preflight.includes("describe-image-scan-findings")
-  && preflight.includes("route_table_has_non_approved_path"),
+  && preflight.includes("route_table_has_non_approved_path")
+  && preflight.includes("input.imageTag !== input.sourceCommitSha"),
 "provider preflight must validate routes, AWS prefix list, immutable ECR and scan results");
 assert(probe.includes('operation: "extract"') && probe.includes('operation: "probe-document"')
   && probe.includes('operation: "render-docx"') && probe.includes("kmsCrossEnvironmentDenied")
-  && probe.includes("cleanupComplete"),
+  && probe.includes("cleanupComplete") && probe.includes("expectedCrossEnvironmentKmsDenial")
+  && probe.includes("AccessDeniedException") && probe.includes("InvalidCiphertextException"),
 "synthetic harness must cover extraction, render, network, KMS separation and cleanup");
+for (const rejectedFailure of ["UnrecognizedClientException", "Could not connect to the endpoint URL",
+  "ThrottlingException", "ValidationException", "SIGTERM"]) {
+  assert(probeFixture.includes(rejectedFailure), `synthetic probe fixture must reject ${rejectedFailure}`);
+}
+
+const orderedRunbookHeadings = [
+  "## 1. Bootstrap the environment repository and deployment role",
+  "## 2. Build and push the exact source image",
+  "## 3. Create the provider-backed read-only preflight receipt",
+  "## 4. Deploy the main environment stack",
+  "## 5. Run the synthetic worker and KMS probe",
+  "## 6. Configure only the matching application service",
+];
+let priorRunbookIndex = -1;
+for (const heading of orderedRunbookHeadings) {
+  const currentIndex = runbook.indexOf(heading);
+  assert(currentIndex > priorRunbookIndex, `runbook step is missing or out of order: ${heading}`);
+  priorRunbookIndex = currentIndex;
+}
+const definitionsEnd = runbook.indexOf(orderedRunbookHeadings[0]);
+for (const definition of ["$apEnvironment = 'staging'", "$apVpcId =", "$apPrivateSubnetA =", "$apPrivateSubnetB =",
+  "$apPrivateRouteTableA =", "$apPrivateRouteTableB =", "$apKmsKeyArn =", "$apKmsKeyVersion =",
+  "$apPrimaryAlertEmail =", "$apSecondaryAlertEmail ="]) {
+  const definitionIndex = runbook.indexOf(definition);
+  assert(definitionIndex !== -1 && definitionIndex < definitionsEnd, `runbook must define ${definition} before step 1`);
+}
+assert(runbook.includes("Then execute sections 1 through 6 without reordering")
+  && runbook.includes("APP_DEPLOYMENT_ENV=production")
+  && runbook.includes("APP_DOCUMENT_WORKER_DEPLOYMENT_ENV=production"),
+"production runbook must repeat the same ordered flow with exact production markers");
 
 console.log("AWS_DOCUMENT_WORKER_TEMPLATE_OK");

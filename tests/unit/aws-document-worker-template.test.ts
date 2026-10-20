@@ -62,4 +62,11 @@ describe("AWS document worker source template", () => {
     });
     expect(output.trim()).toBe("AWS_DOCUMENT_WORKER_PREFLIGHT_FIXTURES_OK");
   });
+
+  it("accepts only precise wrong-environment KMS denial codes", () => {
+    const output = execFileSync(process.execPath, [resolve(process.cwd(), "scripts/test-aws-document-worker-synthetic-probe.mjs")], {
+      cwd: process.cwd(), encoding: "utf8",
+    });
+    expect(output.trim()).toBe("AWS_DOCUMENT_WORKER_SYNTHETIC_PROBE_FIXTURES_OK");
+  }, 30_000);
 });

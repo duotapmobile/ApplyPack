@@ -24,16 +24,32 @@ function parseArguments(argv) {
   return options;
 }
 
-function awsJson(args, allowFailure = false) {
-  const result = spawnSync("aws", [...args, "--region", REGION, "--output", "json", "--no-cli-pager"], {
+function runAws(args) {
+  return spawnSync("aws", [...args, "--region", REGION, "--output", "json", "--no-cli-pager"], {
     encoding: "utf8", windowsHide: true, maxBuffer: 4 * 1024 * 1024,
   });
+}
+
+function awsJson(args, allowFailure = false) {
+  const result = runAws(args);
   if (result.status !== 0) {
     if (allowFailure) return null;
     throw new Error(`aws_probe_failed:${args[0]}:${args[1]}`);
   }
   try { return result.stdout.trim() ? JSON.parse(result.stdout) : {}; }
   catch { throw new Error(`aws_probe_json_invalid:${args[0]}:${args[1]}`); }
+}
+
+export function expectedCrossEnvironmentKmsDenial(result) {
+  if (!result || result.error || result.signal || !Number.isInteger(result.status) || result.status === 0
+    || typeof result.stderr !== "string") {
+    throw new Error("kms_cross_environment_denial_not_proven");
+  }
+  const match = result.stderr.trim().match(
+    /^An error occurred \((AccessDeniedException|InvalidCiphertextException)\) when calling the Decrypt operation: [^\r\n]+$/,
+  );
+  if (!match) throw new Error("kms_cross_environment_denial_unexpected");
+  return match[1];
 }
 
 function invoke(functionArn, payload, directory, name) {
@@ -128,10 +144,9 @@ async function main() {
     if (typeof decrypted.Plaintext !== "string" || !Buffer.from(decrypted.Plaintext, "base64").equals(plaintext)) {
       throw new Error("kms_decrypt_probe_failed");
     }
-    const crossEnvironment = awsJson(["kms", "decrypt", "--key-id", options.kmsKeyArn,
+    const crossEnvironmentDenialCode = expectedCrossEnvironmentKmsDenial(runAws(["kms", "decrypt", "--key-id", options.kmsKeyArn,
       "--ciphertext-blob", `fileb://${ciphertextPath}`, "--encryption-context",
-      `application=ApplyPack,deployment=${wrongEnvironment},keyVersion=${options.kmsKeyVersion}`], true);
-    if (crossEnvironment) throw new Error("kms_cross_environment_decrypt_succeeded");
+      `application=ApplyPack,deployment=${wrongEnvironment},keyVersion=${options.kmsKeyVersion}`]));
     receipt = {
       schema: "applypack.aws-document-worker-synthetic-probe.v1",
       checkedAt: new Date().toISOString(),
@@ -154,6 +169,7 @@ async function main() {
         networkIsolation: true,
         kmsRoundTrip: true,
         kmsCrossEnvironmentDenied: true,
+        kmsCrossEnvironmentDenialCode: crossEnvironmentDenialCode,
       },
     };
   } finally {

@@ -40,3 +40,12 @@ The follow-up source revision closes the two review gaps without making provider
 - Offline validation now checks the exact endpoint, worker-role, runtime-policy, trust, version-only invoke, public-access-block, deployment-boundary, and PassRole contracts. Negative mutation fixtures cover permissive S3, IAM, trust, route, subnet, ECR, and scan changes.
 
 The canonical receipts have not been produced in this source-only task. AWS CLI identity, CloudFormation provider validation, deployment, scan, render, extraction, network, KMS, and cleanup evidence remain outstanding and cannot be inferred from passing local tests.
+
+## Second-round fail-closed revision
+
+- Preflight now requires the immutable ECR image tag to equal the exact 40-character source commit SHA, not merely to resemble a Git SHA. An executable negative fixture rejects a mismatched tag.
+- Any document-worker variable paired with a missing, empty, whitespace-altered, preview, or otherwise invalid deployment marker is unavailable. Hosted staging and production require a complete remote configuration; local rendering is limited to explicit Node development/test execution with no worker variables.
+- The wrong-environment KMS probe records only a precise `AccessDeniedException` or `InvalidCiphertextException` as isolation evidence. Credential, network, throttling, malformed-request, process, and unexpected failures invalidate the probe and cannot produce a receipt.
+- The runbook now defines environment, VPC, subnet, effective route-table, KMS, alert, evidence, and budget inputs before use and fixes the order for either environment: bootstrap, build/push, preflight, main deploy, probe, then matching application configuration.
+
+This revision remains source-only. No AWS API, provider, deployment, image, KMS, application-configuration, checkout, or production mutation was performed.

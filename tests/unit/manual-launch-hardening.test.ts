@@ -491,6 +491,8 @@ describe("October 2 manual-launch hardening", () => {
     const boardMaterialsCheckout = source("src/app/api/checkout/board-materials/[id]/route.ts");
     const preflight = source("scripts/aws-document-worker-preflight.mjs");
     const syntheticProbe = source("scripts/aws-document-worker-synthetic-probe.mjs");
+    const syntheticProbeFixtures = source("scripts/test-aws-document-worker-synthetic-probe.mjs");
+    const workerRunbook = source("docs/runbooks/AWS_DOCUMENT_WORKER.md");
     const documentRequirements = source("src/lib/documents/requirements.ts");
     const documentPolicy = source("supabase/migrations/202610030066_locked_document_generation_standard.sql");
     const documentCompatibility = source("supabase/migrations/202610030067_document_source_and_rollback_compatibility.sql");
@@ -507,6 +509,8 @@ describe("October 2 manual-launch hardening", () => {
     expect(worker).toContain("APP_DOCUMENT_WORKER_PREFLIGHT_RECEIPT_SHA256");
     expect(worker).toContain("APP_DOCUMENT_WORKER_NETWORK_ATTESTATION_SHA256");
     expect(worker).toContain("workerResponseAttestationMatches");
+    expect(worker).toContain("hasWorkerConfiguration && !hostedEnvironment");
+    expect(worker).toContain('environment.NODE_ENV === "development" || environment.NODE_ENV === "test"');
     expect(worker).toContain('InvocationType: "RequestResponse"');
     expect(worker).toContain('LogType: "None"');
     expect(worker).toContain("probe-document");
@@ -608,10 +612,27 @@ describe("October 2 manual-launch hardening", () => {
     expect(preflight).toContain("route_table_has_non_approved_path");
     expect(preflight).toContain("imageTagMutability");
     expect(preflight).toContain("describe-image-scan-findings");
+    expect(preflight).toContain("input.imageTag !== input.sourceCommitSha");
     expect(syntheticProbe).toContain('operation: "extract"');
     expect(syntheticProbe).toContain('operation: "render-docx"');
     expect(syntheticProbe).toContain("kmsCrossEnvironmentDenied");
+    expect(syntheticProbe).toContain("expectedCrossEnvironmentKmsDenial");
+    expect(syntheticProbe).toContain("AccessDeniedException|InvalidCiphertextException");
     expect(syntheticProbe).toContain("cleanupComplete");
+    for (const unsafeFailure of ["UnrecognizedClientException", "Could not connect to the endpoint URL",
+      "ThrottlingException", "ValidationException", "SIGTERM"]) {
+      expect(syntheticProbeFixtures).toContain(unsafeFailure);
+    }
+    const orderedWorkerSteps = [
+      "## 1. Bootstrap the environment repository and deployment role",
+      "## 2. Build and push the exact source image",
+      "## 3. Create the provider-backed read-only preflight receipt",
+      "## 4. Deploy the main environment stack",
+      "## 5. Run the synthetic worker and KMS probe",
+      "## 6. Configure only the matching application service",
+    ].map((heading) => workerRunbook.indexOf(heading));
+    expect(orderedWorkerSteps.every((position, index) => position >= 0 && (index === 0 || position > orderedWorkerSteps[index - 1]))).toBe(true);
+    expect(workerRunbook).toContain("Then execute sections 1 through 6 without reordering");
     expect(documentPolicy).toContain("document_font_family='Arial'");
     expect(documentPolicy).toContain("materials_generation_approved=false");
     expect(documentPolicy).toContain("LOCKED_DOCUMENT_GENERATION_STANDARD");

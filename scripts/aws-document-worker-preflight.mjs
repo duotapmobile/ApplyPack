@@ -55,7 +55,8 @@ function repositoryPolicyIsPrivate(policy, accountId, environment) {
 
 export function evaluatePreflightEvidence(input, evidence) {
   if (!ENVIRONMENTS.has(input.environment) || input.region !== REGION || !GIT_SHA.test(input.sourceCommitSha)
-    || !GIT_SHA.test(input.imageTag) || !SHA256_DIGEST.test(input.imageDigest)) throw new Error("preflight_input_invalid");
+    || !GIT_SHA.test(input.imageTag) || input.imageTag !== input.sourceCommitSha
+    || !SHA256_DIGEST.test(input.imageDigest)) throw new Error("preflight_input_invalid");
   if (!/^\d{12}$/.test(evidence.identity.Account || "") || typeof evidence.identity.Arn !== "string") {
     throw new Error("aws_identity_invalid");
   }

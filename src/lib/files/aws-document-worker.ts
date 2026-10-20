@@ -30,8 +30,8 @@ const WORKER_CONFIGURATION_NAMES = [
 
 export function documentWorkerConfiguration(environment: Environment = process.env) {
   const region = environment.AWS_REGION?.trim();
-  const deploymentEnvironment = environment.APP_DEPLOYMENT_ENV?.trim();
-  const workerDeploymentEnvironment = environment.APP_DOCUMENT_WORKER_DEPLOYMENT_ENV?.trim();
+  const deploymentEnvironment = environment.APP_DEPLOYMENT_ENV;
+  const workerDeploymentEnvironment = environment.APP_DOCUMENT_WORKER_DEPLOYMENT_ENV;
   const functionArn = environment.APP_DOCUMENT_WORKER_FUNCTION_ARN?.trim();
   const bucket = environment.APP_DOCUMENT_WORKER_BUCKET?.trim();
   const identity = environment.APP_DOCUMENT_WORKER_IDENTITY?.trim();
@@ -58,13 +58,15 @@ export function documentWorkerConfiguration(environment: Environment = process.e
 
 export function documentWorkerExecutionMode(environment: Environment = process.env) {
   const configuration = documentWorkerConfiguration(environment);
-  const hasWorkerConfiguration = WORKER_CONFIGURATION_NAMES.some((name) => Boolean(environment[name]?.trim()));
-  if (configuration.deploymentEnvironment === "production") return configuration.ready ? "remote" : "unavailable";
-  if (configuration.deploymentEnvironment === "staging") {
-    if (configuration.ready) return "remote";
-    if (hasWorkerConfiguration) return "unavailable";
-  }
-  return "local";
+  const hasWorkerConfiguration = WORKER_CONFIGURATION_NAMES.some((name) => environment[name] !== undefined);
+  const hostedEnvironment = configuration.deploymentEnvironment === "staging"
+    || configuration.deploymentEnvironment === "production";
+  if (hasWorkerConfiguration && !hostedEnvironment) return "unavailable";
+  if (hostedEnvironment) return configuration.ready ? "remote" : "unavailable";
+  if (configuration.deploymentEnvironment) return "unavailable";
+  return !hasWorkerConfiguration && (environment.NODE_ENV === "development" || environment.NODE_ENV === "test")
+    ? "local"
+    : "unavailable";
 }
 
 export function workerResponseAttestationMatches(

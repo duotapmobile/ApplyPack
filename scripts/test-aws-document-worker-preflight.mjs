@@ -52,6 +52,13 @@ function rejects(mutator, message) {
   try { evaluatePreflightEvidence(input, changed); } catch { rejected = true; }
   if (!rejected) throw new Error(`negative preflight fixture accepted: ${message}`);
 }
+function rejectsInput(mutator, message) {
+  const changedInput = clone(input);
+  mutator(changedInput);
+  let rejected = false;
+  try { evaluatePreflightEvidence(changedInput, clone(evidence)); } catch { rejected = true; }
+  if (!rejected) throw new Error(`negative preflight input fixture accepted: ${message}`);
+}
 
 const receipt = evaluatePreflightEvidence(input, evidence);
 if (!receipt.checks.noUnapprovedOutboundRoute || receipt.identities.routes.length !== 2
@@ -66,4 +73,5 @@ rejects((changed) => { changed.repositories.repositories[0].imageTagMutability =
 rejects((changed) => { changed.repositories.repositories[0].imageScanningConfiguration.scanOnPush = false; }, "scan disabled");
 rejects((changed) => { changed.repositoryPolicy = { policyText: JSON.stringify({ Statement: [{ Effect: "Allow", Principal: "*", Action: "ecr:*" }] }) }; }, "public repository policy");
 rejects((changed) => { changed.scan.imageScanFindings.findingSeverityCounts.HIGH = 1; }, "high scan finding");
+rejectsInput((changed) => { changed.imageTag = "c".repeat(40); }, "image tag does not equal source commit SHA");
 console.log("AWS_DOCUMENT_WORKER_PREFLIGHT_FIXTURES_OK");
