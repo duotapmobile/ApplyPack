@@ -13,6 +13,12 @@ $controlMatch = [regex]::Match(
 )
 if (!$controlMatch.Success) { throw 'Foundation control functions are not extractable from the runbook.' }
 Invoke-Expression $controlMatch.Groups[1].Value
+$legacyMatch = [regex]::Match(
+  $runbook,
+  '(?s)# APPLYPACK_LEGACY_CLEANUP_FUNCTIONS_BEGIN\r?\n(.*?)# APPLYPACK_LEGACY_CLEANUP_FUNCTIONS_END'
+)
+if (!$legacyMatch.Success) { throw 'Legacy cleanup functions are not extractable from the runbook.' }
+Invoke-Expression $legacyMatch.Groups[1].Value
 
 function Assert-Throws {
   param(
@@ -24,9 +30,144 @@ function Assert-Throws {
   if (!$threw) { throw "Expected fail-closed rejection: $Label" }
 }
 
+function Reset-ApplyPackMockAws {
+  param(
+    [Parameter(Mandatory)] [ValidateSet('normal','legacy')] [string] $Mode,
+    [Parameter(Mandatory)] [string] $Scenario
+  )
+  $script:apMockMode = $Mode
+  $script:apMockScenario = $Scenario
+  $script:apMockChangeSetDeleted = $false
+  $script:apMockStackDeleted = $false
+  $global:LASTEXITCODE = 0
+}
+
+function Invoke-ApplyPackMockAws {
+  param([Parameter(ValueFromRemainingArguments=$true)] [object[]] $Arguments)
+  $global:LASTEXITCODE = 0
+  $service = [string]$Arguments[0]
+  $operation = [string]$Arguments[1]
+  $changeSetId = if ($script:apMockMode -eq 'legacy') { $apLegacyChangeSetId } else { $apChangeSetId }
+  $stackId = if ($script:apMockMode -eq 'legacy') { $apLegacyStackId } else { $apStackId }
+  $stackName = if ($script:apMockMode -eq 'legacy') { $apLegacyStackName } else { $apGovernedCreateRequest.stackName }
+  $changeSetName = if ($script:apMockMode -eq 'legacy') { $apLegacyChangeSetName } else { $apGovernedCreateRequest.changeSetName }
+  $description = if ($script:apMockMode -eq 'legacy') { $apLegacyExpectedDescription } else { $apGovernedCreateRequest.description }
+
+  if ($service -eq 'configure' -and $operation -eq 'list') {
+    $credentialType = if ($script:apMockScenario -eq 'credential-non-login') { 'env' } else { 'login' }
+    @(
+      "      Name                    Value             Type    Location",
+      "      ----                    -----             ----    --------",
+      "access_key     ****************ABCD            $credentialType    mock-cache",
+      "secret_key     ****************WXYZ            $credentialType    mock-cache",
+      "    region                us-east-1      config-file    mock-config"
+    ) -join "`n"
+    return
+  }
+  if ($service -eq 'configure' -and $operation -eq 'get') {
+    $key = [string]$Arguments[2]
+    if ($key -eq 'login_session') { 'arn:aws:iam::838445019912:user/applypack-staging-operator'; return }
+    if ($key -eq 'region') { 'us-east-1'; return }
+    if ($script:apMockScenario -eq 'profile-alternate' -and $key -eq 'credential_process') {
+      'mock-credential-process'
+      return
+    }
+    $global:LASTEXITCODE = 1
+    return
+  }
+  if ($service -eq 'sts' -and $operation -eq 'get-caller-identity') {
+    @{ Account='838445019912'; Arn='arn:aws:iam::838445019912:user/applypack-staging-operator'; UserId='AIDAMOCK' } |
+      ConvertTo-Json -Compress
+    return
+  }
+  if ($service -eq 'iam' -and $operation -eq 'list-mfa-devices') {
+    [object[]]$devices = @()
+    if ($script:apMockScenario -ne 'mfa-count') { $devices = @(@{ SerialNumber='arn:aws:iam::838445019912:mfa/mock' }) }
+    @{ MFADevices=$devices } | ConvertTo-Json -Depth 10 -Compress
+    return
+  }
+  if ($service -eq 'iam' -and $operation -eq 'list-access-keys') {
+    if ($script:apMockScenario -eq 'access-key-denied') {
+      $global:LASTEXITCODE = 254
+      'AccessDenied: mock user lacks iam:ListAccessKeys'
+      return
+    }
+    if ($script:apMockScenario -eq 'access-key-present') {
+      @{ AccessKeyMetadata=@(@{ AccessKeyId='REDACTED'; Status='Active' }) } | ConvertTo-Json -Depth 10 -Compress
+    } else {
+      @{ AccessKeyMetadata=@() } | ConvertTo-Json -Depth 10 -Compress
+    }
+    return
+  }
+  if ($service -eq 'cloudformation' -and $operation -eq 'describe-change-set') {
+    $providerChangeSetId = if ($script:apMockScenario -eq 'foreign-id') {
+      'arn:aws:cloudformation:us-east-1:838445019912:changeSet/foreign/ffffffff-ffff-ffff-ffff-ffffffffffff'
+    } else { $changeSetId }
+    $executionStatus = switch ($script:apMockScenario) {
+      'executed-plan' { 'EXECUTE_COMPLETE' }
+      'unavailable-plan' { 'UNAVAILABLE' }
+      default { 'AVAILABLE' }
+    }
+    @{
+      ChangeSetId=$providerChangeSetId; StackId=$stackId; StackName=$stackName; ChangeSetName=$changeSetName
+      Description=$description; OnStackFailure='ROLLBACK'; Status='CREATE_COMPLETE'; ExecutionStatus=$executionStatus
+      Capabilities=@(); Parameters=@(); Tags=$script:apMockTags; Changes=$script:apMockChanges
+    } | ConvertTo-Json -Depth 20 -Compress
+    return
+  }
+  if ($service -eq 'cloudformation' -and $operation -eq 'list-change-sets') {
+    [object[]]$summaries = @()
+    if ($script:apMockChangeSetDeleted) {
+      if ($script:apMockScenario -eq 'remaining-after') { $summaries = @(@{ ChangeSetId=$changeSetId }) }
+    } else {
+      $summaries = @(@{ ChangeSetId=$changeSetId })
+      if ($script:apMockScenario -eq 'extra-before') { $summaries += @{ ChangeSetId='arn:aws:cloudformation:us-east-1:838445019912:changeSet/extra/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee' } }
+    }
+    @{ Summaries=$summaries } | ConvertTo-Json -Depth 10 -Compress
+    return
+  }
+  if ($service -eq 'cloudformation' -and $operation -eq 'describe-stacks') {
+    $protection = $script:apMockMode -eq 'normal'
+    @{ Stacks=@(@{ StackId=$stackId; StackName=$stackName; StackStatus='REVIEW_IN_PROGRESS'; EnableTerminationProtection=$protection }) } |
+      ConvertTo-Json -Depth 10 -Compress
+    return
+  }
+  if ($service -eq 'cloudformation' -and $operation -eq 'list-stack-resources') {
+    [object[]]$resources = @()
+    if ($script:apMockScenario -eq 'populated-stack') { $resources = @(@{ LogicalResourceId='Unexpected' }) }
+    @{ StackResourceSummaries=$resources } | ConvertTo-Json -Depth 10 -Compress
+    return
+  }
+  if ($service -eq 'cloudformation' -and $operation -eq 'get-template') {
+    $templateText = [IO.File]::ReadAllText($sourceTemplatePath)
+    if ($script:apMockScenario -eq 'template-mismatch') { $templateText = $templateText -replace '10\.84\.0\.0/16','10.85.0.0/16' }
+    @{ TemplateBody=$templateText } | ConvertTo-Json -Depth 100 -Compress
+    return
+  }
+  if ($service -eq 'cloudformation' -and $operation -eq 'delete-change-set') {
+    $script:apMockChangeSetDeleted = $true
+    return
+  }
+  if ($service -eq 'cloudformation' -and $operation -eq 'update-termination-protection') {
+    @{ StackId=$stackId } | ConvertTo-Json -Compress
+    return
+  }
+  if ($service -eq 'cloudformation' -and $operation -eq 'delete-stack') {
+    $script:apMockStackDeleted = $true
+    return
+  }
+  if ($service -eq 'cloudformation' -and $operation -eq 'wait') { return }
+  if ($service -eq 'cloudformation' -and $operation -eq 'list-stacks') {
+    @{ StackSummaries=@() } | ConvertTo-Json -Compress
+    return
+  }
+  throw "Unexpected mocked AWS command: $($Arguments -join ' ')"
+}
+
 $work = Join-Path ([IO.Path]::GetTempPath()) "applypack-foundation-controls-$([Guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $work | Out-Null
 $apGovernedCreateRequestPath = $null
+$savedAwsEnvironment = $null
 try {
   $apApprovedSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
   $apApprovedTree = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
@@ -48,6 +189,32 @@ try {
     throw 'Controlled template normalization failed.'
   }
   $apReviewedNormalizedTemplateSha256 = $Matches[1]
+  $emptyCredentialEnvironment = @{}
+  foreach ($overrideName in @(
+    'AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY','AWS_SESSION_TOKEN','AWS_PROFILE','AWS_DEFAULT_PROFILE',
+    'AWS_CONFIG_FILE','AWS_SHARED_CREDENTIALS_FILE','AWS_ROLE_ARN','AWS_WEB_IDENTITY_TOKEN_FILE','AWS_ROLE_SESSION_NAME',
+    'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI','AWS_CONTAINER_CREDENTIALS_FULL_URI','AWS_CONTAINER_AUTHORIZATION_TOKEN',
+    'AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE','AWS_ENDPOINT_URL','AWS_ENDPOINT_URL_CLOUDFORMATION','AWS_ENDPOINT_URL_IAM',
+    'AWS_ENDPOINT_URL_STS','AWS_CA_BUNDLE','AWS_DATA_PATH','AWS_REGION','AWS_DEFAULT_REGION'
+  )) { $emptyCredentialEnvironment[$overrideName] = $null }
+  $emptyForbiddenProfileMechanisms = @{}
+  foreach ($profileKey in @(
+    'credential_process','source_profile','credential_source','role_arn','web_identity_token_file',
+    'sso_session','sso_start_url','sso_region','sso_account_id','sso_role_name',
+    'aws_access_key_id','aws_secret_access_key','aws_session_token','endpoint_url','services','ca_bundle'
+  )) { $emptyForbiddenProfileMechanisms[$profileKey] = $false }
+  $validCredentialPostureArguments = @{
+    Profile = 'applypack-staging'
+    LoginSession = 'arn:aws:iam::838445019912:user/applypack-staging-operator'
+    ConfiguredRegion = 'us-east-1'
+    ResolvedCredentialType = 'login'
+    ExpectedArn = 'arn:aws:iam::838445019912:user/applypack-staging-operator'
+    ExpectedRegion = 'us-east-1'
+    ForbiddenProfileMechanisms = $emptyForbiddenProfileMechanisms
+    ConfiguredEndpointsIgnored = $true
+    ProcessEnvironment = $emptyCredentialEnvironment
+  }
+  $apFoundationCredentialPosture = Assert-FoundationBrowserLoginCredentialPosture @validCredentialPostureArguments
   $apGovernedCreateRequest = [ordered]@{
     schemaVersion = 2
     apiAction = 'CreateChangeSet'
@@ -55,6 +222,7 @@ try {
     region = 'us-east-1'
     expectedAccount = '838445019912'
     expectedArn = 'arn:aws:iam::838445019912:user/applypack-staging-operator'
+    credentialPosture = $apFoundationCredentialPosture
     approvedCommitSha = $apApprovedSha
     approvedTreeOid = $apApprovedTree
     approvedTemplateBlobOid = $apApprovedTemplateBlob
@@ -96,45 +264,35 @@ try {
     throw 'CreateChangeSet arguments were not sourced exclusively from the governed request.'
   }
 
-  $emptyCredentialEnvironment = @{
-    AWS_ACCESS_KEY_ID = $null
-    AWS_SECRET_ACCESS_KEY = $null
-    AWS_SESSION_TOKEN = $null
-    AWS_PROFILE = $null
-    AWS_DEFAULT_PROFILE = $null
-  }
-  $credentialPosture = Assert-FoundationBrowserLoginCredentialPosture `
-    -LoginSession $apGovernedCreateRequest.expectedArn `
-    -ConfiguredRegion $apGovernedCreateRequest.region `
-    -ExpectedArn $apGovernedCreateRequest.expectedArn `
-    -ExpectedRegion $apGovernedCreateRequest.region `
-    -StaticAccessKeyConfigured $false `
-    -StaticSecretKeyConfigured $false `
-    -StaticSessionTokenConfigured $false `
-    -ProcessEnvironment $emptyCredentialEnvironment
-  if ($credentialPosture.credentialSource -ne 'aws-login-browser-temporary' -or
-    $credentialPosture.staticCredentialKeyCount -ne 0 -or $credentialPosture.processCredentialOverrideCount -ne 0) {
+  if ($apFoundationCredentialPosture.credentialSource -ne 'aws-login-browser-temporary' -or
+    $apFoundationCredentialPosture.resolvedCredentialType -ne 'login' -or
+    $apFoundationCredentialPosture.forbiddenProfileMechanismCount -ne 0 -or
+    $apFoundationCredentialPosture.processCredentialOverrideCount -ne 0 -or !$apFoundationCredentialPosture.configuredEndpointsIgnored) {
     throw 'Controlled browser-login credential posture receipt is invalid.'
   }
   Assert-Throws -Label 'wrong browser login_session identity' -Action {
-    $null = Assert-FoundationBrowserLoginCredentialPosture -LoginSession 'arn:aws:iam::838445019912:user/wrong' `
-      -ConfiguredRegion $apGovernedCreateRequest.region -ExpectedArn $apGovernedCreateRequest.expectedArn `
-      -ExpectedRegion $apGovernedCreateRequest.region -StaticAccessKeyConfigured $false `
-      -StaticSecretKeyConfigured $false -StaticSessionTokenConfigured $false -ProcessEnvironment $emptyCredentialEnvironment
+    $badArguments = @{} + $validCredentialPostureArguments
+    $badArguments.LoginSession = 'arn:aws:iam::838445019912:user/wrong'
+    $null = Assert-FoundationBrowserLoginCredentialPosture @badArguments
   }
-  Assert-Throws -Label 'static profile credential key' -Action {
-    $null = Assert-FoundationBrowserLoginCredentialPosture -LoginSession $apGovernedCreateRequest.expectedArn `
-      -ConfiguredRegion $apGovernedCreateRequest.region -ExpectedArn $apGovernedCreateRequest.expectedArn `
-      -ExpectedRegion $apGovernedCreateRequest.region -StaticAccessKeyConfigured $true `
-      -StaticSecretKeyConfigured $false -StaticSessionTokenConfigured $false -ProcessEnvironment $emptyCredentialEnvironment
+  Assert-Throws -Label 'resolved credential TYPE non-login' -Action {
+    $badArguments = @{} + $validCredentialPostureArguments
+    $badArguments.ResolvedCredentialType = 'env'
+    $null = Assert-FoundationBrowserLoginCredentialPosture @badArguments
+  }
+  Assert-Throws -Label 'alternate profile credential mechanism' -Action {
+    $badMechanisms = @{} + $emptyForbiddenProfileMechanisms
+    $badMechanisms.credential_process = $true
+    $badArguments = @{} + $validCredentialPostureArguments
+    $badArguments.ForbiddenProfileMechanisms = $badMechanisms
+    $null = Assert-FoundationBrowserLoginCredentialPosture @badArguments
   }
   $overriddenCredentialEnvironment = @{} + $emptyCredentialEnvironment
-  $overriddenCredentialEnvironment.AWS_PROFILE = 'unexpected-profile'
+  $overriddenCredentialEnvironment.AWS_ENDPOINT_URL_CLOUDFORMATION = 'https://attacker.invalid'
   Assert-Throws -Label 'process credential override' -Action {
-    $null = Assert-FoundationBrowserLoginCredentialPosture -LoginSession $apGovernedCreateRequest.expectedArn `
-      -ConfiguredRegion $apGovernedCreateRequest.region -ExpectedArn $apGovernedCreateRequest.expectedArn `
-      -ExpectedRegion $apGovernedCreateRequest.region -StaticAccessKeyConfigured $false `
-      -StaticSecretKeyConfigured $false -StaticSessionTokenConfigured $false -ProcessEnvironment $overriddenCredentialEnvironment
+    $badArguments = @{} + $validCredentialPostureArguments
+    $badArguments.ProcessEnvironment = $overriddenCredentialEnvironment
+    $null = Assert-FoundationBrowserLoginCredentialPosture @badArguments
   }
 
   $apGovernedCreateRequest.tags[0] = 'Key=Application,Value=Tampered'
@@ -212,10 +370,117 @@ try {
     Assert-NoRemainingFoundationChangeSets -Summaries @([pscustomobject]@{ ChangeSetId = $apChangeSetId })
   }
 
+  $script:apMockTags = $tags
+  $script:apMockChanges = $changes
+  $apAws = 'Invoke-ApplyPackMockAws'
+  $apEvidenceDirectory = $work
+  $awsEnvironmentNames = @(
+    'AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY','AWS_SESSION_TOKEN','AWS_PROFILE','AWS_DEFAULT_PROFILE',
+    'AWS_CONFIG_FILE','AWS_SHARED_CREDENTIALS_FILE','AWS_ROLE_ARN','AWS_WEB_IDENTITY_TOKEN_FILE','AWS_ROLE_SESSION_NAME',
+    'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI','AWS_CONTAINER_CREDENTIALS_FULL_URI','AWS_CONTAINER_AUTHORIZATION_TOKEN',
+    'AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE','AWS_ENDPOINT_URL','AWS_ENDPOINT_URL_CLOUDFORMATION','AWS_ENDPOINT_URL_IAM',
+    'AWS_ENDPOINT_URL_STS','AWS_CA_BUNDLE','AWS_DATA_PATH','AWS_REGION','AWS_DEFAULT_REGION',
+    'AWS_IGNORE_CONFIGURED_ENDPOINT_URLS'
+  )
+  $savedAwsEnvironment = @{}
+  foreach ($environmentName in $awsEnvironmentNames) {
+    $savedAwsEnvironment[$environmentName] = [Environment]::GetEnvironmentVariable($environmentName, 'Process')
+    [Environment]::SetEnvironmentVariable($environmentName, $null, 'Process')
+  }
+
+  Reset-ApplyPackMockAws -Mode normal -Scenario success
+  $mockResourceProbe = (& $apAws cloudformation list-stack-resources --stack-name $apStackId --output json | ConvertFrom-Json)
+  if (@($mockResourceProbe.StackResourceSummaries).Count -ne 0) {
+    throw "Mock harness empty-resource fixture is invalid: $($mockResourceProbe | ConvertTo-Json -Depth 10 -Compress)"
+  }
+  Remove-UnexecutedFoundationCreate -ChangeSetId $apChangeSetId -StackId $apStackId
+  if (!$script:apMockChangeSetDeleted -or !$script:apMockStackDeleted) { throw 'Mock normal cleanup did not delete both exact empty artifacts.' }
+  foreach ($normalFailure in @(
+    @{ Scenario='foreign-id'; Label='mock normal cleanup foreign ID' },
+    @{ Scenario='extra-before'; Label='mock normal cleanup exactly one before' },
+    @{ Scenario='remaining-after'; Label='mock normal cleanup zero after' },
+    @{ Scenario='populated-stack'; Label='mock normal cleanup populated stack' },
+    @{ Scenario='executed-plan'; Label='mock normal cleanup executed plan' },
+    @{ Scenario='unavailable-plan'; Label='mock normal cleanup unavailable plan' },
+    @{ Scenario='credential-non-login'; Label='mock normal cleanup credential TYPE non-login' },
+    @{ Scenario='profile-alternate'; Label='mock normal cleanup alternate profile source' },
+    @{ Scenario='template-mismatch'; Label='mock normal cleanup provider template mismatch' }
+  )) {
+    Reset-ApplyPackMockAws -Mode normal -Scenario $normalFailure.Scenario
+    Assert-Throws -Label $normalFailure.Label -Action {
+      Remove-UnexecutedFoundationCreate -ChangeSetId $apChangeSetId -StackId $apStackId
+    }
+  }
+  Reset-ApplyPackMockAws -Mode normal -Scenario success
+  [Environment]::SetEnvironmentVariable('AWS_ROLE_ARN', 'arn:aws:iam::838445019912:role/override', 'Process')
+  Assert-Throws -Label 'mock normal cleanup process override' -Action {
+    Remove-UnexecutedFoundationCreate -ChangeSetId $apChangeSetId -StackId $apStackId
+  }
+  [Environment]::SetEnvironmentVariable('AWS_ROLE_ARN', $null, 'Process')
+
+  $apLegacyApprovedProcedureCommit = '1111111111111111111111111111111111111111'
+  $apLegacyApprovedProcedureTree = '2222222222222222222222222222222222222222'
+  $apLegacyApprovedRunbookBlob = '3333333333333333333333333333333333333333'
+  $apLegacyPlanCommit = '8754e1ec334c19657686a8e4d9885b19ed9b20c7'
+  $apLegacyTemplateBlob = '93b5c575a5ca77f6e94c459f0b74e722cb4b7df1'
+  $apLegacyChangeSetId = 'arn:aws:cloudformation:us-east-1:838445019912:changeSet/applypack-staging-foundation-create-8754e1ec334c/89fd9205-daca-4779-a235-1c8d06092ae8'
+  $apLegacyStackId = 'arn:aws:cloudformation:us-east-1:838445019912:stack/applypack-staging-foundation/56601160-cc81-11f1-8a7c-12ffddd7e50d'
+  $apLegacyChangeSetName = 'applypack-staging-foundation-create-8754e1ec334c'
+  $apLegacyStackName = 'applypack-staging-foundation'
+  $apLegacyExpectedDescription = "ApplyPack staging foundation exact commit $apLegacyPlanCommit"
+  $apLegacyProfile = 'applypack-staging'
+  $apLegacyRegion = 'us-east-1'
+  $apLegacyExpectedAccount = '838445019912'
+  $apLegacyExpectedArn = 'arn:aws:iam::838445019912:user/applypack-staging-operator'
+  $apLegacyEvidenceDirectory = $work
+  $apLegacyReviewedNormalizedSha256 = $apReviewedNormalizedTemplateSha256
+
+  Reset-ApplyPackMockAws -Mode legacy -Scenario success
+  $approvedLegacyReceiptJson = (Get-ExactLegacyFoundationCleanupReceipt | ConvertTo-Json -Depth 10 -Compress)
+  $approvedLegacyReceiptSha256 = Get-Utf8Sha256 -Text $approvedLegacyReceiptJson
+  Reset-ApplyPackMockAws -Mode legacy -Scenario access-key-denied
+  $limitedLegacyReceipt = Get-ExactLegacyFoundationCleanupReceipt
+  if ($limitedLegacyReceipt.accessKeyInventory -ne 'not-authorized') {
+    throw 'Mock legacy cleanup overstated an unavailable access-key inventory.'
+  }
+  foreach ($legacyFailure in @(
+    @{ Scenario='foreign-id'; Label='mock legacy cleanup foreign ID' },
+    @{ Scenario='extra-before'; Label='mock legacy cleanup exactly one before' },
+    @{ Scenario='populated-stack'; Label='mock legacy cleanup populated stack' },
+    @{ Scenario='executed-plan'; Label='mock legacy cleanup executed plan' },
+    @{ Scenario='unavailable-plan'; Label='mock legacy cleanup unavailable plan' },
+    @{ Scenario='credential-non-login'; Label='mock legacy cleanup credential TYPE non-login' },
+    @{ Scenario='profile-alternate'; Label='mock legacy cleanup alternate profile source' },
+    @{ Scenario='mfa-count'; Label='mock legacy cleanup MFA count' },
+    @{ Scenario='access-key-present'; Label='mock legacy cleanup access key present' },
+    @{ Scenario='template-mismatch'; Label='mock legacy cleanup provider template mismatch' }
+  )) {
+    Reset-ApplyPackMockAws -Mode legacy -Scenario $legacyFailure.Scenario
+    Assert-Throws -Label $legacyFailure.Label -Action { $null = Get-ExactLegacyFoundationCleanupReceipt }
+  }
+  Reset-ApplyPackMockAws -Mode legacy -Scenario remaining-after
+  Assert-Throws -Label 'mock legacy cleanup zero after' -Action {
+    Remove-ExactLegacyFoundationPlaceholder -ApprovedReceiptJson $approvedLegacyReceiptJson `
+      -ApprovedReceiptSha256 $approvedLegacyReceiptSha256 `
+      -SupervisorOneApprovedReceiptSha256 $approvedLegacyReceiptSha256 `
+      -SupervisorTwoApprovedReceiptSha256 $approvedLegacyReceiptSha256
+  }
+  Reset-ApplyPackMockAws -Mode legacy -Scenario success
+  Remove-ExactLegacyFoundationPlaceholder -ApprovedReceiptJson $approvedLegacyReceiptJson `
+    -ApprovedReceiptSha256 $approvedLegacyReceiptSha256 `
+    -SupervisorOneApprovedReceiptSha256 $approvedLegacyReceiptSha256 `
+    -SupervisorTwoApprovedReceiptSha256 $approvedLegacyReceiptSha256
+  if (!$script:apMockChangeSetDeleted -or !$script:apMockStackDeleted) { throw 'Mock legacy cleanup did not delete both exact empty artifacts.' }
+
   'AWS_STAGING_FOUNDATION_CONTROLS_OK'
 } finally {
   if ($null -ne $apGovernedCreateRequestPath -and (Test-Path -LiteralPath $apGovernedCreateRequestPath)) {
     [IO.File]::SetAttributes($apGovernedCreateRequestPath, [IO.FileAttributes]::Normal)
+  }
+  if ($null -ne $savedAwsEnvironment) {
+    foreach ($environmentName in $savedAwsEnvironment.Keys) {
+      [Environment]::SetEnvironmentVariable($environmentName, $savedAwsEnvironment[$environmentName], 'Process')
+    }
   }
   if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
 }

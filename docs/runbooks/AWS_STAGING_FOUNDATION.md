@@ -131,6 +131,45 @@ $apRegion = 'us-east-1'
 $apStackName = 'applypack-staging-foundation'
 $apExpectedAccount = '838445019912'
 $apExpectedArn = 'arn:aws:iam::838445019912:user/applypack-staging-operator'
+$apIdentityOverrideNames = @(
+  'AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY','AWS_SESSION_TOKEN','AWS_PROFILE','AWS_DEFAULT_PROFILE',
+  'AWS_CONFIG_FILE','AWS_SHARED_CREDENTIALS_FILE','AWS_ROLE_ARN','AWS_WEB_IDENTITY_TOKEN_FILE','AWS_ROLE_SESSION_NAME',
+  'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI','AWS_CONTAINER_CREDENTIALS_FULL_URI','AWS_CONTAINER_AUTHORIZATION_TOKEN',
+  'AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE','AWS_ENDPOINT_URL','AWS_ENDPOINT_URL_CLOUDFORMATION','AWS_ENDPOINT_URL_IAM',
+  'AWS_ENDPOINT_URL_STS','AWS_CA_BUNDLE','AWS_DATA_PATH','AWS_REGION','AWS_DEFAULT_REGION'
+)
+foreach ($apIdentityOverrideName in $apIdentityOverrideNames) {
+  if (![string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($apIdentityOverrideName, 'Process'))) {
+    throw "Unapproved AWS process override is present: $apIdentityOverrideName"
+  }
+}
+$apIdentityConfigureListText = (& $apAws configure list --profile $apProfile 2>&1 | Out-String)
+if ($LASTEXITCODE -ne 0 -or
+  $apIdentityConfigureListText -notmatch '(?m)^\s*access_key\s+\S+\s+login(?:\s+.*)?$' -or
+  $apIdentityConfigureListText -notmatch '(?m)^\s*secret_key\s+\S+\s+login(?:\s+.*)?$') {
+  throw 'Staging profile credentials are not resolved exclusively through aws login.'
+}
+$apIdentityLoginSession = [string](& $apAws configure get login_session --profile $apProfile 2>$null)
+if ($LASTEXITCODE -ne 0 -or $apIdentityLoginSession.Trim() -ne $apExpectedArn) {
+  throw 'Staging profile login_session is not the exact approved IAM user.'
+}
+$apIdentityConfiguredRegion = [string](& $apAws configure get region --profile $apProfile 2>$null)
+if ($LASTEXITCODE -ne 0 -or $apIdentityConfiguredRegion.Trim() -ne $apRegion) {
+  throw 'Staging profile region is not exactly us-east-1.'
+}
+foreach ($apIdentityProfileKey in @(
+  'credential_process','source_profile','credential_source','role_arn','web_identity_token_file',
+  'sso_session','sso_start_url','sso_region','sso_account_id','sso_role_name',
+  'aws_access_key_id','aws_secret_access_key','aws_session_token','endpoint_url','services','ca_bundle'
+)) {
+  & $apAws configure get $apIdentityProfileKey --profile $apProfile *> $null
+  if ($LASTEXITCODE -eq 0) { throw "Unapproved staging profile mechanism is configured: $apIdentityProfileKey" }
+  if ($LASTEXITCODE -ne 1) { throw "Could not inspect staging profile mechanism: $apIdentityProfileKey" }
+}
+[Environment]::SetEnvironmentVariable('AWS_IGNORE_CONFIGURED_ENDPOINT_URLS', 'true', 'Process')
+if ([Environment]::GetEnvironmentVariable('AWS_IGNORE_CONFIGURED_ENDPOINT_URLS', 'Process') -cne 'true') {
+  throw 'Configured AWS endpoints could not be forced off.'
+}
 $apIdentity = (& $apAws sts get-caller-identity --profile $apProfile --region $apRegion --output json | ConvertFrom-Json)
 if ($LASTEXITCODE -ne 0 -or $apIdentity.Account -ne $apExpectedAccount -or $apIdentity.Arn -ne $apExpectedArn) {
   throw 'Staging AWS identity mismatch. Do not deploy.'
@@ -177,7 +216,7 @@ foreach ($apKeySummary in $apKeys.Keys) {
 
 $apVpcCollisions = (& $apAws ec2 describe-vpcs --profile $apProfile --region $apRegion --filters 'Name=cidr-block,Values=10.84.0.0/16' --output json | ConvertFrom-Json).Vpcs
 if ($LASTEXITCODE -ne 0) { throw 'Could not prove staging VPC CIDR absence.' }
-if ($apVpcCollisions.Count -ne 0) { throw 'The exact staging foundation VPC CIDR already exists.' }
+if (@($apVpcCollisions).Count -ne 0) { throw 'The exact staging foundation VPC CIDR already exists.' }
 
 & $apAws cloudformation validate-template --profile $apProfile --region $apRegion --template-body $apReviewedTemplateUri *> $null
 if ($LASTEXITCODE -ne 0) { throw 'Provider rejected the exact reviewed template.' }
@@ -223,15 +262,32 @@ function Get-OptionalProviderPropertyValue {
   $apProperty.Value
 }
 
+function Get-FoundationConfigureListCredentialType {
+  param([Parameter(Mandatory)] [string] $ConfigureListText)
+  $apCredentialTypes = @{}
+  foreach ($apLine in @($ConfigureListText -split "`r?`n")) {
+    if ($apLine -match '^\s*(access_key|secret_key)\s+\S+\s+(\S+)(?:\s+.*)?$') {
+      if ($apCredentialTypes.ContainsKey($Matches[1])) { throw 'AWS configure list returned a duplicate credential row.' }
+      $apCredentialTypes[$Matches[1]] = $Matches[2]
+    }
+  }
+  if ($apCredentialTypes.Count -ne 2 -or $apCredentialTypes.access_key -ne 'login' -or
+    $apCredentialTypes.secret_key -ne 'login') {
+    throw 'Resolved AWS credential type is not exactly login.'
+  }
+  'login'
+}
+
 function Assert-FoundationBrowserLoginCredentialPosture {
   param(
+    [Parameter(Mandatory)] [string] $Profile,
     [Parameter(Mandatory)] [string] $LoginSession,
     [Parameter(Mandatory)] [string] $ConfiguredRegion,
+    [Parameter(Mandatory)] [string] $ResolvedCredentialType,
     [Parameter(Mandatory)] [string] $ExpectedArn,
     [Parameter(Mandatory)] [string] $ExpectedRegion,
-    [Parameter(Mandatory)] [bool] $StaticAccessKeyConfigured,
-    [Parameter(Mandatory)] [bool] $StaticSecretKeyConfigured,
-    [Parameter(Mandatory)] [bool] $StaticSessionTokenConfigured,
+    [Parameter(Mandatory)] [Collections.IDictionary] $ForbiddenProfileMechanisms,
+    [Parameter(Mandatory)] [bool] $ConfiguredEndpointsIgnored,
     [Parameter(Mandatory)] [Collections.IDictionary] $ProcessEnvironment
   )
   $apExactOverrideNames = @(
@@ -239,22 +295,106 @@ function Assert-FoundationBrowserLoginCredentialPosture {
     'AWS_SECRET_ACCESS_KEY',
     'AWS_SESSION_TOKEN',
     'AWS_PROFILE',
-    'AWS_DEFAULT_PROFILE'
+    'AWS_DEFAULT_PROFILE',
+    'AWS_CONFIG_FILE',
+    'AWS_SHARED_CREDENTIALS_FILE',
+    'AWS_ROLE_ARN',
+    'AWS_WEB_IDENTITY_TOKEN_FILE',
+    'AWS_ROLE_SESSION_NAME',
+    'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI',
+    'AWS_CONTAINER_CREDENTIALS_FULL_URI',
+    'AWS_CONTAINER_AUTHORIZATION_TOKEN',
+    'AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE',
+    'AWS_ENDPOINT_URL',
+    'AWS_ENDPOINT_URL_CLOUDFORMATION',
+    'AWS_ENDPOINT_URL_IAM',
+    'AWS_ENDPOINT_URL_STS',
+    'AWS_CA_BUNDLE',
+    'AWS_DATA_PATH',
+    'AWS_REGION',
+    'AWS_DEFAULT_REGION'
+  )
+  $apExactForbiddenProfileMechanisms = @(
+    'credential_process',
+    'source_profile',
+    'credential_source',
+    'role_arn',
+    'web_identity_token_file',
+    'sso_session',
+    'sso_start_url',
+    'sso_region',
+    'sso_account_id',
+    'sso_role_name',
+    'aws_access_key_id',
+    'aws_secret_access_key',
+    'aws_session_token',
+    'endpoint_url',
+    'services',
+    'ca_bundle'
   )
   $apActualOverrideNames = @($ProcessEnvironment.Keys | ForEach-Object { [string]$_ } | Sort-Object)
+  $apActualForbiddenProfileMechanisms = @($ForbiddenProfileMechanisms.Keys | ForEach-Object { [string]$_ } | Sort-Object)
   if (@(Compare-Object -ReferenceObject @($apExactOverrideNames | Sort-Object) -DifferenceObject $apActualOverrideNames).Count -ne 0 -or
-    $LoginSession -ne $ExpectedArn -or $ConfiguredRegion -ne $ExpectedRegion -or
-    $StaticAccessKeyConfigured -or $StaticSecretKeyConfigured -or $StaticSessionTokenConfigured -or
+    @(Compare-Object -ReferenceObject @($apExactForbiddenProfileMechanisms | Sort-Object) -DifferenceObject $apActualForbiddenProfileMechanisms).Count -ne 0 -or
+    $Profile -ne 'applypack-staging' -or $LoginSession -ne $ExpectedArn -or $ConfiguredRegion -ne $ExpectedRegion -or
+    $ResolvedCredentialType -ne 'login' -or !$ConfiguredEndpointsIgnored -or
+    @($ForbiddenProfileMechanisms.GetEnumerator() | Where-Object { [bool]$_.Value }).Count -ne 0 -or
     @($ProcessEnvironment.GetEnumerator() | Where-Object { ![string]::IsNullOrWhiteSpace([string]$_.Value) }).Count -ne 0) {
     throw 'AWS browser-login profile posture is not the exact temporary-credential configuration.'
   }
   [ordered]@{
+    profile = $Profile
     credentialSource = 'aws-login-browser-temporary'
+    resolvedCredentialType = $ResolvedCredentialType
     loginSession = $LoginSession
     configuredRegion = $ConfiguredRegion
-    staticCredentialKeyCount = 0
+    forbiddenProfileMechanismCount = 0
     processCredentialOverrideCount = 0
+    configuredEndpointsIgnored = $true
   }
+}
+
+function Get-ExactFoundationBrowserLoginCredentialPosture {
+  param(
+    [Parameter(Mandatory)] [string] $Profile,
+    [Parameter(Mandatory)] [string] $ExpectedArn,
+    [Parameter(Mandatory)] [string] $ExpectedRegion
+  )
+  [Environment]::SetEnvironmentVariable('AWS_IGNORE_CONFIGURED_ENDPOINT_URLS', 'true', 'Process')
+  $apConfiguredEndpointsIgnored = [Environment]::GetEnvironmentVariable('AWS_IGNORE_CONFIGURED_ENDPOINT_URLS', 'Process') -ceq 'true'
+  $apConfigureListText = (& $apAws configure list --profile $Profile 2>&1 | Out-String)
+  if ($LASTEXITCODE -ne 0) { throw 'AWS configure list could not resolve the exact browser-login profile.' }
+  $apResolvedCredentialType = Get-FoundationConfigureListCredentialType -ConfigureListText $apConfigureListText
+  $apLoginSession = [string](& $apAws configure get login_session --profile $Profile 2>$null)
+  if ($LASTEXITCODE -ne 0) { throw 'AWS browser-login session binding is unavailable.' }
+  $apConfiguredRegion = [string](& $apAws configure get region --profile $Profile 2>$null)
+  if ($LASTEXITCODE -ne 0) { throw 'AWS configured region is unavailable.' }
+  $apForbiddenProfileMechanisms = @{}
+  foreach ($apProfileKey in @(
+    'credential_process','source_profile','credential_source','role_arn','web_identity_token_file',
+    'sso_session','sso_start_url','sso_region','sso_account_id','sso_role_name',
+    'aws_access_key_id','aws_secret_access_key','aws_session_token','endpoint_url','services','ca_bundle'
+  )) {
+    & $apAws configure get $apProfileKey --profile $Profile *> $null
+    if ($LASTEXITCODE -eq 0) { $apForbiddenProfileMechanisms[$apProfileKey] = $true }
+    elseif ($LASTEXITCODE -eq 1) { $apForbiddenProfileMechanisms[$apProfileKey] = $false }
+    else { throw "AWS profile mechanism inspection failed for $apProfileKey." }
+  }
+  $apProcessEnvironment = @{}
+  foreach ($apOverrideName in @(
+    'AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY','AWS_SESSION_TOKEN','AWS_PROFILE','AWS_DEFAULT_PROFILE',
+    'AWS_CONFIG_FILE','AWS_SHARED_CREDENTIALS_FILE','AWS_ROLE_ARN','AWS_WEB_IDENTITY_TOKEN_FILE','AWS_ROLE_SESSION_NAME',
+    'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI','AWS_CONTAINER_CREDENTIALS_FULL_URI','AWS_CONTAINER_AUTHORIZATION_TOKEN',
+    'AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE','AWS_ENDPOINT_URL','AWS_ENDPOINT_URL_CLOUDFORMATION','AWS_ENDPOINT_URL_IAM',
+    'AWS_ENDPOINT_URL_STS','AWS_CA_BUNDLE','AWS_DATA_PATH','AWS_REGION','AWS_DEFAULT_REGION'
+  )) {
+    $apProcessEnvironment[$apOverrideName] = [Environment]::GetEnvironmentVariable($apOverrideName, 'Process')
+  }
+  Assert-FoundationBrowserLoginCredentialPosture -Profile $Profile -LoginSession $apLoginSession.Trim() `
+    -ConfiguredRegion $apConfiguredRegion.Trim() -ResolvedCredentialType $apResolvedCredentialType `
+    -ExpectedArn $ExpectedArn -ExpectedRegion $ExpectedRegion `
+    -ForbiddenProfileMechanisms $apForbiddenProfileMechanisms `
+    -ConfiguredEndpointsIgnored $apConfiguredEndpointsIgnored -ProcessEnvironment $apProcessEnvironment
 }
 
 function Assert-GovernedFoundationCreateRequest {
@@ -271,6 +411,8 @@ function Assert-GovernedFoundationCreateRequest {
     $apGovernedCreateRequest.region -ne 'us-east-1' -or
     $apGovernedCreateRequest.expectedAccount -ne '838445019912' -or
     $apGovernedCreateRequest.expectedArn -ne 'arn:aws:iam::838445019912:user/applypack-staging-operator' -or
+    ($apGovernedCreateRequest.credentialPosture | ConvertTo-Json -Depth 10 -Compress) -cne
+      ($apFoundationCredentialPosture | ConvertTo-Json -Depth 10 -Compress) -or
     $apGovernedCreateRequest.approvedCommitSha -ne $apApprovedSha -or
     $apGovernedCreateRequest.approvedTreeOid -ne $apApprovedTree -or
     $apGovernedCreateRequest.approvedTemplateBlobOid -ne $apApprovedTemplateBlob -or
@@ -319,6 +461,13 @@ function Assert-GovernedFoundationIdentityAndTemplate {
 }
 
 function Confirm-GovernedFoundationIdentityAndTemplate {
+  $apFreshCredentialPosture = Get-ExactFoundationBrowserLoginCredentialPosture `
+    -Profile $apGovernedCreateRequest.profile -ExpectedArn $apGovernedCreateRequest.expectedArn `
+    -ExpectedRegion $apGovernedCreateRequest.region
+  if (($apFreshCredentialPosture | ConvertTo-Json -Depth 10 -Compress) -cne
+    ($apGovernedCreateRequest.credentialPosture | ConvertTo-Json -Depth 10 -Compress)) {
+    throw 'Fresh governed browser-login credential posture changed.'
+  }
   $apFreshIdentity = (& $apAws sts get-caller-identity --profile $apGovernedCreateRequest.profile --region $apGovernedCreateRequest.region --output json | ConvertFrom-Json)
   if ($LASTEXITCODE -ne 0) { throw 'Fresh governed staging identity lookup failed.' }
   Assert-GovernedFoundationIdentityAndTemplate -Identity $apFreshIdentity
@@ -360,7 +509,7 @@ function Get-FoundationProviderTemplateReceipt {
   try {
     [IO.File]::WriteAllText($apProviderTemplatePath, $apProviderTemplateText, [Text.UTF8Encoding]::new($false))
     $apProviderBodySha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $apProviderTemplatePath).Hash.ToLowerInvariant()
-    $apProviderNormalizedLine = (node $apValidatorPath --template $apProviderTemplatePath --print-template-sha256).Trim()
+    $apProviderNormalizedLine = (node $apValidatorPath --template $apProviderTemplatePath --print-template-sha256 2>$null).Trim()
     if ($LASTEXITCODE -ne 0 -or $apProviderNormalizedLine -notmatch '^AWS_STAGING_FOUNDATION_TEMPLATE_SHA256=([a-f0-9]{64})$' -or
       $Matches[1] -ne $apGovernedCreateRequest.reviewedNormalizedTemplateSha256) {
       throw 'Provider change-set template does not match the governed normalized template.'
@@ -444,6 +593,7 @@ function Get-FoundationChangeSetReceipt {
     region = $apGovernedCreateRequest.region
     expectedAccount = $apGovernedCreateRequest.expectedAccount
     expectedArn = $apGovernedCreateRequest.expectedArn
+    credentialPosture = $apGovernedCreateRequest.credentialPosture
     governedCreateRequestSha256 = $apGovernedCreateRequestSha256
     requestedChangeSetType = $apGovernedCreateRequest.changeSetType
     status = $ChangeSet.Status
@@ -464,7 +614,6 @@ function Assert-NoRemainingFoundationChangeSets {
   param([Parameter(Mandatory)] $Summaries)
   if (@($Summaries).Count -ne 0) { throw 'Remaining change sets exist; placeholder deletion is forbidden.' }
 }
-# APPLYPACK_FOUNDATION_CONTROL_FUNCTIONS_END
 
 function Remove-UnexecutedFoundationCreate {
   param(
@@ -489,10 +638,10 @@ function Remove-UnexecutedFoundationCreate {
   }
   $apPlaceholder = (& $apAws cloudformation describe-stacks --profile $apGovernedCreateRequest.profile --region $apGovernedCreateRequest.region --stack-name $StackId --output json | ConvertFrom-Json).Stacks[0]
   $apPlaceholderResources = (& $apAws cloudformation list-stack-resources --profile $apGovernedCreateRequest.profile --region $apGovernedCreateRequest.region --stack-name $StackId --output json | ConvertFrom-Json).StackResourceSummaries
-  if ($LASTEXITCODE -ne 0 -or $apPlaceholder.StackId -ne $StackId -or $apPlaceholder.StackStatus -ne 'REVIEW_IN_PROGRESS' -or
-    $apPlaceholderResources.Count -ne 0) {
-    throw 'Exact REVIEW_IN_PROGRESS placeholder is not empty; cleanup stopped.'
-  }
+  if ($LASTEXITCODE -ne 0) { throw 'FOUNDATION_CLEANUP_PLACEHOLDER_READ_FAILED' }
+  if ($apPlaceholder.StackId -ne $StackId) { throw 'FOUNDATION_CLEANUP_PLACEHOLDER_ID_MISMATCH' }
+  if ($apPlaceholder.StackStatus -ne 'REVIEW_IN_PROGRESS') { throw 'FOUNDATION_CLEANUP_PLACEHOLDER_STATE_MISMATCH' }
+  if (@($apPlaceholderResources).Count -ne 0) { throw 'FOUNDATION_CLEANUP_PLACEHOLDER_NOT_EMPTY' }
   if ($apDeleteState.Status -eq 'CREATE_COMPLETE') {
     $apDeleteTemplateReceipt = Get-FoundationProviderTemplateReceipt -ChangeSetId $ChangeSetId -StackId $StackId
     $null = Get-FoundationChangeSetReceipt -ChangeSet $apDeleteState -TerminationProtectionEnabled ([bool]$apPlaceholder.EnableTerminationProtection) -ProviderTemplateReceipt $apDeleteTemplateReceipt
@@ -505,7 +654,7 @@ function Remove-UnexecutedFoundationCreate {
   $apPlaceholder = (& $apAws cloudformation describe-stacks --profile $apGovernedCreateRequest.profile --region $apGovernedCreateRequest.region --stack-name $StackId --output json | ConvertFrom-Json).Stacks[0]
   $apPlaceholderResources = (& $apAws cloudformation list-stack-resources --profile $apGovernedCreateRequest.profile --region $apGovernedCreateRequest.region --stack-name $StackId --output json | ConvertFrom-Json).StackResourceSummaries
   if ($LASTEXITCODE -ne 0 -or $apPlaceholder.StackId -ne $StackId -or $apPlaceholder.StackStatus -ne 'REVIEW_IN_PROGRESS' -or
-    $apPlaceholderResources.Count -ne 0) {
+    @($apPlaceholderResources).Count -ne 0) {
     throw 'Empty placeholder changed after change-set deletion; stack cleanup stopped.'
   }
   if ($apPlaceholder.EnableTerminationProtection -eq $true) {
@@ -519,7 +668,10 @@ function Remove-UnexecutedFoundationCreate {
   & $apAws cloudformation wait stack-delete-complete --profile $apGovernedCreateRequest.profile --region $apGovernedCreateRequest.region --stack-name $StackId
   if ($LASTEXITCODE -ne 0) { throw 'Exact empty placeholder deletion was not proven complete.' }
 }
+# APPLYPACK_FOUNDATION_CONTROL_FUNCTIONS_END
 
+$apFoundationCredentialPosture = Get-ExactFoundationBrowserLoginCredentialPosture `
+  -Profile $apProfile -ExpectedArn $apExpectedArn -ExpectedRegion $apRegion
 $apChangeSetName = "applypack-staging-foundation-create-$($apApprovedSha.Substring(0, 12))"
 $apGovernedCreateRequest = [ordered]@{
   schemaVersion = 2
@@ -528,6 +680,7 @@ $apGovernedCreateRequest = [ordered]@{
   region = $apRegion
   expectedAccount = $apExpectedAccount
   expectedArn = $apExpectedArn
+  credentialPosture = $apFoundationCredentialPosture
   approvedCommitSha = $apApprovedSha
   approvedTreeOid = $apApprovedTree
   approvedTemplateBlobOid = $apApprovedTemplateBlob
@@ -584,7 +737,7 @@ $apChangeSet = (& $apAws cloudformation describe-change-set --profile $apGoverne
 $apPlaceholder = (& $apAws cloudformation describe-stacks --profile $apGovernedCreateRequest.profile --region $apGovernedCreateRequest.region --stack-name $apStackId --output json | ConvertFrom-Json).Stacks[0]
 $apPlaceholderResources = (& $apAws cloudformation list-stack-resources --profile $apGovernedCreateRequest.profile --region $apGovernedCreateRequest.region --stack-name $apStackId --output json | ConvertFrom-Json).StackResourceSummaries
 if ($LASTEXITCODE -ne 0 -or $apPlaceholder.StackId -ne $apStackId -or $apPlaceholder.StackStatus -ne 'REVIEW_IN_PROGRESS' -or
-  $apPlaceholderResources.Count -ne 0) {
+  @($apPlaceholderResources).Count -ne 0) {
   throw 'CREATE change set did not yield the exact empty REVIEW_IN_PROGRESS stack.'
 }
 $apEnableResult = (& $apAws cloudformation update-termination-protection --profile $apGovernedCreateRequest.profile --region $apGovernedCreateRequest.region --stack-name $apStackId --enable-termination-protection --output json | ConvertFrom-Json)
@@ -624,7 +777,7 @@ $apExecutePlaceholder = (& $apAws cloudformation describe-stacks --profile $apGo
 $apExecuteResources = (& $apAws cloudformation list-stack-resources --profile $apGovernedCreateRequest.profile --region $apGovernedCreateRequest.region --stack-name $apStackId --output json | ConvertFrom-Json).StackResourceSummaries
 if ($LASTEXITCODE -ne 0 -or $apExecutePlaceholder.StackId -ne $apStackId -or
   $apExecutePlaceholder.StackStatus -ne 'REVIEW_IN_PROGRESS' -or $apExecutePlaceholder.EnableTerminationProtection -ne $true -or
-  $apExecuteResources.Count -ne 0) {
+  @($apExecuteResources).Count -ne 0) {
   throw 'Exact protected empty stack is no longer ready for execution.'
 }
 $apExecuteProviderTemplateReceipt = Get-FoundationProviderTemplateReceipt -ChangeSetId $apChangeSetId -StackId $apStackId
@@ -712,34 +865,10 @@ if ($LASTEXITCODE -ne 0 -or $apLegacyNormalizedLine -notmatch '^AWS_STAGING_FOUN
 }
 $apLegacyReviewedNormalizedSha256 = $Matches[1]
 
+# APPLYPACK_LEGACY_CLEANUP_FUNCTIONS_BEGIN
 function Get-ExactLegacyFoundationCleanupReceipt {
-  $apLegacyLoginSession = (& $apAws configure get login_session --profile $apLegacyProfile).Trim()
-  if ($LASTEXITCODE -ne 0) { throw 'Legacy cleanup browser-login session binding is unavailable.' }
-  $apLegacyConfiguredRegion = (& $apAws configure get region --profile $apLegacyProfile).Trim()
-  if ($LASTEXITCODE -ne 0) { throw 'Legacy cleanup configured region is unavailable.' }
-
-  & $apAws configure get aws_access_key_id --profile $apLegacyProfile *> $null
-  $apLegacyStaticAccessKeyConfigured = $LASTEXITCODE -eq 0
-  if ($LASTEXITCODE -notin @(0, 1)) { throw 'Legacy cleanup could not inspect the profile access-key configuration.' }
-  & $apAws configure get aws_secret_access_key --profile $apLegacyProfile *> $null
-  $apLegacyStaticSecretKeyConfigured = $LASTEXITCODE -eq 0
-  if ($LASTEXITCODE -notin @(0, 1)) { throw 'Legacy cleanup could not inspect the profile secret-key configuration.' }
-  & $apAws configure get aws_session_token --profile $apLegacyProfile *> $null
-  $apLegacyStaticSessionTokenConfigured = $LASTEXITCODE -eq 0
-  if ($LASTEXITCODE -notin @(0, 1)) { throw 'Legacy cleanup could not inspect the profile session-token configuration.' }
-  $apLegacyProcessEnvironment = @{}
-  foreach ($apLegacyOverrideName in @('AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY','AWS_SESSION_TOKEN','AWS_PROFILE','AWS_DEFAULT_PROFILE')) {
-    $apLegacyProcessEnvironment[$apLegacyOverrideName] = [Environment]::GetEnvironmentVariable($apLegacyOverrideName, 'Process')
-  }
-  $apLegacyCredentialPosture = Assert-FoundationBrowserLoginCredentialPosture `
-    -LoginSession $apLegacyLoginSession `
-    -ConfiguredRegion $apLegacyConfiguredRegion `
-    -ExpectedArn $apLegacyExpectedArn `
-    -ExpectedRegion $apLegacyRegion `
-    -StaticAccessKeyConfigured $apLegacyStaticAccessKeyConfigured `
-    -StaticSecretKeyConfigured $apLegacyStaticSecretKeyConfigured `
-    -StaticSessionTokenConfigured $apLegacyStaticSessionTokenConfigured `
-    -ProcessEnvironment $apLegacyProcessEnvironment
+  $apLegacyCredentialPosture = Get-ExactFoundationBrowserLoginCredentialPosture `
+    -Profile $apLegacyProfile -ExpectedArn $apLegacyExpectedArn -ExpectedRegion $apLegacyRegion
 
   $apLegacyIdentity = (& $apAws sts get-caller-identity --profile $apLegacyProfile --region $apLegacyRegion --output json | ConvertFrom-Json)
   if ($LASTEXITCODE -ne 0 -or $apLegacyIdentity.Account -ne $apLegacyExpectedAccount -or
@@ -749,6 +878,19 @@ function Get-ExactLegacyFoundationCleanupReceipt {
   $apLegacyMfa = (& $apAws iam list-mfa-devices --profile $apLegacyProfile --region $apLegacyRegion `
     --user-name applypack-staging-operator --output json | ConvertFrom-Json).MFADevices
   if ($LASTEXITCODE -ne 0 -or @($apLegacyMfa).Count -ne 1) { throw 'Legacy cleanup requires exactly one assigned MFA device.' }
+  $apLegacyAccessKeyInventoryOutput = (& $apAws iam list-access-keys --profile $apLegacyProfile --region $apLegacyRegion `
+    --user-name applypack-staging-operator --output json 2>&1 | Out-String)
+  if ($LASTEXITCODE -eq 0) {
+    $apLegacyAccessKeyInventory = $apLegacyAccessKeyInventoryOutput | ConvertFrom-Json
+    if (@($apLegacyAccessKeyInventory.AccessKeyMetadata).Count -ne 0) {
+      throw 'Legacy cleanup user has a long-term access key; cleanup is forbidden.'
+    }
+    $apLegacyAccessKeyInventoryStatus = 'verified-zero'
+  } elseif ($apLegacyAccessKeyInventoryOutput -match 'AccessDenied|UnauthorizedOperation') {
+    $apLegacyAccessKeyInventoryStatus = 'not-authorized'
+  } else {
+    throw 'Legacy cleanup access-key inventory failed without an expected authorization boundary.'
+  }
 
   $apLegacyChangeSet = (& $apAws cloudformation describe-change-set --profile $apLegacyProfile --region $apLegacyRegion `
     --change-set-name $apLegacyChangeSetId --output json | ConvertFrom-Json)
@@ -809,7 +951,7 @@ function Get-ExactLegacyFoundationCleanupReceipt {
   $apLegacyProviderPath = Join-Path $apLegacyEvidenceDirectory "provider-$([Guid]::NewGuid().ToString('N')).yaml"
   try {
     [IO.File]::WriteAllText($apLegacyProviderPath, $apLegacyProviderText, [Text.UTF8Encoding]::new($false))
-    $apLegacyProviderNormalizedLine = (node $apValidatorPath --template $apLegacyProviderPath --print-template-sha256).Trim()
+    $apLegacyProviderNormalizedLine = (node $apValidatorPath --template $apLegacyProviderPath --print-template-sha256 2>$null).Trim()
     if ($LASTEXITCODE -ne 0 -or $apLegacyProviderNormalizedLine -notmatch '^AWS_STAGING_FOUNDATION_TEMPLATE_SHA256=([a-f0-9]{64})$' -or
       $Matches[1] -ne $apLegacyReviewedNormalizedSha256) { throw 'Legacy cleanup provider template changed.' }
     $apLegacyProviderNormalizedSha256 = $Matches[1]
@@ -820,17 +962,62 @@ function Get-ExactLegacyFoundationCleanupReceipt {
     schemaVersion=1; procedureCommit=$apLegacyApprovedProcedureCommit; procedureTree=$apLegacyApprovedProcedureTree
     procedureRunbookBlob=$apLegacyApprovedRunbookBlob; planCommit=$apLegacyPlanCommit; templateBlob=$apLegacyTemplateBlob
     account=$apLegacyIdentity.Account; arn=$apLegacyIdentity.Arn
-    credentialSource=$apLegacyCredentialPosture.credentialSource; loginSession=$apLegacyCredentialPosture.loginSession
+    profile=$apLegacyCredentialPosture.profile; credentialSource=$apLegacyCredentialPosture.credentialSource
+    resolvedCredentialType=$apLegacyCredentialPosture.resolvedCredentialType; loginSession=$apLegacyCredentialPosture.loginSession
     configuredRegion=$apLegacyCredentialPosture.configuredRegion
-    staticCredentialKeyCount=$apLegacyCredentialPosture.staticCredentialKeyCount
+    forbiddenProfileMechanismCount=$apLegacyCredentialPosture.forbiddenProfileMechanismCount
     processCredentialOverrideCount=$apLegacyCredentialPosture.processCredentialOverrideCount
-    mfaDeviceCount=@($apLegacyMfa).Count
+    configuredEndpointsIgnored=$apLegacyCredentialPosture.configuredEndpointsIgnored
+    mfaDeviceCount=@($apLegacyMfa).Count; accessKeyInventory=$apLegacyAccessKeyInventoryStatus
     changeSetId=$apLegacyChangeSetId; stackId=$apLegacyStackId; status='CREATE_COMPLETE'; executionStatus='AVAILABLE'
     onStackFailure='ROLLBACK'; stackStatus='REVIEW_IN_PROGRESS'; terminationProtectionEnabled=$false
     resourceCount=0; remainingChangeSetCount=1; tags=$apLegacyActualTags
     providerNormalizedTemplateSha256=$apLegacyProviderNormalizedSha256; changes=$apLegacySanitizedChanges
   }
 }
+
+function Remove-ExactLegacyFoundationPlaceholder {
+  param(
+    [Parameter(Mandatory)] [string] $ApprovedReceiptJson,
+    [Parameter(Mandatory)] [string] $ApprovedReceiptSha256,
+    [Parameter(Mandatory)] [string] $SupervisorOneApprovedReceiptSha256,
+    [Parameter(Mandatory)] [string] $SupervisorTwoApprovedReceiptSha256
+  )
+  $apLegacyFreshReceiptJson = (Get-ExactLegacyFoundationCleanupReceipt | ConvertTo-Json -Depth 10 -Compress)
+  $apLegacyFreshReceiptSha256 = Get-Utf8Sha256 -Text $apLegacyFreshReceiptJson
+  if ($apLegacyFreshReceiptJson -cne $ApprovedReceiptJson -or
+    $apLegacyFreshReceiptSha256 -ne $ApprovedReceiptSha256 -or
+    $SupervisorOneApprovedReceiptSha256 -ne $apLegacyFreshReceiptSha256 -or
+    $SupervisorTwoApprovedReceiptSha256 -ne $apLegacyFreshReceiptSha256) {
+    throw 'Legacy cleanup state or two-supervisor approval changed; deletion forbidden.'
+  }
+  & $apAws cloudformation delete-change-set --profile $apLegacyProfile --region $apLegacyRegion --change-set-name $apLegacyChangeSetId
+  if ($LASTEXITCODE -ne 0) { throw 'Exact legacy change-set deletion failed.' }
+  $apLegacyRemaining = (& $apAws cloudformation list-change-sets --profile $apLegacyProfile --region $apLegacyRegion `
+    --stack-name $apLegacyStackId --output json | ConvertFrom-Json).Summaries
+  if ($LASTEXITCODE -ne 0) { throw 'Legacy cleanup could not enumerate change sets after deletion.' }
+  Assert-NoRemainingFoundationChangeSets -Summaries $apLegacyRemaining
+  $apLegacyEmptyStack = (& $apAws cloudformation describe-stacks --profile $apLegacyProfile --region $apLegacyRegion `
+    --stack-name $apLegacyStackId --output json | ConvertFrom-Json).Stacks[0]
+  $apLegacyEmptyResources = (& $apAws cloudformation list-stack-resources --profile $apLegacyProfile --region $apLegacyRegion `
+    --stack-name $apLegacyStackId --output json | ConvertFrom-Json).StackResourceSummaries
+  if ($LASTEXITCODE -ne 0 -or $apLegacyEmptyStack.StackId -ne $apLegacyStackId -or
+    $apLegacyEmptyStack.StackStatus -ne 'REVIEW_IN_PROGRESS' -or $apLegacyEmptyStack.EnableTerminationProtection -ne $false -or
+    @($apLegacyEmptyResources).Count -ne 0) { throw 'Legacy placeholder changed after exact change-set deletion.' }
+  & $apAws cloudformation delete-stack --profile $apLegacyProfile --region $apLegacyRegion --stack-name $apLegacyStackId
+  if ($LASTEXITCODE -ne 0) { throw 'Exact legacy empty placeholder deletion request failed.' }
+  & $apAws cloudformation wait stack-delete-complete --profile $apLegacyProfile --region $apLegacyRegion --stack-name $apLegacyStackId
+  if ($LASTEXITCODE -ne 0) { throw 'Exact legacy empty placeholder deletion was not confirmed.' }
+  $apLegacyActiveAfterDelete = (& $apAws cloudformation list-stacks --profile $apLegacyProfile --region $apLegacyRegion `
+    --stack-status-filter REVIEW_IN_PROGRESS CREATE_IN_PROGRESS CREATE_COMPLETE ROLLBACK_IN_PROGRESS ROLLBACK_FAILED ROLLBACK_COMPLETE `
+    DELETE_IN_PROGRESS DELETE_FAILED UPDATE_IN_PROGRESS UPDATE_COMPLETE UPDATE_FAILED UPDATE_ROLLBACK_IN_PROGRESS `
+    UPDATE_ROLLBACK_FAILED UPDATE_ROLLBACK_COMPLETE IMPORT_IN_PROGRESS IMPORT_COMPLETE IMPORT_ROLLBACK_IN_PROGRESS `
+    IMPORT_ROLLBACK_FAILED IMPORT_ROLLBACK_COMPLETE --output json | ConvertFrom-Json).StackSummaries
+  if ($LASTEXITCODE -ne 0 -or @($apLegacyActiveAfterDelete | Where-Object StackName -eq $apLegacyStackName).Count -ne 0) {
+    throw 'Legacy exact stack absence was not confirmed.'
+  }
+}
+# APPLYPACK_LEGACY_CLEANUP_FUNCTIONS_END
 
 $apLegacyCleanupReceipt = Get-ExactLegacyFoundationCleanupReceipt
 $apLegacyCleanupReceiptJson = $apLegacyCleanupReceipt | ConvertTo-Json -Depth 10 -Compress
@@ -845,39 +1032,11 @@ Stop here. Both independent supervisors must approve the exact procedure commit 
 ```powershell
 $apLegacySupervisorOneApprovedReceiptSha256 = '<supervisor-one-approved-64-character-legacy-cleanup-receipt-sha256>'
 $apLegacySupervisorTwoApprovedReceiptSha256 = '<supervisor-two-approved-64-character-legacy-cleanup-receipt-sha256>'
-$apLegacyFreshReceiptJson = (Get-ExactLegacyFoundationCleanupReceipt | ConvertTo-Json -Depth 10 -Compress)
-$apLegacyFreshReceiptSha256 = Get-Utf8Sha256 -Text $apLegacyFreshReceiptJson
-if ($apLegacyFreshReceiptJson -cne $apLegacyCleanupReceiptJson -or
-  $apLegacyFreshReceiptSha256 -ne $apLegacyCleanupReceiptSha256 -or
-  $apLegacySupervisorOneApprovedReceiptSha256 -ne $apLegacyFreshReceiptSha256 -or
-  $apLegacySupervisorTwoApprovedReceiptSha256 -ne $apLegacyFreshReceiptSha256) {
-  throw 'Legacy cleanup state or two-supervisor approval changed; deletion forbidden.'
-}
-& $apAws cloudformation delete-change-set --profile $apLegacyProfile --region $apLegacyRegion --change-set-name $apLegacyChangeSetId
-if ($LASTEXITCODE -ne 0) { throw 'Exact legacy change-set deletion failed.' }
-$apLegacyRemaining = (& $apAws cloudformation list-change-sets --profile $apLegacyProfile --region $apLegacyRegion `
-  --stack-name $apLegacyStackId --output json | ConvertFrom-Json).Summaries
-if ($LASTEXITCODE -ne 0) { throw 'Legacy cleanup could not enumerate change sets after deletion.' }
-Assert-NoRemainingFoundationChangeSets -Summaries $apLegacyRemaining
-$apLegacyEmptyStack = (& $apAws cloudformation describe-stacks --profile $apLegacyProfile --region $apLegacyRegion `
-  --stack-name $apLegacyStackId --output json | ConvertFrom-Json).Stacks[0]
-$apLegacyEmptyResources = (& $apAws cloudformation list-stack-resources --profile $apLegacyProfile --region $apLegacyRegion `
-  --stack-name $apLegacyStackId --output json | ConvertFrom-Json).StackResourceSummaries
-if ($LASTEXITCODE -ne 0 -or $apLegacyEmptyStack.StackId -ne $apLegacyStackId -or
-  $apLegacyEmptyStack.StackStatus -ne 'REVIEW_IN_PROGRESS' -or $apLegacyEmptyStack.EnableTerminationProtection -ne $false -or
-  @($apLegacyEmptyResources).Count -ne 0) { throw 'Legacy placeholder changed after exact change-set deletion.' }
-& $apAws cloudformation delete-stack --profile $apLegacyProfile --region $apLegacyRegion --stack-name $apLegacyStackId
-if ($LASTEXITCODE -ne 0) { throw 'Exact legacy empty placeholder deletion request failed.' }
-& $apAws cloudformation wait stack-delete-complete --profile $apLegacyProfile --region $apLegacyRegion --stack-name $apLegacyStackId
-if ($LASTEXITCODE -ne 0) { throw 'Exact legacy empty placeholder deletion was not confirmed.' }
-$apLegacyActiveAfterDelete = (& $apAws cloudformation list-stacks --profile $apLegacyProfile --region $apLegacyRegion `
-  --stack-status-filter REVIEW_IN_PROGRESS CREATE_IN_PROGRESS CREATE_COMPLETE ROLLBACK_IN_PROGRESS ROLLBACK_FAILED ROLLBACK_COMPLETE `
-  DELETE_IN_PROGRESS DELETE_FAILED UPDATE_IN_PROGRESS UPDATE_COMPLETE UPDATE_FAILED UPDATE_ROLLBACK_IN_PROGRESS `
-  UPDATE_ROLLBACK_FAILED UPDATE_ROLLBACK_COMPLETE IMPORT_IN_PROGRESS IMPORT_COMPLETE IMPORT_ROLLBACK_IN_PROGRESS `
-  IMPORT_ROLLBACK_FAILED IMPORT_ROLLBACK_COMPLETE --output json | ConvertFrom-Json).StackSummaries
-if ($LASTEXITCODE -ne 0 -or ($apLegacyActiveAfterDelete | Where-Object StackName -eq $apLegacyStackName).Count -ne 0) {
-  throw 'Legacy exact stack absence was not confirmed.'
-}
+Remove-ExactLegacyFoundationPlaceholder `
+  -ApprovedReceiptJson $apLegacyCleanupReceiptJson `
+  -ApprovedReceiptSha256 $apLegacyCleanupReceiptSha256 `
+  -SupervisorOneApprovedReceiptSha256 $apLegacySupervisorOneApprovedReceiptSha256 `
+  -SupervisorTwoApprovedReceiptSha256 $apLegacySupervisorTwoApprovedReceiptSha256
 ```
 
 ## Provider template receipt
@@ -953,7 +1112,7 @@ $apStack = (& $apAws cloudformation describe-stacks --profile $apProfile --regio
 if ($apStack.EnableTerminationProtection -ne $true) { throw 'Termination protection is not enabled.' }
 
 $apSubnets = (& $apAws ec2 describe-subnets --profile $apProfile --region $apRegion --subnet-ids $apPrivateSubnetA $apPrivateSubnetB --output json | ConvertFrom-Json).Subnets
-if ($apSubnets.Count -ne 2 -or ($apSubnets | Where-Object MapPublicIpOnLaunch).Count -ne 0) { throw 'Private subnet public IPv4 control failed.' }
+if (@($apSubnets).Count -ne 2 -or @($apSubnets | Where-Object MapPublicIpOnLaunch).Count -ne 0) { throw 'Private subnet public IPv4 control failed.' }
 if (($apSubnets.AvailabilityZone | Sort-Object -Unique).Count -ne 2) { throw 'Private subnets are not in distinct Availability Zones.' }
 
 $apRouteTables = (& $apAws ec2 describe-route-tables --profile $apProfile --region $apRegion --route-table-ids $apPrivateRouteTableA $apPrivateRouteTableB --output json | ConvertFrom-Json).RouteTables
@@ -964,11 +1123,11 @@ foreach ($apRouteTable in $apRouteTables) {
 }
 
 $apInternetGateways = (& $apAws ec2 describe-internet-gateways --profile $apProfile --region $apRegion --filters "Name=attachment.vpc-id,Values=$apVpcId" --output json | ConvertFrom-Json).InternetGateways
-if ($apInternetGateways.Count -ne 0) { throw 'Internet Gateway attached to isolated staging VPC.' }
+if (@($apInternetGateways).Count -ne 0) { throw 'Internet Gateway attached to isolated staging VPC.' }
 $apNatGateways = (& $apAws ec2 describe-nat-gateways --profile $apProfile --region $apRegion --filter "Name=vpc-id,Values=$apVpcId" --output json | ConvertFrom-Json).NatGateways | Where-Object State -ne 'deleted'
-if ($apNatGateways.Count -ne 0) { throw 'NAT Gateway exists in isolated staging VPC.' }
+if (@($apNatGateways).Count -ne 0) { throw 'NAT Gateway exists in isolated staging VPC.' }
 $apEndpoints = (& $apAws ec2 describe-vpc-endpoints --profile $apProfile --region $apRegion --filters "Name=vpc-id,Values=$apVpcId" --output json | ConvertFrom-Json).VpcEndpoints
-if ($apEndpoints.Count -ne 0) { throw 'Foundation unexpectedly created a VPC endpoint.' }
+if (@($apEndpoints).Count -ne 0) { throw 'Foundation unexpectedly created a VPC endpoint.' }
 
 $apKmsKeyId = ($apOutputs | Where-Object OutputKey -eq 'KmsKeyId').OutputValue
 $apKey = (& $apAws kms describe-key --profile $apProfile --region $apRegion --key-id $apKmsKeyId --output json | ConvertFrom-Json).KeyMetadata

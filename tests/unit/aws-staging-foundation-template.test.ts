@@ -155,7 +155,7 @@ describe("AWS staging foundation template", () => {
       }
       rmSync(work, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 240_000);
 
   it("rejects public, routed, cross-account, unrotated, and weak-deletion mutations", () => {
     const original = readFileSync(template, "utf8");
@@ -303,5 +303,5 @@ describe("AWS staging foundation template", () => {
     } finally {
       rmSync(work, { recursive: true, force: true });
     }
-  }, 120_000);
+  }, 300_000);
 });

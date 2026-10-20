@@ -170,6 +170,7 @@ const templatePath = argument("--template", "infra/aws/staging-foundation/templa
 const runbookPath = argument("--runbook", "docs/runbooks/AWS_STAGING_FOUNDATION.md");
 const controlSelfTestPath = argument("--control-self-test", "scripts/test-aws-staging-foundation-controls.ps1");
 const ciPath = argument("--ci", ".github/workflows/ci.yml");
+const foundationTestPath = argument("--foundation-test", "tests/unit/aws-staging-foundation-template.test.ts");
 const intrinsic = (name, kind) => new yaml.Type(`!${name}`, {
   kind,
   construct: (value) => ({ [`Fn::${name}`]: value }),
@@ -186,6 +187,7 @@ const source = readFileSync(templatePath, "utf8");
 const runbook = readFileSync(runbookPath, "utf8");
 const controlSelfTest = readFileSync(controlSelfTestPath, "utf8");
 const ci = readFileSync(ciPath, "utf8");
+const foundationTest = readFileSync(foundationTestPath, "utf8");
 const template = yaml.load(source, { schema, filename: templatePath });
 
 function json(value) {
@@ -464,17 +466,41 @@ for (const required of [
   "arn:aws:cloudformation:us-east-1:838445019912:changeSet/applypack-staging-foundation-create-8754e1ec334c/89fd9205-daca-4779-a235-1c8d06092ae8",
   "arn:aws:cloudformation:us-east-1:838445019912:stack/applypack-staging-foundation/56601160-cc81-11f1-8a7c-12ffddd7e50d",
   "iam list-mfa-devices",
-  "configure get login_session --profile $apLegacyProfile",
-  "configure get region --profile $apLegacyProfile",
-  "configure get aws_access_key_id --profile $apLegacyProfile",
-  "configure get aws_secret_access_key --profile $apLegacyProfile",
-  "configure get aws_session_token --profile $apLegacyProfile",
+  "iam list-access-keys",
+  "configure list --profile $Profile",
+  "configure get login_session --profile $Profile",
+  "configure get region --profile $Profile",
+  "Resolved AWS credential type is not exactly login.",
   "Assert-FoundationBrowserLoginCredentialPosture",
-  "AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY','AWS_SESSION_TOKEN','AWS_PROFILE','AWS_DEFAULT_PROFILE",
+  "Get-ExactFoundationBrowserLoginCredentialPosture",
+  "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS",
+  "AWS_CONFIG_FILE",
+  "AWS_SHARED_CREDENTIALS_FILE",
+  "AWS_WEB_IDENTITY_TOKEN_FILE",
+  "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+  "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE",
+  "AWS_ENDPOINT_URL_CLOUDFORMATION",
+  "AWS_ENDPOINT_URL_IAM",
+  "AWS_ENDPOINT_URL_STS",
+  "AWS_CA_BUNDLE",
+  "AWS_DATA_PATH",
+  "credential_process",
+  "source_profile",
+  "credential_source",
+  "web_identity_token_file",
+  "sso_session",
+  "sso_start_url",
+  "sso_account_id",
+  "sso_role_name",
+  "endpoint_url','services','ca_bundle",
   "credentialSource=$apLegacyCredentialPosture.credentialSource",
-  "staticCredentialKeyCount=$apLegacyCredentialPosture.staticCredentialKeyCount",
+  "resolvedCredentialType=$apLegacyCredentialPosture.resolvedCredentialType",
+  "forbiddenProfileMechanismCount=$apLegacyCredentialPosture.forbiddenProfileMechanismCount",
   "processCredentialOverrideCount=$apLegacyCredentialPosture.processCredentialOverrideCount",
+  "configuredEndpointsIgnored=$apLegacyCredentialPosture.configuredEndpointsIgnored",
+  "accessKeyInventory=$apLegacyAccessKeyInventoryStatus",
   "@($apLegacyMfa).Count -ne 1",
+  "Remove-ExactLegacyFoundationPlaceholder",
   "$apLegacySupervisorOneApprovedReceiptSha256",
   "$apLegacySupervisorTwoApprovedReceiptSha256",
   "$apLegacyStack.EnableTerminationProtection -ne $false",
@@ -487,8 +513,24 @@ assert(controlSelfTest.includes("AWS_STAGING_FOUNDATION_CONTROLS_OK")
   && controlSelfTest.includes("Assert-Throws -Label 'non-Add provider plan'")
   && controlSelfTest.includes("Assert-Throws -Label 'non-null deployment configuration'")
   && controlSelfTest.includes("Assert-Throws -Label 'wrong browser login_session identity'")
-  && controlSelfTest.includes("Assert-Throws -Label 'static profile credential key'")
+  && controlSelfTest.includes("Assert-Throws -Label 'resolved credential TYPE non-login'")
+  && controlSelfTest.includes("Assert-Throws -Label 'alternate profile credential mechanism'")
   && controlSelfTest.includes("Assert-Throws -Label 'process credential override'")
+  && controlSelfTest.includes("Label='mock normal cleanup foreign ID'")
+  && controlSelfTest.includes("Label='mock normal cleanup zero after'")
+  && controlSelfTest.includes("Label='mock normal cleanup provider template mismatch'")
+  && controlSelfTest.includes("Label='mock legacy cleanup foreign ID'")
+  && controlSelfTest.includes("Label='mock legacy cleanup exactly one before'")
+  && controlSelfTest.includes("Label='mock legacy cleanup populated stack'")
+  && controlSelfTest.includes("Label='mock legacy cleanup executed plan'")
+  && controlSelfTest.includes("Label='mock legacy cleanup unavailable plan'")
+  && controlSelfTest.includes("Label='mock legacy cleanup credential TYPE non-login'")
+  && controlSelfTest.includes("Label='mock legacy cleanup alternate profile source'")
+  && controlSelfTest.includes("Label='mock legacy cleanup MFA count'")
+  && controlSelfTest.includes("Label='mock legacy cleanup provider template mismatch'")
+  && controlSelfTest.includes("-Scenario access-key-denied")
+  && controlSelfTest.includes("accessKeyInventory -ne 'not-authorized'")
+  && controlSelfTest.includes("Assert-Throws -Label 'mock legacy cleanup zero after'")
   && controlSelfTest.includes("Assert-Throws -Label 'remaining change set before placeholder deletion'"),
 "PowerShell control self-test must execute every required fail-closed negative case");
 assert(ci.includes("Run AWS staging foundation control self-test")
@@ -498,10 +540,13 @@ assert(runbook.includes("No command in this runbook targets production"), "runbo
 assert(!/cloudformation\s+(?:create-stack|deploy)\b/.test(runbook),
   "runbook must not contain a direct create-stack or deploy command");
 assert(!/--capabilities\b/.test(runbook), "foundation change set must not request IAM capabilities");
+assert(!/--no-verify-ssl\b/.test(runbook), "foundation provider commands must not disable TLS verification");
 assert(!/\$[A-Za-z][A-Za-z0-9]*\.ChangeSetType\b/.test(runbook),
   "runbook must not trust a ChangeSetType field that DescribeChangeSet does not return");
 assert(!/git\s+show\b[^\r\n]*--output/u.test(runbook),
   "runbook must not use git show --output for reviewed template extraction");
+assert(foundationTest.includes("}, 240_000);") && foundationTest.includes("}, 300_000);"),
+  "real extraction and mutation tests must retain measured Windows-safe internal timeouts");
 
 const changeSetCreateIndex = runbook.indexOf("$apCreateChangeSet = (& $apAws @apCreateChangeSetArguments");
 const changeSetDescribeIndex = runbook.indexOf("cloudformation describe-change-set", changeSetCreateIndex);
