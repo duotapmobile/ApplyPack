@@ -42,6 +42,7 @@
 
 - Enable Supabase production backups before launch and record the provider retention window.
 - Before a migration, confirm the latest backup completed and test the migration in the separate test project.
+- For the governed staging pre-081 snapshot, follow `STAGING_DATABASE_SAFEGUARD.md`. The Windows helper streams the custom-format dump directly into an authenticated DPAPI CurrentUser envelope, rejects output inside Git or reparse paths, authenticates before decrypting, and restores only into a disposable PostgreSQL 17.6 container with networking disabled and no published ports. Store only its sanitized receipts and hashes; never store a plaintext dump, password, URI, raw provider error, or customer content.
 - Run a restore drill into a non-production project before launch and at least quarterly. Verify orders, capacity, RLS, private buckets, signed download behavior, and the immutable `ap_snapshot_legal_content_receipts` trigger. Confirm that the configured Terms, Privacy Policy, and acceptance-copy hashes match the release; the legal receipt and re-consent functions remain service-role-only; the supported v2 finalizer routes through the v3 content-bound contract; each later legal revision appends one hash-bound acceptance and receipt without changing or duplicating earlier episodes; and any migration-074 receipt reconciliation preserves the original receipt while adding exactly one immutable audit link to its matching acceptance.
 - A backup is not proven until a restore has been completed and documented.
 
