@@ -1,15 +1,167 @@
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  fsyncSync,
+  lstatSync,
+  openSync,
+  realpathSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 import yaml from "js-yaml";
 
-const root = process.cwd();
+const expectedOrigin = "https://github.com/duotapmobile/ApplyPack.git";
+const templateRelativePath = "infra/aws/staging-foundation/template.yaml";
+const ownedPaths = [
+  "docs/runbooks/AWS_STAGING_FOUNDATION.md",
+  templateRelativePath,
+  "scripts/validate-aws-staging-foundation-template.mjs",
+  "tests/unit/aws-staging-foundation-template.test.ts",
+];
+
+function fail(message) {
+  throw new Error(`AWS staging foundation validation failed: ${message}`);
+}
+function assert(condition, message) {
+  if (!condition) fail(message);
+}
+
+function rawArgument(name, fallback) {
+  const index = process.argv.indexOf(name);
+  if (index === -1) return fallback;
+  if (!process.argv[index + 1]) fail(`missing ${name} value`);
+  return process.argv[index + 1];
+}
+
+const root = resolve(rawArgument("--repo", process.cwd()));
 
 function argument(name, fallback) {
-  const index = process.argv.indexOf(name);
-  if (index === -1) return resolve(root, fallback);
-  if (!process.argv[index + 1]) throw new Error(`missing ${name} value`);
-  return resolve(process.argv[index + 1]);
+  return resolve(root, rawArgument(name, fallback));
+}
+
+function git(repo, args, options = {}) {
+  const result = spawnSync("git", ["-C", repo, ...args], {
+    encoding: options.binary ? null : "utf8",
+    input: options.input,
+    maxBuffer: 4 * 1024 * 1024,
+    windowsHide: true,
+  });
+  if (result.error || result.status !== 0) fail(options.failure || "Git provenance command failed");
+  return options.binary ? result.stdout : result.stdout.trim();
+}
+
+function gitStatus(repo, args) {
+  const result = spawnSync("git", ["-C", repo, ...args], {
+    encoding: "utf8",
+    windowsHide: true,
+    stdio: "ignore",
+  });
+  if (result.error || ![0, 1].includes(result.status)) fail("Git cleanliness check failed");
+  return result.status;
+}
+
+function samePath(left, right) {
+  const normalizedLeft = resolve(left);
+  const normalizedRight = resolve(right);
+  return process.platform === "win32"
+    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+    : normalizedLeft === normalizedRight;
+}
+
+function pathIsWithin(candidate, parent) {
+  const relation = relative(resolve(parent), resolve(candidate));
+  return relation === "" || (!relation.startsWith("..") && !isAbsolute(relation));
+}
+
+function hashGitBlob(repo, bytes) {
+  return git(repo, ["hash-object", "--no-filters", "--stdin"], {
+    input: bytes,
+    failure: "Extracted template blob hash failed",
+  });
+}
+
+function extractReviewedTemplate() {
+  const approvedCommit = rawArgument("--approved-commit");
+  const approvedTree = rawArgument("--approved-tree");
+  const approvedBlob = rawArgument("--approved-blob");
+  const outputValue = rawArgument("--output");
+  for (const [label, value] of [["commit", approvedCommit], ["tree", approvedTree], ["blob", approvedBlob]]) {
+    assert(/^[0-9a-f]{40}$/u.test(value || ""), `approved ${label} must be a full lowercase Git object ID`);
+  }
+  assert(outputValue && isAbsolute(outputValue), "reviewed template output must be an absolute path");
+
+  const repoRoot = git(root, ["rev-parse", "--show-toplevel"], { failure: "Repository root is unavailable" });
+  assert(samePath(repoRoot, root), "--repo must be the Git worktree root");
+  assert(git(root, ["remote", "get-url", "origin"], { failure: "Repository origin is unavailable" }) === expectedOrigin,
+    "repository origin is not the canonical ApplyPack remote");
+  assert(git(root, ["rev-parse", "HEAD^{commit}"], { failure: "HEAD commit is unavailable" }) === approvedCommit,
+    "current HEAD does not equal the approved commit");
+  assert(git(root, ["rev-parse", `${approvedCommit}^{tree}`], { failure: "Approved tree is unavailable" }) === approvedTree,
+    "approved tree does not match the approved commit");
+  assert(git(root, ["rev-parse", `${approvedCommit}:${templateRelativePath}`], { failure: "Approved template blob is unavailable" }) === approvedBlob,
+    "approved template blob does not match the approved commit");
+  assert(git(root, ["cat-file", "-t", approvedBlob], { failure: "Approved template object is unavailable" }) === "blob",
+    "approved template object is not a blob");
+  assert(gitStatus(root, ["diff", "--quiet", "HEAD", "--", ...ownedPaths]) === 0,
+    "a task-owned foundation file differs from approved HEAD");
+  assert(gitStatus(root, ["diff", "--cached", "--quiet", "HEAD", "--", ...ownedPaths]) === 0,
+    "a staged task-owned foundation change exists");
+
+  const outputPath = resolve(outputValue);
+  assert(!pathIsWithin(outputPath, root), "reviewed template output must be outside the repository");
+  assert(!existsSync(outputPath), "reviewed template output already exists");
+  const outputParent = dirname(outputPath);
+  const parentInfo = lstatSync(outputParent);
+  assert(parentInfo.isDirectory() && !parentInfo.isSymbolicLink(), "reviewed template output parent must be an ordinary directory");
+  const realRepoRoot = realpathSync(root);
+  const realOutputParent = realpathSync(outputParent);
+  assert(samePath(outputParent, realOutputParent), "reviewed template output parent must not traverse a link or junction");
+  assert(!pathIsWithin(realOutputParent, realRepoRoot), "reviewed template output parent resolves inside the repository");
+
+  const blobBytes = git(root, ["cat-file", "blob", approvedBlob], {
+    binary: true,
+    failure: "Approved template blob extraction failed",
+  });
+  assert(Buffer.isBuffer(blobBytes) && blobBytes.length > 0, "approved template blob is empty");
+  assert(hashGitBlob(root, blobBytes) === approvedBlob, "cat-file bytes do not match the approved blob");
+
+  const temporaryPath = resolve(outputParent, `.${basename(outputPath)}.partial-${process.pid}-${randomUUID()}`);
+  let descriptor;
+  let published = false;
+  try {
+    descriptor = openSync(temporaryPath, "wx", 0o600);
+    writeFileSync(descriptor, blobBytes);
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    descriptor = undefined;
+    assert(hashGitBlob(root, readFileSync(temporaryPath)) === approvedBlob,
+      "temporary extracted file does not match the approved blob");
+    renameSync(temporaryPath, outputPath);
+    published = true;
+    assert(hashGitBlob(root, readFileSync(outputPath)) === approvedBlob,
+      "published extracted file does not match the approved blob");
+    chmodSync(outputPath, 0o444);
+  } catch (error) {
+    if (descriptor !== undefined) closeSync(descriptor);
+    if (existsSync(temporaryPath)) rmSync(temporaryPath, { force: true });
+    if (published && existsSync(outputPath)) {
+      chmodSync(outputPath, 0o600);
+      rmSync(outputPath, { force: true });
+    }
+    throw error;
+  }
+  console.log(`AWS_STAGING_FOUNDATION_REVIEWED_TEMPLATE_EXTRACTED=${approvedBlob}`);
+}
+
+if (process.argv.includes("--extract-reviewed-template")) {
+  extractReviewedTemplate();
+  process.exit(0);
 }
 
 const templatePath = argument("--template", "infra/aws/staging-foundation/template.yaml");
@@ -30,12 +182,6 @@ const source = readFileSync(templatePath, "utf8");
 const runbook = readFileSync(runbookPath, "utf8");
 const template = yaml.load(source, { schema, filename: templatePath });
 
-function fail(message) {
-  throw new Error(`AWS staging foundation validation failed: ${message}`);
-}
-function assert(condition, message) {
-  if (!condition) fail(message);
-}
 function json(value) {
   return JSON.stringify(value);
 }
@@ -208,44 +354,85 @@ for (const required of [
   "list-aliases",
   "list-keys",
   "list-stacks",
-  "git diff --quiet HEAD --",
-  "git rev-parse \"$apApprovedSha^{tree}\"",
-  "git show --no-color --output=$apReviewedTemplatePath",
+  "diff --quiet HEAD -- $apOwnedPaths",
+  "diff --cached --quiet HEAD -- $apOwnedPaths",
+  "remote get-url origin",
+  "rev-parse 'HEAD^{commit}'",
+  "rev-parse \"$apApprovedSha^{tree}\"",
+  "rev-parse \"${apApprovedSha}:infra/aws/staging-foundation/template.yaml\"",
+  "--extract-reviewed-template",
+  "--approved-commit $apApprovedSha",
+  "--approved-tree $apApprovedTree",
+  "--approved-blob $apApprovedTemplateBlob",
+  "AWS_STAGING_FOUNDATION_REVIEWED_TEMPLATE_EXTRACTED=",
+  "hash-object --no-filters $apReviewedTemplatePath",
   "--template $apReviewedTemplatePath",
   "--template-body $apReviewedTemplateUri",
   "cloudformation get-template",
   "reviewedTemplateBodySha256",
   "providerNormalizedTemplateSha256",
+  "$apProviderTemplateBodySha256 -ne $apReviewedTemplateBodySha256",
   "cloudformation create-change-set",
   "--change-set-type CREATE",
   "change-set-create-complete",
   "cloudformation describe-change-set",
-  "$apChangeSet.Changes.Count -ne 9",
+  "$apCreateChangeSet.StackId",
+  "$ChangeSet.ChangeSetId -ne $apChangeSetId",
+  "$ChangeSet.StackId -ne $apStackId",
+  "$ChangeSet.ChangeSetType -ne 'CREATE'",
+  "$ChangeSet.Status -ne 'CREATE_COMPLETE'",
+  "$ChangeSet.ExecutionStatus -ne 'AVAILABLE'",
+  "$ChangeSet.Changes.Count -ne 9",
   "Compare-Object -ReferenceObject $apExpectedLogicalIds -DifferenceObject $apActualLogicalIds",
   "$apResource.Action -ne 'Add'",
   "$apResource.Replacement",
-  "$apChangeSet.Capabilities.Count -ne 0",
+  "$ChangeSet.Capabilities.Count -ne 0",
+  "$ChangeSet.ImportExistingResources -eq $true",
+  "$_.Type -ne 'Resource'",
+  "changeSetId = $apChangeSetId",
+  "stackId = $apStackId",
+  "terminationProtectionEnabled = $TerminationProtectionEnabled",
+  "parameters = @($ChangeSet.Parameters)",
+  "includeNestedStacks = [bool]$ChangeSet.IncludeNestedStacks",
   "aws-staging-foundation-change-set-receipt.json",
   "$apSupervisorOneApprovedChangeSetReceiptSha256",
   "$apSupervisorTwoApprovedChangeSetReceiptSha256",
+  "$apExecuteReceiptJson -cne $apChangeSetReceiptJson",
+  "$apStoredReceiptJson -cne $apExecuteReceiptJson",
+  "$apExecuteReceiptSha256",
+  "REVIEW_IN_PROGRESS",
+  "cloudformation list-stack-resources",
   "cloudformation delete-change-set",
+  "--no-enable-termination-protection",
+  "cloudformation delete-stack",
+  "stack-delete-complete",
   "cloudformation execute-change-set",
   "update-termination-protection",
+  "$apCreatedStack.EnableTerminationProtection -ne $true",
 ]) assert(runbook.includes(required), `runbook is missing required control: ${required}`);
 assert(runbook.includes("No command in this runbook targets production"), "runbook must state the production boundary");
 assert(!/cloudformation\s+(?:create-stack|deploy)\b/.test(runbook),
   "runbook must not contain a direct create-stack or deploy command");
 assert(!/--capabilities\b/.test(runbook), "foundation change set must not request IAM capabilities");
+assert(!/git\s+show\b[^\r\n]*--output/u.test(runbook),
+  "runbook must not use git show --output for reviewed template extraction");
 
 const changeSetCreateIndex = runbook.indexOf("cloudformation create-change-set");
 const changeSetDescribeIndex = runbook.indexOf("cloudformation describe-change-set", changeSetCreateIndex);
-const changeSetExecuteIndex = runbook.indexOf("cloudformation execute-change-set", changeSetDescribeIndex);
-const terminationProtectionIndex = runbook.indexOf("update-termination-protection", changeSetExecuteIndex);
-const providerReceiptIndex = runbook.indexOf("cloudformation get-template", terminationProtectionIndex);
+const terminationProtectionIndex = runbook.indexOf("--enable-termination-protection", changeSetDescribeIndex);
+const initialReceiptIndex = runbook.indexOf("$apChangeSetReceipt =", terminationProtectionIndex);
+const approvalIndex = runbook.indexOf("$apSupervisorOneApprovedChangeSetReceiptSha256", initialReceiptIndex);
+const executeDescribeIndex = runbook.indexOf("$apExecuteState =", approvalIndex);
+const executeReceiptIndex = runbook.indexOf("$apExecuteReceipt =", executeDescribeIndex);
+const changeSetExecuteIndex = runbook.indexOf("cloudformation execute-change-set", executeReceiptIndex);
+const finalProtectionIndex = runbook.indexOf("$apCreatedStack.EnableTerminationProtection -ne $true", changeSetExecuteIndex);
+const providerReceiptIndex = runbook.indexOf("cloudformation get-template", finalProtectionIndex);
 assert(changeSetCreateIndex >= 0 && changeSetDescribeIndex > changeSetCreateIndex
-  && changeSetExecuteIndex > changeSetDescribeIndex && terminationProtectionIndex > changeSetExecuteIndex
-  && providerReceiptIndex > terminationProtectionIndex,
-"runbook must review the CREATE change set, execute its exact ID, enable termination protection, then verify the provider template");
+  && terminationProtectionIndex > changeSetDescribeIndex && initialReceiptIndex > terminationProtectionIndex
+  && approvalIndex > initialReceiptIndex && executeDescribeIndex > approvalIndex
+  && executeReceiptIndex > executeDescribeIndex && changeSetExecuteIndex > executeReceiptIndex
+  && finalProtectionIndex > changeSetExecuteIndex && providerReceiptIndex > finalProtectionIndex,
+"runbook must review the CREATE change set, protect its empty stack, bind approvals to a fresh receipt, execute its exact ID, and verify the provider template");
 assert(runbook.includes("--template-body $apReviewedTemplateUri"),
   "change set must use the immutable reviewed template URI");
 assert(runbook.includes("--change-set-name $apChangeSetId"),

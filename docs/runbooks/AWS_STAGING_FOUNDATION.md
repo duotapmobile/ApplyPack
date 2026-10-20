@@ -62,39 +62,53 @@ if ($apApprovedSha -notmatch '^[0-9a-f]{40}$' -or $apApprovedTree -notmatch '^[0
   throw 'Full reviewed Git identities are required.'
 }
 
-git cat-file -e "$apApprovedSha^{commit}"
-if ($LASTEXITCODE -ne 0) { throw 'Approved commit is unavailable locally.' }
-$apResolvedCommit = (git rev-parse "$apApprovedSha^{commit}").Trim()
-$apHead = (git rev-parse 'HEAD^{commit}').Trim()
-$apResolvedTree = (git rev-parse "$apApprovedSha^{tree}").Trim()
-$apTemplateSpec = "${apApprovedSha}:infra/aws/staging-foundation/template.yaml"
-$apResolvedTemplateBlob = (git rev-parse $apTemplateSpec).Trim()
-if ($LASTEXITCODE -ne 0 -or $apResolvedCommit -ne $apApprovedSha -or $apHead -ne $apApprovedSha -or $apResolvedTree -ne $apApprovedTree -or $apResolvedTemplateBlob -ne $apApprovedTemplateBlob) {
-  throw 'Reviewed commit, tree, template blob, or current HEAD mismatch.'
+$apRepo = (git rev-parse --show-toplevel).Trim()
+if ($LASTEXITCODE -ne 0 -or $apRepo -ne 'C:/Users/mskir/Desktop/Apply_Pack/applypack-production-v2') {
+  throw 'Canonical repository root mismatch.'
 }
-if ((git cat-file -t $apResolvedTemplateBlob).Trim() -ne 'blob') { throw 'Reviewed template object is not a Git blob.' }
-$apTreeEntry = (git ls-tree $apApprovedSha -- 'infra/aws/staging-foundation/template.yaml').Trim()
-if ($apTreeEntry -ne "100644 blob $apApprovedTemplateBlob`tinfra/aws/staging-foundation/template.yaml") { throw 'Reviewed template tree entry mismatch.' }
-
-git diff --quiet HEAD -- $apOwnedPaths
+$apValidatorPath = Join-Path $apRepo 'scripts\validate-aws-staging-foundation-template.mjs'
+$apWorkingTemplatePath = Join-Path $apRepo 'infra\aws\staging-foundation\template.yaml'
+$apOrigin = (git -C $apRepo remote get-url origin).Trim()
+$apHead = (git -C $apRepo rev-parse 'HEAD^{commit}').Trim()
+$apResolvedTree = (git -C $apRepo rev-parse "$apApprovedSha^{tree}").Trim()
+$apResolvedTemplateBlob = (git -C $apRepo rev-parse "${apApprovedSha}:infra/aws/staging-foundation/template.yaml").Trim()
+if ($LASTEXITCODE -ne 0 -or $apOrigin -ne 'https://github.com/duotapmobile/ApplyPack.git' -or
+  $apHead -ne $apApprovedSha -or $apResolvedTree -ne $apApprovedTree -or
+  $apResolvedTemplateBlob -ne $apApprovedTemplateBlob) {
+  throw 'Canonical origin, HEAD, tree, or template blob does not match the reviewed identity.'
+}
+git -C $apRepo diff --quiet HEAD -- $apOwnedPaths
 if ($LASTEXITCODE -ne 0) { throw 'A task-owned foundation file differs from approved HEAD.' }
-git diff --cached --quiet HEAD -- $apOwnedPaths
+git -C $apRepo diff --cached --quiet HEAD -- $apOwnedPaths
 if ($LASTEXITCODE -ne 0) { throw 'A staged task-owned foundation change exists.' }
 
 $apEvidenceDirectory = Join-Path ([IO.Path]::GetTempPath()) "applypack-staging-foundation-$apApprovedSha"
 if (Test-Path -LiteralPath $apEvidenceDirectory) { throw 'Exact-SHA evidence directory already exists; archive it before a new run.' }
 New-Item -ItemType Directory -Path $apEvidenceDirectory | Out-Null
 $apReviewedTemplatePath = Join-Path $apEvidenceDirectory 'reviewed-template.yaml'
-git show --no-color --output=$apReviewedTemplatePath $apTemplateSpec
-if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $apReviewedTemplatePath)) { throw 'Exact reviewed template extraction failed.' }
-[IO.File]::SetAttributes($apReviewedTemplatePath, [IO.FileAttributes]::ReadOnly)
+$apExtractionMarker = (& node $apValidatorPath `
+  --extract-reviewed-template `
+  --repo $apRepo `
+  --approved-commit $apApprovedSha `
+  --approved-tree $apApprovedTree `
+  --approved-blob $apApprovedTemplateBlob `
+  --output $apReviewedTemplatePath).Trim()
+if ($LASTEXITCODE -ne 0 -or $apExtractionMarker -ne "AWS_STAGING_FOUNDATION_REVIEWED_TEMPLATE_EXTRACTED=$apApprovedTemplateBlob") {
+  throw 'Binary-safe exact reviewed template extraction failed.'
+}
+if (!(Test-Path -LiteralPath $apReviewedTemplatePath -PathType Leaf) -or
+  -not ((Get-Item -LiteralPath $apReviewedTemplatePath).Attributes -band [IO.FileAttributes]::ReadOnly)) {
+  throw 'Reviewed template is missing or is not read-only.'
+}
+$apExtractedBlob = (git -C $apRepo hash-object --no-filters $apReviewedTemplatePath).Trim()
+if ($LASTEXITCODE -ne 0 -or $apExtractedBlob -ne $apApprovedTemplateBlob) { throw 'Extracted template Git blob mismatch.' }
 $apReviewedTemplateBodySha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $apReviewedTemplatePath).Hash.ToLowerInvariant()
-$apWorkingTemplateBodySha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath 'infra/aws/staging-foundation/template.yaml').Hash.ToLowerInvariant()
+$apWorkingTemplateBodySha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $apWorkingTemplatePath).Hash.ToLowerInvariant()
 if ($apReviewedTemplateBodySha256 -notmatch '^[a-f0-9]{64}$' -or $apReviewedTemplateBodySha256 -ne $apWorkingTemplateBodySha256) {
   throw 'Extracted and reviewed working-tree template bytes differ.'
 }
 
-$apNormalizedLine = (node scripts/validate-aws-staging-foundation-template.mjs --template $apReviewedTemplatePath --print-template-sha256).Trim()
+$apNormalizedLine = (node $apValidatorPath --template $apReviewedTemplatePath --print-template-sha256).Trim()
 if ($LASTEXITCODE -ne 0 -or $apNormalizedLine -notmatch '^AWS_STAGING_FOUNDATION_TEMPLATE_SHA256=([a-f0-9]{64})$') {
   throw 'Exact reviewed template failed deterministic validation.'
 }
@@ -172,6 +186,130 @@ if ($LASTEXITCODE -ne 0) { throw 'Provider rejected the exact reviewed template.
 This section is documentation, not current authorization. Re-run every preceding gate immediately before it. Create the change set from the immutable extracted template, review and receipt the exact provider plan, obtain two independent approvals bound to that receipt, and execute only the exact returned change-set ID. Do not use a direct stack-create or deployment shortcut.
 
 ```powershell
+$apExpectedChanges = [ordered]@{
+  StagingVpc = 'AWS::EC2::VPC'
+  PrivateSubnetA = 'AWS::EC2::Subnet'
+  PrivateSubnetB = 'AWS::EC2::Subnet'
+  PrivateRouteTableA = 'AWS::EC2::RouteTable'
+  PrivateRouteTableB = 'AWS::EC2::RouteTable'
+  PrivateSubnetRouteTableAssociationA = 'AWS::EC2::SubnetRouteTableAssociation'
+  PrivateSubnetRouteTableAssociationB = 'AWS::EC2::SubnetRouteTableAssociation'
+  StagingSensitivePayloadKey = 'AWS::KMS::Key'
+  StagingSensitivePayloadAlias = 'AWS::KMS::Alias'
+}
+
+function Get-FoundationChangeSetReceipt {
+  param(
+    [Parameter(Mandatory)] $ChangeSet,
+    [Parameter(Mandatory)] [bool] $TerminationProtectionEnabled
+  )
+  if ($ChangeSet.ChangeSetId -ne $apChangeSetId -or $ChangeSet.StackId -ne $apStackId -or
+    $ChangeSet.ChangeSetType -ne 'CREATE' -or $ChangeSet.Status -ne 'CREATE_COMPLETE' -or
+    $ChangeSet.ExecutionStatus -ne 'AVAILABLE') {
+    throw 'Provider change set identity or state is not executable.'
+  }
+  if ($ChangeSet.Capabilities.Count -ne 0 -or $ChangeSet.Parameters.Count -ne 0 -or
+    $ChangeSet.IncludeNestedStacks -eq $true -or $ChangeSet.ImportExistingResources -eq $true) {
+    throw 'Unexpected IAM capability, parameter, nested-stack, or import request in foundation change set.'
+  }
+  if ($ChangeSet.Changes.Count -ne 9) { throw 'CREATE change set must contain exactly the expected nine resources.' }
+  $apActualLogicalIds = @($ChangeSet.Changes.ResourceChange.LogicalResourceId | Sort-Object)
+  $apExpectedLogicalIds = @($apExpectedChanges.Keys | Sort-Object)
+  if ((Compare-Object -ReferenceObject $apExpectedLogicalIds -DifferenceObject $apActualLogicalIds).Count -ne 0) {
+    throw 'CREATE change set does not contain the exact expected logical-resource set.'
+  }
+  $apSanitizedChanges = @($ChangeSet.Changes | ForEach-Object {
+    $apResource = $_.ResourceChange
+    if ($_.Type -ne 'Resource' -or !$apExpectedChanges.Contains($apResource.LogicalResourceId) -or
+      $apExpectedChanges[$apResource.LogicalResourceId] -ne $apResource.ResourceType -or
+      $apResource.Action -ne 'Add' -or $null -ne $apResource.Replacement -or
+      $apResource.Scope.Count -ne 0 -or $apResource.ResourceType -like 'AWS::IAM::*') {
+      throw 'CREATE change set contains an unexpected action, type, replacement, import, scope, or IAM resource.'
+    }
+    [ordered]@{
+      logicalResourceId = $apResource.LogicalResourceId
+      resourceType = $apResource.ResourceType
+      changeType = $_.Type
+      action = $apResource.Action
+      replacement = $null
+      scope = @()
+    }
+  } | Sort-Object logicalResourceId)
+  [ordered]@{
+    schemaVersion = 2
+    approvedCommitSha = $apApprovedSha
+    approvedTreeOid = $apApprovedTree
+    approvedTemplateBlobOid = $apApprovedTemplateBlob
+    reviewedTemplateBodySha256 = $apReviewedTemplateBodySha256
+    reviewedNormalizedTemplateSha256 = $apReviewedNormalizedTemplateSha256
+    changeSetId = $apChangeSetId
+    stackId = $apStackId
+    stackName = $apStackName
+    region = $apRegion
+    changeSetType = $ChangeSet.ChangeSetType
+    status = $ChangeSet.Status
+    executionStatus = $ChangeSet.ExecutionStatus
+    terminationProtectionEnabled = $TerminationProtectionEnabled
+    capabilities = @($ChangeSet.Capabilities)
+    parameters = @($ChangeSet.Parameters)
+    includeNestedStacks = [bool]$ChangeSet.IncludeNestedStacks
+    importExistingResources = [bool]$ChangeSet.ImportExistingResources
+    changes = $apSanitizedChanges
+  }
+}
+
+function Get-Utf8Sha256 {
+  param([Parameter(Mandatory)] [string] $Text)
+  $apBytes = [Text.Encoding]::UTF8.GetBytes($Text)
+  try {
+    [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($apBytes)).ToLowerInvariant()
+  } finally {
+    [Array]::Clear($apBytes, 0, $apBytes.Length)
+  }
+}
+
+function Remove-UnexecutedFoundationCreate {
+  param(
+    [Parameter(Mandatory)] [string] $ChangeSetId,
+    [Parameter(Mandatory)] [string] $StackId
+  )
+  $apDeleteState = (& $apAws cloudformation describe-change-set --profile $apProfile --region $apRegion --change-set-name $ChangeSetId --output json | ConvertFrom-Json)
+  $apSafelyUnexecuted = ($apDeleteState.Status -eq 'CREATE_COMPLETE' -and $apDeleteState.ExecutionStatus -eq 'AVAILABLE') -or
+    ($apDeleteState.Status -eq 'FAILED' -and $apDeleteState.ExecutionStatus -eq 'UNAVAILABLE')
+  if ($LASTEXITCODE -ne 0 -or $apDeleteState.ChangeSetId -ne $ChangeSetId -or $apDeleteState.StackId -ne $StackId -or
+    $apDeleteState.ChangeSetType -ne 'CREATE' -or !$apSafelyUnexecuted) {
+    throw 'Exact unexecuted CREATE change set is not in a safely deletable state.'
+  }
+  $apPlaceholder = (& $apAws cloudformation describe-stacks --profile $apProfile --region $apRegion --stack-name $StackId --output json | ConvertFrom-Json).Stacks[0]
+  $apPlaceholderResources = (& $apAws cloudformation list-stack-resources --profile $apProfile --region $apRegion --stack-name $StackId --output json | ConvertFrom-Json).StackResourceSummaries
+  if ($LASTEXITCODE -ne 0 -or $apPlaceholder.StackId -ne $StackId -or $apPlaceholder.StackStatus -ne 'REVIEW_IN_PROGRESS' -or
+    $apPlaceholderResources.Count -ne 0) {
+    throw 'Exact REVIEW_IN_PROGRESS placeholder is not empty; cleanup stopped.'
+  }
+  & $apAws cloudformation delete-change-set --profile $apProfile --region $apRegion --change-set-name $ChangeSetId
+  if ($LASTEXITCODE -ne 0) { throw 'Exact unexecuted CREATE change set deletion failed.' }
+  $apRemainingChangeSets = (& $apAws cloudformation list-change-sets --profile $apProfile --region $apRegion --stack-name $StackId --output json | ConvertFrom-Json).Summaries
+  if ($LASTEXITCODE -ne 0 -or ($apRemainingChangeSets | Where-Object ChangeSetId -eq $ChangeSetId).Count -ne 0) {
+    throw 'Could not prove exact change-set deletion; placeholder cleanup stopped.'
+  }
+  $apPlaceholder = (& $apAws cloudformation describe-stacks --profile $apProfile --region $apRegion --stack-name $StackId --output json | ConvertFrom-Json).Stacks[0]
+  $apPlaceholderResources = (& $apAws cloudformation list-stack-resources --profile $apProfile --region $apRegion --stack-name $StackId --output json | ConvertFrom-Json).StackResourceSummaries
+  if ($LASTEXITCODE -ne 0 -or $apPlaceholder.StackId -ne $StackId -or $apPlaceholder.StackStatus -ne 'REVIEW_IN_PROGRESS' -or
+    $apPlaceholderResources.Count -ne 0) {
+    throw 'Empty placeholder changed after change-set deletion; stack cleanup stopped.'
+  }
+  if ($apPlaceholder.EnableTerminationProtection -eq $true) {
+    $apDisableResult = (& $apAws cloudformation update-termination-protection --profile $apProfile --region $apRegion --stack-name $StackId --no-enable-termination-protection --output json | ConvertFrom-Json)
+    if ($LASTEXITCODE -ne 0 -or $apDisableResult.StackId -ne $StackId) {
+      throw 'Could not disable protection on the exact empty placeholder; stack deletion stopped.'
+    }
+  }
+  & $apAws cloudformation delete-stack --profile $apProfile --region $apRegion --stack-name $StackId
+  if ($LASTEXITCODE -ne 0) { throw 'Exact empty placeholder deletion request failed.' }
+  & $apAws cloudformation wait stack-delete-complete --profile $apProfile --region $apRegion --stack-name $StackId
+  if ($LASTEXITCODE -ne 0) { throw 'Exact empty placeholder deletion was not proven complete.' }
+}
+
 $apChangeSetName = "applypack-staging-foundation-create-$($apApprovedSha.Substring(0, 12))"
 $apCreateChangeSet = (& $apAws cloudformation create-change-set `
   --profile $apProfile `
@@ -184,132 +322,106 @@ $apCreateChangeSet = (& $apAws cloudformation create-change-set `
   --on-stack-failure ROLLBACK `
   --tags Key=Application,Value=ApplyPack Key=Environment,Value=staging Key=ManagedBy,Value=CloudFormation `
   --output json | ConvertFrom-Json)
-if ($LASTEXITCODE -ne 0 -or $apCreateChangeSet.Id -notmatch '^arn:aws:cloudformation:us-east-1:838445019912:changeSet/') {
+if ($LASTEXITCODE -ne 0 -or $apCreateChangeSet.Id -notmatch '^arn:aws:cloudformation:us-east-1:838445019912:changeSet/' -or
+  $apCreateChangeSet.StackId -notmatch '^arn:aws:cloudformation:us-east-1:838445019912:stack/applypack-staging-foundation/') {
   throw 'Reviewed CREATE change-set request failed or returned the wrong identity.'
 }
 $apChangeSetId = $apCreateChangeSet.Id
+$apStackId = $apCreateChangeSet.StackId
 
 & $apAws cloudformation wait change-set-create-complete --profile $apProfile --region $apRegion --change-set-name $apChangeSetId
 if ($LASTEXITCODE -ne 0) {
   $apFailedChangeSet = (& $apAws cloudformation describe-change-set --profile $apProfile --region $apRegion --change-set-name $apChangeSetId --output json | ConvertFrom-Json)
-  if ($LASTEXITCODE -eq 0 -and $apFailedChangeSet.ChangeSetId -eq $apChangeSetId -and
+  if ($LASTEXITCODE -eq 0 -and $apFailedChangeSet.ChangeSetId -eq $apChangeSetId -and $apFailedChangeSet.StackId -eq $apStackId -and
     $apFailedChangeSet.Status -eq 'FAILED' -and $apFailedChangeSet.ExecutionStatus -eq 'UNAVAILABLE') {
-    & $apAws cloudformation delete-change-set --profile $apProfile --region $apRegion --change-set-name $apChangeSetId
-    if ($LASTEXITCODE -ne 0) { throw 'Failed CREATE change set could not be deleted safely.' }
+    Remove-UnexecutedFoundationCreate -ChangeSetId $apChangeSetId -StackId $apStackId
   }
   throw 'CREATE change set did not become reviewable. Do not execute or retry blindly.'
 }
 
 $apChangeSet = (& $apAws cloudformation describe-change-set --profile $apProfile --region $apRegion --change-set-name $apChangeSetId --output json | ConvertFrom-Json)
-if ($LASTEXITCODE -ne 0 -or $apChangeSet.ChangeSetId -ne $apChangeSetId -or $apChangeSet.ChangeSetType -ne 'CREATE' -or
-  $apChangeSet.Status -ne 'CREATE_COMPLETE' -or $apChangeSet.ExecutionStatus -ne 'AVAILABLE') {
-  throw 'Provider change set identity or state is not executable.'
+$apPlaceholder = (& $apAws cloudformation describe-stacks --profile $apProfile --region $apRegion --stack-name $apStackId --output json | ConvertFrom-Json).Stacks[0]
+$apPlaceholderResources = (& $apAws cloudformation list-stack-resources --profile $apProfile --region $apRegion --stack-name $apStackId --output json | ConvertFrom-Json).StackResourceSummaries
+if ($LASTEXITCODE -ne 0 -or $apPlaceholder.StackId -ne $apStackId -or $apPlaceholder.StackStatus -ne 'REVIEW_IN_PROGRESS' -or
+  $apPlaceholderResources.Count -ne 0) {
+  throw 'CREATE change set did not yield the exact empty REVIEW_IN_PROGRESS stack.'
 }
-if ($apChangeSet.Capabilities.Count -ne 0 -or $apChangeSet.Parameters.Count -ne 0 -or $apChangeSet.IncludeNestedStacks -eq $true) {
-  throw 'Unexpected IAM capability, parameter, or nested-stack request in foundation change set.'
+$apEnableResult = (& $apAws cloudformation update-termination-protection --profile $apProfile --region $apRegion --stack-name $apStackId --enable-termination-protection --output json | ConvertFrom-Json)
+if ($LASTEXITCODE -ne 0 -or $apEnableResult.StackId -ne $apStackId) {
+  Remove-UnexecutedFoundationCreate -ChangeSetId $apChangeSetId -StackId $apStackId
+  throw 'Termination protection could not be enabled on the exact empty stack; plan was not executed.'
 }
-
-$apExpectedChanges = [ordered]@{
-  StagingVpc = 'AWS::EC2::VPC'
-  PrivateSubnetA = 'AWS::EC2::Subnet'
-  PrivateSubnetB = 'AWS::EC2::Subnet'
-  PrivateRouteTableA = 'AWS::EC2::RouteTable'
-  PrivateRouteTableB = 'AWS::EC2::RouteTable'
-  PrivateSubnetRouteTableAssociationA = 'AWS::EC2::SubnetRouteTableAssociation'
-  PrivateSubnetRouteTableAssociationB = 'AWS::EC2::SubnetRouteTableAssociation'
-  StagingSensitivePayloadKey = 'AWS::KMS::Key'
-  StagingSensitivePayloadAlias = 'AWS::KMS::Alias'
-}
-if ($apChangeSet.Changes.Count -ne 9) { throw 'CREATE change set must contain exactly the expected nine resources.' }
-$apActualLogicalIds = @($apChangeSet.Changes.ResourceChange.LogicalResourceId | Sort-Object)
-$apExpectedLogicalIds = @($apExpectedChanges.Keys | Sort-Object)
-if ((Compare-Object -ReferenceObject $apExpectedLogicalIds -DifferenceObject $apActualLogicalIds).Count -ne 0) {
-  throw 'CREATE change set does not contain the exact expected logical-resource set.'
-}
-foreach ($apChange in $apChangeSet.Changes) {
-  $apResource = $apChange.ResourceChange
-  if (!$apExpectedChanges.Contains($apResource.LogicalResourceId) -or
-    $apExpectedChanges[$apResource.LogicalResourceId] -ne $apResource.ResourceType -or
-    $apResource.Action -ne 'Add' -or $null -ne $apResource.Replacement -or $apResource.Scope.Count -ne 0 -or
-    $apResource.ResourceType -like 'AWS::IAM::*') {
-    throw 'CREATE change set contains an unexpected action, type, replacement, import, scope, or IAM resource.'
-  }
+$apProtectedPlaceholder = (& $apAws cloudformation describe-stacks --profile $apProfile --region $apRegion --stack-name $apStackId --output json | ConvertFrom-Json).Stacks[0]
+if ($LASTEXITCODE -ne 0 -or $apProtectedPlaceholder.StackId -ne $apStackId -or
+  $apProtectedPlaceholder.StackStatus -ne 'REVIEW_IN_PROGRESS' -or $apProtectedPlaceholder.EnableTerminationProtection -ne $true) {
+  Remove-UnexecutedFoundationCreate -ChangeSetId $apChangeSetId -StackId $apStackId
+  throw 'Termination protection was not proven on the exact empty stack; plan was not executed.'
 }
 
-$apChangeSetIdSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($apChangeSetId))).ToLowerInvariant()
-$apSanitizedChanges = @($apChangeSet.Changes | ForEach-Object {
-  [ordered]@{
-    logicalResourceId = $_.ResourceChange.LogicalResourceId
-    resourceType = $_.ResourceChange.ResourceType
-    action = $_.ResourceChange.Action
-  }
-} | Sort-Object logicalResourceId)
-$apChangeSetReceipt = [ordered]@{
-  schemaVersion = 1
-  approvedCommitSha = $apApprovedSha
-  approvedTreeOid = $apApprovedTree
-  approvedTemplateBlobOid = $apApprovedTemplateBlob
-  reviewedTemplateBodySha256 = $apReviewedTemplateBodySha256
-  reviewedNormalizedTemplateSha256 = $apReviewedNormalizedTemplateSha256
-  changeSetIdSha256 = $apChangeSetIdSha256
-  stackName = $apStackName
-  region = $apRegion
-  changeSetType = $apChangeSet.ChangeSetType
-  status = $apChangeSet.Status
-  executionStatus = $apChangeSet.ExecutionStatus
-  capabilities = @($apChangeSet.Capabilities)
-  changes = $apSanitizedChanges
-}
+$apChangeSetReceipt = Get-FoundationChangeSetReceipt -ChangeSet $apChangeSet -TerminationProtectionEnabled $true
+$apChangeSetReceiptJson = $apChangeSetReceipt | ConvertTo-Json -Depth 10 -Compress
 $apChangeSetReceiptPath = Join-Path $apEvidenceDirectory 'aws-staging-foundation-change-set-receipt.json'
-[IO.File]::WriteAllText($apChangeSetReceiptPath, ($apChangeSetReceipt | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($apChangeSetReceiptPath, $apChangeSetReceiptJson, [Text.UTF8Encoding]::new($false))
 [IO.File]::SetAttributes($apChangeSetReceiptPath, [IO.FileAttributes]::ReadOnly)
-$apChangeSetReceiptSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $apChangeSetReceiptPath).Hash.ToLowerInvariant()
-if ($apChangeSetReceiptSha256 -notmatch '^[a-f0-9]{64}$') { throw 'Sanitized change-set receipt hash is missing.' }
+$apChangeSetReceiptSha256 = Get-Utf8Sha256 -Text $apChangeSetReceiptJson
+if ($apChangeSetReceiptSha256 -notmatch '^[a-f0-9]{64}$' -or
+  (Get-FileHash -Algorithm SHA256 -LiteralPath $apChangeSetReceiptPath).Hash.ToLowerInvariant() -ne $apChangeSetReceiptSha256) {
+  throw 'Sanitized change-set receipt hash is missing or inconsistent.'
+}
 ```
 
-Stop here for independent review. Each supervisor must review the provider plan and return the exact receipt SHA-256 through the approved channel. If either rejects it, delete only the still-unexecuted exact change-set ID after re-describing it and proving `ExecutionStatus=AVAILABLE`; do not delete a stack or resource as a shortcut.
+Stop here for independent review. Each supervisor must review the provider plan and return the exact receipt SHA-256 through the approved channel. If either rejects it, invoke only `Remove-UnexecutedFoundationCreate` with the exact IDs. That helper re-proves the unexecuted change-set state, the empty `REVIEW_IN_PROGRESS` placeholder, and zero resources; it then deletes the change set, disables protection only on that exact empty placeholder if necessary, deletes that placeholder, and waits for deletion. Never use it after execution starts or when any resource exists.
 
 ```powershell
 $apSupervisorOneApprovedChangeSetReceiptSha256 = '<supervisor-one-approved-64-character-receipt-sha256>'
 $apSupervisorTwoApprovedChangeSetReceiptSha256 = '<supervisor-two-approved-64-character-receipt-sha256>'
-if ($apSupervisorOneApprovedChangeSetReceiptSha256 -ne $apChangeSetReceiptSha256 -or
-  $apSupervisorTwoApprovedChangeSetReceiptSha256 -ne $apChangeSetReceiptSha256) {
-  throw 'Two independent approvals for the exact change-set receipt are required.'
-}
 
 $apExecuteState = (& $apAws cloudformation describe-change-set --profile $apProfile --region $apRegion --change-set-name $apChangeSetId --output json | ConvertFrom-Json)
-if ($LASTEXITCODE -ne 0 -or $apExecuteState.ExecutionStatus -ne 'AVAILABLE' -or $apExecuteState.Status -ne 'CREATE_COMPLETE') {
-  throw 'Exact approved change set is no longer executable.'
+$apExecutePlaceholder = (& $apAws cloudformation describe-stacks --profile $apProfile --region $apRegion --stack-name $apStackId --output json | ConvertFrom-Json).Stacks[0]
+$apExecuteResources = (& $apAws cloudformation list-stack-resources --profile $apProfile --region $apRegion --stack-name $apStackId --output json | ConvertFrom-Json).StackResourceSummaries
+if ($LASTEXITCODE -ne 0 -or $apExecutePlaceholder.StackId -ne $apStackId -or
+  $apExecutePlaceholder.StackStatus -ne 'REVIEW_IN_PROGRESS' -or $apExecutePlaceholder.EnableTerminationProtection -ne $true -or
+  $apExecuteResources.Count -ne 0) {
+  throw 'Exact protected empty stack is no longer ready for execution.'
+}
+$apExecuteReceipt = Get-FoundationChangeSetReceipt -ChangeSet $apExecuteState -TerminationProtectionEnabled $true
+$apExecuteReceiptJson = $apExecuteReceipt | ConvertTo-Json -Depth 10 -Compress
+$apExecuteReceiptSha256 = Get-Utf8Sha256 -Text $apExecuteReceiptJson
+$apStoredReceiptJson = [IO.File]::ReadAllText($apChangeSetReceiptPath, [Text.UTF8Encoding]::new($false))
+$apStoredReceiptSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $apChangeSetReceiptPath).Hash.ToLowerInvariant()
+if ($apExecuteReceiptJson -cne $apChangeSetReceiptJson -or $apStoredReceiptJson -cne $apExecuteReceiptJson -or
+  $apExecuteReceiptSha256 -ne $apChangeSetReceiptSha256 -or $apStoredReceiptSha256 -ne $apExecuteReceiptSha256) {
+  throw 'Change-set receipt changed after review. Do not execute.'
+}
+if ($apSupervisorOneApprovedChangeSetReceiptSha256 -ne $apExecuteReceiptSha256 -or
+  $apSupervisorTwoApprovedChangeSetReceiptSha256 -ne $apExecuteReceiptSha256) {
+  throw 'Two independent approvals no longer match the exact current change-set receipt.'
 }
 & $apAws cloudformation execute-change-set --profile $apProfile --region $apRegion --change-set-name $apChangeSetId
 if ($LASTEXITCODE -ne 0) { throw 'Exact approved CREATE change set did not execute.' }
-& $apAws cloudformation wait stack-create-complete --profile $apProfile --region $apRegion --stack-name $apStackName
+& $apAws cloudformation wait stack-create-complete --profile $apProfile --region $apRegion --stack-name $apStackId
 if ($LASTEXITCODE -ne 0) { throw 'Staging foundation did not complete safely.' }
-& $apAws cloudformation update-termination-protection --profile $apProfile --region $apRegion --stack-name $apStackName --enable-termination-protection *> $null
-if ($LASTEXITCODE -ne 0) { throw 'Termination protection could not be enabled after successful create.' }
+$apCreatedStack = (& $apAws cloudformation describe-stacks --profile $apProfile --region $apRegion --stack-name $apStackId --output json | ConvertFrom-Json).Stacks[0]
+if ($LASTEXITCODE -ne 0 -or $apCreatedStack.StackId -ne $apStackId -or $apCreatedStack.StackStatus -ne 'CREATE_COMPLETE' -or
+  $apCreatedStack.EnableTerminationProtection -ne $true) {
+  throw 'Final stack identity, state, or termination-protection assertion failed.'
+}
 ```
 
-For a rejected or abandoned unexecuted plan, re-describe the exact ID, require `ChangeSetType=CREATE`, `Status=CREATE_COMPLETE`, and `ExecutionStatus=AVAILABLE`, then run `cloudformation delete-change-set` for that exact ID. Record the deletion result and repeat the stack/alias/key/VPC orphan scan. Never delete a change set in `EXECUTE_IN_PROGRESS` or `EXECUTE_COMPLETE`, and never issue a stack delete through this cleanup path.
+For a rejected or abandoned unexecuted plan, run only the guarded cleanup below, record the sanitized result, and repeat the stack/alias/key/VPC orphan scan. It refuses any non-CREATE plan, any started execution, any stack outside `REVIEW_IN_PROGRESS`, or any placeholder containing resources.
 
 ```powershell
-$apDeleteState = (& $apAws cloudformation describe-change-set --profile $apProfile --region $apRegion --change-set-name $apChangeSetId --output json | ConvertFrom-Json)
-if ($LASTEXITCODE -ne 0 -or $apDeleteState.ChangeSetId -ne $apChangeSetId -or
-  $apDeleteState.ChangeSetType -ne 'CREATE' -or $apDeleteState.Status -ne 'CREATE_COMPLETE' -or
-  $apDeleteState.ExecutionStatus -ne 'AVAILABLE') {
-  throw 'Exact unexecuted CREATE change set is not in a safely deletable state.'
-}
-& $apAws cloudformation delete-change-set --profile $apProfile --region $apRegion --change-set-name $apChangeSetId
-if ($LASTEXITCODE -ne 0) { throw 'Exact unexecuted CREATE change set deletion failed.' }
+Remove-UnexecutedFoundationCreate -ChangeSetId $apChangeSetId -StackId $apStackId
 ```
 
-Do not request IAM capabilities; this foundation intentionally creates no IAM resource. Do not disable termination protection for an update. Any replacement of the retained KMS key requires a separate ciphertext migration and deletion review.
+Do not request IAM capabilities; this foundation intentionally creates no IAM resource. Disabling termination protection is permitted only inside the guarded zero-resource placeholder cleanup above, never for a created foundation or an update. Any replacement of the retained KMS key requires a separate ciphertext migration and deletion review.
 
 ## Provider template receipt
 
 Immediately after a successful create, fetch the provider's original template, validate it through the same deterministic parser, and compare normalized hashes. This detects path substitution and provider-template drift while retaining the exact extracted-body hash as provenance.
 
 ```powershell
-$apProviderEnvelopeJson = & $apAws cloudformation get-template --profile $apProfile --region $apRegion --stack-name $apStackName --template-stage Original --output json
+$apProviderEnvelopeJson = & $apAws cloudformation get-template --profile $apProfile --region $apRegion --stack-name $apStackId --template-stage Original --output json
 if ($LASTEXITCODE -ne 0 -or !$apProviderEnvelopeJson) { throw 'Provider template retrieval failed.' }
 $apProviderEnvelope = $apProviderEnvelopeJson | ConvertFrom-Json
 if ($null -eq $apProviderEnvelope.TemplateBody) { throw 'Provider template body is missing.' }
@@ -322,11 +434,12 @@ $apProviderTemplatePath = Join-Path $apEvidenceDirectory 'provider-template.yaml
 [IO.File]::WriteAllText($apProviderTemplatePath, $apProviderTemplateText, [Text.UTF8Encoding]::new($false))
 [IO.File]::SetAttributes($apProviderTemplatePath, [IO.FileAttributes]::ReadOnly)
 $apProviderTemplateBodySha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $apProviderTemplatePath).Hash.ToLowerInvariant()
-$apProviderNormalizedLine = (node scripts/validate-aws-staging-foundation-template.mjs --template $apProviderTemplatePath --print-template-sha256).Trim()
+$apProviderNormalizedLine = (node $apValidatorPath --template $apProviderTemplatePath --print-template-sha256).Trim()
 if ($LASTEXITCODE -ne 0 -or $apProviderNormalizedLine -notmatch '^AWS_STAGING_FOUNDATION_TEMPLATE_SHA256=([a-f0-9]{64})$') {
   throw 'Provider template failed deterministic validation.'
 }
 $apProviderNormalizedTemplateSha256 = $Matches[1]
+if ($apProviderTemplateBodySha256 -ne $apReviewedTemplateBodySha256) { throw 'Provider original template bytes differ from the exact reviewed template.' }
 if ($apProviderNormalizedTemplateSha256 -ne $apReviewedNormalizedTemplateSha256) { throw 'Provider template differs from the exact reviewed template.' }
 
 $apReceipt = [ordered]@{
@@ -338,6 +451,7 @@ $apReceipt = [ordered]@{
   reviewedNormalizedTemplateSha256 = $apReviewedNormalizedTemplateSha256
   providerTemplateBodySha256 = $apProviderTemplateBodySha256
   providerNormalizedTemplateSha256 = $apProviderNormalizedTemplateSha256
+  stackId = $apStackId
   stackName = $apStackName
   region = $apRegion
 }
