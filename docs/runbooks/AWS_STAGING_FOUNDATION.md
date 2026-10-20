@@ -125,6 +125,41 @@ The immutable extracted file is outside the repository, and its body SHA-256, no
 Deployment is prohibited unless two independent supervisors approve the exact Git SHA and the verified non-root profile resolves to the exact account and IAM user below.
 
 ```powershell
+# APPLYPACK_FOUNDATION_CREDENTIAL_PARSER_BEGIN
+function Get-FoundationConfigureListCredentialType {
+  param([Parameter(Mandatory)] [string] $ConfigureListText)
+  $apCredentialTypes = @{}
+  foreach ($apLine in @($ConfigureListText -split "`r?`n")) {
+    $apCredentialName = $null
+    $apCredentialType = $null
+    if ($apLine -cmatch '^\s*(?<Name>access_key|secret_key)\b') {
+      if ($apLine.Contains(':')) {
+        if ($apLine -cmatch '^\s*(?<Name>access_key|secret_key)\s*:\s*(?:[^:\s]+)\s*:\s*(?<Type>[^:\s]+)\s*:\s*(?:[^:]*)$') {
+          $apCredentialName = $Matches.Name
+          $apCredentialType = $Matches.Type
+        } else {
+          throw 'AWS configure list returned a malformed credential row.'
+        }
+      } elseif ($apLine -cmatch '^\s*(?<Name>access_key|secret_key)\s+(?:\S+)\s+(?<Type>\S+)(?:\s+.*)?$') {
+        $apCredentialName = $Matches.Name
+        $apCredentialType = $Matches.Type
+      } else {
+        throw 'AWS configure list returned a malformed credential row.'
+      }
+    }
+    if ($null -ne $apCredentialName) {
+      if ($apCredentialTypes.ContainsKey($apCredentialName)) { throw 'AWS configure list returned a duplicate credential row.' }
+      $apCredentialTypes[$apCredentialName] = $apCredentialType
+    }
+  }
+  if ($apCredentialTypes.Count -ne 2 -or $apCredentialTypes.access_key -cne 'login' -or
+    $apCredentialTypes.secret_key -cne 'login') {
+    throw 'Resolved AWS credential type is not exactly login.'
+  }
+  'login'
+}
+# APPLYPACK_FOUNDATION_CREDENTIAL_PARSER_END
+
 $apAws = 'C:\Program Files\Amazon\AWSCLIV2\aws.exe'
 $apProfile = 'applypack-staging'
 $apRegion = 'us-east-1'
@@ -147,32 +182,8 @@ $apIdentityConfigureListText = (& $apAws configure list --profile $apProfile 2>&
 if ($LASTEXITCODE -ne 0) {
   throw 'Staging profile credentials are not resolved exclusively through aws login.'
 }
-$apIdentityCredentialTypes = @{}
-foreach ($apIdentityLine in @($apIdentityConfigureListText -split "`r?`n")) {
-  $apIdentityName = $null
-  $apIdentityType = $null
-  if ($apIdentityLine -cmatch '^\s*(access_key|secret_key)\s*:') {
-    if ($apIdentityLine -cmatch '^\s*(access_key|secret_key)\s*:\s*([^:\s]+)\s*:\s*([^:\s]+)\s*:\s*(\S(?:.*\S)?)\s*$') {
-      $apIdentityName = $Matches[1]
-      $apIdentityType = $Matches[3]
-    } else {
-      throw 'AWS configure list returned a malformed credential row.'
-    }
-  } elseif ($apIdentityLine -cmatch '^\s*(access_key|secret_key)\b') {
-    if ($apIdentityLine -cmatch '^\s*(access_key|secret_key)\s+(\S+)\s+(\S+)(?:\s+.*)?$') {
-      $apIdentityName = $Matches[1]
-      $apIdentityType = $Matches[3]
-    } else {
-      throw 'AWS configure list returned a malformed credential row.'
-    }
-  }
-  if ($null -ne $apIdentityName) {
-    if ($apIdentityCredentialTypes.ContainsKey($apIdentityName)) { throw 'AWS configure list returned a duplicate credential row.' }
-    $apIdentityCredentialTypes[$apIdentityName] = $apIdentityType
-  }
-}
-if ($apIdentityCredentialTypes.Count -ne 2 -or $apIdentityCredentialTypes.access_key -cne 'login' -or
-  $apIdentityCredentialTypes.secret_key -cne 'login') {
+$apIdentityResolvedCredentialType = Get-FoundationConfigureListCredentialType -ConfigureListText $apIdentityConfigureListText
+if ($apIdentityResolvedCredentialType -cne 'login') {
   throw 'Staging profile credentials are not resolved exclusively through aws login.'
 }
 $apIdentityLoginSession = [string](& $apAws configure get login_session --profile $apProfile 2>$null)
@@ -286,39 +297,6 @@ function Get-OptionalProviderPropertyValue {
   $apProperty = $Object.PSObject.Properties[$Name]
   if ($null -eq $apProperty) { return $null }
   $apProperty.Value
-}
-
-function Get-FoundationConfigureListCredentialType {
-  param([Parameter(Mandatory)] [string] $ConfigureListText)
-  $apCredentialTypes = @{}
-  foreach ($apLine in @($ConfigureListText -split "`r?`n")) {
-    $apCredentialName = $null
-    $apCredentialType = $null
-    if ($apLine -cmatch '^\s*(access_key|secret_key)\s*:') {
-      if ($apLine -cmatch '^\s*(access_key|secret_key)\s*:\s*([^:\s]+)\s*:\s*([^:\s]+)\s*:\s*(\S(?:.*\S)?)\s*$') {
-        $apCredentialName = $Matches[1]
-        $apCredentialType = $Matches[3]
-      } else {
-        throw 'AWS configure list returned a malformed credential row.'
-      }
-    } elseif ($apLine -cmatch '^\s*(access_key|secret_key)\b') {
-      if ($apLine -cmatch '^\s*(access_key|secret_key)\s+(\S+)\s+(\S+)(?:\s+.*)?$') {
-        $apCredentialName = $Matches[1]
-        $apCredentialType = $Matches[3]
-      } else {
-        throw 'AWS configure list returned a malformed credential row.'
-      }
-    }
-    if ($null -ne $apCredentialName) {
-      if ($apCredentialTypes.ContainsKey($apCredentialName)) { throw 'AWS configure list returned a duplicate credential row.' }
-      $apCredentialTypes[$apCredentialName] = $apCredentialType
-    }
-  }
-  if ($apCredentialTypes.Count -ne 2 -or $apCredentialTypes.access_key -cne 'login' -or
-    $apCredentialTypes.secret_key -cne 'login') {
-    throw 'Resolved AWS credential type is not exactly login.'
-  }
-  'login'
 }
 
 function Assert-FoundationBrowserLoginCredentialPosture {

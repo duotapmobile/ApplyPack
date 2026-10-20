@@ -7,6 +7,18 @@ $runbookPath = Join-Path $repo 'docs\runbooks\AWS_STAGING_FOUNDATION.md'
 $validatorPath = Join-Path $repo 'scripts\validate-aws-staging-foundation-template.mjs'
 $sourceTemplatePath = Join-Path $repo 'infra\aws\staging-foundation\template.yaml'
 $runbook = [IO.File]::ReadAllText($runbookPath)
+$parserMatch = [regex]::Match(
+  $runbook,
+  '(?s)# APPLYPACK_FOUNDATION_CREDENTIAL_PARSER_BEGIN\r?\n(.*?)# APPLYPACK_FOUNDATION_CREDENTIAL_PARSER_END'
+)
+if (!$parserMatch.Success) { throw 'Foundation credential parser is not extractable from the runbook.' }
+if ([regex]::Matches($runbook, '(?m)^function Get-FoundationConfigureListCredentialType\s*\{').Count -ne 1) {
+  throw 'Foundation credential parser must have exactly one definition.'
+}
+if ($runbook -notmatch [regex]::Escape('$apIdentityResolvedCredentialType = Get-FoundationConfigureListCredentialType -ConfigureListText $apIdentityConfigureListText')) {
+  throw 'Mandatory identity gate does not call the shared credential parser.'
+}
+Invoke-Expression $parserMatch.Groups[1].Value
 $controlMatch = [regex]::Match(
   $runbook,
   '(?s)# APPLYPACK_FOUNDATION_CONTROL_FUNCTIONS_BEGIN\r?\n(.*?)# APPLYPACK_FOUNDATION_CONTROL_FUNCTIONS_END'
@@ -34,8 +46,8 @@ $colonCredentialListFixture = @(
   '      Name                    Value             Type    Location',
   '      ----                    -----             ----    --------',
   '   profile        applypack-staging           manual    --profile',
-  'access_key : ****************AB-CD_/+=. : login : login-session',
-  'secret_key : ****************WX.YZ_-+=/ : login : login-session',
+  'access_key : ****************AB-CD_/+=. : login :',
+  'secret_key : ****************WX.YZ_-+=/ : login :',
   '    region                us-east-1      config-file    mock-config'
 ) -join "`n"
 if ((Get-FoundationConfigureListCredentialType -ConfigureListText $colonCredentialListFixture) -cne 'login') {
@@ -46,7 +58,7 @@ $compactColonCredentialListFixture = @(
   ' secret_key  :  ****************WX.YZ+  :  login  :  login-session '
 ) -join "`n"
 if ((Get-FoundationConfigureListCredentialType -ConfigureListText $compactColonCredentialListFixture) -cne 'login') {
-  throw 'Colon-spacing credential parser fixture failed.'
+  throw 'Colon-spacing and nonblank-location credential parser fixture failed.'
 }
 $legacyCredentialListFixture = @(
   '      Name                    Value             Type    Location',
@@ -72,6 +84,18 @@ Assert-Throws -Label 'credential parser malformed colon row' -Action {
 Assert-Throws -Label 'credential parser malformed whitespace row' -Action {
   $null = Get-FoundationConfigureListCredentialType -ConfigureListText (@(
     'access_key ****************ABCD',
+    'secret_key ****************WXYZ login mock-cache'
+  ) -join "`n")
+}
+Assert-Throws -Label 'credential parser extra delimiter' -Action {
+  $null = Get-FoundationConfigureListCredentialType -ConfigureListText (@(
+    'access_key : ****************ABCD : login : login-session : extra',
+    'secret_key : ****************WXYZ : login :'
+  ) -join "`n")
+}
+Assert-Throws -Label 'credential parser colon-bearing ambiguous value' -Action {
+  $null = Get-FoundationConfigureListCredentialType -ConfigureListText (@(
+    'access_key ****************AB:CD login mock-cache',
     'secret_key ****************WXYZ login mock-cache'
   ) -join "`n")
 }
@@ -110,8 +134,8 @@ function Invoke-ApplyPackMockAws {
     @(
       "      Name                    Value             Type    Location",
       "      ----                    -----             ----    --------",
-      "access_key : ****************ABCD : $credentialType : login-session",
-      "secret_key : ****************WXYZ : $credentialType : login-session",
+      "access_key : ****************ABCD : $credentialType :",
+      "secret_key : ****************WXYZ : $credentialType :",
       "    region                us-east-1      config-file    mock-config"
     ) -join "`n"
     return

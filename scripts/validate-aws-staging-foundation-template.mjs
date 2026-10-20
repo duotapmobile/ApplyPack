@@ -472,7 +472,9 @@ for (const required of [
   "configure get region --profile $Profile",
   "Resolved AWS credential type is not exactly login.",
   "AWS configure list returned a malformed credential row.",
-  "$apIdentityCredentialTypes",
+  "APPLYPACK_FOUNDATION_CREDENTIAL_PARSER_BEGIN",
+  "APPLYPACK_FOUNDATION_CREDENTIAL_PARSER_END",
+  "$apIdentityResolvedCredentialType = Get-FoundationConfigureListCredentialType -ConfigureListText $apIdentityConfigureListText",
   "Assert-FoundationBrowserLoginCredentialPosture",
   "Get-ExactFoundationBrowserLoginCredentialPosture",
   "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS",
@@ -509,7 +511,17 @@ for (const required of [
   "$apLegacyStack.EnableTerminationProtection -ne $false",
   "@($apLegacySummaries).Count -ne 1",
 ]) assert(runbook.includes(required), `runbook is missing required control: ${required}`);
+const credentialParserDefinitions = runbook.match(/^function Get-FoundationConfigureListCredentialType\s*\{/gm) ?? [];
+assert(credentialParserDefinitions.length === 1,
+  "runbook must define the shared credential parser exactly once");
+assert(runbook.includes("if ($apLine.Contains(':'))")
+  && runbook.includes("(?<Name>access_key|secret_key)")
+  && runbook.includes("(?<Type>[^:\\s]+)")
+  && !runbook.includes("$apCredentialValue"),
+"shared credential parser must branch strictly on colons and retain only name plus TYPE");
 assert(controlSelfTest.includes("AWS_STAGING_FOUNDATION_CONTROLS_OK")
+  && controlSelfTest.includes("Foundation credential parser must have exactly one definition.")
+  && controlSelfTest.includes("Mandatory identity gate does not call the shared credential parser.")
   && controlSelfTest.includes("Assert-Throws -Label 'request tag tamper'")
   && controlSelfTest.includes("Assert-Throws -Label 'fresh template raw hash divergence'")
   && controlSelfTest.includes("Assert-Throws -Label 'provider tag divergence'")
@@ -520,12 +532,14 @@ assert(controlSelfTest.includes("AWS_STAGING_FOUNDATION_CONTROLS_OK")
   && controlSelfTest.includes("Assert-Throws -Label 'alternate profile credential mechanism'")
   && controlSelfTest.includes("Assert-Throws -Label 'process credential override'")
   && controlSelfTest.includes("Colon-delimited credential parser fixture failed.")
-  && controlSelfTest.includes("Colon-spacing credential parser fixture failed.")
+  && controlSelfTest.includes("Colon-spacing and nonblank-location credential parser fixture failed.")
   && controlSelfTest.includes("Whitespace-table credential parser fixture failed.")
   && controlSelfTest.includes("Assert-Throws -Label 'credential parser duplicate row'")
   && controlSelfTest.includes("Assert-Throws -Label 'credential parser missing row'")
   && controlSelfTest.includes("Assert-Throws -Label 'credential parser malformed colon row'")
   && controlSelfTest.includes("Assert-Throws -Label 'credential parser malformed whitespace row'")
+  && controlSelfTest.includes("Assert-Throws -Label 'credential parser extra delimiter'")
+  && controlSelfTest.includes("Assert-Throws -Label 'credential parser colon-bearing ambiguous value'")
   && controlSelfTest.includes("Assert-Throws -Label 'credential parser non-login type'")
   && controlSelfTest.includes("Assert-Throws -Label 'mock normal cleanup login cache override'")
   && controlSelfTest.includes("Label='mock normal cleanup foreign ID'")
