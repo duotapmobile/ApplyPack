@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import yaml from "js-yaml";
@@ -52,6 +53,16 @@ function ref(value) {
 }
 function sub(value) {
   return value?.["Fn::Sub"];
+}
+function canonical(value) {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]));
+  }
+  return value;
+}
+function normalizedSha256(value) {
+  return createHash("sha256").update(JSON.stringify(canonical(value)), "utf8").digest("hex");
 }
 
 assert(template?.AWSTemplateFormatVersion === "2010-09-09", "template version must be fixed");
@@ -135,8 +146,8 @@ assert(ref(resources.PrivateSubnetRouteTableAssociationB?.Properties?.RouteTable
 
 const keyResource = resources.StagingSensitivePayloadKey || {};
 const key = keyResource.Properties || {};
-assert(keyResource.DeletionPolicy === "Retain" && keyResource.UpdateReplacePolicy === "Retain",
-  "KMS key must survive stack deletion and replacement");
+assert(keyResource.DeletionPolicy === "RetainExceptOnCreate" && keyResource.UpdateReplacePolicy === "Retain",
+  "KMS key must roll back on failed initial create and survive later replacement or stack deletion");
 assert(key.Enabled === true && key.EnableKeyRotation === true && key.KeySpec === "SYMMETRIC_DEFAULT"
   && key.KeyUsage === "ENCRYPT_DECRYPT" && key.MultiRegion === false && key.Origin === "AWS_KMS"
   && key.PendingWindowInDays === 30, "KMS lifecycle and cryptographic controls must be exact");
@@ -192,7 +203,56 @@ for (const required of [
   "get-key-rotation-status",
   "approximately $1/month",
   "evidence only",
+  "RetainExceptOnCreate",
+  "PendingDeletion",
+  "list-aliases",
+  "list-keys",
+  "list-stacks",
+  "git diff --quiet HEAD --",
+  "git rev-parse \"$apApprovedSha^{tree}\"",
+  "git show --no-color --output=$apReviewedTemplatePath",
+  "--template $apReviewedTemplatePath",
+  "--template-body $apReviewedTemplateUri",
+  "cloudformation get-template",
+  "reviewedTemplateBodySha256",
+  "providerNormalizedTemplateSha256",
+  "cloudformation create-change-set",
+  "--change-set-type CREATE",
+  "change-set-create-complete",
+  "cloudformation describe-change-set",
+  "$apChangeSet.Changes.Count -ne 9",
+  "Compare-Object -ReferenceObject $apExpectedLogicalIds -DifferenceObject $apActualLogicalIds",
+  "$apResource.Action -ne 'Add'",
+  "$apResource.Replacement",
+  "$apChangeSet.Capabilities.Count -ne 0",
+  "aws-staging-foundation-change-set-receipt.json",
+  "$apSupervisorOneApprovedChangeSetReceiptSha256",
+  "$apSupervisorTwoApprovedChangeSetReceiptSha256",
+  "cloudformation delete-change-set",
+  "cloudformation execute-change-set",
+  "update-termination-protection",
 ]) assert(runbook.includes(required), `runbook is missing required control: ${required}`);
 assert(runbook.includes("No command in this runbook targets production"), "runbook must state the production boundary");
+assert(!/cloudformation\s+(?:create-stack|deploy)\b/.test(runbook),
+  "runbook must not contain a direct create-stack or deploy command");
+assert(!/--capabilities\b/.test(runbook), "foundation change set must not request IAM capabilities");
 
-console.log("AWS_STAGING_FOUNDATION_TEMPLATE_OK");
+const changeSetCreateIndex = runbook.indexOf("cloudformation create-change-set");
+const changeSetDescribeIndex = runbook.indexOf("cloudformation describe-change-set", changeSetCreateIndex);
+const changeSetExecuteIndex = runbook.indexOf("cloudformation execute-change-set", changeSetDescribeIndex);
+const terminationProtectionIndex = runbook.indexOf("update-termination-protection", changeSetExecuteIndex);
+const providerReceiptIndex = runbook.indexOf("cloudformation get-template", terminationProtectionIndex);
+assert(changeSetCreateIndex >= 0 && changeSetDescribeIndex > changeSetCreateIndex
+  && changeSetExecuteIndex > changeSetDescribeIndex && terminationProtectionIndex > changeSetExecuteIndex
+  && providerReceiptIndex > terminationProtectionIndex,
+"runbook must review the CREATE change set, execute its exact ID, enable termination protection, then verify the provider template");
+assert(runbook.includes("--template-body $apReviewedTemplateUri"),
+  "change set must use the immutable reviewed template URI");
+assert(runbook.includes("--change-set-name $apChangeSetId"),
+  "change-set describe, delete, and execution steps must remain bound to the exact returned ID");
+
+if (process.argv.includes("--print-template-sha256")) {
+  console.log(`AWS_STAGING_FOUNDATION_TEMPLATE_SHA256=${normalizedSha256(template)}`);
+} else {
+  console.log("AWS_STAGING_FOUNDATION_TEMPLATE_OK");
+}

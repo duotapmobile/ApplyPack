@@ -86,7 +86,7 @@ Resources:
 
   StagingSensitivePayloadKey:
     Type: AWS::KMS::Key
-    DeletionPolicy: Retain
+    DeletionPolicy: RetainExceptOnCreate
     UpdateReplacePolicy: Retain
     Properties:
       Description: ApplyPack staging sensitive-payload envelope key
