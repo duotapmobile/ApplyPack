@@ -471,6 +471,8 @@ for (const required of [
   "configure get login_session --profile $Profile",
   "configure get region --profile $Profile",
   "Resolved AWS credential type is not exactly login.",
+  "AWS configure list returned a malformed credential row.",
+  "$apIdentityCredentialTypes",
   "Assert-FoundationBrowserLoginCredentialPosture",
   "Get-ExactFoundationBrowserLoginCredentialPosture",
   "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS",
@@ -517,6 +519,14 @@ assert(controlSelfTest.includes("AWS_STAGING_FOUNDATION_CONTROLS_OK")
   && controlSelfTest.includes("Assert-Throws -Label 'resolved credential TYPE non-login'")
   && controlSelfTest.includes("Assert-Throws -Label 'alternate profile credential mechanism'")
   && controlSelfTest.includes("Assert-Throws -Label 'process credential override'")
+  && controlSelfTest.includes("Colon-delimited credential parser fixture failed.")
+  && controlSelfTest.includes("Colon-spacing credential parser fixture failed.")
+  && controlSelfTest.includes("Whitespace-table credential parser fixture failed.")
+  && controlSelfTest.includes("Assert-Throws -Label 'credential parser duplicate row'")
+  && controlSelfTest.includes("Assert-Throws -Label 'credential parser missing row'")
+  && controlSelfTest.includes("Assert-Throws -Label 'credential parser malformed colon row'")
+  && controlSelfTest.includes("Assert-Throws -Label 'credential parser malformed whitespace row'")
+  && controlSelfTest.includes("Assert-Throws -Label 'credential parser non-login type'")
   && controlSelfTest.includes("Assert-Throws -Label 'mock normal cleanup login cache override'")
   && controlSelfTest.includes("Label='mock normal cleanup foreign ID'")
   && controlSelfTest.includes("Label='mock normal cleanup zero after'")

@@ -144,9 +144,35 @@ foreach ($apIdentityOverrideName in $apIdentityOverrideNames) {
   }
 }
 $apIdentityConfigureListText = (& $apAws configure list --profile $apProfile 2>&1 | Out-String)
-if ($LASTEXITCODE -ne 0 -or
-  $apIdentityConfigureListText -notmatch '(?m)^\s*access_key\s+\S+\s+login(?:\s+.*)?$' -or
-  $apIdentityConfigureListText -notmatch '(?m)^\s*secret_key\s+\S+\s+login(?:\s+.*)?$') {
+if ($LASTEXITCODE -ne 0) {
+  throw 'Staging profile credentials are not resolved exclusively through aws login.'
+}
+$apIdentityCredentialTypes = @{}
+foreach ($apIdentityLine in @($apIdentityConfigureListText -split "`r?`n")) {
+  $apIdentityName = $null
+  $apIdentityType = $null
+  if ($apIdentityLine -cmatch '^\s*(access_key|secret_key)\s*:') {
+    if ($apIdentityLine -cmatch '^\s*(access_key|secret_key)\s*:\s*([^:\s]+)\s*:\s*([^:\s]+)\s*:\s*(\S(?:.*\S)?)\s*$') {
+      $apIdentityName = $Matches[1]
+      $apIdentityType = $Matches[3]
+    } else {
+      throw 'AWS configure list returned a malformed credential row.'
+    }
+  } elseif ($apIdentityLine -cmatch '^\s*(access_key|secret_key)\b') {
+    if ($apIdentityLine -cmatch '^\s*(access_key|secret_key)\s+(\S+)\s+(\S+)(?:\s+.*)?$') {
+      $apIdentityName = $Matches[1]
+      $apIdentityType = $Matches[3]
+    } else {
+      throw 'AWS configure list returned a malformed credential row.'
+    }
+  }
+  if ($null -ne $apIdentityName) {
+    if ($apIdentityCredentialTypes.ContainsKey($apIdentityName)) { throw 'AWS configure list returned a duplicate credential row.' }
+    $apIdentityCredentialTypes[$apIdentityName] = $apIdentityType
+  }
+}
+if ($apIdentityCredentialTypes.Count -ne 2 -or $apIdentityCredentialTypes.access_key -cne 'login' -or
+  $apIdentityCredentialTypes.secret_key -cne 'login') {
   throw 'Staging profile credentials are not resolved exclusively through aws login.'
 }
 $apIdentityLoginSession = [string](& $apAws configure get login_session --profile $apProfile 2>$null)
@@ -266,13 +292,30 @@ function Get-FoundationConfigureListCredentialType {
   param([Parameter(Mandatory)] [string] $ConfigureListText)
   $apCredentialTypes = @{}
   foreach ($apLine in @($ConfigureListText -split "`r?`n")) {
-    if ($apLine -match '^\s*(access_key|secret_key)\s+\S+\s+(\S+)(?:\s+.*)?$') {
-      if ($apCredentialTypes.ContainsKey($Matches[1])) { throw 'AWS configure list returned a duplicate credential row.' }
-      $apCredentialTypes[$Matches[1]] = $Matches[2]
+    $apCredentialName = $null
+    $apCredentialType = $null
+    if ($apLine -cmatch '^\s*(access_key|secret_key)\s*:') {
+      if ($apLine -cmatch '^\s*(access_key|secret_key)\s*:\s*([^:\s]+)\s*:\s*([^:\s]+)\s*:\s*(\S(?:.*\S)?)\s*$') {
+        $apCredentialName = $Matches[1]
+        $apCredentialType = $Matches[3]
+      } else {
+        throw 'AWS configure list returned a malformed credential row.'
+      }
+    } elseif ($apLine -cmatch '^\s*(access_key|secret_key)\b') {
+      if ($apLine -cmatch '^\s*(access_key|secret_key)\s+(\S+)\s+(\S+)(?:\s+.*)?$') {
+        $apCredentialName = $Matches[1]
+        $apCredentialType = $Matches[3]
+      } else {
+        throw 'AWS configure list returned a malformed credential row.'
+      }
+    }
+    if ($null -ne $apCredentialName) {
+      if ($apCredentialTypes.ContainsKey($apCredentialName)) { throw 'AWS configure list returned a duplicate credential row.' }
+      $apCredentialTypes[$apCredentialName] = $apCredentialType
     }
   }
-  if ($apCredentialTypes.Count -ne 2 -or $apCredentialTypes.access_key -ne 'login' -or
-    $apCredentialTypes.secret_key -ne 'login') {
+  if ($apCredentialTypes.Count -ne 2 -or $apCredentialTypes.access_key -cne 'login' -or
+    $apCredentialTypes.secret_key -cne 'login') {
     throw 'Resolved AWS credential type is not exactly login.'
   }
   'login'

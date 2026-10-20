@@ -30,6 +30,58 @@ function Assert-Throws {
   if (!$threw) { throw "Expected fail-closed rejection: $Label" }
 }
 
+$colonCredentialListFixture = @(
+  '      Name                    Value             Type    Location',
+  '      ----                    -----             ----    --------',
+  '   profile        applypack-staging           manual    --profile',
+  'access_key : ****************AB-CD_/+=. : login : login-session',
+  'secret_key : ****************WX.YZ_-+=/ : login : login-session',
+  '    region                us-east-1      config-file    mock-config'
+) -join "`n"
+if ((Get-FoundationConfigureListCredentialType -ConfigureListText $colonCredentialListFixture) -cne 'login') {
+  throw 'Colon-delimited credential parser fixture failed.'
+}
+$compactColonCredentialListFixture = @(
+  'access_key:****************AB-CD_:login:login-session',
+  ' secret_key  :  ****************WX.YZ+  :  login  :  login-session '
+) -join "`n"
+if ((Get-FoundationConfigureListCredentialType -ConfigureListText $compactColonCredentialListFixture) -cne 'login') {
+  throw 'Colon-spacing credential parser fixture failed.'
+}
+$legacyCredentialListFixture = @(
+  '      Name                    Value             Type    Location',
+  '      ----                    -----             ----    --------',
+  'access_key     ****************ABCD            login    mock-cache',
+  'secret_key     ****************WXYZ            login    mock-cache'
+) -join "`n"
+if ((Get-FoundationConfigureListCredentialType -ConfigureListText $legacyCredentialListFixture) -cne 'login') {
+  throw 'Whitespace-table credential parser fixture failed.'
+}
+Assert-Throws -Label 'credential parser duplicate row' -Action {
+  $null = Get-FoundationConfigureListCredentialType -ConfigureListText ($colonCredentialListFixture + "`naccess_key : ****************EXTRA : login : login-session")
+}
+Assert-Throws -Label 'credential parser missing row' -Action {
+  $null = Get-FoundationConfigureListCredentialType -ConfigureListText 'access_key : ****************ONLY : login : login-session'
+}
+Assert-Throws -Label 'credential parser malformed colon row' -Action {
+  $null = Get-FoundationConfigureListCredentialType -ConfigureListText (@(
+    'access_key : ****************ABCD : : login-session',
+    'secret_key : ****************WXYZ : login : login-session'
+  ) -join "`n")
+}
+Assert-Throws -Label 'credential parser malformed whitespace row' -Action {
+  $null = Get-FoundationConfigureListCredentialType -ConfigureListText (@(
+    'access_key ****************ABCD',
+    'secret_key ****************WXYZ login mock-cache'
+  ) -join "`n")
+}
+Assert-Throws -Label 'credential parser non-login type' -Action {
+  $null = Get-FoundationConfigureListCredentialType -ConfigureListText (@(
+    'access_key : ****************ABCD : env : environment',
+    'secret_key : ****************WXYZ : login : login-session'
+  ) -join "`n")
+}
+
 function Reset-ApplyPackMockAws {
   param(
     [Parameter(Mandatory)] [ValidateSet('normal','legacy')] [string] $Mode,
@@ -58,8 +110,8 @@ function Invoke-ApplyPackMockAws {
     @(
       "      Name                    Value             Type    Location",
       "      ----                    -----             ----    --------",
-      "access_key     ****************ABCD            $credentialType    mock-cache",
-      "secret_key     ****************WXYZ            $credentialType    mock-cache",
+      "access_key : ****************ABCD : $credentialType : login-session",
+      "secret_key : ****************WXYZ : $credentialType : login-session",
       "    region                us-east-1      config-file    mock-config"
     ) -join "`n"
     return
