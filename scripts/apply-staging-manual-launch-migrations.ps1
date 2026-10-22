@@ -32,6 +32,7 @@ $script:DockerCliReviewedPath = 'C:\Program Files\Docker\Docker\resources\bin\do
 $script:DockerEndpoint = 'npipe:////./pipe/dockerDesktopLinuxEngine'
 $script:ResolvedDockerCliPath = $null
 $script:RunnerVersion = 2
+$script:PsqlPasswordHandoffShell = 'IFS= read -r PGPASSWORD; export PGPASSWORD; export PGSSLMODE=verify-full; export PGSSLROOTCERT=/certs/root.crt; export PGCONNECT_TIMEOUT=15; exec "$@"'
 $script:ForbiddenConnectionEnvironmentNames = @(
     'PGPASSWORD', 'PGPASSFILE', 'PGSERVICE', 'PGSERVICEFILE',
     'DATABASE_URL', 'AP_PREMIGRATION_DATABASE_URL'
@@ -487,15 +488,16 @@ function Register-ContainerName {
 
 function Test-ContainerExists {
     param([Parameter(Mandatory = $true)][string]$ContainerName)
-    $start = New-DockerProcessStartInfo -Arguments @('container', 'inspect', $ContainerName)
+    $start = New-DockerProcessStartInfo -Arguments @('container', 'inspect', $ContainerName) -RedirectOutput $true
     $process = [Diagnostics.Process]::Start($start)
+    $stdoutTask = $process.StandardOutput.BaseStream.CopyToAsync([IO.Stream]::Null)
     $stderrTask = $process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
     if (-not $process.WaitForExit(15000)) {
-        [void](Complete-RedirectedProcess -Process $process -StandardErrorTask $stderrTask -ForceTermination $true)
+        [void](Complete-RedirectedProcess -Process $process -StandardOutputTask $stdoutTask -StandardErrorTask $stderrTask -ForceTermination $true)
         Throw-Controlled 'CONTAINER_TEARDOWN_FAILED'
     }
     $exitCode = $process.ExitCode
-    if (-not (Complete-RedirectedProcess -Process $process -StandardErrorTask $stderrTask -ForceTermination $false)) {
+    if (-not (Complete-RedirectedProcess -Process $process -StandardOutputTask $stdoutTask -StandardErrorTask $stderrTask -ForceTermination $false)) {
         Throw-Controlled 'CONTAINER_TEARDOWN_FAILED'
     }
     return $exitCode -eq 0
@@ -547,12 +549,10 @@ function Get-PsqlDockerArguments {
     )
     return @(
         'run', '--rm', '-i', '--name', $ContainerName, '--pull', 'never',
-        '--env', 'PGSSLMODE=verify-full',
-        '--env', 'PGSSLROOTCERT=/certs/root.crt',
-        '--env', 'PGCONNECT_TIMEOUT=15',
         '--volume', "${CaPath}:/certs/root.crt:ro",
-        '--entrypoint', 'psql', $script:PostgresImageDigest,
-        '--password', '--no-psqlrc', '--quiet', '--tuples-only', '--no-align',
+        '--entrypoint', 'sh', $script:PostgresImageDigest,
+        '-ec', $script:PsqlPasswordHandoffShell, '--', 'psql',
+        '--no-psqlrc', '--quiet', '--tuples-only', '--no-align',
         '--set', 'ON_ERROR_STOP=1',
         '--host', $script:DatabaseHost, '--port', $script:DatabasePort,
         '--username', $script:LoginUser, '--dbname', $script:DatabaseName,
@@ -583,7 +583,9 @@ function Invoke-PsqlPayload {
     try {
         $boundedPayload = Get-BoundedSqlPayload -Payload $Payload
         $arguments = Get-PsqlDockerArguments -ContainerName $containerName -CaPath $CaPath
-        if (($arguments -join "`n") -match '(?i)PGPASSWORD|postgres(?:ql)?://') { Throw-Controlled 'MIGRATION_RUNNER_FAILED' }
+        if (($arguments -join "`n") -match '(?i)PGPASSWORD=|postgres(?:ql)?://|(?:^|\n)--password(?:$|\n)') {
+            Throw-Controlled 'MIGRATION_RUNNER_FAILED'
+        }
         $process = [Diagnostics.Process]::Start((New-DockerProcessStartInfo -Arguments $arguments -RedirectInput $true -RedirectOutput $true))
         if ($null -eq $process) { Throw-Controlled 'PSQL_PROCESS_START_FAILED' }
         $stdoutTask = $process.StandardOutput.ReadToEndAsync()
@@ -634,7 +636,7 @@ function Get-OutputLines {
 
 function Assert-ExactMarkers {
     param(
-        [Parameter(Mandatory = $true)][string[]]$Actual,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Actual,
         [Parameter(Mandatory = $true)][string[]]$Expected
     )
     if ($Actual.Count -ne $Expected.Count) { Throw-Controlled 'UNEXPECTED_DATABASE_OUTPUT' }
@@ -727,7 +729,7 @@ function Invoke-InventoryAndSchemaPreflight {
         [Parameter(Mandatory = $true)][string]$ExpectedPreflightHash
     )
     $result = Invoke-PsqlPayload -Credential $Credential -CaPath $CaPath -Payload (Get-PreflightPayload -ExpectedHash $ExpectedPreflightHash) -Operation 'preflight' -TimeoutMilliseconds 300000
-    $lines = Get-OutputLines -Text $result.stdout
+    $lines = @(Get-OutputLines -Text $result.stdout)
     if ($lines.Count -eq 2 -and
         $lines[0] -eq 'STAGING_MIGRATION_CONNECTION_ATTESTED' -and
         $lines[1] -eq 'INVENTORY_IDENTITY_PREFLIGHT_CONFLICT') {
@@ -865,7 +867,8 @@ function Invoke-MigrationStep {
     $version = [string]$Migration.version
     $guardResult = Invoke-PsqlPayload -Credential $Credential -CaPath $CaPath -Payload (Get-StepGuardSql $Migration) -Operation "guard-$version" -TimeoutMilliseconds 300000
     if ($guardResult.exitCode -ne 0) { Throw-Controlled 'MIGRATION_STEP_STATE_INVALID' }
-    Assert-ExactMarkers -Actual (Get-OutputLines $guardResult.stdout) -Expected @(
+    $guardLines = @(Get-OutputLines $guardResult.stdout)
+    Assert-ExactMarkers -Actual $guardLines -Expected @(
         'STAGING_MIGRATION_CONNECTION_ATTESTED',
         "STAGING_MIGRATION_${version}_STEP_READY"
     )
@@ -874,7 +877,8 @@ function Invoke-MigrationStep {
     $script:MutationMayHaveCommitted = $true
     $result = Invoke-PsqlPayload -Credential $Credential -CaPath $CaPath -Payload $payload -Operation "apply-$version" -TimeoutMilliseconds 300000
     if ($result.exitCode -ne 0) { Throw-Controlled 'MIGRATION_APPLY_FAILED' }
-    Assert-ExactMarkers -Actual (Get-OutputLines $result.stdout) -Expected @([string]$Migration.marker)
+    $resultLines = @(Get-OutputLines $result.stdout)
+    Assert-ExactMarkers -Actual $resultLines -Expected @([string]$Migration.marker)
     if (-not [string]::Equals((Get-Sha256 (Join-Path $script:RepoRoot ([string]$Migration.relativePath))), $ExpectedHash, [StringComparison]::Ordinal)) {
         Throw-Controlled 'MIGRATION_SOURCE_HASH_DRIFT'
     }
@@ -937,7 +941,7 @@ function Invoke-PostMigrationVerification {
     )
     $result = Invoke-PsqlPayload -Credential $Credential -CaPath $CaPath -Payload (Get-PostMigrationStateSql $MigrationTexts) -Operation 'poststate' -TimeoutMilliseconds 300000
     if ($result.exitCode -ne 0) { Throw-Controlled 'POSTMIGRATION_SCHEMA_INVALID' }
-    $lines = Get-OutputLines $result.stdout
+    $lines = @(Get-OutputLines $result.stdout)
     Assert-ExactMarkers -Actual $lines -Expected @(
         'STAGING_MIGRATION_CONNECTION_ATTESTED',
         'STAGING_MIGRATION_POSTSTATE_VERIFIED'
@@ -1396,6 +1400,17 @@ function Invoke-SelfTest {
         try { Assert-ExactMarkers -Actual @('EXPECTED', 'EXTRA') -Expected @('EXPECTED') }
         catch { $unexpectedOutputRejected = (Get-ControlledCode $_) -eq 'UNEXPECTED_DATABASE_OUTPUT' }
         if (-not $unexpectedOutputRejected) { Throw-Controlled 'SELF_TEST_FAILED' }
+        $zeroMarkerLines = @(Get-OutputLines -Text '')
+        $zeroMarkerRejected = $false
+        try { Assert-ExactMarkers -Actual $zeroMarkerLines -Expected @('EXPECTED') }
+        catch { $zeroMarkerRejected = (Get-ControlledCode $_) -eq 'UNEXPECTED_DATABASE_OUTPUT' }
+        if ($zeroMarkerLines.Count -ne 0 -or -not $zeroMarkerRejected) { Throw-Controlled 'SELF_TEST_FAILED' }
+        $oneMarkerLines = @(Get-OutputLines -Text "EXPECTED`n")
+        Assert-ExactMarkers -Actual $oneMarkerLines -Expected @('EXPECTED')
+        $oneMarkerRejected = $false
+        try { Assert-ExactMarkers -Actual $oneMarkerLines -Expected @('EXPECTED', 'MISSING') }
+        catch { $oneMarkerRejected = (Get-ControlledCode $_) -eq 'UNEXPECTED_DATABASE_OUTPUT' }
+        if ($oneMarkerLines.Count -ne 1 -or -not $oneMarkerRejected) { Throw-Controlled 'SELF_TEST_FAILED' }
 
         $predecessorLedgerSql = Get-PredecessorLedgerChecksSql
         foreach ($entry in $script:PredecessorLedgerPlan) {
@@ -1423,8 +1438,17 @@ function Invoke-SelfTest {
         $credential = [ApplyPack.Security.WindowsCredentialStore]::CreateSyntheticForSelfTest($secretChars)
         $stream = [IO.MemoryStream]::new()
         $credential.WriteUtf8LineTo($stream)
-        $piped = [Text.UTF8Encoding]::new($false, $true).GetString($stream.ToArray()).TrimEnd("`n")
-        if (-not [string]::Equals($piped, $secretMarker, [StringComparison]::Ordinal)) { Throw-Controlled 'SELF_TEST_FAILED' }
+        $syntheticSql = "\echo SELF_TEST_SQL_STDIN_REMAINS`n"
+        $syntheticSqlBytes = [Text.UTF8Encoding]::new($false, $true).GetBytes($syntheticSql)
+        try { $stream.Write($syntheticSqlBytes, 0, $syntheticSqlBytes.Length) }
+        finally { [Array]::Clear($syntheticSqlBytes, 0, $syntheticSqlBytes.Length) }
+        $piped = [Text.UTF8Encoding]::new($false, $true).GetString($stream.ToArray())
+        $passwordDelimiter = $piped.IndexOf("`n", [StringComparison]::Ordinal)
+        if ($passwordDelimiter -lt 0 -or
+            -not [string]::Equals($piped.Substring(0, $passwordDelimiter).TrimEnd("`r"), $secretMarker, [StringComparison]::Ordinal) -or
+            -not [string]::Equals($piped.Substring($passwordDelimiter + 1), $syntheticSql, [StringComparison]::Ordinal)) {
+            Throw-Controlled 'SELF_TEST_FAILED'
+        }
         $credential.Dispose()
         $credential = $null
         if (@($secretChars | Where-Object { $_ -ne [char]0 }).Count -ne 0) { Throw-Controlled 'SELF_TEST_FAILED' }
@@ -1433,7 +1457,10 @@ function Invoke-SelfTest {
         [IO.File]::WriteAllText($syntheticCa, 'synthetic', [Text.UTF8Encoding]::new($false))
         $arguments = Get-PsqlDockerArguments -ContainerName 'applypack-staging-migrate-selftest1' -CaPath $syntheticCa
         $joinedArguments = $arguments -join "`n"
-        if ($joinedArguments -match '(?i)PGPASSWORD|postgres(?:ql)?://|--publish|(^|\n)-p($|\n)' -or
+        if (-not [string]::Equals($script:PsqlPasswordHandoffShell, 'IFS= read -r PGPASSWORD; export PGPASSWORD; export PGSSLMODE=verify-full; export PGSSLROOTCERT=/certs/root.crt; export PGCONNECT_TIMEOUT=15; exec "$@"', [StringComparison]::Ordinal) -or
+            $joinedArguments -match '(?i)PGPASSWORD=|postgres(?:ql)?://|--password|--publish|(^|\n)-p($|\n)' -or
+            $joinedArguments -notmatch '(?m)^--entrypoint\nsh\n' -or
+            $joinedArguments -notmatch '(?m)^-ec\nIFS= read -r PGPASSWORD; export PGPASSWORD; export PGSSLMODE=verify-full; export PGSSLROOTCERT=/certs/root\.crt; export PGCONNECT_TIMEOUT=15; exec "\$@"\n--\npsql\n' -or
             $joinedArguments -match [Regex]::Escape($secretMarker)) {
             Throw-Controlled 'SELF_TEST_FAILED'
         }
@@ -1508,6 +1535,9 @@ function Invoke-SelfTest {
             exactLedgerTupleVerified = $true
             predecessorLedgerIdentityAndDigestVerified = $true
             passwordStdinOnlyVerified = $true
+            passwordFirstShellHandoffVerified = $true
+            remainingSqlStdinVerified = $true
+            zeroAndOneMarkerHandlingVerified = $true
             noSecretArgumentsEnvironmentOrFilesVerified = $true
             forbiddenEnvironmentRejectionVerified = $true
             childEnvironmentScrubbingVerified = $true

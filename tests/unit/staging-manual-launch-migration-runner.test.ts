@@ -106,7 +106,7 @@ describe("credential-safe staging migrations 081 through 084", () => {
     expect(runner).not.toContain("--pull', 'always'");
   });
 
-  it("reads only the reviewed Credential Manager target and pipes the secret directly to psql", () => {
+  it("uses the reviewed Credential Manager target and a password-first shell handoff", () => {
     expect(runner).toContain(
       "[ApplyPack.Security.WindowsCredentialStore]::ReadStagingDatabase()",
     );
@@ -116,11 +116,50 @@ describe("credential-safe staging migrations 081 through 084", () => {
     expect(runner).toContain(
       "$process.StandardInput.BaseStream.Write($payloadBytes, 0, $payloadBytes.Length)",
     );
-    expect(runner).toContain("'--password'");
+    expect(runner).toContain(
+      "$script:PsqlPasswordHandoffShell = 'IFS= read -r PGPASSWORD; export PGPASSWORD; export PGSSLMODE=verify-full; export PGSSLROOTCERT=/certs/root.crt; export PGCONNECT_TIMEOUT=15; exec \"$@\"'",
+    );
+    const argumentsStart = runner.indexOf("function Get-PsqlDockerArguments");
+    const argumentsEnd = runner.indexOf(
+      "function Get-BoundedSqlPayload",
+      argumentsStart,
+    );
+    const argumentsBody = runner.slice(argumentsStart, argumentsEnd);
+    expect(argumentsBody).toContain(
+      "'--entrypoint', 'sh', $script:PostgresImageDigest",
+    );
+    expect(argumentsBody).toContain(
+      "'-ec', $script:PsqlPasswordHandoffShell, '--', 'psql'",
+    );
+    expect(argumentsBody).not.toContain("'--env'");
+    expect(runner).not.toContain("'--password'");
     expect(runner).toContain("'--file', '-'");
     expect(runner).not.toMatch(/'--env',\s*'PGPASSWORD=/u);
-    expect(runner).not.toContain("export PGPASSWORD");
     expect(runner).not.toContain("new StreamWriter");
+  });
+
+  it("preserves SQL after the password line and controls zero or scalar marker output", () => {
+    expect(runner).toContain(
+      '$syntheticSql = "\\echo SELF_TEST_SQL_STDIN_REMAINS`n"',
+    );
+    expect(runner).toContain(
+      "$piped.Substring($passwordDelimiter + 1), $syntheticSql",
+    );
+    expect(runner).toContain("[AllowEmptyCollection()][string[]]$Actual");
+    expect(runner).toContain("$zeroMarkerLines = @(Get-OutputLines -Text '')");
+    expect(runner).toContain(
+      '$oneMarkerLines = @(Get-OutputLines -Text "EXPECTED`n")',
+    );
+    expect(runner).not.toContain("-Actual (Get-OutputLines");
+    expect(runner).toContain(
+      "$lines = @(Get-OutputLines -Text $result.stdout)",
+    );
+    expect(runner).toContain(
+      "$guardLines = @(Get-OutputLines $guardResult.stdout)",
+    );
+    expect(runner).toContain(
+      "$resultLines = @(Get-OutputLines $result.stdout)",
+    );
   });
 
   it("rejects inherited connection and Docker routing variables before children and scrubs every child", () => {
@@ -273,6 +312,14 @@ describe("credential-safe staging migrations 081 through 084", () => {
     expect(runner).toContain("-TimeoutMilliseconds 300000");
     expect(runner).not.toMatch(/'--publish'|'-p'/u);
     expect(runner).not.toContain("$DockerExecutable");
+    const inspectStart = runner.indexOf("function Test-ContainerExists");
+    const inspectEnd = runner.indexOf("function Ensure-ContainerAbsent", inspectStart);
+    const inspectBody = runner.slice(inspectStart, inspectEnd);
+    expect(inspectBody).toContain("-RedirectOutput $true");
+    expect(inspectBody).toContain(
+      "$process.StandardOutput.BaseStream.CopyToAsync([IO.Stream]::Null)",
+    );
+    expect(inspectBody).toContain("-StandardOutputTask $stdoutTask");
   });
 
   it("writes only one new atomic sanitized receipt outside repositories and reparse paths", () => {
@@ -329,6 +376,9 @@ describe("credential-safe staging migrations 081 through 084", () => {
       expect(report.transactionAndLedgerAtomicityVerified).toBe(true);
       expect(report.exactLedgerTupleVerified).toBe(true);
       expect(report.predecessorLedgerIdentityAndDigestVerified).toBe(true);
+      expect(report.passwordFirstShellHandoffVerified).toBe(true);
+      expect(report.remainingSqlStdinVerified).toBe(true);
+      expect(report.zeroAndOneMarkerHandlingVerified).toBe(true);
       expect(report.noSecretArgumentsEnvironmentOrFilesVerified).toBe(true);
       expect(report.forbiddenEnvironmentRejectionVerified).toBe(true);
       expect(report.childEnvironmentScrubbingVerified).toBe(true);
