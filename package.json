@@ -15,6 +15,7 @@
     "test:integration": "vitest run --config vitest.integration.config.mts",
     "test:database": "node scripts/run-supabase-db-tests-v2.mjs && node scripts/run-supabase-legal-upgrade-test.mjs && node scripts/run-supabase-inventory-upgrade-test.mjs && node scripts/run-supabase-legacy-board-upgrade-test.mjs",
     "test:staging-database-safeguard": "vitest run tests/unit/staging-database-safeguard.test.ts",
+    "test:staging-manual-launch-migrations": "vitest run tests/unit/staging-manual-launch-migration-runner.test.ts",
     "preflight:inventory-identity": "node scripts/check-inventory-identity-conflicts.mjs --local",
     "preflight:inventory-identity:remote": "node scripts/check-inventory-identity-conflicts.mjs --remote",
     "test:legacy-backfill": "node scripts/run-supabase-legacy-backfill-test.mjs",
