@@ -298,15 +298,29 @@ describe("October 2 manual-launch hardening", () => {
     expect(preflightRunner).toContain("[REDACTED_DATABASE_CREDENTIAL]");
     expect(preflightRunner).toContain('process.argv.length !== 3');
     const manualLaunchRunbook = source("docs/runbooks/MANUAL_LAUNCH_RELEASE.md");
-    expect(manualLaunchRunbook).toContain("AP_PREMIGRATION_EXPECTED_LOGIN_USER");
-    expect(manualLaunchRunbook).toContain("AP_PREMIGRATION_EXPECTED_CURRENT_USER");
-    expect(manualLaunchRunbook).toContain("AP_DEPLOYMENT_ENV");
-    expect(manualLaunchRunbook).not.toMatch(/`AP_PREMIGRATION_EXPECTED_USER`/);
-    expect(manualLaunchRunbook).toContain("AP_DEPLOYMENT_ENV=staging");
-    expect(manualLaunchRunbook).toContain("No production project reference is currently checked in");
-    expect(manualLaunchRunbook).toContain("normally equal for a direct database endpoint");
-    expect(manualLaunchRunbook).toContain("login may be tenant-qualified while `current_user` is the underlying database role");
-    expect(manualLaunchRunbook).toContain("expected login user, expected current user");
+    expect(manualLaunchRunbook).toContain(
+      "currently authorized hosted-staging scope is migrations 081 through 084 only",
+    );
+    expect(manualLaunchRunbook).toContain(
+      "Migrations 077 through 080 are a required, already-applied predecessor state",
+    );
+    expect(manualLaunchRunbook).toContain(
+      "exact ledger versions, names, statement counts, and reviewed statement-array digests",
+    );
+    expect(manualLaunchRunbook).toContain(
+      "reads only `ApplyPack/Supabase/Staging/Database` from Windows Credential Manager",
+    );
+    expect(manualLaunchRunbook).toContain("proves `verify-full` TLS");
+    expect(manualLaunchRunbook).toContain("do not set or construct a database URI");
+    expect(manualLaunchRunbook).toContain("`AP_DEPLOYMENT_ENV=production`");
+    expect(manualLaunchRunbook).toContain(
+      "either checkout flag other than exact lowercase `false`",
+    );
+    expect(manualLaunchRunbook).toContain(
+      "`STAGING_DATABASE_ADVANCEMENT_REQUIRES_INSPECTION`",
+    );
+    expect(manualLaunchRunbook).toContain("read-only observed-state inspection");
+    expect(manualLaunchRunbook).toContain("state-specific forward-only recovery");
     const upgradeTest = source("scripts/run-supabase-inventory-upgrade-test.mjs");
     expect(upgradeTest).toContain("INVENTORY_IDENTITY_PREFLIGHT_CLEAN");
     expect(upgradeTest).toContain("INVENTORY_IDENTITY_PREFLIGHT_CONFLICT");
