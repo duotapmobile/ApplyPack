@@ -64,7 +64,7 @@ $script:PublicErrorCodes = [Collections.Generic.HashSet[string]]::new([StringCom
     'SELF_TEST_LOG_REDACTION_FAILED', 'SELF_TEST_FAILURE_CLEANUP_FAILED',
     'SELF_TEST_PROCESS_CLEANUP_FAILED', 'SELF_TEST_PATH_RACE_FAILED',
     'SELF_TEST_RELEASE_BINDING_FAILED', 'SELF_TEST_RESTORE_PRECEDENCE_FAILED',
-    'SELF_TEST_SOURCE_VERSION_FAILED', 'SELF_TEST_CLIENT_TLS_FAILED',
+    'SELF_TEST_SOURCE_VERSION_FAILED', 'SELF_TEST_READINESS_SCHEMA_FAILED', 'SELF_TEST_CLIENT_TLS_FAILED',
     'SELF_TEST_CREDENTIAL_INVALID', 'SAFEGUARD_FAILED'
 ) | ForEach-Object { [void]$script:PublicErrorCodes.Add($_) }
 
@@ -811,10 +811,29 @@ function Assert-SourceEvidence {
         $Evidence.latestMigration -ne $script:ExpectedSchemaVersion -or
         $Evidence.migration080Present -ne $true -or
         [int]$Evidence.migrations081084Count -ne 0 -or
-        $Evidence.readiness.schemaVersion -ne $script:ExpectedSchemaVersion -or
-        $Evidence.readiness.ready -ne $true) {
+        -not (Test-ReadinessEvidence -Evidence $Evidence)) {
         Throw-Controlled 'SOURCE_EVIDENCE_INVALID'
     }
+}
+
+function Test-ReadinessEvidence {
+    param([Parameter(Mandatory = $true)]$Evidence)
+    $readinessProperty = $Evidence.PSObject.Properties['readiness']
+    if ($null -eq $readinessProperty -or $null -eq $readinessProperty.Value) { return $false }
+    $requiredSchemaVersionProperty = $readinessProperty.Value.PSObject.Properties['requiredSchemaVersion']
+    $readyProperty = $readinessProperty.Value.PSObject.Properties['ready']
+    return (
+        $null -ne $requiredSchemaVersionProperty -and
+        $requiredSchemaVersionProperty.Value -is [string] -and
+        [string]::Equals(
+            $requiredSchemaVersionProperty.Value,
+            $script:ExpectedSchemaVersion,
+            [StringComparison]::Ordinal
+        ) -and
+        $null -ne $readyProperty -and
+        $readyProperty.Value -is [bool] -and
+        $readyProperty.Value -eq $true
+    )
 }
 
 function Get-SourceEvidence {
@@ -990,6 +1009,19 @@ function Get-RestoreEvidence {
 
 function Assert-RestoreEvidence {
     param($Source, $Restored)
+    $sourceReadinessValid = Test-ReadinessEvidence -Evidence $Source
+    $restoredReadinessValid = Test-ReadinessEvidence -Evidence $Restored
+    $readinessMatches = $false
+    if ($sourceReadinessValid -and $restoredReadinessValid) {
+        $readinessMatches = (
+            [string]::Equals(
+                $Source.readiness.requiredSchemaVersion,
+                $Restored.readiness.requiredSchemaVersion,
+                [StringComparison]::Ordinal
+            ) -and
+            $Source.readiness.ready -eq $Restored.readiness.ready
+        )
+    }
     foreach ($field in @(
         'publicTableCount', 'rlsEnabledTableCount', 'rlsPolicyCount', 'publicTriggerCount',
         'publicFunctionCount', 'migrationCount', 'latestMigration', 'migration080Present', 'migrations081084Count'
@@ -1012,8 +1044,9 @@ function Assert-RestoreEvidence {
         $Restored.latestMigration -ne $script:ExpectedSchemaVersion -or
         $Restored.migration080Present -ne $true -or
         [int]$Restored.migrations081084Count -ne 0 -or
-        $Restored.readiness.schemaVersion -ne $script:ExpectedSchemaVersion -or
-        $Restored.readiness.ready -ne $true) {
+        -not $sourceReadinessValid -or
+        -not $restoredReadinessValid -or
+        -not $readinessMatches) {
         Throw-Controlled 'RESTORE_INTEGRITY_INVALID'
     }
 }
@@ -1166,7 +1199,7 @@ function Invoke-SelfTest {
             migration080Present = $true
             migrations081084Count = 0
             readiness = [pscustomobject]@{
-                schemaVersion = $script:ExpectedSchemaVersion
+                requiredSchemaVersion = $script:ExpectedSchemaVersion
                 ready = $true
             }
         }
@@ -1203,6 +1236,72 @@ function Invoke-SelfTest {
         catch { $unverifiedTlsRejected = (Get-ControlledCode $_) -eq 'SOURCE_EVIDENCE_INVALID' }
         if (-not $unverifiedTlsRejected) { Throw-Controlled 'SELF_TEST_CLIENT_TLS_FAILED' }
         $sourceEvidenceFixture.clientTlsVerified = $true
+
+        $restoreSourceFixture = [pscustomobject]@{
+            publicTableCount = 1
+            rlsEnabledTableCount = 1
+            rlsPolicyCount = 1
+            publicTriggerCount = 1
+            publicFunctionCount = 1
+            invalidIndexCount = 0
+            migrationCount = 1
+            latestMigration = $script:ExpectedSchemaVersion
+            migration080Present = $true
+            migrations081084Count = 0
+            tableRowCounts = [pscustomobject]@{ example = 0 }
+            tableRowCountSha256 = ('0' * 64 -join '')
+            readiness = [pscustomobject]@{
+                requiredSchemaVersion = $script:ExpectedSchemaVersion
+                ready = $true
+            }
+        }
+        $validRestoreEvidence = $restoreSourceFixture | ConvertTo-Json -Depth 12 -Compress | ConvertFrom-Json
+        Assert-RestoreEvidence -Source $restoreSourceFixture -Restored $validRestoreEvidence
+
+        $invalidReadinessCases = @(
+            [pscustomobject]@{ Name = 'missing-readiness'; Mutator = { param($fixture) $fixture.PSObject.Properties.Remove('readiness') } },
+            [pscustomobject]@{ Name = 'null-readiness'; Mutator = { param($fixture) $fixture.readiness = $null } },
+            [pscustomobject]@{ Name = 'missing-required-version'; Mutator = { param($fixture) $fixture.readiness.PSObject.Properties.Remove('requiredSchemaVersion') } },
+            [pscustomobject]@{ Name = 'legacy-version-key'; Mutator = {
+                param($fixture)
+                $fixture.readiness.PSObject.Properties.Remove('requiredSchemaVersion')
+                $fixture.readiness | Add-Member -NotePropertyName 'schemaVersion' -NotePropertyValue $script:ExpectedSchemaVersion
+            } },
+            [pscustomobject]@{ Name = 'null-required-version'; Mutator = { param($fixture) $fixture.readiness.requiredSchemaVersion = $null } },
+            [pscustomobject]@{ Name = 'numeric-required-version'; Mutator = { param($fixture) $fixture.readiness.requiredSchemaVersion = [long]202610040080 } },
+            [pscustomobject]@{ Name = 'wrong-required-version'; Mutator = { param($fixture) $fixture.readiness.requiredSchemaVersion = 'wrong-schema-version' } },
+            [pscustomobject]@{ Name = 'missing-ready'; Mutator = { param($fixture) $fixture.readiness.PSObject.Properties.Remove('ready') } },
+            [pscustomobject]@{ Name = 'null-ready'; Mutator = { param($fixture) $fixture.readiness.ready = $null } },
+            [pscustomobject]@{ Name = 'false-ready'; Mutator = { param($fixture) $fixture.readiness.ready = $false } },
+            [pscustomobject]@{ Name = 'numeric-ready'; Mutator = { param($fixture) $fixture.readiness.ready = [long]1 } },
+            [pscustomobject]@{ Name = 'titlecase-string-ready'; Mutator = { param($fixture) $fixture.readiness.ready = 'True' } },
+            [pscustomobject]@{ Name = 'lowercase-string-ready'; Mutator = { param($fixture) $fixture.readiness.ready = 'true' } }
+        )
+        foreach ($invalidReadinessCase in $invalidReadinessCases) {
+            $mutator = $invalidReadinessCase.Mutator
+
+            $invalidSourceEvidence = $sourceEvidenceFixture | ConvertTo-Json -Depth 12 -Compress | ConvertFrom-Json
+            & $mutator $invalidSourceEvidence
+            $sourceRejected = $false
+            try { Assert-SourceEvidence -Evidence $invalidSourceEvidence }
+            catch { $sourceRejected = (Get-ControlledCode $_) -eq 'SOURCE_EVIDENCE_INVALID' }
+
+            $invalidRestoreSource = $restoreSourceFixture | ConvertTo-Json -Depth 12 -Compress | ConvertFrom-Json
+            & $mutator $invalidRestoreSource
+            $restoreSourceRejected = $false
+            try { Assert-RestoreEvidence -Source $invalidRestoreSource -Restored $validRestoreEvidence }
+            catch { $restoreSourceRejected = (Get-ControlledCode $_) -eq 'RESTORE_INTEGRITY_INVALID' }
+
+            $invalidRestoredEvidence = $validRestoreEvidence | ConvertTo-Json -Depth 12 -Compress | ConvertFrom-Json
+            & $mutator $invalidRestoredEvidence
+            $restoredRejected = $false
+            try { Assert-RestoreEvidence -Source $restoreSourceFixture -Restored $invalidRestoredEvidence }
+            catch { $restoredRejected = (Get-ControlledCode $_) -eq 'RESTORE_INTEGRITY_INVALID' }
+
+            if (-not $sourceRejected -or -not $restoreSourceRejected -or -not $restoredRejected) {
+                Throw-Controlled 'SELF_TEST_READINESS_SCHEMA_FAILED'
+            }
+        }
 
         $sourceEvidenceFixture.serverVersionNum = $script:MinimumPostgresServerVersionNum - 1
         $olderVersionRejected = $false
@@ -1515,6 +1614,7 @@ while ($true) {
             preCaptureSwapRejected = $true
             releaseBindingVerified = $true
             sourceVersionBoundaryVerified = $true
+            readinessSchemaContractVerified = $true
             clientTlsAttestationVerified = $true
             failureCleanupVerified = $true
             processFailureCleanupVerified = $true

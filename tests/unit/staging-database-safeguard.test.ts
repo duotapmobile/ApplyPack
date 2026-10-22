@@ -102,6 +102,38 @@ describe("Windows staging database safeguard", () => {
     expect(script).not.toContain("serverVersionNum -lt 170600");
   });
 
+  it("requires the authoritative readiness schema key for source and restore evidence", () => {
+    expect(script).toContain("Test-ReadinessEvidence -Evidence $Evidence");
+    expect(script).toContain(
+      "$sourceReadinessValid = Test-ReadinessEvidence -Evidence $Source",
+    );
+    expect(script).toContain(
+      "$restoredReadinessValid = Test-ReadinessEvidence -Evidence $Restored",
+    );
+    expect(script).toContain(
+      "$readinessProperty.Value.PSObject.Properties['requiredSchemaVersion']",
+    );
+    expect(script).toContain(
+      "$requiredSchemaVersionProperty.Value -is [string]",
+    );
+    expect(script).toContain("[StringComparison]::Ordinal");
+    expect(script).toContain("$readyProperty.Value -is [bool]");
+    expect(script).toContain(
+      "requiredSchemaVersion = $script:ExpectedSchemaVersion",
+    );
+    expect(script).toContain("$restoreSourceRejected");
+    expect(script).toContain("-Source $invalidRestoreSource -Restored $validRestoreEvidence");
+    expect(script).toContain("Name = 'numeric-required-version'");
+    expect(script).toContain("Name = 'legacy-version-key'");
+    expect(script).toContain("Name = 'numeric-ready'");
+    expect(script).toContain("Name = 'titlecase-string-ready'");
+    expect(script).toContain("Name = 'lowercase-string-ready'");
+    expect(script).not.toContain(".readiness.schemaVersion");
+    expect(script).not.toContain(
+      "schemaVersion = $script:ExpectedSchemaVersion",
+    );
+  });
+
   it("rejects Git/reparse outputs and keeps restore isolated", () => {
     expect(script).toContain("OUTPUT_INSIDE_GIT_WORKTREE");
     expect(script).toContain("OUTPUT_REPARSE_PATH_REJECTED");
@@ -156,6 +188,7 @@ describe("Windows staging database safeguard", () => {
       expect(report.preCaptureSwapRejected).toBe(true);
       expect(report.releaseBindingVerified).toBe(true);
       expect(report.sourceVersionBoundaryVerified).toBe(true);
+      expect(report.readinessSchemaContractVerified).toBe(true);
       expect(report.clientTlsAttestationVerified).toBe(true);
       expect(report.processFailureCleanupVerified).toBe(true);
       expect(report.credentialBufferCleared).toBe(true);
