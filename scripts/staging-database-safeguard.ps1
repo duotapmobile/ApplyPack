@@ -21,6 +21,9 @@ $script:DatabasePort = '5432'
 $script:DatabaseName = 'postgres'
 $script:LoginUser = 'postgres.fmugizadzdnqfckujqlw'
 $script:CurrentUser = 'postgres'
+$script:RestoreDatabaseName = 'applypack_restore_drill'
+$script:RestoreDatabaseUser = 'supabase_admin'
+$script:RestoreDatabaseCreateSql = 'create database applypack_restore_drill with template template0 owner supabase_admin'
 $script:ExpectedSchemaVersion = '202610040080'
 $script:MinimumPostgresServerVersionNum = 170006
 $script:CaSha256 = '700723581420DD1AC98FD7E9AC529F0EF210EADCAF87FC868A3AD7D114C2F3B7'
@@ -52,6 +55,7 @@ $script:PublicErrorCodes = [Collections.Generic.HashSet[string]]::new([StringCom
     'PG_DUMP_FAILED', 'BACKUP_FILE_INVALID',
     'ENVELOPE_METADATA_INVALID', 'ENVELOPE_BINDING_INVALID', 'ENVELOPE_RELEASE_SHA_MISMATCH', 'PG_RESTORE_LIST_FAILED',
     'RESTORE_CONTAINER_START_FAILED', 'RESTORE_CONTAINER_START_INVALID', 'RESTORE_CONTAINER_NOT_READY',
+    'RESTORE_DATABASE_CREATE_FAILED',
     'PG_RESTORE_FAILED', 'RESTORE_EVIDENCE_QUERY_FAILED', 'RESTORE_EVIDENCE_INVALID',
     'RESTORE_AGGREGATE_MISMATCH', 'RESTORE_INTEGRITY_INVALID', 'RESTORE_CONTAINER_TEARDOWN_FAILED',
     'DPAPI_INPUT_INVALID', 'DPAPI_PROTECT_FAILED', 'DPAPI_UNPROTECT_FAILED',
@@ -65,6 +69,7 @@ $script:PublicErrorCodes = [Collections.Generic.HashSet[string]]::new([StringCom
     'SELF_TEST_PROCESS_CLEANUP_FAILED', 'SELF_TEST_PATH_RACE_FAILED',
     'SELF_TEST_RELEASE_BINDING_FAILED', 'SELF_TEST_RESTORE_PRECEDENCE_FAILED',
     'SELF_TEST_SOURCE_VERSION_FAILED', 'SELF_TEST_READINESS_SCHEMA_FAILED', 'SELF_TEST_CLIENT_TLS_FAILED',
+    'SELF_TEST_RESTORE_IDENTITY_FAILED',
     'SELF_TEST_CREDENTIAL_INVALID', 'SAFEGUARD_FAILED'
 ) | ForEach-Object { [void]$script:PublicErrorCodes.Add($_) }
 
@@ -1001,7 +1006,8 @@ function Get-RestoreEvidence {
     $query = (Get-SourceEvidenceSql) -replace "coalesce\(\(select ssl from pg_stat_ssl where pid = pg_backend_pid\(\)\), false\)", 'false'
     $text = Invoke-SafeNativeText -FileName $DockerExecutable -Arguments @(
         'exec', $ContainerName, 'psql', '--no-psqlrc', '--tuples-only', '--no-align', '--quiet',
-        '--set', 'ON_ERROR_STOP=1', '--username', 'postgres', '--dbname', 'postgres', '--command', $query
+        '--set', 'ON_ERROR_STOP=1', '--username', $script:RestoreDatabaseUser,
+        '--dbname', $script:RestoreDatabaseName, '--command', $query
     ) -FailureCode 'RESTORE_EVIDENCE_QUERY_FAILED'
     try { $evidence = $text | ConvertFrom-Json } catch { Throw-Controlled 'RESTORE_EVIDENCE_INVALID' }
     return Add-RowCountDigest $evidence
@@ -1040,7 +1046,11 @@ function Assert-RestoreEvidence {
             Throw-Controlled 'RESTORE_AGGREGATE_MISMATCH'
         }
     }
-    if ([int]$Restored.invalidIndexCount -ne 0 -or
+    if ($Restored.database -isnot [string] -or
+        -not [string]::Equals($Restored.database, $script:RestoreDatabaseName, [StringComparison]::Ordinal) -or
+        $Restored.currentUser -isnot [string] -or
+        -not [string]::Equals($Restored.currentUser, $script:RestoreDatabaseUser, [StringComparison]::Ordinal) -or
+        [int]$Restored.invalidIndexCount -ne 0 -or
         $Restored.latestMigration -ne $script:ExpectedSchemaVersion -or
         $Restored.migration080Present -ne $true -or
         [int]$Restored.migrations081084Count -ne 0 -or
@@ -1135,9 +1145,15 @@ function Invoke-Restore {
         }
         if (-not $ready) { Throw-Controlled 'RESTORE_CONTAINER_NOT_READY' }
 
+        [void](Invoke-SafeNativeText -FileName $DockerExecutable -Arguments @(
+            'exec', $containerName, 'psql', '--no-psqlrc', '--quiet',
+            '--set', 'ON_ERROR_STOP=1', '--username', $script:RestoreDatabaseUser,
+            '--dbname', 'postgres', '--command', $script:RestoreDatabaseCreateSql
+        ) -FailureCode 'RESTORE_DATABASE_CREATE_FAILED')
+
         $restoreStart = New-ProcessStartInfo -FileName $DockerExecutable -Arguments @(
             'exec', '-i', $containerName, 'pg_restore', '--exit-on-error', '--no-owner', '--no-privileges',
-            '--clean', '--if-exists', '--username', 'postgres', '--dbname', 'postgres'
+            '--username', $script:RestoreDatabaseUser, '--dbname', $script:RestoreDatabaseName
         ) -RedirectInput $true -RedirectOutput $true
         Invoke-DecryptToProcess -EnvelopeStream $envelopeStream -StartInfo $restoreStart -FailureCode 'PG_RESTORE_FAILED'
         $restoredEvidence = Get-RestoreEvidence -ContainerName $containerName
@@ -1169,6 +1185,8 @@ function Invoke-Restore {
         postgresImageDigest = $script:PostgresImageDigest
         networkMode = 'none'
         publishedPorts = 0
+        restoreDatabase = $script:RestoreDatabaseName
+        restoreDatabaseUser = $script:RestoreDatabaseUser
         aggregateEvidence = $restoredEvidence
         tableRowCountSha256 = $restoredEvidence.tableRowCountSha256
         teardownVerified = $true
@@ -1238,6 +1256,8 @@ function Invoke-SelfTest {
         $sourceEvidenceFixture.clientTlsVerified = $true
 
         $restoreSourceFixture = [pscustomobject]@{
+            database = $script:DatabaseName
+            currentUser = $script:CurrentUser
             publicTableCount = 1
             rlsEnabledTableCount = 1
             rlsPolicyCount = 1
@@ -1256,7 +1276,26 @@ function Invoke-SelfTest {
             }
         }
         $validRestoreEvidence = $restoreSourceFixture | ConvertTo-Json -Depth 12 -Compress | ConvertFrom-Json
+        $validRestoreEvidence.database = $script:RestoreDatabaseName
+        $validRestoreEvidence.currentUser = $script:RestoreDatabaseUser
         Assert-RestoreEvidence -Source $restoreSourceFixture -Restored $validRestoreEvidence
+
+        if ($script:RestoreDatabaseName -ne 'applypack_restore_drill' -or
+            $script:RestoreDatabaseUser -ne 'supabase_admin' -or
+            $script:RestoreDatabaseCreateSql -ne 'create database applypack_restore_drill with template template0 owner supabase_admin') {
+            Throw-Controlled 'SELF_TEST_RESTORE_IDENTITY_FAILED'
+        }
+        foreach ($invalidIdentity in @(
+            [pscustomobject]@{ Property = 'database'; Value = 'postgres' },
+            [pscustomobject]@{ Property = 'currentUser'; Value = 'postgres' }
+        )) {
+            $invalidIdentityEvidence = $validRestoreEvidence | ConvertTo-Json -Depth 12 -Compress | ConvertFrom-Json
+            $invalidIdentityEvidence.($invalidIdentity.Property) = $invalidIdentity.Value
+            $identityRejected = $false
+            try { Assert-RestoreEvidence -Source $restoreSourceFixture -Restored $invalidIdentityEvidence }
+            catch { $identityRejected = (Get-ControlledCode $_) -eq 'RESTORE_INTEGRITY_INVALID' }
+            if (-not $identityRejected) { Throw-Controlled 'SELF_TEST_RESTORE_IDENTITY_FAILED' }
+        }
 
         $invalidReadinessCases = @(
             [pscustomobject]@{ Name = 'missing-readiness'; Mutator = { param($fixture) $fixture.PSObject.Properties.Remove('readiness') } },
@@ -1615,6 +1654,7 @@ while ($true) {
             releaseBindingVerified = $true
             sourceVersionBoundaryVerified = $true
             readinessSchemaContractVerified = $true
+            restoreDatabaseIdentityVerified = $true
             clientTlsAttestationVerified = $true
             failureCleanupVerified = $true
             processFailureCleanupVerified = $true

@@ -151,6 +151,28 @@ describe("Windows staging database safeguard", () => {
     expect(script).not.toMatch(/'--publish'|'-p'/u);
   });
 
+  it("restores as supabase_admin into one fresh template0 database", () => {
+    expect(script).toContain(
+      "$script:RestoreDatabaseName = 'applypack_restore_drill'",
+    );
+    expect(script).toContain("$script:RestoreDatabaseUser = 'supabase_admin'");
+    expect(script).toContain(
+      "$script:RestoreDatabaseCreateSql = 'create database applypack_restore_drill with template template0 owner supabase_admin'",
+    );
+    expect(script).toContain("RESTORE_DATABASE_CREATE_FAILED");
+    expect(script).toContain(
+      "'--dbname', 'postgres', '--command', $script:RestoreDatabaseCreateSql",
+    );
+    expect(script).toContain(
+      "'--username', $script:RestoreDatabaseUser, '--dbname', $script:RestoreDatabaseName",
+    );
+    expect(script).not.toContain("'--clean'");
+    expect(script).not.toContain("'--if-exists'");
+    expect(script).toContain("$Restored.database -isnot [string]");
+    expect(script).toContain("$Restored.currentUser -isnot [string]");
+    expect(script).toContain("restoreDatabaseIdentityVerified = $true");
+  });
+
   it("runs the dynamic DPAPI safeguard on a dedicated Windows CI job", () => {
     expect(ciWorkflow).toMatch(/staging-database-safeguard:\s*\n\s*runs-on: windows-latest/u);
     expect(ciWorkflow).toContain("npm run test:staging-database-safeguard");
@@ -189,6 +211,7 @@ describe("Windows staging database safeguard", () => {
       expect(report.releaseBindingVerified).toBe(true);
       expect(report.sourceVersionBoundaryVerified).toBe(true);
       expect(report.readinessSchemaContractVerified).toBe(true);
+      expect(report.restoreDatabaseIdentityVerified).toBe(true);
       expect(report.clientTlsAttestationVerified).toBe(true);
       expect(report.processFailureCleanupVerified).toBe(true);
       expect(report.credentialBufferCleared).toBe(true);
