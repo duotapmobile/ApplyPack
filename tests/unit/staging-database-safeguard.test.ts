@@ -76,6 +76,15 @@ describe("Windows staging database safeguard", () => {
     expect(script).toContain("sourceReleaseSha = $releaseSha");
     expect(script).toContain("ENVELOPE_RELEASE_SHA_MISMATCH");
     expect(script).toContain("PGSSLMODE=verify-full");
+    expect(script).toContain("--command', '\\conninfo'");
+    expect(script).toContain("APPLYPACK_SOURCE_CONNINFO_BEGIN");
+    expect(script).toContain("APPLYPACK_SOURCE_CONNINFO_END");
+    expect(script).toContain(
+      "^SSL connection \\(protocol: TLSv1\\.[23], cipher: [A-Za-z0-9_-]+, compression: (?:off|no)(?:, ALPN: [A-Za-z0-9_-]+|)\\)$",
+    );
+    expect(script).toContain("clientTlsVerified");
+    expect(script).toContain("$Evidence.clientTlsVerified -ne $true");
+    expect(script).toContain("$metadata.sourceEvidence.clientTlsVerified -ne $true");
     expect(script).toContain(
       "public.ecr.aws/supabase/postgres@sha256:b3bfedb107413abb3b8cb0d0874b0414a1dceb3d55bc0c778de6ad22d1f7dc86",
     );
@@ -147,6 +156,7 @@ describe("Windows staging database safeguard", () => {
       expect(report.preCaptureSwapRejected).toBe(true);
       expect(report.releaseBindingVerified).toBe(true);
       expect(report.sourceVersionBoundaryVerified).toBe(true);
+      expect(report.clientTlsAttestationVerified).toBe(true);
       expect(report.processFailureCleanupVerified).toBe(true);
       expect(report.credentialBufferCleared).toBe(true);
       expect(report.restoreFailurePrecedenceVerified).toBe(true);

@@ -26,6 +26,9 @@ $script:MinimumPostgresServerVersionNum = 170006
 $script:CaSha256 = '700723581420DD1AC98FD7E9AC529F0EF210EADCAF87FC868A3AD7D114C2F3B7'
 $script:PostgresImage = 'public.ecr.aws/supabase/postgres:17.6.1.166'
 $script:PostgresImageDigest = 'public.ecr.aws/supabase/postgres@sha256:b3bfedb107413abb3b8cb0d0874b0414a1dceb3d55bc0c778de6ad22d1f7dc86'
+$script:SourceConninfoBegin = 'APPLYPACK_SOURCE_CONNINFO_BEGIN'
+$script:SourceConninfoEnd = 'APPLYPACK_SOURCE_CONNINFO_END'
+$script:ClientTlsLinePattern = '^SSL connection \(protocol: TLSv1\.[23], cipher: [A-Za-z0-9_-]+, compression: (?:off|no)(?:, ALPN: [A-Za-z0-9_-]+|)\)$'
 $script:EnvelopeSource = Join-Path $PSScriptRoot 'lib\ApplyPackStagingBackupEnvelope.cs'
 $script:PublicErrorCodes = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 @(
@@ -61,7 +64,8 @@ $script:PublicErrorCodes = [Collections.Generic.HashSet[string]]::new([StringCom
     'SELF_TEST_LOG_REDACTION_FAILED', 'SELF_TEST_FAILURE_CLEANUP_FAILED',
     'SELF_TEST_PROCESS_CLEANUP_FAILED', 'SELF_TEST_PATH_RACE_FAILED',
     'SELF_TEST_RELEASE_BINDING_FAILED', 'SELF_TEST_RESTORE_PRECEDENCE_FAILED',
-    'SELF_TEST_SOURCE_VERSION_FAILED', 'SELF_TEST_CREDENTIAL_INVALID', 'SAFEGUARD_FAILED'
+    'SELF_TEST_SOURCE_VERSION_FAILED', 'SELF_TEST_CLIENT_TLS_FAILED',
+    'SELF_TEST_CREDENTIAL_INVALID', 'SAFEGUARD_FAILED'
 ) | ForEach-Object { [void]$script:PublicErrorCodes.Add($_) }
 
 function Throw-Controlled {
@@ -706,6 +710,40 @@ function Invoke-CredentialedText {
     return $stdout
 }
 
+function ConvertFrom-SourceEvidenceOutput {
+    param([Parameter(Mandatory = $true)][string]$Text)
+    $lines = @(
+        $Text -split "`r?`n" |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    if ($lines.Count -ne 5 -or
+        $lines[0] -ne $script:SourceConninfoBegin -or
+        $lines[3] -ne $script:SourceConninfoEnd) {
+        Throw-Controlled 'DATABASE_EVIDENCE_INVALID'
+    }
+
+    $connectionLinePattern = '^You are connected to database "' +
+        [Regex]::Escape($script:DatabaseName) + '" as user "' +
+        [Regex]::Escape($script:LoginUser) + '" on host "' +
+        [Regex]::Escape($script:DatabaseHost) + '" \(address "[0-9A-Fa-f:.]+"\) at port "' +
+        [Regex]::Escape($script:DatabasePort) + '"\.$'
+    if ($lines[1] -notmatch $connectionLinePattern -or
+        $lines[2] -notmatch $script:ClientTlsLinePattern) {
+        Throw-Controlled 'DATABASE_EVIDENCE_INVALID'
+    }
+
+    try { $evidence = $lines[4] | ConvertFrom-Json }
+    catch { Throw-Controlled 'DATABASE_EVIDENCE_INVALID' }
+    if ($null -eq $evidence -or
+        $evidence -isnot [Management.Automation.PSCustomObject] -or
+        $null -ne $evidence.PSObject.Properties['clientTlsVerified']) {
+        Throw-Controlled 'DATABASE_EVIDENCE_INVALID'
+    }
+    $evidence | Add-Member -NotePropertyName clientTlsVerified -NotePropertyValue $true
+    return $evidence
+}
+
 function Invoke-EncryptedBackupProcess {
     param(
         [Parameter(Mandatory = $true)][Diagnostics.ProcessStartInfo]$StartInfo,
@@ -761,7 +799,8 @@ function Assert-SourceEvidence {
     param([Parameter(Mandatory = $true)]$Evidence)
     if ($Evidence.database -ne $script:DatabaseName -or
         $Evidence.currentUser -ne $script:CurrentUser -or
-        $Evidence.ssl -ne $true -or
+        -not ($Evidence.ssl -is [bool]) -or
+        $Evidence.clientTlsVerified -ne $true -or
         [int]$Evidence.serverVersionNum -lt $script:MinimumPostgresServerVersionNum -or
         [int]$Evidence.publicTableCount -le 0 -or
         [int]$Evidence.rlsEnabledTableCount -le 0 -or
@@ -788,10 +827,13 @@ function Get-SourceEvidence {
         '--no-password', '--no-psqlrc', '--tuples-only', '--no-align', '--quiet', '--set', 'ON_ERROR_STOP=1',
         '--host', $script:DatabaseHost, '--port', $script:DatabasePort,
         '--username', $script:LoginUser, '--dbname', $script:DatabaseName,
+        '--command', "\echo $($script:SourceConninfoBegin)",
+        '--command', '\conninfo',
+        '--command', "\echo $($script:SourceConninfoEnd)",
         '--command', (Get-SourceEvidenceSql)
     )
     $text = Invoke-CredentialedText -Credential $Credential -Arguments $arguments -ContainerName $containerName -FailureCode 'DATABASE_ATTESTATION_FAILED'
-    try { $evidence = $text | ConvertFrom-Json } catch { Throw-Controlled 'DATABASE_EVIDENCE_INVALID' }
+    $evidence = ConvertFrom-SourceEvidenceOutput -Text $text
     $evidence = Add-RowCountDigest $evidence
     Assert-SourceEvidence $evidence
     return $evidence
@@ -1020,6 +1062,7 @@ function Invoke-Restore {
             $metadata.caSha256 -ne $script:CaSha256 -or
             $metadata.sourceEvidence.latestMigration -ne $script:ExpectedSchemaVersion -or
             [int]$metadata.sourceEvidence.migrations081084Count -ne 0 -or
+            $metadata.sourceEvidence.clientTlsVerified -ne $true -or
             $metadata.sourceEvidence.tableRowCountSha256 -notmatch '^[0-9a-f]{64}$') {
             Throw-Controlled 'ENVELOPE_BINDING_INVALID'
         }
@@ -1108,10 +1151,10 @@ function Invoke-SelfTest {
     $plain = $null
     $syntheticSecret = $null
     try {
-        $sourceEvidenceFixture = [pscustomobject]@{
+        $sourceEvidencePayload = [pscustomobject]@{
             database = $script:DatabaseName
             currentUser = $script:CurrentUser
-            ssl = $true
+            ssl = $false
             serverVersionNum = $script:MinimumPostgresServerVersionNum
             publicTableCount = 1
             rlsEnabledTableCount = 1
@@ -1127,7 +1170,40 @@ function Invoke-SelfTest {
                 ready = $true
             }
         }
+        $sourceEvidenceJson = $sourceEvidencePayload | ConvertTo-Json -Depth 12 -Compress
+        $sourceConnectionLine = 'You are connected to database "postgres" as user "postgres.fmugizadzdnqfckujqlw" on host "aws-0-us-west-2.pooler.supabase.com" (address "127.0.0.1") at port "5432".'
+        $sourceTlsLine = 'SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off, ALPN: postgresql)'
+        $validSourceOutput = @(
+            $script:SourceConninfoBegin,
+            $sourceConnectionLine,
+            $sourceTlsLine,
+            $script:SourceConninfoEnd,
+            $sourceEvidenceJson
+        ) -join "`n"
+        $sourceEvidenceFixture = ConvertFrom-SourceEvidenceOutput -Text $validSourceOutput
         Assert-SourceEvidence -Evidence $sourceEvidenceFixture
+
+        $invalidClientTlsOutputs = @(
+            (@($script:SourceConninfoBegin, $sourceConnectionLine, $script:SourceConninfoEnd, $sourceEvidenceJson) -join "`n"),
+            (@($script:SourceConninfoBegin, $sourceConnectionLine, 'SSL connection (protocol: TLSv1.0, cipher: TLS_AES_256_GCM_SHA384, compression: off)', $script:SourceConninfoEnd, $sourceEvidenceJson) -join "`n"),
+            (@($script:SourceConninfoBegin, $sourceConnectionLine, 'SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: on)', $script:SourceConninfoEnd, $sourceEvidenceJson) -join "`n"),
+            (@($script:SourceConninfoBegin, $sourceConnectionLine, 'You are connected without SSL.', $script:SourceConninfoEnd, $sourceEvidenceJson) -join "`n"),
+            (@($script:SourceConninfoBegin, $sourceConnectionLine, $sourceTlsLine, $sourceTlsLine, $script:SourceConninfoEnd, $sourceEvidenceJson) -join "`n"),
+            (@('WRONG_SOURCE_CONNINFO_BEGIN', $sourceConnectionLine, $sourceTlsLine, $script:SourceConninfoEnd, $sourceEvidenceJson) -join "`n")
+        )
+        foreach ($invalidClientTlsOutput in $invalidClientTlsOutputs) {
+            $clientTlsRejected = $false
+            try { [void](ConvertFrom-SourceEvidenceOutput -Text $invalidClientTlsOutput) }
+            catch { $clientTlsRejected = (Get-ControlledCode $_) -eq 'DATABASE_EVIDENCE_INVALID' }
+            if (-not $clientTlsRejected) { Throw-Controlled 'SELF_TEST_CLIENT_TLS_FAILED' }
+        }
+        $sourceEvidenceFixture.clientTlsVerified = $false
+        $unverifiedTlsRejected = $false
+        try { Assert-SourceEvidence -Evidence $sourceEvidenceFixture }
+        catch { $unverifiedTlsRejected = (Get-ControlledCode $_) -eq 'SOURCE_EVIDENCE_INVALID' }
+        if (-not $unverifiedTlsRejected) { Throw-Controlled 'SELF_TEST_CLIENT_TLS_FAILED' }
+        $sourceEvidenceFixture.clientTlsVerified = $true
+
         $sourceEvidenceFixture.serverVersionNum = $script:MinimumPostgresServerVersionNum - 1
         $olderVersionRejected = $false
         try { Assert-SourceEvidence -Evidence $sourceEvidenceFixture }
@@ -1439,6 +1515,7 @@ while ($true) {
             preCaptureSwapRejected = $true
             releaseBindingVerified = $true
             sourceVersionBoundaryVerified = $true
+            clientTlsAttestationVerified = $true
             failureCleanupVerified = $true
             processFailureCleanupVerified = $true
             credentialBufferCleared = $true
