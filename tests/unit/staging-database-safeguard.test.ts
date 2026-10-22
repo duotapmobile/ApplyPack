@@ -83,6 +83,16 @@ describe("Windows staging database safeguard", () => {
     expect(script).not.toContain("sslmode=require");
   });
 
+  it("uses PostgreSQL's numeric encoding for the minimum 17.6 server version", () => {
+    expect(script).toContain(
+      "$script:MinimumPostgresServerVersionNum = 170006",
+    );
+    expect(script).toContain(
+      "[int]$Evidence.serverVersionNum -lt $script:MinimumPostgresServerVersionNum",
+    );
+    expect(script).not.toContain("serverVersionNum -lt 170600");
+  });
+
   it("rejects Git/reparse outputs and keeps restore isolated", () => {
     expect(script).toContain("OUTPUT_INSIDE_GIT_WORKTREE");
     expect(script).toContain("OUTPUT_REPARSE_PATH_REJECTED");
@@ -136,6 +146,7 @@ describe("Windows staging database safeguard", () => {
       expect(report.outputPathRaceRejected).toBe(true);
       expect(report.preCaptureSwapRejected).toBe(true);
       expect(report.releaseBindingVerified).toBe(true);
+      expect(report.sourceVersionBoundaryVerified).toBe(true);
       expect(report.processFailureCleanupVerified).toBe(true);
       expect(report.credentialBufferCleared).toBe(true);
       expect(report.restoreFailurePrecedenceVerified).toBe(true);

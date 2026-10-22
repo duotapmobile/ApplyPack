@@ -22,6 +22,7 @@ $script:DatabaseName = 'postgres'
 $script:LoginUser = 'postgres.fmugizadzdnqfckujqlw'
 $script:CurrentUser = 'postgres'
 $script:ExpectedSchemaVersion = '202610040080'
+$script:MinimumPostgresServerVersionNum = 170006
 $script:CaSha256 = '700723581420DD1AC98FD7E9AC529F0EF210EADCAF87FC868A3AD7D114C2F3B7'
 $script:PostgresImage = 'public.ecr.aws/supabase/postgres:17.6.1.166'
 $script:PostgresImageDigest = 'public.ecr.aws/supabase/postgres@sha256:b3bfedb107413abb3b8cb0d0874b0414a1dceb3d55bc0c778de6ad22d1f7dc86'
@@ -60,7 +61,7 @@ $script:PublicErrorCodes = [Collections.Generic.HashSet[string]]::new([StringCom
     'SELF_TEST_LOG_REDACTION_FAILED', 'SELF_TEST_FAILURE_CLEANUP_FAILED',
     'SELF_TEST_PROCESS_CLEANUP_FAILED', 'SELF_TEST_PATH_RACE_FAILED',
     'SELF_TEST_RELEASE_BINDING_FAILED', 'SELF_TEST_RESTORE_PRECEDENCE_FAILED',
-    'SELF_TEST_CREDENTIAL_INVALID', 'SAFEGUARD_FAILED'
+    'SELF_TEST_SOURCE_VERSION_FAILED', 'SELF_TEST_CREDENTIAL_INVALID', 'SAFEGUARD_FAILED'
 ) | ForEach-Object { [void]$script:PublicErrorCodes.Add($_) }
 
 function Throw-Controlled {
@@ -761,7 +762,7 @@ function Assert-SourceEvidence {
     if ($Evidence.database -ne $script:DatabaseName -or
         $Evidence.currentUser -ne $script:CurrentUser -or
         $Evidence.ssl -ne $true -or
-        [int]$Evidence.serverVersionNum -lt 170600 -or
+        [int]$Evidence.serverVersionNum -lt $script:MinimumPostgresServerVersionNum -or
         [int]$Evidence.publicTableCount -le 0 -or
         [int]$Evidence.rlsEnabledTableCount -le 0 -or
         [int]$Evidence.rlsPolicyCount -le 0 -or
@@ -1107,6 +1108,32 @@ function Invoke-SelfTest {
     $plain = $null
     $syntheticSecret = $null
     try {
+        $sourceEvidenceFixture = [pscustomobject]@{
+            database = $script:DatabaseName
+            currentUser = $script:CurrentUser
+            ssl = $true
+            serverVersionNum = $script:MinimumPostgresServerVersionNum
+            publicTableCount = 1
+            rlsEnabledTableCount = 1
+            rlsPolicyCount = 1
+            invalidIndexCount = 0
+            migrationCount = 1
+            tableRowCountSha256 = ('0' * 64 -join '')
+            latestMigration = $script:ExpectedSchemaVersion
+            migration080Present = $true
+            migrations081084Count = 0
+            readiness = [pscustomobject]@{
+                schemaVersion = $script:ExpectedSchemaVersion
+                ready = $true
+            }
+        }
+        Assert-SourceEvidence -Evidence $sourceEvidenceFixture
+        $sourceEvidenceFixture.serverVersionNum = $script:MinimumPostgresServerVersionNum - 1
+        $olderVersionRejected = $false
+        try { Assert-SourceEvidence -Evidence $sourceEvidenceFixture }
+        catch { $olderVersionRejected = (Get-ControlledCode $_) -eq 'SOURCE_EVIDENCE_INVALID' }
+        if (-not $olderVersionRejected) { Throw-Controlled 'SELF_TEST_SOURCE_VERSION_FAILED' }
+
         $plain = [Text.UTF8Encoding]::new($false).GetBytes('deterministic synthetic pg_dump payload v1')
         $metadata = '{"format":"self-test","fixture":1}'
         $envelope = Join-Path $testRoot 'roundtrip.apdb'
@@ -1411,6 +1438,7 @@ while ($true) {
             outputPathRaceRejected = $true
             preCaptureSwapRejected = $true
             releaseBindingVerified = $true
+            sourceVersionBoundaryVerified = $true
             failureCleanupVerified = $true
             processFailureCleanupVerified = $true
             credentialBufferCleared = $true
