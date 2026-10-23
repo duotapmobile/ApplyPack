@@ -9,7 +9,9 @@ export function checkSensitivePayloadHealth(environment: Partial<NodeJS.ProcessE
   const configuration = sensitivePayloadConfiguration(environment);
   if (!sensitivePayloadEncryptionReady(configuration) || !kmsProviderConfigured(environment)) return Promise.resolve(false);
   const identity = JSON.stringify([environment.APP_KMS_PROVIDER, configuration, environment.APP_DEPLOYMENT_ENV, environment.AWS_REGION,
-    environment.APP_KMS_WRAP_URL, environment.APP_KMS_UNWRAP_URL]);
+    environment.APP_KMS_WRAP_URL, environment.APP_KMS_UNWRAP_URL, environment.APP_AWS_ACCOUNT_ID,
+    environment.APP_AWS_RA_ROLE_ARN, environment.APP_AWS_RA_PROFILE_ARN, environment.APP_AWS_RA_TRUST_ANCHOR_ARN,
+    environment.APP_AWS_RA_CERTIFICATE_SHA256, environment.APP_AWS_RA_CA_CERTIFICATE_SHA256]);
   if (cache?.identity === identity && cache.expiresAt > Date.now()) return cache.promise;
   const promise = (async () => {
     const plaintext = Buffer.from("ApplyPack synthetic readiness check", "utf8");

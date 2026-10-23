@@ -129,7 +129,7 @@ describe("Railway staging Infrastructure as Code", () => {
     expect(testSource).not.toMatch(/await\s+import\s*\(/);
     expect(config).toContain("type RailwayContext");
     expect(config).toContain("(ctx: RailwayContext)");
-    expect(source(".railway/package.json")).toContain('"test": "tsx --test railway.test.ts"');
+    expect(source(".railway/package.json")).toContain('"test": "tsx --test railway.test.ts launch.test.ts production.test.ts"');
     expect(source(".railway/package.json")).toContain('"typecheck": "tsc --noEmit"');
   });
 

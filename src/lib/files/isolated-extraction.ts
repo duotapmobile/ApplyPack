@@ -92,6 +92,11 @@ export async function persistAnonymousDocumentReview(admin: import("@supabase/su
 let isolationProbe: { at: number; ready: boolean } | null = null;
 let probeInFlight: Promise<boolean> | null = null;
 export async function probeDocumentIsolation(): Promise<boolean> {
+  // Remote consumers share the identity-bound worker cache. Do not let the
+  // local parser's older cache hide a changed or unavailable hosted identity.
+  const workerMode = documentWorkerExecutionMode();
+  if (workerMode === "remote") return probeDocumentWorker();
+  if (workerMode === "unavailable") return false;
   if (probeInFlight) return probeInFlight;
   probeInFlight = runIsolationProbe().finally(() => { probeInFlight = null; });
   return probeInFlight;

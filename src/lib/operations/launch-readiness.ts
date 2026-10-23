@@ -12,6 +12,8 @@ import { documentWorkerConfiguration } from "@/lib/files/aws-document-worker";
 import { currentLegalContentBinding } from "@/lib/legal/content-hash";
 import { launchSchemaReadinessIsCurrent } from "@/lib/operations/launch-schema";
 import { manualLaunchFixedTotalIsSafe } from "@/lib/commerce/fixed-total";
+import { AWS_TEMPORARY_CLEANUP_MAX_OVERDUE_MS } from "@/lib/files/aws-temporary-cleanup";
+import { SANDBOX_ACTIVATION_CONTRACT_VERSION, sandboxValidationMatchesRelease } from "@/lib/operations/sandbox-validation";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 type LaunchCapacityResource = "SEARCH" | "MATERIALS";
@@ -81,12 +83,13 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
     checkRuntimeFileSafety(),
   ]);
   const checks = {
+    checkoutMode: false,
     supabase: supabaseConfigured,
     commerceConfigured,
     email: emailReady(),
     publicOrigin: publicOriginReady(),
     fileSafety,
-    encryption,
+    encryption: process.env.APP_KMS_PROVIDER === "aws" && encryption,
     documentRendering: false,
     maintenance: false,
     database: false,
@@ -107,10 +110,13 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
         { count: unresolvedOperationalAlerts, error: alertError },
         { count: unresolvedCriticalAlerts, error: criticalAlertError },
         { count: exhaustedStorageCleanup, error: storageCleanupError },
+        { count: exhaustedAwsCleanup, error: awsCleanupError },
+        { count: overdueAwsCleanup, error: overdueAwsCleanupError },
         { data: capacity, error: capacityError },
         { data: schemaReadiness, error: schemaReadinessError },
         { data: sourceReadiness, error: sourceError },
         { data: legalConfiguration, error: legalConfigurationError },
+        { data: databaseMode, error: databaseModeError },
       ] = await Promise.all([
         admin.from("operational_heartbeats").select("last_succeeded_at").eq("task_name", "maintenance").maybeSingle(),
         admin.from("ap_operational_alerts").select("id", { count: "exact", head: true })
@@ -119,23 +125,35 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
           .eq("state", "OPEN").eq("severity", "CRITICAL"),
         admin.from("storage_cleanup_queue").select("id", { count: "exact", head: true })
           .gte("attempts", 20),
+        admin.from("ap_aws_temporary_cleanup").select("id", { count: "exact", head: true })
+          .is("completed_at", null).gte("attempts", 20),
+        admin.from("ap_aws_temporary_cleanup").select("id", { count: "exact", head: true })
+          .is("completed_at", null).lte("not_before", new Date(Date.now() - AWS_TEMPORARY_CLEANUP_MAX_OVERDUE_MS).toISOString()),
         admin.rpc("ap_manual_launch_capacity_readiness"),
         admin.rpc("ap_manual_launch_schema_readiness"),
         admin.rpc("ap_current_source_readiness"),
         admin.from("ap_commerce_configuration")
           .select("terms_version,terms_content_sha256,privacy_version,privacy_content_sha256,legal_acceptance_copy_version,legal_acceptance_copy_sha256,legal_content_canonicalization_version,legal_receipt_schema_version")
           .eq("singleton", true).maybeSingle(),
+        admin.from("ap_checkout_mode_configuration").select("mode,release_sha").eq("singleton", true).maybeSingle(),
       ]);
+      const expectedMode = checkout.acceptingOrders ? "PUBLIC" : checkout.restrictedMode || "LOCKED";
+      checks.checkoutMode = checkout.validState && !databaseModeError && databaseMode?.mode === expectedMode
+        && (expectedMode === "LOCKED" || databaseMode.release_sha === deployedSha);
       checks.maintenance = Boolean(
         process.env.CRON_SECRET
         && !heartbeatError
         && !alertError
         && !criticalAlertError
         && !storageCleanupError
+        && !awsCleanupError
+        && !overdueAwsCleanupError
         && maintenanceHeartbeatIsFresh(heartbeat?.last_succeeded_at)
         && (unresolvedOperationalAlerts || 0) === 0
         && (unresolvedCriticalAlerts || 0) === 0
-        && (exhaustedStorageCleanup || 0) === 0,
+        && (exhaustedStorageCleanup || 0) === 0
+        && exhaustedAwsCleanup === 0
+        && overdueAwsCleanup === 0,
       );
       const capacityRecord = capacity && typeof capacity === "object" && !Array.isArray(capacity)
         ? capacity as Record<string, unknown> : null;
@@ -182,11 +200,12 @@ export async function manualLaunchCheckoutGate(
   admin: AdminClient,
   evaluated?: Awaited<ReturnType<typeof evaluateLaunchInfrastructure>>,
   resource?: LaunchCapacityResource,
+  reserveAtomically = false,
 ) {
   const infrastructure = evaluated || await evaluateLaunchInfrastructure(admin);
-  if (!infrastructure.ready || !infrastructure.capacityAvailable
+  if (!infrastructure.ready || (!reserveAtomically && !infrastructure.capacityAvailable)
     || !infrastructure.environmentAcceptingOrders || !infrastructure.deployedSha) return false;
-  if (resource && !infrastructure.capacityByResource[resource]) return false;
+  if (!reserveAtomically && resource && !infrastructure.capacityByResource[resource]) return false;
   const { data: configuration, error: configurationError } = await admin.from("ap_commerce_configuration")
     .select("checkout_enabled,launch_activation_id,launch_release_sha,document_worker_network_attestation_sha256,search_price_cents,material_line_price_cents,currency,tax_inclusive,tax_treatment")
     .eq("singleton", true).maybeSingle();
@@ -194,7 +213,7 @@ export async function manualLaunchCheckoutGate(
     || configuration.launch_release_sha !== infrastructure.deployedSha
     || !manualLaunchFixedTotalIsSafe(configuration)) return false;
   const { data: activation, error: activationError } = await admin.from("ap_manual_launch_activations")
-    .select("id,activation_phase,release_sha,worker_network_attestation_sha256,legacy_subscription_retirement_reference,unresolved_p0_count,unresolved_p1_count,canary_reconciled_amount_cents")
+    .select("id,activation_phase,release_sha,worker_network_attestation_sha256,legacy_subscription_retirement_reference,unresolved_p0_count,unresolved_p1_count,activation_contract_version,sandbox_validation,sandbox_validation_digest,created_at")
     .eq("id", configuration.launch_activation_id).maybeSingle();
   const worker = documentWorkerConfiguration();
   return Boolean(!activationError && activation
@@ -205,7 +224,11 @@ export async function manualLaunchCheckoutGate(
     && Boolean(activation.legacy_subscription_retirement_reference?.trim())
     && activation.unresolved_p0_count === 0
     && activation.unresolved_p1_count === 0
-    && activation.canary_reconciled_amount_cents === 2_698);
+    && activation.activation_contract_version === SANDBOX_ACTIVATION_CONTRACT_VERSION
+    && /^[a-f0-9]{64}$/.test(activation.sandbox_validation_digest || "")
+    // Freshness applies at approval. A reviewed immutable activation does not expire daily.
+    && Date.parse(activation.created_at) <= Date.now()
+    && sandboxValidationMatchesRelease(activation.sandbox_validation, infrastructure.deployedSha, Date.parse(activation.created_at)));
 }
 
 export async function manualLaunchCanaryCheckoutGate(
@@ -213,12 +236,13 @@ export async function manualLaunchCanaryCheckoutGate(
   resource: LaunchCapacityResource,
   subject: CanaryCheckoutSubject,
   evaluated?: Awaited<ReturnType<typeof evaluateLaunchInfrastructure>>,
+  reserveAtomically = false,
 ) {
-  if (process.env.APP_CANARY_CHECKOUT_ENABLED !== "true") return false;
+  if (checkoutConfiguration().restrictedMode !== "CANARY") return false;
   const infrastructure = evaluated || await evaluateLaunchInfrastructure(admin);
   if (!infrastructure.ready || !infrastructure.commerceConfigured
     || infrastructure.environmentAcceptingOrders || !infrastructure.deployedSha
-    || !infrastructure.capacityByResource[resource]) return false;
+    || (!reserveAtomically && !infrastructure.capacityByResource[resource])) return false;
   if (!/^[a-f0-9]{40}$/.test(infrastructure.deployedSha)
     || !/^[a-f0-9-]{36}$/.test(subject.expectedCustomerId)
     || (resource === "SEARCH" && !subject.searchDraftId)

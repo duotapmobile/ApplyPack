@@ -6,7 +6,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "tsx --test railway.test.ts",
+    "test": "tsx --test railway.test.ts launch.test.ts production.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

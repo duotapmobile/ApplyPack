@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { publicIndexingAllowed } from "./src/config/indexing";
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
@@ -21,11 +22,15 @@ const nextConfig: NextConfig = {
     ];
   },
   async headers() {
-    const stagingHeaders = process.env.APP_DEPLOYMENT_ENV === "production"
+    const stagingHeaders = publicIndexingAllowed()
       ? []
       : [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }];
 
     return [
+      {
+        source: "/:path(admin|api|auth|checkout|get-started|my-applypack|sign-in|staging)/:rest*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }],
+      },
       {
         source: "/(.*)",
         headers: [

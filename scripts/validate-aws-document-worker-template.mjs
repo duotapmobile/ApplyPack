@@ -15,6 +15,7 @@ const dockerfilePath = resolve(root, "infra/aws/document-worker/Dockerfile");
 const handlerPath = resolve(root, "infra/aws/document-worker/handler.py");
 const lifecyclePath = resolve(root, "infra/aws/document-worker/ecr-lifecycle-policy.json");
 const preflightPath = resolve(root, "scripts/aws-document-worker-preflight.mjs");
+const bucketPreflightPath = resolve(root, "scripts/aws-document-worker-bucket-preflight.mjs");
 const probePath = resolve(root, "scripts/aws-document-worker-synthetic-probe.mjs");
 const probeFixturePath = resolve(root, "scripts/test-aws-document-worker-synthetic-probe.mjs");
 const runbookPath = resolve(root, "docs/runbooks/AWS_DOCUMENT_WORKER.md");
@@ -36,6 +37,7 @@ const deploymentSource = readFileSync(deploymentTemplatePath, "utf8");
 const dockerfile = readFileSync(dockerfilePath, "utf8");
 const handler = readFileSync(handlerPath, "utf8");
 const preflight = readFileSync(preflightPath, "utf8");
+const bucketPreflight = readFileSync(bucketPreflightPath, "utf8");
 const probe = readFileSync(probePath, "utf8");
 const probeFixture = readFileSync(probeFixturePath, "utf8");
 const runbook = readFileSync(runbookPath, "utf8");
@@ -84,6 +86,20 @@ const bucket = resources.TemporaryBucket?.Properties || {};
 assert(fn(bucket.BucketName, "Sub") === "applypack-${AWS::AccountId}-${DeploymentEnvironment}-document-worker-temp",
   "temporary bucket name must be account and environment scoped");
 assert(bucket.BucketEncryption, "temporary bucket encryption is required");
+assert(!Object.hasOwn(bucket, "VersioningConfiguration"), "temporary bucket must never enable or suspend versioning");
+const bucketPolicyResource = resources.TemporaryBucketVersioningPolicy;
+assert(bucketPolicyResource?.Type === "AWS::S3::BucketPolicy"
+  && !Object.hasOwn(bucketPolicyResource, "Condition"),
+"temporary bucket versioning policy must always be deployed");
+const bucketPolicy = bucketPolicyResource.Properties;
+const versioningDeny = bucketPolicy?.PolicyDocument?.Statement;
+assert(bucketPolicy?.Bucket?.Ref === "TemporaryBucket" && versioningDeny?.length === 1
+  && exactKeys(versioningDeny[0], ["Sid", "Effect", "Principal", "Action", "Resource"])
+  && versioningDeny[0].Sid === "NeverEnableTemporaryBucketVersioning"
+  && versioningDeny[0].Effect === "Deny" && versioningDeny[0].Principal === "*"
+  && versioningDeny[0].Action === "s3:PutBucketVersioning"
+  && fn(versioningDeny[0].Resource, "GetAtt") === "TemporaryBucket.Arn",
+"temporary bucket policy must deny all versioning changes");
 const publicBlock = bucket.PublicAccessBlockConfiguration || {};
 assert(exactKeys(publicBlock, ["BlockPublicAcls", "BlockPublicPolicy", "IgnorePublicAcls", "RestrictPublicBuckets"])
   && Object.values(publicBlock).every((value) => value === true), "all four exact S3 public access blocks are required");
@@ -222,6 +238,10 @@ assert(exactActions(passRole, ["iam:PassRole"]) && passRole.Condition?.StringEqu
   && fn(passRole.Resource, "Sub") === exactWorkerRoleArn,
 "PassRole must target only the environment worker role and Lambda service");
 assert(!deploymentSource.includes("Action: \"*\""), "deployment role must not contain wildcard IAM actions");
+const bucketManagement = deploymentStatements.find((statement) => statement.Sid === "ExactBucket");
+assert(fn(bucketManagement?.Resource, "Sub") === "arn:${AWS::Partition}:s3:::applypack-${AWS::AccountId}-${DeploymentEnvironment}-document-worker-temp"
+  && ["s3:GetBucketPolicy", "s3:PutBucketPolicy", "s3:DeleteBucketPolicy"].every((action) => actions(bucketManagement).includes(action)),
+"bucket policy management must stay scoped to the exact environment bucket");
 
 assert((dockerfile.match(/debian:bookworm-slim@sha256:/g) || []).length === 2, "both Docker stages must pin the base-image digest");
 assert(dockerfile.includes("ADD --checksum=sha256:"), "font download must be checksum pinned");
@@ -239,6 +259,12 @@ assert(preflight.includes("describe-route-tables") && preflight.includes("descri
   && preflight.includes("route_table_has_non_approved_path")
   && preflight.includes("input.imageTag !== input.sourceCommitSha"),
 "provider preflight must validate routes, AWS prefix list, immutable ECR and scan results");
+assert(bucketPreflight.includes("get-bucket-versioning") && bucketPreflight.includes("get-bucket-policy")
+  && bucketPreflight.includes("--expected-bucket-owner") && bucketPreflight.includes("MAX_RECEIPT_AGE_MS")
+  && probe.includes("validateBucketVersioningReceipt(bucketReceiptBytes")
+  && probe.indexOf("validateBucketVersioningReceipt(bucketReceiptBytes") < probe.indexOf('["s3api", "put-object"')
+  && probe.includes("bucketVersioningReceiptSha256"),
+"synthetic writes require a fresh bound never-versioned bucket receipt");
 assert(probe.includes('operation: "extract"') && probe.includes('operation: "probe-document"')
   && probe.includes('operation: "render-docx"') && probe.includes("kmsCrossEnvironmentDenied")
   && probe.includes("cleanupComplete") && probe.includes("expectedCrossEnvironmentKmsDenial")

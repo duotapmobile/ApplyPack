@@ -7,19 +7,15 @@ type ApplyItem = { id: string; order_id: string; status: string; company: string
 type Review = { id: string; explanation?: string; correction_text?: string; company: string; title: string };
 type CapacityLimit = { kind: string; units_per_24h: number; enabled: boolean };
 
-const reviewChecklistTemplate = {
-  criteriaCompared: false,
-  allListingsRechecked: false,
-  exactlyTenApplicationWorthy: false,
-  noPadding: false,
-  humanReleaseApproved: false,
-  reviewerNote: "Describe the final human review and any material judgment calls.",
-};
-
-const matchTemplate = JSON.stringify({
-  reviewChecklist: reviewChecklistTemplate,
-  evaluationIds: Array.from({ length: 10 }, () => "replace-with-persisted-evaluation-uuid"),
-}, null, 2);
+const searchReviewChecks = [
+  ["criteriaCompared", "I compared every match with the customer's approved criteria."],
+  ["allListingsRechecked", "I opened and rechecked every listing and application link immediately before delivery."],
+  ["exactlyTenApplicationWorthy", "All ten jobs are distinct, current opportunities worth applying to."],
+  ["noPadding", "I included no unsuitable jobs just to reach ten."],
+  ["humanReleaseApproved", "I approve this exact set of ten jobs for customer delivery."],
+] as const;
+type SearchReviewKey = typeof searchReviewChecks[number][0];
+type SearchRelease = { evaluationIds: string[]; reviewChecklist: Record<SearchReviewKey, boolean> & { reviewerNote: string } };
 
 export function AdminOperations({ searchOrders, applyItems, conflicts, corrections, capacityLimits }: {
   searchOrders: SearchOrder[];
@@ -30,7 +26,6 @@ export function AdminOperations({ searchOrders, applyItems, conflicts, correctio
 }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState("");
-  const [matchJson, setMatchJson] = useState<Record<string, string>>({});
 
   async function request(path: string, init: RequestInit, action: string) {
     setBusy(action);
@@ -48,11 +43,7 @@ export function AdminOperations({ searchOrders, applyItems, conflicts, correctio
     }
   }
 
-  function deliverSearch(orderId: string) {
-    const raw = matchJson[orderId];
-    if (!raw) return setMessage("Load the current persisted ten-match selection and recheck every listing.");
-    let body: unknown;
-    try { body = JSON.parse(raw); } catch { return setMessage("The match JSON is not valid."); }
+  function deliverSearch(orderId: string, body: SearchRelease) {
     return request("/api/admin/search-orders/" + orderId + "/deliver", {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
     }, "search-" + orderId);
@@ -74,7 +65,7 @@ export function AdminOperations({ searchOrders, applyItems, conflicts, correctio
     <section className="admin-control">
       <div className="admin-control__heading"><div><p className="eyebrow">SEARCH PRODUCTION</p><h2>Deliver 10 reviewed matches</h2></div><p>Use official application URLs where verified. Include posting text and restrictions so classifications remain auditable. Recheck every listing immediately before delivery.</p></div>
       {searchOrders.length ? searchOrders.map((order) => <article className="admin-work-card" id={"order-" + order.id} key={order.id}>
-        <div><strong>Search {order.id.slice(0, 8).toUpperCase()}</strong><span>Due {formatDeadline(order.delivery_deadline)} · {order.suggested_matches.length} pulled candidates</span></div>
+        <div><strong>Search {order.id.slice(0, 8).toUpperCase()}</strong><span>Due {formatDeadline(order.delivery_deadline)} · {order.suggested_matches.length} selected matches</span></div>
         <details>
           <summary>Approved intake and search criteria</summary>
           <pre className="admin-json">{JSON.stringify(order.intake_details, null, 2)}</pre>
@@ -83,14 +74,12 @@ export function AdminOperations({ searchOrders, applyItems, conflicts, correctio
           <a href={"/api/admin/intakes/" + order.intake_id + "/source?kind=resume"}>Download source resume</a>
           {order.has_cover_letter ? <a href={"/api/admin/intakes/" + order.intake_id + "/source?kind=cover_letter"}>Download source cover letter</a> : null}
         </div> : <p role="status">Source retrieval locked: document safety status is {order.source_scan_status}.</p>}
-        <label>Persisted evaluation release payload
-          <textarea className="admin-json" value={matchJson[order.id] || ""} onChange={(event) => setMatchJson((current) => ({ ...current, [order.id]: event.target.value }))} placeholder="Load the current persisted selection." />
-        </label>
-        <div className="admin-buttons">
-          {order.suggested_matches.length === 10 ? <button type="button" onClick={() => setMatchJson((current) => ({ ...current, [order.id]: JSON.stringify({ reviewChecklist: reviewChecklistTemplate, evaluationIds: order.suggested_matches.map((match) => match.evaluationId) }, null, 2) }))}>Load persisted selection</button> : null}
-          <button type="button" onClick={() => setMatchJson((current) => ({ ...current, [order.id]: matchTemplate }))}>Show required payload shape</button>
-          <button className="wizard-next" type="button" disabled={busy === "search-" + order.id} onClick={() => deliverSearch(order.id)}>Deliver reviewed matches</button>
-        </div>
+        <SearchReleaseReview
+          key={order.suggested_matches.map((match) => String(match.evaluationId)).join(":")}
+          matches={order.suggested_matches}
+          busy={Boolean(busy)}
+          onRelease={(body) => deliverSearch(order.id, body)}
+        />
       </article>) : <p>No paid searches need match delivery.</p>}
     </section>
 
@@ -193,6 +182,54 @@ export function AdminOperations({ searchOrders, applyItems, conflicts, correctio
 
     <p className={message ? "form-message" : "sr-only"} role="status" aria-live="polite">{message || "Operator actions appear here."}</p>
   </div>;
+}
+
+function SearchReleaseReview({ matches, busy, onRelease }: {
+  matches: SearchOrder["suggested_matches"];
+  busy: boolean;
+  onRelease: (body: SearchRelease) => Promise<void>;
+}) {
+  const [checks, setChecks] = useState<Record<SearchReviewKey, boolean>>({
+    criteriaCompared: false, allListingsRechecked: false, exactlyTenApplicationWorthy: false,
+    noPadding: false, humanReleaseApproved: false,
+  });
+  const [note, setNote] = useState("");
+  const evaluationIds = matches.map((match) => typeof match.evaluationId === "string" ? match.evaluationId : "");
+  const selectionReady = evaluationIds.length === 10 && new Set(evaluationIds).size === 10
+    && evaluationIds.every((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id));
+  const reviewReady = selectionReady && searchReviewChecks.every(([key]) => checks[key])
+    && note.trim().length >= 20 && note.trim().length <= 2000;
+  return <form aria-label="Review selected jobs for delivery" onSubmit={(event) => {
+    event.preventDefault();
+    if (busy || !reviewReady) return;
+    void onRelease({ evaluationIds, reviewChecklist: { ...checks, reviewerNote: note.trim() } });
+  }}>
+    <h3>Selected jobs</h3>
+    {selectionReady ? <ol>{matches.map((match) => {
+      const applicationUrl = safeListingUrl(match.officialApplicationUrl || match.sourceUrl);
+      return <li key={String(match.evaluationId)}><strong>{String(match.title || "Selected job")}</strong>{" at "}{String(match.company || "Employer")}
+        {applicationUrl ? <> · <a href={applicationUrl} target="_blank" rel="noreferrer">Open listing for {String(match.title || "selected job")}</a></> : null}
+      </li>;
+    })}</ol> : <p role="status">Ten current matches must be ready before delivery. Complete the research and evidence reviews, then refresh this queue.</p>}
+    <fieldset disabled={busy || !selectionReady}>
+      <legend>Final human review</legend>
+      {searchReviewChecks.map(([key, label]) => <label className="confirm" key={key}>
+        <input type="checkbox" required checked={checks[key]} onChange={(event) => setChecks((current) => ({ ...current, [key]: event.target.checked }))} />{label}
+      </label>)}
+      <label>Final review note <span>(at least 20 characters)</span>
+        <textarea required minLength={20} maxLength={2000} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Describe the criteria, listing checks, and any judgment calls you reviewed." />
+      </label>
+    </fieldset>
+    <button className="wizard-next" type="submit" disabled={busy || !reviewReady}>{busy ? "Saving review…" : "Deliver reviewed matches"}</button>
+  </form>;
+}
+
+function safeListingUrl(value: unknown) {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password ? url.toString() : null;
+  } catch { return null; }
 }
 
 function formatDeadline(value: string | null) {

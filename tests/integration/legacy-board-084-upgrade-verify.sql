@@ -36,7 +36,7 @@ select pg_temp.assert_true(
 
 select pg_temp.assert_true(
   public.ap_manual_launch_schema_readiness()->>'ready'='true'
-  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610190084'
+  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'=(case when to_regprocedure('public.ap_sandbox_activation_schema_installed()') is null then '202610220085' else '202610230086' end)
   and (public.ap_manual_launch_schema_readiness()->'requiredMigrations') ? '202610190084'
   and exists(
     select 1 from public.ap_migration_checkpoints

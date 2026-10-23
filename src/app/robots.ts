@@ -1,8 +1,9 @@
 import type { MetadataRoute } from "next";
 import { siteConfig } from "@/config/site";
+import { publicIndexingAllowed } from "@/config/indexing";
 
 export default function robots(): MetadataRoute.Robots {
-  if (process.env.APP_DEPLOYMENT_ENV !== "production") {
+  if (!publicIndexingAllowed()) {
     return {
       rules: [{ userAgent: "*", disallow: "/" }],
     };
@@ -13,10 +14,10 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/admin", "/api", "/checkout", "/my-applypack", "/sign-in"],
+        disallow: ["/admin", "/api", "/auth", "/checkout", "/get-started", "/my-applypack", "/sign-in", "/staging"],
       },
     ],
-    sitemap: siteConfig.url + "/sitemap.xml",
+    sitemap: new URL("/sitemap.xml", siteConfig.url).href,
     host: siteConfig.url,
   };
 }

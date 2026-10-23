@@ -3,11 +3,12 @@ import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
 import { HydrationStatus } from "@/components/layout/hydration-status";
 import { siteConfig } from "@/config/site";
+import { publicIndexingAllowed } from "@/config/indexing";
 import "./globals.css";
 import "./brief.css";
 import "./intake-brief.css";
 
-const isProductionDeployment = process.env.APP_DEPLOYMENT_ENV === "production";
+const isProductionDeployment = publicIndexingAllowed();
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteConfig.url),

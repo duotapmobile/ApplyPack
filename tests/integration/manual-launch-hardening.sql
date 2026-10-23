@@ -22,11 +22,12 @@ select pg_temp.assert_true(
 
 select pg_temp.assert_true(
   public.ap_manual_launch_schema_readiness()->>'ready'='true'
-  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610190084'
+  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'=case
+    when to_regprocedure('public.ap_sandbox_activation_schema_installed()') is null then '202610220085' else '202610230086' end
   and not has_function_privilege('anon','public.ap_manual_launch_schema_readiness()','execute')
   and not has_function_privilege('authenticated','public.ap_manual_launch_schema_readiness()','execute')
   and has_function_privilege('service_role','public.ap_manual_launch_schema_readiness()','execute'),
-  'launch schema readiness must bind service-only runtime health to migrations 077 through 084'
+  'launch schema readiness must bind service-only runtime health to migrations 077 through 085'
 );
 savepoint before_schema_floor_checkpoint_removal;
 delete from public.ap_migration_checkpoints where migration_id='202610040080';
@@ -56,7 +57,7 @@ select pg_temp.assert_true(not has_table_privilege('authenticated','public.ap_se
 select pg_temp.assert_true(not has_function_privilege('anon','public.ap_issue_search_checkout_invitation(uuid,uuid,uuid,uuid,text,timestamptz,uuid,text)','execute'), 'anonymous invitation issuance exposed');
 select pg_temp.assert_true(not has_function_privilege('authenticated','public.ap_begin_invited_search_checkout(uuid,text,uuid,text,uuid,uuid,text,uuid,text,uuid,text,uuid,uuid,text,text,uuid)','execute'), 'customer invitation checkout exposed');
 select pg_temp.assert_true(not has_function_privilege('service_role','public.ap_begin_search_checkout(uuid,text,uuid,uuid,text,uuid,text,uuid,text,uuid,uuid,text,text,uuid)','execute'), 'service role can bypass invitation wrapper');
-select pg_temp.assert_true(has_function_privilege('service_role','public.ap_begin_invited_search_checkout(uuid,text,uuid,text,uuid,uuid,text,uuid,text,uuid,text,uuid,uuid,text,text,uuid)','execute'), 'service role cannot call invitation wrapper');
+select pg_temp.assert_true(not has_function_privilege('service_role','public.ap_begin_invited_search_checkout(uuid,text,uuid,text,uuid,uuid,text,uuid,text,uuid,text,uuid,uuid,text,text,uuid)','execute'), 'old service entry point bypasses the durable initiation wrapper');
 select pg_temp.assert_true(not has_function_privilege('service_role','public.ap_record_search_refund_result(uuid,text,text,text,text,text,timestamptz,text)','execute'), 'service role can bypass verified refund binding');
 select pg_temp.assert_true(has_function_privilege('service_role','public.ap_record_search_refund_result_verified(uuid,text,text,text,integer,text,uuid,text,text,text,timestamptz,text)','execute'), 'verified refund binding unavailable');
 select pg_temp.assert_true(
@@ -65,7 +66,7 @@ select pg_temp.assert_true(
   and not has_function_privilege('authenticated','public.ap_queue_manual_launch_canary_refund(uuid,uuid,text,text)','execute')
   and not has_function_privilege('service_role','public.ap_designate_manual_launch_canary_payment(uuid,uuid,text,text,uuid,text)','execute')
   and not has_function_privilege('authenticated','public.ap_designate_manual_launch_canary_payment(uuid,uuid,text,text,uuid,text)','execute')
-  and has_function_privilege('service_role','public.ap_authorize_manual_launch_canary_checkout(text,text,uuid,uuid,uuid,text,timestamptz)','execute')
+  and not has_function_privilege('service_role','public.ap_authorize_manual_launch_canary_checkout(text,text,uuid,uuid,uuid,text,timestamptz)','execute')
   and not has_function_privilege('authenticated','public.ap_authorize_manual_launch_canary_checkout(text,text,uuid,uuid,uuid,text,timestamptz)','execute')
   and has_function_privilege('service_role','public.ap_bind_manual_launch_canary_payment(uuid,text)','execute')
   and not has_function_privilege('authenticated','public.ap_bind_manual_launch_canary_payment(uuid,text)','execute')
@@ -111,7 +112,8 @@ select pg_temp.assert_true(
 select pg_temp.assert_true(
   (select relrowsecurity from pg_class where oid='public.ap_manual_launch_activations'::regclass)
   and has_table_privilege('service_role','public.ap_manual_launch_activations','select')
-  and has_table_privilege('service_role','public.ap_manual_launch_activations','insert')
+  and has_table_privilege('service_role','public.ap_manual_launch_activations','insert')=
+    (to_regprocedure('public.ap_sandbox_activation_schema_installed()') is null)
   and not has_table_privilege('service_role','public.ap_manual_launch_activations','update')
   and not has_table_privilege('service_role','public.ap_manual_launch_activations','delete'),
   'manual launch activation evidence must be immutable and private'
@@ -124,11 +126,12 @@ select pg_temp.assert_true(
   'manual launch activation must record provider-side legacy subscription retirement evidence'
 );
 select pg_temp.assert_true(
-  position('count(distinct designation.expected_customer_id)' in pg_get_functiondef(
-    'public.ap_record_manual_launch_activation(text,text,jsonb,uuid)'::regprocedure))>0
-  and position('successful_canary_customers<>1' in pg_get_functiondef(
-    'public.ap_record_manual_launch_activation(text,text,jsonb,uuid)'::regprocedure))>0,
-  'PUBLIC activation must require both refunded products to belong to one customer'
+  case when to_regprocedure('public.ap_sandbox_activation_schema_installed()') is null then
+    position('successful_canary_customers<>1' in pg_get_functiondef(
+      'public.ap_record_manual_launch_activation(text,text,jsonb,uuid)'::regprocedure))>0
+  else position('sandbox-proof-live-pilot-v1' in pg_get_functiondef(
+      'public.ap_record_manual_launch_activation(text,text,jsonb,uuid)'::regprocedure))>0 end,
+  'PUBLIC activation must require the governing payment-proof contract'
 );
 select pg_temp.assert_true(
   exists(select 1 from information_schema.columns
@@ -380,6 +383,7 @@ select pg_temp.assert_true(
 );
 
 savepoint before_tax_activation_decision;
+update public.ap_commerce_configuration set canonical_site_url='https://applypack-staging-staging.up.railway.app' where singleton;
 update public.ap_commerce_configuration set
   tax_treatment='UNSET_BLOCKING',tax_inclusive=true,currency='USD',
   search_price_cents=1899,material_line_price_cents=799
@@ -447,5 +451,6 @@ select pg_temp.assert_true(
   'otherwise-ready activation must succeed without a separate tax approval or reference'
 );
 rollback to savepoint before_tax_activation_decision;
+update public.ap_commerce_configuration set canonical_site_url='https://applypack-staging-staging.up.railway.app' where singleton;
 
 rollback;

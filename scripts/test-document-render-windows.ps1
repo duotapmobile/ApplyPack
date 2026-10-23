@@ -76,7 +76,7 @@ $fontPins = @{
   APP_DOCUMENT_FONT_BOLD_ITALIC_FILE = @{ File = 'LiberationSans-BoldItalic.ttf'; Sha256 = '698da70fc191cc5f33ad4d6d3fe830fe4624b898ea2e3169955928b7c491f1ee' }
 }
 $pins = @{
-  APP_LIBREOFFICE_EXECUTABLE = 'C:\Program Files\LibreOffice\program\soffice.com'
+  APP_LIBREOFFICE_EXECUTABLE = $(if ($env:APP_LIBREOFFICE_EXECUTABLE) { $env:APP_LIBREOFFICE_EXECUTABLE } else { 'C:\Program Files\LibreOffice\program\soffice.com' })
   APP_PDFINFO_EXECUTABLE = $poppler['pdfinfo.exe']
   APP_PDFFONTS_EXECUTABLE = $poppler['pdffonts.exe']
   APP_PDFTOTEXT_EXECUTABLE = $poppler['pdftotext.exe']
@@ -102,5 +102,11 @@ if ([string]::IsNullOrWhiteSpace($env:APP_DOCUMENT_RENDERER_IDENTITY)) {
 if ([string]::IsNullOrWhiteSpace($env:APPLYPACK_RENDER_EVIDENCE_DIR)) {
   $env:APPLYPACK_RENDER_EVIDENCE_DIR = Join-Path (Get-Location) ('evidence/applypack-chunk5-render-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 }
-npm.cmd run test:document-render -- --reporter=verbose
+if ([string]::IsNullOrWhiteSpace($env:APPLYPACK_PACKAGE_EVIDENCE_DIR)) {
+  $env:APPLYPACK_PACKAGE_EVIDENCE_DIR = Join-Path (Get-Location) ('evidence/applypack-chunk5-package-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+}
+$testReceipt = Join-Path $env:APPLYPACK_RENDER_EVIDENCE_DIR 'test-results.json'
+npm.cmd run test:document-render -- --reporter=verbose --reporter=json "--outputFile=$testReceipt"
 if ($LASTEXITCODE -ne 0) { throw "Document render tests failed with exit code $LASTEXITCODE." }
+node scripts/assert-required-test-results.mjs $testReceipt
+if ($LASTEXITCODE -ne 0) { throw 'Document render required-test receipt did not pass.' }

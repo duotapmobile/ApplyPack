@@ -1,9 +1,10 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, codex/manual-launch-hardening-2026-10-02]
 
 permissions:
   contents: read
@@ -25,9 +26,28 @@ jobs:
       - run: npm test --prefix .railway
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
+      - run: npm test -- --reporter=default --reporter=json --outputFile=unit-results.json
+      - run: node scripts/assert-required-test-results.mjs unit-results.json
+      - run: npm run test:integration -- --reporter=default --reporter=json --outputFile=integration-results.json
+      - run: node scripts/assert-required-test-results.mjs integration-results.json
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run validate:aws-document-worker
+      - run: node --test scripts/report-staging-readiness.test.mjs scripts/assert-required-test-results.test.mjs
+      - run: node --test scripts/check-launch-recovery-strategy.test.mjs
+      - run: node --test scripts/verify-sandbox-launch-evidence.test.mjs
       - run: node --test scripts/test-maintenance-runner.test.mjs scripts/test-renderer-runtime.test.mjs scripts/railway-staging-iac-cutover.test.mjs
       - run: npm run build
+      - name: Record tested checkout identity (PR runs may be synthetic merge commits)
+        run: git rev-parse HEAD > tested-commit.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: candidate-validation
+          path: |
+            tested-commit.txt
+            unit-results.json
+            integration-results.json
+          if-no-files-found: error
 
   staging-database-safeguard:
     runs-on: windows-latest
@@ -41,10 +61,25 @@ jobs:
       - run: npm ci
       - name: Run DPAPI staging safeguard self-test
         shell: pwsh
-        run: npm run test:staging-database-safeguard
+        run: |
+          npm.cmd run test:staging-database-safeguard -- --reporter=default --reporter=json --outputFile=staging-backup-results.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/assert-required-test-results.mjs staging-backup-results.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm.cmd run test:staging-manual-launch-migrations -- --reporter=default --reporter=json --outputFile=staging-migration-results.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/assert-required-test-results.mjs staging-migration-results.json
       - name: Run AWS staging foundation control self-test
         shell: pwsh
         run: .\scripts\test-aws-staging-foundation-controls.ps1
+      - run: npm run test:launch-operations
+      - run: npm run test:rehearsal-migration
+      - name: Validate084-to086 staged launch migration controls
+        shell: pwsh
+        run: .\scripts\apply-staging-rehearsal-migration.ps1 -Mode SelfTest -TargetSchemaVersion 202610230086
+      - run: npm run test:staging-schema084-backup
+      - run: npm run test:production-migration
+      - run: npm run test:production-backup
 
   browser:
     runs-on: ubuntu-latest
@@ -71,7 +106,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps ${{ matrix.browser }}
-      - run: npm run test:e2e -- --project=${{ matrix.project }}
+      - run: npm run test:e2e -- --project=${{ matrix.project }} --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: browser-results.json
+      - run: node scripts/assert-required-test-results.mjs browser-results.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -79,13 +117,21 @@ jobs:
           path: |
             playwright-report
             test-results
+            browser-results.json
           if-no-files-found: warn
 
   database:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
       - uses: supabase/setup-cli@v1
         with:
           version: latest
@@ -93,6 +139,10 @@ jobs:
       - run: supabase db reset --local --no-seed
       - name: Corrected-contract database fixtures
         run: npm run test:database
+      - name: Generated database type drift
+        run: npm run types:database:check
+      - name: Mandatory isolated structural recovery (not hosted approval)
+        run: node scripts/check-launch-recovery-strategy.mjs --structural-only
       - name: Checkout concurrency
         run: cat tests/integration/checkout-concurrency.sql | docker exec -i supabase_db_applypack psql -U postgres -d postgres -v ON_ERROR_STOP=1
       - name: RLS and financial invariants
@@ -148,6 +198,7 @@ jobs:
         shell: pwsh
         env:
           APPLYPACK_RENDER_EVIDENCE_DIR: ${{ runner.temp }}\applypack-chunk5-render-ci
+          APPLYPACK_PACKAGE_EVIDENCE_DIR: ${{ runner.temp }}\applypack-chunk5-package-ci
         run: .\scripts\test-document-render-windows.ps1
       - uses: actions/upload-artifact@v4
         if: always()

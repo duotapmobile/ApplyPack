@@ -63,6 +63,28 @@ describe("AWS document worker source template", () => {
     expect(output.trim()).toBe("AWS_DOCUMENT_WORKER_PREFLIGHT_FIXTURES_OK");
   });
 
+  it("rejects versioning and weakened temporary-bucket versioning protection", () => {
+    const work = mkdtempSync(join(tmpdir(), "applypack-aws-versioning-negative-"));
+    const original = readFileSync(mainTemplate, "utf8");
+    const marker = '      BucketName: !Sub "applypack-${AWS::AccountId}-${DeploymentEnvironment}-document-worker-temp"';
+    const mutations = [
+      original.replace(marker, `${marker}\n      VersioningConfiguration: { Status: Enabled }`),
+      original.replace(marker, `${marker}\n      VersioningConfiguration: { Status: Suspended }`),
+      original.replace(/  TemporaryBucketVersioningPolicy:[\s\S]*?(?=  WorkerSecurityGroup:)/, ""),
+      original.replace("  TemporaryBucketVersioningPolicy:\n", "  TemporaryBucketVersioningPolicy:\n    Condition: ShouldCreateBudget\n"),
+      original.replace("  TemporaryBucketVersioningPolicy:\n    Type: AWS::S3::BucketPolicy", "  TemporaryBucketVersioningPolicy:\n    Type: AWS::S3::AccessPointPolicy"),
+      original.replace("Sid: NeverEnableTemporaryBucketVersioning\n            Effect: Deny", "Sid: NeverEnableTemporaryBucketVersioning\n            Effect: Allow"),
+    ];
+    try {
+      for (const [index, changed] of mutations.entries()) {
+        expect(changed).not.toBe(original);
+        const path = join(work, `versioning-${index}.yaml`);
+        writeFileSync(path, changed, "utf8");
+        expect(validationFails(["--template", path])).toBe(true);
+      }
+    } finally { rmSync(work, { recursive: true, force: true }); }
+  }, 30_000);
+
   it("accepts only precise wrong-environment KMS denial codes", () => {
     const output = execFileSync(process.execPath, [resolve(process.cwd(), "scripts/test-aws-document-worker-synthetic-probe.mjs")], {
       cwd: process.cwd(), encoding: "utf8",

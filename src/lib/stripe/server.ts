@@ -1,6 +1,6 @@
 import "server-only";
 import Stripe from "stripe";
-import { checkoutConfiguration, configuredPaymentMode, stripeCredentialMode } from "./mode";
+import { checkoutConfiguration, configuredPaymentMode, configuredStripeAccountId, stripeCredentialMode } from "./mode";
 
 function instantiateStripe(secretKey: string) {
   return new Stripe(secretKey, {
@@ -34,21 +34,33 @@ export function createStripeBoardClient() {
   return null;
 }
 
+export async function assertStripeAccount(stripe: Stripe): Promise<string> {
+  const expectedAccountId = configuredStripeAccountId();
+  if (!expectedAccountId) throw new Error("Stripe account identity is not configured.");
+  // Retrieve the credential's own account, not a connected account by supplied ID.
+  const account = await stripe.accounts.retrieveCurrent({}, { timeout: 5_000, maxNetworkRetries: 0 });
+  if (account.id !== expectedAccountId) {
+    throw new Error("Stripe credential does not match the configured account.");
+  }
+  return account.id;
+}
+
 export async function assertConfiguredPrice(
   stripe: Stripe,
   priceId: string,
-  expected: { unitAmount: number; productName: string },
+  expected: { unitAmount: number; productName: string; historicalReconciliation?: boolean },
 ) {
+  if (!expected.historicalReconciliation) await assertStripeAccount(stripe);
   const price = await stripe.prices.retrieve(priceId, { expand: ["product"] });
   const product = typeof price.product === "string" ? null : price.product;
   if (
-    !price.active ||
+    (!price.active && !expected.historicalReconciliation) ||
     price.type !== "one_time" ||
     price.currency.toLowerCase() !== "usd" ||
     price.unit_amount !== expected.unitAmount ||
     !product ||
     product.deleted ||
-    !product.active ||
+    (!product.active && !expected.historicalReconciliation) ||
     product.name !== expected.productName
   ) {
     throw new Error("Configured Stripe price does not match the approved product.");

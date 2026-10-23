@@ -43,20 +43,24 @@ describe("renderer readiness uses current approval and actual pins", () => {
    APP_DOCUMENT_FONT_MANIFEST_SHA256: DOCUMENT_FONT_CONTRACT.manifestSha256,
   };
   expect(documentRendererConfiguration(toolEnvironment).ready).toBe(false);
- expect(documentWorkerConfiguration({
-   APP_RENDERER_RUNTIME_DISCOVERY_FAILED: "true",
+ const workerEnvironment = {
    APP_DEPLOYMENT_ENV: "staging",
    APP_DOCUMENT_WORKER_DEPLOYMENT_ENV: "staging",
    AWS_REGION: "us-east-1",
-   APP_DOCUMENT_WORKER_FUNCTION_ARN: "arn:aws:lambda:us-east-1:123456789012:function:applypack-staging-document-worker:1",
-   APP_DOCUMENT_WORKER_BUCKET: "applypack-renderer-private",
+   APP_AWS_ACCOUNT_ID: "838445019912",
+   APP_DOCUMENT_WORKER_FUNCTION_ARN: "arn:aws:lambda:us-east-1:838445019912:function:applypack-staging-document-worker:1",
+   APP_DOCUMENT_WORKER_BUCKET: "applypack-838445019912-staging-document-worker-temp",
+   APP_DOCUMENT_WORKER_TEMPORARY_PREFIX: "ephemeral/",
    APP_DOCUMENT_WORKER_IDENTITY: "applypack-document-worker-v2-liberation-sans-2.1.5",
    APP_DOCUMENT_WORKER_FONT_SHA256: DOCUMENT_FONT_CONTRACT.styles.regular,
    APP_DOCUMENT_WORKER_FONT_MANIFEST_SHA256: DOCUMENT_FONT_CONTRACT.manifestSha256,
    APP_DOCUMENT_WORKER_IMAGE_DIGEST: sha256,
    APP_DOCUMENT_WORKER_PREFLIGHT_RECEIPT_SHA256: sha256,
+   APP_DOCUMENT_WORKER_PROBE_RECEIPT_SHA256: sha256,
    APP_DOCUMENT_WORKER_NETWORK_ATTESTATION_SHA256: sha256,
-  }).ready).toBe(false);
+  };
+ expect(documentWorkerConfiguration(workerEnvironment).ready).toBe(true);
+ expect(documentWorkerConfiguration({ ...workerEnvironment, APP_RENDERER_RUNTIME_DISCOVERY_FAILED: "true" }).ready).toBe(false);
  });
  it("rejects discovery failure before querying renderer approval", async () => {
   vi.stubEnv("APP_RENDERER_RUNTIME_DISCOVERY_FAILED", "true");

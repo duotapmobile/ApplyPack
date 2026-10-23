@@ -104,7 +104,7 @@ describe("October 2 manual-launch hardening", () => {
       .toContain("LEGAL_ACCEPTANCE_FORWARD_UPGRADE_OK");
     expect(source("package.json")).toContain("run-supabase-legal-upgrade-test.mjs");
 
-    const rollback = source("scripts/run-supabase-rollback-test.mjs");
+    const rollback = source("scripts/run-supabase-rollback-test.mjs") + source("scripts/lib/supabase-structural-recovery.mjs");
     expect(rollback).toContain("verifyRollbackLegalSource");
     expect(rollback).toContain("APPROVED_ROLLBACK_LEGAL_CONTRACT.termsContentSha256");
     expect(rollback).toContain("APPROVED_ROLLBACK_LEGAL_CONTRACT.privacyContentSha256");
@@ -190,7 +190,7 @@ describe("October 2 manual-launch hardening", () => {
     const issue = source("src/app/api/admin/search-checkout-invitations/route.ts");
     expect(search).toContain("invitationId: z.uuid()");
     expect(search).toContain("invitationSecret");
-    expect(search).toContain('rpc("ap_begin_invited_search_checkout"');
+    expect(search).toContain('rpc("ap_begin_authorized_search_checkout"');
     expect(search).toContain("contract_version: SEARCH_CONTRACT_VERSION");
     expect(issue).toContain('rpc("ap_issue_search_checkout_invitation"');
     expect(issue).toContain(".max(30)");
@@ -681,7 +681,7 @@ describe("October 2 manual-launch hardening", () => {
     const accessOnlyCompatibility = source("supabase/migrations/202610030068_historical_document_access_only.sql");
     const durableDocumentAccess = source("supabase/migrations/202610030069_durable_delivered_document_access.sql");
     const sensitiveUploadCleanup = source("supabase/migrations/202610030070_all_sensitive_upload_cleanup_intents.sql");
-    const rollbackCheck = source("scripts/run-supabase-rollback-test.mjs");
+    const rollbackCheck = source("scripts/run-supabase-rollback-test.mjs") + source("scripts/lib/supabase-structural-recovery.mjs");
     const rollbackRunbook = source("docs/runbooks/MANUAL_LAUNCH_RELEASE.md");
     expect(kms).toContain('environment.APP_DEPLOYMENT_ENV === "production"');
     expect(kms).toContain('environment.APP_KMS_PROVIDER !== "aws"');
@@ -708,8 +708,9 @@ describe("October 2 manual-launch hardening", () => {
     expect(launchReadiness).toContain("capacityAvailable");
     expect(launchReadiness).toContain("capacityByResource");
     expect(launchReadiness).toContain("legacy_subscription_retirement_reference");
-    expect(source("src/app/api/checkout/search/route.ts")).toContain('manualLaunchCheckoutGate(context.admin, infrastructure, "SEARCH")');
-    expect(source("src/app/api/checkout/apply-packs/route.ts")).toContain('manualLaunchCheckoutGate(admin, infrastructure, "MATERIALS")');
+    expect(source("src/app/api/checkout/search/route.ts")).toContain('authorizeCheckout(context.admin, "SEARCH"');
+    expect(source("src/app/api/checkout/apply-packs/route.ts")).toContain('authorizeCheckout(admin, "MATERIALS"');
+    expect(source("src/lib/commerce/checkout-authorization.ts")).toContain('manualLaunchCheckoutGate(admin, infrastructure, product, true)');
     const generation = source("src/app/api/admin/material-lines/[id]/generate/route.ts");
     const applicantFormatRequest = source("src/app/api/admin/material-lines/[id]/delivery-format-request/route.ts");
     expect(generation).toContain("renderDocumentForQa");
@@ -851,7 +852,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(rollbackCheck).toContain("intentIndex >= uploadIndex");
     expect(rollbackCheck).toContain("exact approved legal content");
     expect(rollbackCheck).toContain("ap_upgrade_completed_intake_legal_acceptance");
-    expect(rollbackCheck).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610190084"');
+    expect(rollbackCheck).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610230086"');
     expect(rollbackCheck).toContain('admin.rpc("ap_manual_launch_schema_readiness")');
     expect(rollbackCheck).toContain("launchSchemaReadinessIsCurrent(schemaReadiness)");
     expect(rollbackRunbook).toContain("minimum compatible application rollback commit is `aeae1dee597e153602febd6adfea5644e4628d20`");
@@ -885,7 +886,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(canary).toContain('.select("state")');
     expect(canary).not.toContain("stripe.refunds");
     expect(existsSync(resolve(process.cwd(), "src/app/api/admin/manual-launch/canary-designations/route.ts"))).toBe(false);
-    expect(authorization).toContain('rpc("ap_authorize_manual_launch_canary_checkout"');
+    expect(authorization).toContain('rpc("ap_authorize_scoped_manual_launch_canary_checkout"');
     expect(authorization).toContain('rpc("ap_revoke_manual_launch_canary_checkout"');
     expect(authorization).toContain('access.role !== "admin"');
     expect(authorization).toContain("safeReleaseSha()");
@@ -898,16 +899,20 @@ describe("October 2 manual-launch hardening", () => {
     expect(activation).toContain('z.enum(["CANARY", "PUBLIC"])');
     expect(launchReadiness).toContain('activation.activation_phase === "PUBLIC"');
     expect(launchReadiness).toContain('activation.activation_phase !== "CANARY"');
-    expect(launchReadiness).toContain('process.env.APP_CANARY_CHECKOUT_ENABLED !== "true"');
+    expect(launchReadiness).toContain('checkoutConfiguration().restrictedMode !== "CANARY"');
     expect(source(".env.example")).toContain("APP_CANARY_CHECKOUT_ENABLED=false");
     expect(launchReadiness).toContain('rpc("ap_manual_launch_canary_checkout_authorized"');
     expect(operationsSummary).toContain("payments: payment.commerceConfigured");
     expect(operationsSummary).not.toContain("payment.boardReady");
     expect(capacity).toContain('rpc("ap_set_manual_launch_capacity_state"');
     expect(capacity).not.toContain('from("capacity_limits")');
-    expect(searchCheckout).toContain('rpc("ap_bind_manual_launch_canary_payment"');
-    expect(materialsCheckout).toContain('rpc("ap_bind_manual_launch_canary_payment"');
-    expect(materialsCheckout).toContain(":canary:${authorizationResult.data.id}");
+    expect(searchCheckout).toContain('rpc("ap_begin_authorized_search_checkout"');
+    expect(materialsCheckout).toContain('rpc("ap_begin_authorized_material_checkout"');
+    expect(materialsCheckout).toContain("${authorization.mode.toLowerCase()}:${authorization.authorizationId}");
+    const initiation = source("src/lib/commerce/checkout-initiation.ts");
+    expect(initiation).toContain('rpc("ap_bind_checkout_initiation"');
+    expect(initiation).toContain("attempt.provider_idempotency_key");
+    expect(workers).not.toContain("sessions.create");
     expect(board).toContain("cancel_at_period_end: true");
     expect(board).toContain("legacyBoardProviderProjection");
     expect(board).toContain("access_ends_at: accessEndsAt");

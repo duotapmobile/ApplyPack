@@ -170,21 +170,23 @@ do $$ begin
   values ('10000000-0000-4000-8000-000000000001','75000000-0000-4000-8000-000000000002','81000000-0000-4000-8000-000000000001',(select id from public.ap_capacity_allocations where request_key='reserve-checkout'),'OPEN','cs_unapproved',now()+interval '20 minutes');
   raise exception 'checkout opened without approved tax configuration';
 exception when others then if sqlerrm='checkout opened without approved tax configuration' then raise; end if; end $$;
+update public.profiles set role='admin' where id='10000000-0000-4000-8000-000000000002';
+update public.ap_commerce_configuration set canonical_site_url='https://applypack-staging-staging.up.railway.app' where singleton;
 insert into public.ap_manual_launch_activations(
   id,release_sha,health_evidence_reference,database_evidence_reference,payment_evidence_reference,
   email_evidence_reference,kms_evidence_reference,worker_evidence_reference,maintenance_evidence_reference,
   backup_restore_evidence_reference,inventory_evidence_reference,accessibility_evidence_reference,
   product_supervisor_reference,security_supervisor_reference,operations_supervisor_reference,
   tenth_man_supervisor_reference,accepted_p2_disposition_reference,unresolved_p0_count,unresolved_p1_count,
-  canary_reconciliation_reference,canary_reconciled_amount_cents,tax_approval_reference,
+  canary_reconciliation_reference,canary_reconciled_amount_cents,tax_approval_reference,activation_phase,
   worker_network_attestation_sha256,evidence_bundle_sha256,approved_by
 ) values(
   '82000000-0000-4000-8000-000000000001',repeat('a',40),'fixture-health-evidence','fixture-database-evidence','fixture-payment-evidence',
   'fixture-email-evidence','fixture-kms-evidence','fixture-worker-evidence','fixture-maintenance-evidence',
   'fixture-backup-restore','fixture-inventory-evidence','fixture-accessibility-evidence',
   'fixture-product-supervisor','fixture-security-supervisor','fixture-operations-supervisor',
-  'fixture-tenth-man-supervisor','fixture-p2-disposition',0,0,'fixture-canary-reconciliation',2698,
-  'fixture-tax-approval-reference',repeat('b',64),repeat('c',64),'10000000-0000-4000-8000-000000000002'
+  'fixture-tenth-man-supervisor','fixture-p2-disposition',0,0,'fixture-canary-reconciliation',0,
+  'fixture-tax-approval-reference','CANARY',repeat('b',64),repeat('c',64),'10000000-0000-4000-8000-000000000002'
 );
 update public.ap_commerce_configuration set tax_treatment='TAX_INCLUSIVE_NO_ADDED_AMOUNT',tax_inclusive=true,
   tax_configuration_approved=false,tax_approval_reference=null,

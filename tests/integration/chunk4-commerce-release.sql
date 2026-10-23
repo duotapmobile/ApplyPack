@@ -75,6 +75,7 @@ insert into auth.users(
   ('14000000-0000-4000-8000-000000000003','00000000-0000-0000-0000-000000000000','authenticated','authenticated','chunk4-reviewer@example.invalid','',now(),'{}','{}',now(),now());
 update public.profiles set role='admin' where id='14000000-0000-4000-8000-000000000003';
 
+update public.ap_commerce_configuration set canonical_site_url='https://applypack-staging-staging.up.railway.app' where singleton;
 insert into public.ap_manual_launch_activations(
   id,release_sha,health_evidence_reference,database_evidence_reference,payment_evidence_reference,
   email_evidence_reference,kms_evidence_reference,worker_evidence_reference,maintenance_evidence_reference,
@@ -98,7 +99,7 @@ update public.ap_commerce_configuration set
   launch_activation_id='a4200000-0000-4000-8000-000000000001',launch_release_sha=repeat('a',40),
   document_worker_network_attestation_sha256=repeat('b',64),
   pricing_version='manual-launch-pricing-2026-10-02-v2',tax_version='tax-inclusive-v1',
-  terms_version='manual-launch-terms-2026-10-02-v2',privacy_version='privacy-v1',canonical_site_url='https://applypack.work',
+  terms_version='manual-launch-terms-2026-10-02-v2',privacy_version='privacy-v1',canonical_site_url='https://applypack-staging-staging.up.railway.app',
   access_callback_url='https://applypack.work/auth/callback',provider_idempotent_email_approved=true,
   provider_email_approval_reference='rollback-only-integration-fixture',payment_provider='stripe',
   payment_api_version='2026-08-27.basil',immediate_payment_methods=array['card'],release_verification_ttl_seconds=3600
@@ -340,6 +341,8 @@ select pg_temp.assert_true(
 );
 rollback to savepoint before_invitation_provider_retry;
 
+\ir rehearsal-checkout-attempts.sql
+
 do $$
 declare prepared record;
 begin
@@ -358,10 +361,11 @@ begin
 end;
 $$;
 
-select public.ap_authorize_manual_launch_canary_checkout(
+select public.ap_authorize_scoped_manual_launch_canary_checkout(
   repeat('a',40),'SEARCH','14000000-0000-4000-8000-000000000001',
   '34000000-0000-4000-8000-000000000001','14000000-0000-4000-8000-000000000003',
-  'authorized-test-customer-search-canary-before-card-entry',clock_timestamp()+interval '1 hour'
+  'authorized-test-customer-search-canary-before-card-entry',clock_timestamp()+interval '1 hour',
+  '34000000-0000-4000-8000-000000000001',null
 );
 select pg_temp.assert_true(
   public.ap_manual_launch_canary_checkout_authorized(
@@ -972,7 +976,7 @@ select pg_temp.assert_true((select count(*)=1 and bool_and(message_kind='PAYMENT
   'fifty provider replays queued more than one started notification');
 select pg_temp.assert_true((select settlement='PAID' and immediate_charge_verified and payment_method_type='card' and amount_cents=1899 and currency='USD' and payer_receipt_email='payer@example.invalid' from public.ap_payment_attempts where id='a4500000-0000-4000-8000-000000000001'), 'verified payment facts were not persisted');
 select pg_temp.assert_true((select paid_at<>search_activated_at from public.orders join public.ap_search_services on legacy_order_id=orders.id where orders.id='94000000-0000-4000-8000-000000000001'), 'provider payment time was replaced by activation time');
-select pg_temp.assert_true((select delivery_due_at=service_started_at+interval '24 hours' and service_started_at>=intake_completed_at and service_started_at>=capacity_confirmed_at from public.ap_search_services where id='a4600000-0000-4000-8000-000000000001'), 'exact activation deadline clock is invalid');
+select pg_temp.assert_true((select delivery_due_at=service_started_at+interval '24 hours' and service_started_at>=intake_completed_at and service_started_at=(select payment_verified_at from public.ap_payment_attempts where id=winning_payment_attempt_id) from public.ap_search_services where id='a4600000-0000-4000-8000-000000000001'), 'exact activation deadline clock is invalid');
 select pg_temp.assert_true((select lifecycle='CONSUMED' and debit_disposition='SPENT' and expires_at is null from public.ap_capacity_allocations where id=(select capacity_allocation_id from public.ap_search_services where id='a4600000-0000-4000-8000-000000000001')), 'capacity was not consumed exactly once');
 select pg_temp.assert_true((select count(*)=2 and bool_and(expires_at=issued_at+interval '15 minutes') from public.ap_order_access_capabilities where checkout_attempt_id='a4400000-0000-4000-8000-000000000001'), 'access capability clocks are not exact');
 select pg_temp.assert_true((public.ap_read_checkout_status('a4400000-0000-4000-8000-000000000001',repeat('9',64))->>'state')='SEARCH_ACTIVE', 'browser status did not derive from verified server state');
@@ -1614,6 +1618,8 @@ select pg_temp.assert_true((select status='delivered' and delivered_at is not nu
 select pg_temp.assert_true((select lifecycle='COMPLETED' and debit_disposition='SPENT' from public.ap_capacity_allocations where id=(select capacity_allocation_id from public.ap_search_services where id='a4600000-0000-4000-8000-000000000001')), 'release did not complete spent capacity');
 select pg_temp.assert_true((select count(*)=10 and bool_and(release_explanation ?& array['whatJobInvolves','whyMadeList','howExperienceConnects','whatMayBeNew','whatToKnow']) from public.job_matches where search_order_id='94000000-0000-4000-8000-000000000001'), 'five-section customer explanations missing');
 select pg_temp.assert_true((select count(*)=1 from public.ap_outbox_messages where id='a4900000-0000-4000-8000-000000000010' and state='QUEUED' and message_kind='SEARCH_EXACT_TEN_DELIVERED'), 'delivery outbox message missing');
+
+\ir rehearsal-material-checkout.sql
 
 savepoint before_manual_launch_search_canary_refund;
 insert into public.ap_payment_attempts(

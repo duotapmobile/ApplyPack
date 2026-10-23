@@ -3,11 +3,16 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { safeReleaseSha } from "@/lib/operations/summary";
 import { isSameOriginRequest } from "@/lib/security/origin";
+import { selectedJobResourceSha256 } from "@/lib/commerce/checkout-authorization";
+import { reconcileCheckoutInitiations } from "@/lib/commerce/checkout-initiation";
+import { checkoutConfiguration } from "@/lib/stripe/mode";
 
 const schema = z.object({
   productKind: z.enum(["SEARCH", "MATERIALS"]),
   expectedCustomerId: z.uuid(),
   searchDraftId: z.uuid().nullable().optional(),
+  deliveredReleaseId: z.uuid().optional(),
+  selectedJobIds: z.array(z.uuid()).length(1).optional(),
   evidenceReference: z.string().trim().min(12).max(500),
   expiresAt: z.iso.datetime(),
 }).strict().superRefine((value, context) => {
@@ -16,6 +21,10 @@ const schema = z.object({
       code: "custom",
       message: "A search canary requires its exact intake draft; a materials canary must not include one.",
     });
+  }
+  if ((value.productKind === "MATERIALS") !== Boolean(value.deliveredReleaseId && value.selectedJobIds)
+    || (value.productKind === "SEARCH" && (value.deliveredReleaseId || value.selectedJobIds))) {
+    context.addIssue({ code: "custom", message: "A materials canary requires the exact delivered release and one selected job." });
   }
 });
 
@@ -35,6 +44,9 @@ export async function POST(request: Request) {
   if (access.role !== "admin") {
     return NextResponse.json({ error: "An administrator must authorize the canary checkout." }, { status: 403, headers });
   }
+  if (!["LOCKED_STAGING", "STAGING_CANARY"].includes(checkoutConfiguration().state)) {
+    return NextResponse.json({ error: "New canary authorizations are restricted to the configured sandbox." }, { status: 503, headers });
+  }
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ error: "An exact customer, product, expiry, and evidence reference are required." }, { status: 400, headers });
@@ -43,11 +55,13 @@ export async function POST(request: Request) {
   if (!/^[a-f0-9]{40}$/.test(releaseSha)) {
     return NextResponse.json({ error: "The exact deployed release SHA is unavailable." }, { status: 503, headers });
   }
-  const result = await access.admin.rpc("ap_authorize_manual_launch_canary_checkout", {
+  const result = await access.admin.rpc("ap_authorize_scoped_manual_launch_canary_checkout", {
     p_release_sha: releaseSha,
     p_product_kind: parsed.data.productKind,
     p_expected_customer_id: parsed.data.expectedCustomerId,
     p_search_draft_id: parsed.data.searchDraftId || null,
+    p_resource_id: parsed.data.productKind === "SEARCH" ? parsed.data.searchDraftId! : parsed.data.deliveredReleaseId!,
+    p_resource_sha256: parsed.data.selectedJobIds ? selectedJobResourceSha256(parsed.data.selectedJobIds) : null,
     p_actor_id: access.user.id,
     p_evidence_reference: parsed.data.evidenceReference,
     p_expires_at: parsed.data.expiresAt,
@@ -90,5 +104,8 @@ export async function PATCH(request: Request) {
   if (result.error || result.data !== true) {
     return NextResponse.json({ error: "The canary authorization could not be revoked." }, { status: 409, headers });
   }
-  return NextResponse.json({ ok: true, authorizationId: parsed.data.authorizationId, releaseSha }, { headers });
+  const reconciliation = await reconcileCheckoutInitiations(access.admin, 10, parsed.data.authorizationId)
+    .catch(() => ({ processed: 0, unresolved: 1 }));
+  return NextResponse.json({ ok: true, authorizationId: parsed.data.authorizationId, releaseSha,
+    reconciliationPending: reconciliation.unresolved > 0 }, { headers });
 }

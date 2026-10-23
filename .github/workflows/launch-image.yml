@@ -1,0 +1,84 @@
+name: Launch image
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main, codex/manual-launch-hardening-2026-10-02]
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Offline Roles Anywhere contracts
+        run: node --test scripts/test-aws-roles-anywhere.mjs scripts/assert-launch-image-scan.test.mjs
+      - name: Verify signed immutable runtime base
+        run: |
+          set -euo pipefail
+          verifier="$RUNNER_TEMP/applypack-cosign"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 2 \
+            https://github.com/sigstore/cosign/releases/download/v3.1.4/cosign-linux-amd64 --output "$verifier"
+          printf '%s  %s\n' 424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa "$verifier" | sha256sum --check --strict
+          chmod 0755 "$verifier"
+          "$verifier" version --json > launch-image-signature-verifier.json
+          "$verifier" verify \
+            gcr.io/distroless/nodejs22-debian13@sha256:eed5cbf9fcdb7f97de1fb39adde1972efa57df1085c0c76a5ea17c7c27ff8f6c \
+            --certificate-oidc-issuer https://accounts.google.com \
+            --certificate-identity keyless@distroless.iam.gserviceaccount.com \
+            --output=json --timeout=2m > launch-image-base-signatures.json
+      - name: Build complete launch package without provider credentials
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 --file Dockerfile.launch --target web \
+            --build-arg APP_DEPLOYMENT_ENV=staging \
+            --build-arg NEXT_PUBLIC_APP_URL=https://applypack-staging-staging.up.railway.app \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL=https://fmugizadzdnqfckujqlw.supabase.co \
+            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_local_build_placeholder \
+            --tag applypack-launch-web:ci . 2>&1 | tee launch-image-build.log
+          docker image inspect applypack-launch-web:ci > launch-image-identity.json
+          git rev-parse HEAD > launch-image-tested-commit.txt
+      - name: Production startup and isolated fail-closed smoke
+        run: |
+          set -euo pipefail
+          node scripts/test-launch-image.mjs applypack-launch-web:ci 2>&1 | tee launch-image-smoke.log
+      - name: Install checksum-pinned image scanner
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/trivy_0.76.1_Linux-64bit.tar.gz"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 2 \
+            https://github.com/aquasecurity/trivy/releases/download/v0.76.1/trivy_0.76.1_Linux-64bit.tar.gz \
+            --output "$archive"
+          printf '%s  %s\n' c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0 "$archive" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/applypack-trivy"
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP/applypack-trivy" trivy
+          "$RUNNER_TEMP/applypack-trivy/trivy" --version > launch-image-scanner-version.txt
+      - name: Reject all high and critical image vulnerabilities
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/applypack-trivy/trivy" image --image-src docker --scanners vuln --disable-telemetry --skip-version-check \
+            --severity HIGH,CRITICAL --ignorefile /dev/null --exit-code 1 --timeout 10m \
+            --format json --output launch-image-vulnerabilities.json applypack-launch-web:ci
+          node scripts/assert-launch-image-scan.mjs launch-image-vulnerabilities.json > launch-image-scan-coverage.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: launch-image-local-contracts
+          path: |
+            launch-image-build.log
+            launch-image-identity.json
+            launch-image-tested-commit.txt
+            launch-image-smoke.log
+            launch-image-signature-verifier.json
+            launch-image-base-signatures.json
+            launch-image-scanner-version.txt
+            launch-image-vulnerabilities.json
+            launch-image-scan-coverage.json
+          if-no-files-found: error

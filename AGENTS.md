@@ -11,13 +11,14 @@ The service must let a customer securely submit her background and preferences, 
 Before analysis or edits, read:
 
 1. This `AGENTS.md`
-2. `docs/applypack/16_OCTOBER_19_TAX_ACTIVATION_AMENDMENT.md`
-3. `docs/applypack/14_OCTOBER_19_OPEN_FONT_AMENDMENT.md`
-4. `docs/applypack/12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md`
-5. Every remaining file under `docs/applypack/`, preserving historical documents where the amendments say they are historical
-6. Root `DESIGN.md` when present
-7. Repository `README`, `START_HERE`, `PROJECT_MAP`, `PROJECT_STATUS`, `RECOVERY`, and `.agent-guidance` files when present
-8. Package, deployment, environment, migration, and test configuration
+2. `docs/applypack/17_OCTOBER_23_SANDBOX_VALIDATION_LAUNCH_AMENDMENT.md`
+3. `docs/applypack/16_OCTOBER_19_TAX_ACTIVATION_AMENDMENT.md`
+4. `docs/applypack/14_OCTOBER_19_OPEN_FONT_AMENDMENT.md`
+5. `docs/applypack/12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md`
+6. Every remaining file under `docs/applypack/`, preserving historical documents where the amendments say they are historical
+7. Root `DESIGN.md` when present
+8. Repository `README`, `START_HERE`, `PROJECT_MAP`, `PROJECT_STATUS`, `RECOVERY`, and `.agent-guidance` files when present
+9. Package, deployment, environment, migration, and test configuration
 
 If the handoff remains outside the repository, read every file in:
 
@@ -30,15 +31,16 @@ C:\Users\mskir\Desktop\Apply_Pack\Chat docs
 Use this order when instructions conflict:
 
 1. User's latest direct instruction
-2. `docs/applypack/16_OCTOBER_19_TAX_ACTIVATION_AMENDMENT.md`, for tax-activation and fixed-total authority
-3. `docs/applypack/14_OCTOBER_19_OPEN_FONT_AMENDMENT.md`, for document font and delivery-format authority
-4. `docs/applypack/12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md`
-5. `DESIGN.md`, for visual design only
-6. `docs/applypack/01_PRODUCT_SOURCE_OF_TRUTH.md`
-7. `docs/applypack/02_SITE_COPY_AND_PAGE_MAP.md`
-8. `docs/applypack/03_CUSTOMER_AND_ADMIN_WORKFLOWS.md`
-9. Remaining ApplyPack handoff documents
-10. Existing implementation where compatible
+2. `docs/applypack/17_OCTOBER_23_SANDBOX_VALIDATION_LAUNCH_AMENDMENT.md`, for sandbox proof, production activation and recovery authority
+3. `docs/applypack/16_OCTOBER_19_TAX_ACTIVATION_AMENDMENT.md`, for tax-activation and fixed-total authority
+4. `docs/applypack/14_OCTOBER_19_OPEN_FONT_AMENDMENT.md`, for document font and delivery-format authority
+5. `docs/applypack/12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md`
+6. `DESIGN.md`, for visual design only
+7. `docs/applypack/01_PRODUCT_SOURCE_OF_TRUTH.md`
+8. `docs/applypack/02_SITE_COPY_AND_PAGE_MAP.md`
+9. `docs/applypack/03_CUSTOMER_AND_ADMIN_WORKFLOWS.md`
+10. Remaining ApplyPack handoff documents
+11. Existing implementation where compatible
 
 Record material conflicts and resolutions in `docs/evidence/IMPLEMENTATION_DECISIONS.md`.
 
@@ -282,8 +284,8 @@ State evidence and remaining user-owned actions precisely.
 
 # This is NOT the Next.js you know
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+This version has breaking changes â€” APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 
-This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+This block is written and re-added by `next dev` â€” verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->

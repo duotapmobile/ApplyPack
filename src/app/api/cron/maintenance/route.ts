@@ -8,11 +8,13 @@ import { processPendingFileScans } from "@/lib/files/process-scans";
 import { fileScanConfiguration } from "@/lib/files/scanner";
 import { processPendingDocumentExtractions } from "@/lib/files/isolated-extraction";
 import { processUnpaidSourceRetention } from "@/lib/files/unpaid-retention";
+import { processAwsTemporaryCleanup } from "@/lib/files/aws-temporary-cleanup";
 import { processPendingFeasibilityRequests } from "@/lib/matching/supabase-feasibility-store";
 import { processChunk4Workers } from "@/lib/commerce/workers";
 import { reconcileBoardSubscriptions } from "@/lib/job-board/stripe-events";
+import { reconcileCheckoutInitiations } from "@/lib/commerce/checkout-initiation";
 import { createStripeOperationalClient } from "@/lib/stripe/server";
-import { collectOperationsSummary } from "@/lib/operations/summary";
+import { collectOperationsSummary, safeReleaseSha } from "@/lib/operations/summary";
 import {
   recordMaintenanceDiagnosis,
   recordMaintenanceFailure,
@@ -35,11 +37,29 @@ function authorized(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const response = (body: Record<string, unknown>, status: number) => NextResponse.json(body, {
+  let deployment: { environment: "staging" | "production"; releaseSha: string } | null = null;
+  const response = (body: Record<string, unknown>, status: number) => NextResponse.json({
+    ...body,
+    ...(deployment ? { deployment } : {}),
+  }, {
     status,
     headers: { "cache-control": "no-store" },
   });
   if (!authorized(request)) return response({ error: "Unauthorized." }, 401);
+  const environment = process.env.APP_DEPLOYMENT_ENV;
+  const releaseSha = safeReleaseSha();
+  // Bind the scheduled invocation before database access, alert writes, or queue work.
+  // The same captured identity is returned so a separate version probe cannot race a deploy.
+  if ((environment !== "staging" && environment !== "production")
+    || !/^[a-f0-9]{40}$/.test(releaseSha)
+    || process.env.APP_EXPECTED_RELEASE_SHA !== releaseSha) {
+    return response({ error: "Maintenance deployment identity is not configured.", code: "MAINTENANCE_DEPLOYMENT_MISMATCH" }, 503);
+  }
+  if (request.headers.get("x-applypack-expected-environment") !== environment
+    || request.headers.get("x-applypack-expected-release-sha") !== releaseSha) {
+    return response({ error: "Maintenance deployment identity does not match.", code: "MAINTENANCE_DEPLOYMENT_MISMATCH" }, 409);
+  }
+  deployment = { environment, releaseSha };
   const admin = createSupabaseAdminClient();
   if (!admin) return response({ error: "Database is not configured." }, 503);
   const now = new Date();
@@ -211,6 +231,12 @@ export async function POST(request: Request) {
       }
     }
   }
+  try {
+    const awsCleanup = await processAwsTemporaryCleanup(admin, { now });
+    recoveredStorageObjects += awsCleanup.recovered;
+    expirationCleanupFailed ||= awsCleanup.failed > 0 || awsCleanup.overdue;
+    storageCleanupDeadLettered ||= awsCleanup.deadLetter;
+  } catch { expirationCleanupFailed = true; }
   actions.push({
     code: "EXPIRATION_CLEANUP",
     status: expirationCleanupFailed || storageCleanupDeadLettered ? "FAILED" : "SUCCEEDED",
@@ -290,6 +316,8 @@ export async function POST(request: Request) {
   } else fileScans = { status: "DEFERRED_V2", malwareVerdict: "NOT_SCANNED", processed: 0 };
   const feasibility = await processQueue("feasibility", encryptionReady && sourcesReady, () => processPendingFeasibilityRequests(admin, 5));
   const unpaidSourceRetention = await processQueue("unpaidSourceRetention", true, () => processUnpaidSourceRetention(admin, 10));
+  const checkoutInitiations = await processQueue("checkoutInitiations", true, () => reconcileCheckoutInitiations(admin, 20));
+  if (checkoutInitiations && checkoutInitiations.unresolved > 0) queueStages.checkoutInitiations = "FAILED";
   if (unpaidSourceRetention && unpaidSourceRetention.failed > 0) queueStages.unpaidSourceRetention = "FAILED";
   const workflow = await processQueue("workflow", encryptionReady && sourcesReady, () => processWorkflowTasks(admin, 2));
   const emailRetries = await processQueue("email", encryptionReady && emailReady, () => retryFailedEmails(admin, 10));
@@ -334,8 +362,9 @@ export async function POST(request: Request) {
   }
   const healthy = diagnostics.unresolvedCodes.length === 0
     && maintenanceActionsSucceeded(actions, allowedSkippedActions);
-  return NextResponse.json({
+  return response({
     ok: healthy,
+    allowedSkippedActions,
     capacityRollovers: Number(capacityRollovers || 0),
     expiredSearchInvitations: Number(expiredSearchInvitations || 0),
     expiredReservations: reservationResult.data?.length || 0,
@@ -357,5 +386,5 @@ export async function POST(request: Request) {
     boardSubscriptionsReconciled,
     boardAdmissions,
     diagnostics,
-  }, { status: healthy ? 200 : 503, headers: { "cache-control": "no-store" } });
+  }, healthy ? 200 : 503);
 }

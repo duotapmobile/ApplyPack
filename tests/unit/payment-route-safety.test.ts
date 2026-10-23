@@ -15,7 +15,8 @@ describe("payment route safety", () => {
     expect(search).toContain('view.outcome !== "LIKELY"');
     expect(search).toContain("view.checkoutEligible !== true");
     expect(search).toContain("invitationId: z.uuid()");
-    expect(search).toContain('context.admin.rpc("ap_begin_invited_search_checkout"');
+    expect(search).toContain('context.admin.rpc("ap_begin_authorized_search_checkout"');
+    expect(search).toContain("p_invitation_id: parsed.data.invitationId");
   });
 
   it("uses configured fixed Stripe prices instead of browser-controlled price data", () => {

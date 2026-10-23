@@ -71,6 +71,18 @@ Resources:
       Tags:
         - { Key: Application, Value: ApplyPack }
         - { Key: Environment, Value: !Ref DeploymentEnvironment }
+  TemporaryBucketVersioningPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TemporaryBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: NeverEnableTemporaryBucketVersioning
+            Effect: Deny
+            Principal: "*"
+            Action: s3:PutBucketVersioning
+            Resource: !GetAtt TemporaryBucket.Arn
   WorkerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:

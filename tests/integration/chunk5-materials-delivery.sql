@@ -445,6 +445,7 @@ values(
 );
 
 savepoint before_manual_launch_material_canary_refund;
+update public.ap_commerce_configuration set canonical_site_url='https://applypack-staging-staging.up.railway.app' where singleton;
 insert into public.ap_payment_attempts(
   id,customer_id,provider,amount_cents,currency,settlement,dispute
 ) values(
@@ -508,6 +509,7 @@ begin
 end;
 $$;
 rollback to savepoint before_manual_launch_material_canary_refund;
+update public.ap_commerce_configuration set canonical_site_url='https://applypack-staging-staging.up.railway.app' where singleton;
 
 insert into public.ap_sensitive_payloads(
   id,customer_id,ciphertext,encryption_algorithm,encrypted_data_key,nonce,authentication_tag,

@@ -134,19 +134,34 @@ If the stable account-wide budget already belongs to another reviewed stack, use
 
 ## 5. Run the synthetic worker and KMS probe
 
-After deployment, read the stack outputs locally and run the checked-in probe under the dedicated matching-environment runtime identity, not the deployment role. The wrong-environment KMS check counts as proven only when the AWS CLI returns exactly `AccessDeniedException` or `InvalidCiphertextException`; credential, network, throttle, malformed-request, and transient process failures fail the probe.
+After deployment, read the stack outputs locally. First run the bucket-only read preflight under the approved MFA operator session. This occurs after stack creation because the earlier network/image preflight runs before the bucket exists. The operator requires only `s3:GetBucketVersioning` and `s3:GetBucketPolicy` on the exact matching environment bucket ARN for this additional check, plus the existing STS caller-identity read. The CloudFormation-only deployment role is not an operator-assumable role. Do not add these permissions to the application or Lambda runtime roles.
+
+The bucket preflight rejects both `Enabled` and `Suspended`, unreadable state, the wrong owner/environment and a missing or conditional versioning deny. The new bucket has no `VersioningConfiguration`; its bucket policy denies `s3:PutBucketVersioning` to every principal. The CloudFormation service role can manage only this exact environment bucket policy. A previously versioned bucket requires separate reviewed recovery; suspending versioning does not remove old object versions and must not be accepted as cleanup proof.
 
 ```powershell
 $apStackOutputs = aws cloudformation describe-stacks --region $apRegion --stack-name $apStackName --query 'Stacks[0].Outputs' --output json | ConvertFrom-Json
 $apBucket = ($apStackOutputs | Where-Object OutputKey -eq 'BucketName').OutputValue
 $apFunctionVersionArn = ($apStackOutputs | Where-Object OutputKey -eq 'FunctionVersionArn').OutputValue
 $apImageDigestWithoutPrefix = $apImageDigest -replace '^sha256:', ''
-node scripts/aws-document-worker-synthetic-probe.mjs --environment $apEnvironment --bucket $apBucket --function-version-arn $apFunctionVersionArn --kms-key-arn $apKmsKeyArn --kms-key-version $apKmsKeyVersion --image-digest $apImageDigestWithoutPrefix --preflight-receipt-sha256 $apPreflightReceiptSha256 --source-commit-sha $apSourceSha --output-directory $apEvidenceDirectory
+node scripts/aws-document-worker-bucket-preflight.mjs --environment $apEnvironment --bucket $apBucket --function-version-arn $apFunctionVersionArn --image-digest $apImageDigestWithoutPrefix --preflight-receipt-sha256 $apPreflightReceiptSha256 --source-commit-sha $apSourceSha --output-directory $apEvidenceDirectory
+if ($LASTEXITCODE -ne 0) { throw 'Temporary bucket versioning/owner/policy preflight failed.' }
+$apBucketVersioningReceipt = Join-Path $apEvidenceDirectory "aws-document-worker-bucket-preflight-$apEnvironment.json"
+$apBucketDigestLine = Get-Content -Raw -LiteralPath (Join-Path $apEvidenceDirectory "aws-document-worker-bucket-preflight-$apEnvironment.sha256")
+$apBucketVersioningReceiptSha256 = ($apBucketDigestLine -split '\s+')[0]
+if ($apBucketVersioningReceiptSha256 -notmatch '^[0-9a-f]{64}$') { throw 'Canonical bucket preflight receipt digest is missing.' }
+```
+
+Then switch to the dedicated matching-environment runtime identity and run the synthetic probe within 15 minutes. The probe validates the receipt bytes, freshness, exact bucket, immutable function version, source SHA, image digest and network preflight binding before its first S3 upload. It includes the bucket receipt digest in its own canonical receipt. The wrong-environment KMS check counts as proven only when the AWS CLI returns exactly `AccessDeniedException` or `InvalidCiphertextException`; credential, network, throttle, malformed-request, and transient process failures fail the probe.
+
+```powershell
+node scripts/aws-document-worker-synthetic-probe.mjs --environment $apEnvironment --bucket $apBucket --function-version-arn $apFunctionVersionArn --kms-key-arn $apKmsKeyArn --kms-key-version $apKmsKeyVersion --image-digest $apImageDigestWithoutPrefix --preflight-receipt-sha256 $apPreflightReceiptSha256 --source-commit-sha $apSourceSha --bucket-versioning-receipt $apBucketVersioningReceipt --bucket-versioning-receipt-sha256 $apBucketVersioningReceiptSha256 --output-directory $apEvidenceDirectory
 if ($LASTEXITCODE -ne 0) { throw 'Synthetic worker/KMS probe failed or cleanup was incomplete.' }
 $apProbeDigestLine = Get-Content -Raw -LiteralPath (Join-Path $apEvidenceDirectory "aws-document-worker-synthetic-probe-$apEnvironment.sha256")
 $apProbeReceiptSha256 = ($apProbeDigestLine -split '\s+')[0]
 if ($apProbeReceiptSha256 -notmatch '^[0-9a-f]{64}$') { throw 'Canonical synthetic-probe receipt digest is missing.' }
 ```
+
+The receipt proves state when observed; it is not a lifetime assertion. Before activation, require a fresh matching bucket/probe receipt and provider confirmation that the deny policy is installed. Repeat the bucket check after bucket, policy, IAM or stack changes, and monitor drift of both versioning and this deny policy during operation. A privileged policy change can remove the deny; the application deliberately lacks bucket-administration reads and cannot detect that drift itself. Any unreadable, stale, missing or changed evidence keeps activation blocked. Use a new evidence directory for a fresh receipt rather than overwriting earlier evidence. Hosted drift detection and alert delivery remain required provider acceptance evidence.
 
 ## 6. Configure only the matching application service
 

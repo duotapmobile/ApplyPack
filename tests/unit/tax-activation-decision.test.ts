@@ -45,12 +45,13 @@ describe("October 19 tax activation decision", () => {
       "src/app/api/checkout/search/route.ts",
       "src/app/api/checkout/apply-packs/route.ts",
       "src/app/api/checkout/board-materials/[id]/route.ts",
-      "src/lib/commerce/workers.ts",
     ]) {
       const checkout = source(path);
       expect(checkout).toContain("manualLaunchFixedTotalIsSafe");
       expect(checkout).toContain("STRIPE_NO_ADDED_TAX");
     }
+    // Maintenance reconciles existing attempts; it cannot recreate checkout.
+    expect(source("src/lib/commerce/workers.ts")).not.toContain("checkout.sessions.create");
   });
 
   it("keeps the persisted activation gate fixed-price and independent of approval evidence", () => {

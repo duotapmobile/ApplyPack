@@ -1,5 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Browser-specific evidence belongs to exactly one project; do not count the
+// other matrix entries as skipped required coverage.
+const desktopEvidence = /capture Chunk 2|Chromium browser-level|Chunk 5 exact-ten selection|Chunk 5 selection checkout|Chunk 5 supports keyboard/;
+const touchEvidence = /comparison supports touch dragging/;
+const desktopAndTouchEvidence = new RegExp(`${desktopEvidence.source}|${touchEvidence.source}`);
+
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
@@ -27,10 +33,10 @@ export default defineConfig({
     timeout: 120_000,
   },
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"] } },
-    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
-    { name: "webkit", use: { ...devices["Desktop Safari"] } },
-    { name: "mobile-webkit", use: { ...devices["iPhone 13"], browserName: "webkit" } },
-    { name: "mobile", use: { ...devices["iPhone 13"], browserName: "chromium" } },
+    { name: "desktop", grepInvert: touchEvidence, use: { ...devices["Desktop Chrome"] } },
+    { name: "firefox", grepInvert: desktopAndTouchEvidence, use: { ...devices["Desktop Firefox"] } },
+    { name: "webkit", grepInvert: desktopAndTouchEvidence, use: { ...devices["Desktop Safari"] } },
+    { name: "mobile-webkit", grepInvert: desktopAndTouchEvidence, use: { ...devices["iPhone 13"], browserName: "webkit" } },
+    { name: "mobile", grepInvert: desktopEvidence, use: { ...devices["iPhone 13"], browserName: "chromium" } },
   ],
 });

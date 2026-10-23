@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { Document, Packer, Paragraph, TextRun } from "docx";
 import { sanitizedIdentity, writeCanonicalReceipt } from "./lib/canonical-receipt.mjs";
+import { validateBucketVersioningReceipt } from "./aws-document-worker-bucket-preflight.mjs";
 
 const REGION = "us-east-1";
 const TOKEN = "ApplyPack synthetic extraction and render probe";
@@ -79,9 +80,13 @@ async function main() {
     || !/^[A-Za-z0-9._:-]{1,64}$/.test(options.kmsKeyVersion || "")
     || !/^[a-z0-9.-]{3,63}$/.test(options.bucket || "") || !/^[0-9a-f]{64}$/.test(options.imageDigest || "")
     || !/^[0-9a-f]{64}$/.test(options.preflightReceiptSha256 || "") || !/^[0-9a-f]{40}$/.test(options.sourceCommitSha || "")
-    || !options.outputDirectory || !options.functionVersionArn.includes(`:applypack-${options.environment}-document-worker:`)) {
+    || !options.bucketVersioningReceipt || !options.outputDirectory
+    || !options.functionVersionArn.includes(`:applypack-${options.environment}-document-worker:`)) {
     throw new Error("probe_required_arguments_invalid");
   }
+  if (statSync(options.bucketVersioningReceipt).size > 65_536) throw new Error("bucket_preflight_receipt_invalid");
+  const bucketReceiptBytes = readFileSync(options.bucketVersioningReceipt);
+  validateBucketVersioningReceipt(bucketReceiptBytes, options.bucketVersioningReceiptSha256, options);
   const work = mkdtempSync(join(tmpdir(), "applypack-aws-worker-probe-"));
   const key = `ephemeral/synthetic-probe-${randomUUID()}`;
   const keys = [key, `${key}.render.pdf`, `${key}.page-1.png`, `${key}.page-2.png`];
@@ -97,6 +102,7 @@ async function main() {
     }));
     const sourcePath = join(work, "synthetic.docx");
     writeFileSync(sourcePath, docx, { flag: "wx" });
+    validateBucketVersioningReceipt(bucketReceiptBytes, options.bucketVersioningReceiptSha256, options);
     awsJson(["s3api", "put-object", "--bucket", options.bucket, "--key", key, "--body", sourcePath,
       "--content-type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "--server-side-encryption", "AES256", "--metadata", "purpose=applypack-synthetic-probe"]);
@@ -154,6 +160,7 @@ async function main() {
       region: REGION,
       sourceCommitSha: options.sourceCommitSha,
       preflightReceiptSha256: options.preflightReceiptSha256,
+      bucketVersioningReceiptSha256: options.bucketVersioningReceiptSha256,
       identities: {
         bucketIdentitySha256: sanitizedIdentity(options.bucket),
         functionVersionIdentitySha256: sanitizedIdentity(options.functionVersionArn),
@@ -162,6 +169,8 @@ async function main() {
       worker: { identity: IDENTITY, imageDigest: options.imageDigest, fontManifestSha256: FONT_MANIFEST },
       checks: {
         syntheticUpload: true,
+        temporaryBucketNeverVersioned: true,
+        versioningChangesDenied: true,
         extraction: true,
         render: true,
         exactFontManifest: true,

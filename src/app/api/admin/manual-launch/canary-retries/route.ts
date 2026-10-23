@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 import { safeReleaseSha } from "@/lib/operations/summary";
 import { isSameOriginRequest } from "@/lib/security/origin";
 import { createStripeOperationalClient } from "@/lib/stripe/server";
+import { checkoutConfiguration } from "@/lib/stripe/mode";
 
 const schema = z.object({
   designationId: z.uuid(),
@@ -20,6 +21,9 @@ export async function POST(request: Request) {
   if (!access.ok) return access.response;
   if (access.role !== "admin") {
     return NextResponse.json({ error: "An administrator must authorize a canary retry." }, { status: 403, headers });
+  }
+  if (!["LOCKED_STAGING", "STAGING_CANARY"].includes(checkoutConfiguration().state)) {
+    return NextResponse.json({ error: "New canary retries are restricted to the configured sandbox." }, { status: 409, headers });
   }
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {

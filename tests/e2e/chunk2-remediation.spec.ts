@@ -137,8 +137,7 @@ test("choosing neither removes the prior cover letter and its processing eligibi
   await expect(page.getByRole("group", { name: "How may we use the previous cover letter?" })).toHaveCount(0);
 });
 
-test("Chromium browser-level 200 percent scale reflows without CSS zoom", async ({ page, context }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "One Chromium browser-level zoom proof is sufficient.");
+test("Chromium browser-level 200 percent scale reflows without CSS zoom", async ({ page, context }) => {
   const session = await context.newCDPSession(page);
   await session.send("Emulation.setDeviceMetricsOverride", {
     width: 720,

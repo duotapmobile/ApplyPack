@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -358,7 +359,9 @@ describe("credential-safe staging migrations 081 through 084", () => {
     );
   });
 
-  it.runIf(process.platform === "win32")(
+  // These native checks are required in the Windows CI job.
+  if (process.platform === "win32") {
+  it(
     "passes the networkless, credential-free dynamic SelfTest",
     () => {
       const pwsh = resolvePowerShell();
@@ -401,7 +404,7 @@ describe("credential-safe staging migrations 081 through 084", () => {
     65_000,
   );
 
-  it.runIf(process.platform === "win32")(
+  it(
     "rejects every forbidden inherited variable without echoing its value",
     () => {
       const pwsh = resolvePowerShell();
@@ -426,6 +429,9 @@ describe("credential-safe staging migrations 081 through 084", () => {
         expect(`${result.stdout}${result.stderr}`).not.toContain(marker);
       }
     },
-    45_000,
+    // Ten separate PowerShell startups each retain their 15-second deadline.
+    // The aggregate bound must allow those native deadlines on Windows.
+    forbiddenEnvironment.length * 15_000 + 20_000,
   );
+  }
 });

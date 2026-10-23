@@ -14,9 +14,10 @@ import {
 } from "@/lib/domain/applypack";
 import { processBoardStripeEvent } from "@/lib/job-board/stripe-events";
 import { stripeEventMatchesConfiguredMode } from "@/lib/stripe/mode";
-import { assertConfiguredPrice, createStripeOperationalClient } from "@/lib/stripe/server";
+import { assertConfiguredPrice, assertStripeAccount, createStripeOperationalClient } from "@/lib/stripe/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { processWorkflowTasks } from "@/lib/workflow/process";
+import { bindCheckoutSession, observeCheckoutSession } from "@/lib/commerce/checkout-initiation";
 
 export const runtime = "nodejs";
 
@@ -42,6 +43,14 @@ export async function POST(request: Request) {
   }
   if (!stripeEventMatchesConfiguredMode(event.livemode)) {
     return NextResponse.json({ error: "Webhook payment mode does not match this environment." }, { status: 409 });
+  }
+  try {
+    const accountId = await assertStripeAccount(stripe);
+    // Direct account events omit account. Their signing secret must be paired
+    // with this account's endpoint during the verified provider cutover.
+    if (event.account && event.account !== accountId) throw new Error("Webhook account mismatch.");
+  } catch {
+    return NextResponse.json({ error: "Webhook account verification is unavailable." }, { status: 503 });
   }
   const payloadSha256 = createHash("sha256").update(rawBody, "utf8").digest("hex");
 
@@ -71,6 +80,15 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (["checkout.session.completed", "checkout.session.expired"].includes(event.type)) {
+      const session = event.data.object as Stripe.Checkout.Session;
+      if (session.metadata?.initiation_id) {
+        // Signature and provider mode were verified above. Binding before normal
+        // payment verification supports webhooks that beat the create response.
+        // No current purchase permission or authorization expiry gates payments.
+        await bindCheckoutSession(admin, session.metadata.initiation_id, session);
+      }
+    }
     const boardEventHandled = await processBoardStripeEvent(stripe, admin, event);
     if (boardEventHandled) {
       // Subscription entitlements are derived only from validated recurring objects and paid invoices.
@@ -110,6 +128,10 @@ export async function POST(request: Request) {
       }
     }
 
+    if (["checkout.session.completed", "checkout.session.expired"].includes(event.type)) {
+      const session = event.data.object as Stripe.Checkout.Session;
+      if (session.metadata?.initiation_id) await observeCheckoutSession(admin, session.metadata.initiation_id, session);
+    }
     const { data: processed, error: processedError } = await admin
       .from("webhook_events")
       .update({
@@ -175,6 +197,7 @@ async function completeCorrectedMaterials(
   await assertConfiguredPrice(stripe, expectedPriceId, {
     unitAmount: legacy ? 800 : APPLY_PACK_PRICE_CENTS,
     productName: "Tailored Resume + Cover Letter",
+    historicalReconciliation: legacy,
   });
   const payment = immediateMaterialPayment({
     session,
@@ -237,7 +260,8 @@ async function completeCorrectedSearch(
   const charge = typeof paymentIntent.latest_charge === "string"
     ? await stripe.charges.retrieve(paymentIntent.latest_charge)
     : paymentIntent.latest_charge || null;
-  await assertConfiguredPrice(stripe, expectedPriceId, { unitAmount: legacy ? 2_000 : SEARCH_PRICE_CENTS, productName: "Job Match Search" });
+  await assertConfiguredPrice(stripe, expectedPriceId, { unitAmount: legacy ? 2_000 : SEARCH_PRICE_CENTS,
+    productName: "Job Match Search", historicalReconciliation: legacy });
   const payment = immediateSearchPayment({ session, paymentIntent, charge, expectedPriceId,
     expectedAmountCents: legacy ? 2_000 : SEARCH_PRICE_CENTS });
 
@@ -434,18 +458,18 @@ async function verifyCompletedCheckout(stripe: Stripe, eventSession: Stripe.Chec
   }
   const line = lines[0];
   if (productKind === "job_search" && orderId && !cartId) {
-    const priceId = process.env.STRIPE_JOB_SEARCH_PRICE_ID;
+    const priceId = process.env.STRIPE_LEGACY_JOB_SEARCH_PRICE_ID;
     if (!priceId || line.price?.id !== priceId || line.quantity !== 1 || session.amount_total !== 2000) {
       throw new Error("Job Match Search price mismatch");
     }
-    await assertConfiguredPrice(stripe, priceId, { unitAmount: 2000, productName: "Job Match Search" });
+    await assertConfiguredPrice(stripe, priceId, { unitAmount: 2000, productName: "Job Match Search", historicalReconciliation: true });
   } else if (productKind === "apply_pack" && cartId && !orderId) {
-    const priceId = process.env.STRIPE_APPLY_PACK_PRICE_ID;
+    const priceId = process.env.STRIPE_LEGACY_APPLY_PACK_PRICE_ID;
     const quantity = line.quantity ?? 0;
     if (!priceId || line.price?.id !== priceId || quantity < 1 || quantity > 10 || session.amount_total !== quantity * 800) {
       throw new Error("Apply Pack price mismatch");
     }
-    await assertConfiguredPrice(stripe, priceId, { unitAmount: 800, productName: "Tailored Resume + Cover Letter" });
+    await assertConfiguredPrice(stripe, priceId, { unitAmount: 800, productName: "Tailored Resume + Cover Letter", historicalReconciliation: true });
   } else {
     throw new Error("Checkout product mismatch");
   }

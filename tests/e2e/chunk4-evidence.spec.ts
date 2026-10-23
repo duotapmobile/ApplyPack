@@ -95,7 +95,7 @@ test("Chunk 4 review, eligibility, payment, exception, adjustment, refund, and e
   const width = mobile ? 390 : 1440;
   await page.setViewportSize({ width, height: mobile ? 844 : 1000 });
   const generatesEvidence = ["desktop", "mobile"].includes(testInfo.project.name);
-  const output = generatesEvidence ? resolve("evidence/chunk-4/screenshots") : null;
+  const output = generatesEvidence ? testInfo.outputPath("screenshots") : null;
   if (output) mkdirSync(output, { recursive: true });
 
   await completeFeasibility(page, "likely");

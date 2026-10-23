@@ -3,7 +3,7 @@ begin
   if public.ap_manual_launch_schema_readiness()->>'ready' is distinct from 'true' then
     raise exception 'runtime_launch_schema_readiness_not_current';
   end if;
-  if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610190084' then
+  if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from (case when to_regprocedure('public.ap_sandbox_activation_schema_installed()') is null then '202610220085' else '202610230086' end) then
     raise exception 'runtime_launch_schema_version_not_current';
   end if;
   if not exists(

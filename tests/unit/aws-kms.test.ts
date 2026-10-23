@@ -39,7 +39,9 @@ describe("AWS KMS envelope adapter", () => {
       expect(() => awsKmsConfiguration({ ...env, ...change })).toThrow("kms_aws_configuration_invalid");
       expect(kmsProviderConfigured({ ...env, ...change })).toBe(false);
     }
-    expect(kmsProviderConfigured(env)).toBe(true);
+    // A valid KMS ARN alone does not establish the required workload identity.
+    expect(kmsProviderConfigured(env)).toBe(false);
+    expect(() => awsKmsAdapter(env)).toThrow("kms_aws_account_binding_invalid");
     expect(kmsProviderConfigured({ APP_KMS_PROVIDER: "unknown" })).toBe(false);
   });
   it("rejects a changed key or version before contacting AWS", async () => {

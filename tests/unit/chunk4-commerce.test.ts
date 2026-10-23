@@ -27,6 +27,7 @@ const accessResendRoute = source("src/app/api/auth/order-access/resend/route.ts"
 const commerceServer = source("src/lib/commerce/server.ts");
 const outbox = source("src/lib/commerce/outbox.ts");
 const workers = source("src/lib/commerce/workers.ts");
+const initiation = source("src/lib/commerce/checkout-initiation.ts");
 const releaseRoute = source("src/app/api/admin/search-orders/[id]/deliver/route.ts");
 const migration = source("supabase/migrations/202609060030_chunk4_commerce_release.sql");
 const manualLaunchMigration = source("supabase/migrations/202610020052_manual_launch_hardening.sql");
@@ -133,7 +134,9 @@ describe("Chunk 4 commerce contract", () => {
     expect(checkoutRoute).toContain('payment_method_types: ["card"]');
     expect(checkoutRoute).toContain('line_items: [{ quantity: 1, price: priceId }]');
     expect(checkoutRoute).not.toContain("price_data");
-    expect(checkoutRoute).toContain('context.admin.rpc("ap_promote_search_checkout"');
+    expect(checkoutRoute).toContain('context.admin.rpc("ap_begin_authorized_search_checkout"');
+    expect(checkoutRoute).toContain("createOrResumeCheckoutSession");
+    expect(initiation).toContain('admin.rpc("ap_bind_checkout_initiation"');
     expect(checkoutRoute).toContain("amountCents: SEARCH_PRICE_CENTS");
     expect(migration).toContain("p_amount_cents<>2000 or upper(p_currency)<>'USD'");
     expect(manualLaunchMigration).toContain("search_price_cents=1899");
@@ -169,9 +172,11 @@ describe("Chunk 4 commerce contract", () => {
     expect(outbox).toContain("message.provider_idempotency_key");
     expect(outbox).toContain('admin.rpc("ap_align_access_capability_to_outbox"');
     expect(outbox).toContain("outboxShouldDeadLetter(message.first_submitted_at)");
-    expect(workers).toContain('payment_method_types: ["card"]');
-    expect(workers).toContain("manualLaunchFixedTotalIsSafe(commerceConfiguration)");
-    expect(workers).toContain("...STRIPE_NO_ADDED_TAX");
+    expect(workers).not.toContain("checkout.sessions.create");
+    expect(workers).toContain("reconcileCheckoutInitiations");
+    expect(checkoutRoute).toContain('payment_method_types: ["card"]');
+    expect(checkoutRoute).toContain("manualLaunchFixedTotalIsSafe(commerce)");
+    expect(checkoutRoute).toContain("...STRIPE_NO_ADDED_TAX");
     expect(workers).toContain('admin.rpc("ap_claim_scheduled_jobs"');
     expect(workers).toContain('admin.rpc("ap_complete_external_scheduled_job"');
     expect(workers).toContain("stripe.refunds.retrieve");

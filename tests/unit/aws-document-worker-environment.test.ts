@@ -13,11 +13,13 @@ const workerConfigurationNames = [
   "APP_DOCUMENT_WORKER_DEPLOYMENT_ENV",
   "APP_DOCUMENT_WORKER_FUNCTION_ARN",
   "APP_DOCUMENT_WORKER_BUCKET",
+  "APP_DOCUMENT_WORKER_TEMPORARY_PREFIX",
   "APP_DOCUMENT_WORKER_IDENTITY",
   "APP_DOCUMENT_WORKER_FONT_SHA256",
   "APP_DOCUMENT_WORKER_FONT_MANIFEST_SHA256",
   "APP_DOCUMENT_WORKER_IMAGE_DIGEST",
   "APP_DOCUMENT_WORKER_PREFLIGHT_RECEIPT_SHA256",
+  "APP_DOCUMENT_WORKER_PROBE_RECEIPT_SHA256",
   "APP_DOCUMENT_WORKER_NETWORK_ATTESTATION_SHA256",
 ] as const;
 function workerEnvironment(deployment: "staging" | "production") {
@@ -25,13 +27,16 @@ function workerEnvironment(deployment: "staging" | "production") {
     APP_DEPLOYMENT_ENV: deployment,
     APP_DOCUMENT_WORKER_DEPLOYMENT_ENV: deployment,
     AWS_REGION: "us-east-1",
-    APP_DOCUMENT_WORKER_FUNCTION_ARN: `arn:aws:lambda:us-east-1:123456789012:function:applypack-${deployment}-document-worker:1`,
-    APP_DOCUMENT_WORKER_BUCKET: `applypack-${deployment}-worker-private`,
+    APP_AWS_ACCOUNT_ID: "838445019912",
+    APP_DOCUMENT_WORKER_FUNCTION_ARN: `arn:aws:lambda:us-east-1:838445019912:function:applypack-${deployment}-document-worker:1`,
+    APP_DOCUMENT_WORKER_BUCKET: `applypack-838445019912-${deployment}-document-worker-temp`,
+    APP_DOCUMENT_WORKER_TEMPORARY_PREFIX: "ephemeral/",
     APP_DOCUMENT_WORKER_IDENTITY: "applypack-document-worker-v2-liberation-sans-2.1.5",
     APP_DOCUMENT_WORKER_FONT_SHA256: DOCUMENT_FONT_CONTRACT.styles.regular,
     APP_DOCUMENT_WORKER_FONT_MANIFEST_SHA256: DOCUMENT_FONT_CONTRACT.manifestSha256,
     APP_DOCUMENT_WORKER_IMAGE_DIGEST: digest,
     APP_DOCUMENT_WORKER_PREFLIGHT_RECEIPT_SHA256: digest,
+    APP_DOCUMENT_WORKER_PROBE_RECEIPT_SHA256: digest,
     APP_DOCUMENT_WORKER_NETWORK_ATTESTATION_SHA256: digest,
   };
 }
@@ -55,6 +60,15 @@ describe("AWS document worker environment binding", () => {
       { APP_DEPLOYMENT_ENV: " staging " },
       { APP_DEPLOYMENT_ENV: "" },
       { AWS_REGION: "us-west-2" },
+      { APP_AWS_ACCOUNT_ID: "123456789012" },
+      { APP_AWS_ACCOUNT_ID: undefined },
+      { APP_DOCUMENT_WORKER_FUNCTION_ARN: "arn:aws:lambda:us-east-1:123456789012:function:applypack-staging-document-worker:1" },
+      { APP_DOCUMENT_WORKER_BUCKET: "applypack-838445019912-production-document-worker-temp" },
+      { APP_DOCUMENT_WORKER_BUCKET: "unrelated-private-bucket" },
+      { APP_DOCUMENT_WORKER_TEMPORARY_PREFIX: "customer-deliveries/" },
+      { APP_DOCUMENT_WORKER_TEMPORARY_PREFIX: "ephemeral/../private/" },
+      { APP_DOCUMENT_WORKER_TEMPORARY_PREFIX: "" },
+      { APP_DOCUMENT_WORKER_PROBE_RECEIPT_SHA256: "missing-proof" },
     ]) {
       expect(documentWorkerConfiguration({ ...staging, ...changed }).ready).toBe(false);
     }

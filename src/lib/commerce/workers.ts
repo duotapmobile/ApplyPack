@@ -2,11 +2,10 @@ import "server-only";
 
 import type Stripe from "stripe";
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { assertConfiguredPrice, createStripeOperationalClient, createStripeSearchClient } from "@/lib/stripe/server";
-import { canonicalApplicationOrigin } from "./server";
+import { createStripeOperationalClient } from "@/lib/stripe/server";
 import { processChunk4Outbox } from "./outbox";
-import { APPLY_PACK_CONTRACT_VERSION, SEARCH_CONTRACT_VERSION, SEARCH_PRICE_CENTS } from "@/lib/domain/applypack";
-import { manualLaunchFixedTotalIsSafe, STRIPE_NO_ADDED_TAX } from "./fixed-total";
+import { APPLY_PACK_CONTRACT_VERSION, SEARCH_CONTRACT_VERSION } from "@/lib/domain/applypack";
+import { reconcileCheckoutInitiations } from "./checkout-initiation";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 type ScheduledJob = {
@@ -113,57 +112,26 @@ async function handleRefund(admin: AdminClient, job: ScheduledJob, owner: string
 
 async function handleProvisionalCheckout(admin: AdminClient, job: ScheduledJob, owner: string) {
   await renewExternal(admin, job, owner);
-  const stripe = createStripeSearchClient();
-  const priceId = process.env.STRIPE_JOB_SEARCH_PRICE_ID;
-  if (!stripe || !priceId) throw new Error("checkout_provider_not_configured");
+  const stripe = createStripeOperationalClient();
+  if (!stripe) throw new Error("checkout_provider_not_configured");
   const { data: checkout, error: checkoutError } = await admin.from("ap_checkout_attempts")
     .select("id,draft_id,quote_id,command_id,state,expires_at,provider_checkout_session_id")
     .eq("id", job.reference_id).maybeSingle();
   if (checkoutError || !checkout) throw checkoutError || new Error("provisional_checkout_missing");
   if (checkout.state !== "NONE") return completeExternal(admin, job, owner);
-  const [
-    { data: quote, error: quoteError },
-    { data: command, error: commandError },
-    { data: commerceConfiguration, error: commerceConfigurationError },
-  ] = await Promise.all([
-    admin.from("ap_quotes").select("snapshot_id,expires_at,invalidated_at").eq("id", checkout.quote_id).maybeSingle(),
-    admin.from("ap_external_commands").select("provider_idempotency_key,provider_object_id,state").eq("id", checkout.command_id).maybeSingle(),
-    admin.from("ap_commerce_configuration")
-      .select("search_price_cents,material_line_price_cents,currency,tax_inclusive,tax_treatment")
-      .eq("singleton", true).maybeSingle(),
-  ]);
-  if (quoteError || commandError || commerceConfigurationError || !quote || !command || !commerceConfiguration) {
-    throw quoteError || commandError || commerceConfigurationError || new Error("provisional_checkout_binding_missing");
-  }
-  if (!manualLaunchFixedTotalIsSafe(commerceConfiguration)) {
-    throw new Error("manual_launch_fixed_total_configuration_required");
-  }
-  if (quote.invalidated_at || new Date(quote.expires_at).getTime() <= Date.now()) {
-    const expired = await admin.rpc("ap_expire_search_checkout", { p_checkout_attempt_id: checkout.id, p_reason: "PROVISIONAL_RECONCILIATION_EXPIRED" });
-    if (expired.error) throw expired.error;
+  const initiation = await admin.from("ap_checkout_initiations").select("id,authorization_id").eq("id", checkout.id).maybeSingle();
+  if (initiation.error) throw initiation.error;
+  if (initiation.data) {
+    const result = await reconcileCheckoutInitiations(admin, 20, initiation.data.authorization_id || undefined);
+    if (result.unresolved) throw new Error("checkout_provider_outcome_requires_reconciliation");
     return completeExternal(admin, job, owner);
   }
-  const reopened = await admin.rpc("ap_reopen_provisional_search_checkout", { p_checkout_attempt_id: checkout.id });
-  if (reopened.error || !reopened.data) throw reopened.error || new Error("provisional_checkout_not_reopenable");
-  const { data: snapshot, error: snapshotError } = await admin.from("ap_intake_snapshots")
-    .select("access_email_normalized").eq("id", quote.snapshot_id).maybeSingle();
-  if (snapshotError || !snapshot?.access_email_normalized) throw snapshotError || new Error("provisional_checkout_email_missing");
-  const origin = canonicalApplicationOrigin();
-  await assertConfiguredPrice(stripe, priceId, { unitAmount: SEARCH_PRICE_CENTS, productName: "Job Match Search" });
-  await renewExternal(admin, job, owner);
-  let session: Stripe.Checkout.Session;
-  if (command.provider_object_id) session = await stripe.checkout.sessions.retrieve(command.provider_object_id);
-  else session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    ...STRIPE_NO_ADDED_TAX,
-    payment_method_types: ["card"],
-    customer_email: snapshot.access_email_normalized,
-    expires_at: Math.floor(new Date(quote.expires_at).getTime() / 1_000),
-    success_url: `${origin}/checkout/return`,
-    cancel_url: `${origin}/checkout/return?cancelled=1`,
-    line_items: [{ quantity: 1, price: priceId }],
-    metadata: { checkout_attempt_id: checkout.id, quote_id: checkout.quote_id, product_kind: "job_search", contract_version: SEARCH_CONTRACT_VERSION },
-  }, { idempotencyKey: command.provider_idempotency_key });
+  // Historical commands can be inspected while locked, but never restarted as
+  // a new charge without a current durable, product-specific authorization.
+  const { data: command, error: commandError } = await admin.from("ap_external_commands")
+    .select("provider_object_id").eq("id", checkout.command_id).maybeSingle();
+  if (commandError || !command?.provider_object_id) throw new Error("legacy_checkout_requires_provider_reconciliation");
+  const session = await stripe.checkout.sessions.retrieve(command.provider_object_id);
   if (session.status === "expired") {
     const expired = await admin.rpc("ap_expire_search_checkout", { p_checkout_attempt_id: checkout.id, p_reason: "PROVIDER_SESSION_EXPIRED" });
     if (expired.error) throw expired.error;
@@ -180,7 +148,7 @@ async function handleProvisionalCheckout(admin: AdminClient, job: ScheduledJob, 
 
 async function handleInvalidatedCheckout(admin: AdminClient, job: ScheduledJob, owner: string) {
   await renewExternal(admin, job, owner);
-  const stripe = createStripeSearchClient();
+  const stripe = createStripeOperationalClient();
   if (!stripe) throw new Error("checkout_provider_not_configured");
   const { data: checkout, error } = await admin.from("ap_checkout_attempts")
     .select("id,state,quote_id,provider_checkout_session_id")

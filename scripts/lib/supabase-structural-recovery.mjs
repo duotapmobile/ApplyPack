@@ -1,0 +1,168 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { APPROVED_ROLLBACK_LEGAL_CONTRACT } from "../rollback-legal-contract.mjs";
+
+function runCommand(command, args, stdin) {
+  const result = spawnSync(command, args, {
+    encoding: "utf8",
+    input: stdin,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  return result;
+}
+
+export function runStructuralDatabaseRecovery({ run = runCommand } = {}) {
+const sqlPath = fileURLToPath(new URL("../../supabase/rollback/202609040022_corrected_chunk1_foundation.rollback.sql", import.meta.url));
+const migrationDirectory = new URL("../../supabase/migrations/", import.meta.url);
+const expectedMigrationCount = readdirSync(migrationDirectory).filter((name) => name.endsWith(".sql")).length;
+const input = readFileSync(sqlPath, "utf8") + "\nselect case when to_regclass('public.orders') is not null and to_regclass('public.ap_anonymous_drafts') is null then 'ROLLBACK_OK' else 'ROLLBACK_FAILED' end;\n";
+
+const rollback = run("docker", ["exec", "-i", "supabase_db_applypack", "psql", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"], input);
+const rollbackPassed = !rollback.error && rollback.status === 0 && rollback.stdout.includes("ROLLBACK_OK");
+
+// A rollback test must never leave the shared local development database in the rolled-back state.
+const reset = run("supabase", ["db", "reset", "--local"]);
+if (reset.error || reset.status !== 0) {
+  if (reset.error) console.error(reset.error);
+  console.error("Rollback verification could not restore the latest local schema.");
+  return reset.status || 1;
+}
+
+const restoreSql = `
+select case when
+  to_regclass('public.ap_anonymous_drafts') is not null
+  and exists (
+    select 1
+    from pg_proc procedure
+    join pg_namespace namespace on namespace.oid = procedure.pronamespace
+    where namespace.nspname = 'public'
+      and procedure.proname = 'ap_create_anonymous_draft'
+  )
+  and to_regclass('public.ap_snapshot_legal_content_receipts') is not null
+  and exists (
+    select 1 from pg_proc procedure
+    join pg_namespace namespace on namespace.oid = procedure.pronamespace
+    where namespace.nspname='public'
+      and procedure.proname='ap_upgrade_completed_intake_legal_acceptance'
+  )
+  and position(
+    'ap_finalize_four_step_intake_with_legal_acceptance_v3'
+    in pg_get_functiondef('public.ap_finalize_four_step_intake_with_legal_acceptance_v2(uuid,text,bigint,uuid,jsonb,text,uuid,bytea,text,bytea,bytea,bytea,text,text,text,text,jsonb,text,text,text)'::regprocedure)
+  ) > 0
+  and exists (
+    select 1 from public.ap_commerce_configuration
+    where singleton
+      and terms_version='${APPROVED_ROLLBACK_LEGAL_CONTRACT.termsVersion}'
+      and terms_content_sha256='${APPROVED_ROLLBACK_LEGAL_CONTRACT.termsContentSha256}'
+      and privacy_version='${APPROVED_ROLLBACK_LEGAL_CONTRACT.privacyVersion}'
+      and privacy_content_sha256='${APPROVED_ROLLBACK_LEGAL_CONTRACT.privacyContentSha256}'
+      and legal_acceptance_copy_version='${APPROVED_ROLLBACK_LEGAL_CONTRACT.acceptanceCopyVersion}'
+      and legal_acceptance_copy_sha256='${APPROVED_ROLLBACK_LEGAL_CONTRACT.acceptanceCopySha256}'
+      and legal_content_canonicalization_version='${APPROVED_ROLLBACK_LEGAL_CONTRACT.contentCanonicalizationVersion}'
+      and legal_receipt_schema_version='${APPROVED_ROLLBACK_LEGAL_CONTRACT.receiptSchemaVersion}'
+  )
+  and exists (
+    select 1 from pg_constraint
+    where conrelid='public.ap_snapshot_legal_acceptances'::regclass
+      and conname='ap_snapshot_legal_acceptances_snapshot_hash_key'
+  )
+  and exists (
+    select 1 from pg_constraint
+    where conrelid='public.ap_snapshot_legal_content_receipts'::regclass
+      and conname='ap_snapshot_legal_content_receipts_snapshot_hash_key'
+  )
+  and to_regclass('public.ap_legal_receipt_acceptance_reconciliations') is not null
+  and exists (
+    select 1 from pg_trigger
+    where tgrelid='public.ap_legal_receipt_acceptance_reconciliations'::regclass
+      and tgname='ap_legal_receipt_acceptance_reconciliations_immutable'
+      and not tgisinternal
+  )
+  and position(
+    'on conflict(snapshot_id,acceptance_sha256)'
+    in pg_get_functiondef('public.ap_record_snapshot_legal_content_receipt(uuid,text,uuid,uuid,text,text,text,text,text,text,text,text,text)'::regprocedure)
+  ) > 0
+  and position(
+    'pg_advisory_xact_lock'
+    in pg_get_functiondef('public.ap_upgrade_completed_intake_legal_acceptance(uuid,text,text,text,text,text,text,text,text,text,text)'::regprocedure)
+  ) > 0
+  and position(
+    'array_remove(array[existing.canonical_employer_listing_url,existing.canonical_application_url],null)'
+    in pg_get_functiondef('public.ap_persist_parsed_inventory_job(uuid,uuid,text,jsonb,jsonb)'::regprocedure)
+  ) > 0
+  and position(
+    'array_remove(array[other.canonical_employer_listing_url,other.canonical_application_url],null)'
+    in pg_get_functiondef('public.ap_admit_verified_inventory_snapshot(uuid,uuid,uuid,text)'::regprocedure)
+  ) > 0
+  and exists (
+    select 1 from public.ap_migration_checkpoints
+    where migration_id='202610040077'
+      and checkpoint='ATOMIC_INVENTORY_IDENTITY_ENFORCEMENT'
+  )
+  and exists (
+    select 1 from public.ap_migration_checkpoints
+    where migration_id='202610040078'
+      and checkpoint='REQUEUE_IDENTITY_POLICY_FEASIBILITY'
+  )
+  and exists (
+    select 1 from public.ap_migration_checkpoints
+    where migration_id='202610040079'
+      and checkpoint='RUNTIME_LAUNCH_SCHEMA_READINESS'
+  )
+  and exists (
+    select 1 from public.ap_migration_checkpoints
+    where migration_id='202610040080'
+      and checkpoint='PERSISTENT_INVENTORY_IDENTITY_GUARD'
+  )
+  and exists (
+    select 1 from public.ap_migration_checkpoints
+    where migration_id='202610190081'
+      and checkpoint='OPEN_FONT_DOCUMENT_CONTRACT'
+  )
+  and exists (
+    select 1 from public.ap_migration_checkpoints
+    where migration_id='202610190082'
+      and checkpoint='TAX_ACTIVATION_DECISION'
+  )
+  and exists (
+    select 1 from pg_trigger
+    where tgrelid='public.ap_inventory_members'::regclass
+      and tgname='ap_guard_inventory_member_identity'
+      and tgenabled='O'
+      and not tgisinternal
+  )
+  and public.ap_manual_launch_schema_readiness()->>'ready'='true'
+  and exists(select 1 from public.ap_migration_checkpoints
+    where migration_id='202610190083' and checkpoint='LEGACY_BOARD_READ_ONLY_ARCHIVE')
+  and exists(select 1 from public.ap_migration_checkpoints
+    where migration_id='202610190084' and checkpoint='LEGACY_BOARD_TERMINAL_EVENT_ORDERING')
+  and exists(select 1 from public.ap_migration_checkpoints
+    where migration_id='202610220085' and checkpoint='STAGING_REHEARSAL_CHECKOUT_ATTEMPTS')
+  and exists(select 1 from public.ap_migration_checkpoints
+    where migration_id='202610230086' and checkpoint='SANDBOX_VALIDATION_LAUNCH_ACTIVATION')
+  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610230086'
+  and exists (
+    select 1 from pg_proc procedure
+    join pg_namespace namespace on namespace.oid=procedure.pronamespace
+    where namespace.nspname='public'
+      and procedure.proname='ap_finalize_four_step_intake_with_legal_acceptance_v3'
+      and pg_get_functiondef(procedure.oid) like '%acceptance.acceptance_sha256=p_acceptance_sha256%'
+  )
+  and (select count(*) from supabase_migrations.schema_migrations) = ${expectedMigrationCount}
+then 'RESTORE_OK' else 'RESTORE_FAILED' end;
+`;
+const restore = run("docker", ["exec", "-i", "supabase_db_applypack", "psql", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"], restoreSql);
+const restorePassed = !restore.error && restore.status === 0 && restore.stdout.includes("RESTORE_OK");
+
+if (!rollbackPassed || !restorePassed) {
+  if (rollback.error) console.error(rollback.error);
+  if (restore.error) console.error(restore.error);
+  return rollback.status || restore.status || 1;
+}
+
+console.log(`Isolated structural SQL rollback/reset verified through all ${expectedMigrationCount} migrations; this is not protected application recovery.`);
+return 0;
+}

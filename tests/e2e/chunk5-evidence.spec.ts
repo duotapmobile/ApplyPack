@@ -1,11 +1,9 @@
 import { mkdirSync } from "node:fs";
-import { resolve } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { waitForHydration } from "./helpers/hydration";
 
 const widths = [360, 390, 430, 768, 1024, 1440] as const;
-const output = resolve("evidence/chunk-5/screenshots");
 
 async function installSyntheticApis(page: Page) {
   await page.route("**/api/capacity/apply_pack", (route) => route.fulfill({
@@ -52,17 +50,16 @@ async function assertAxe(page: Page) {
 
 async function capture(page: Page, name: string) {
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: resolve(output, name), fullPage: true, animations: "disabled", scale: "css" });
+  await page.screenshot({ path: test.info().outputPath("screenshots", name), fullPage: true, animations: "disabled", scale: "css" });
   await assertAxe(page);
 }
 
-test.beforeEach(async ({ page }) => {
-  mkdirSync(output, { recursive: true });
+test.beforeEach(async ({ page }, testInfo) => {
+  mkdirSync(testInfo.outputPath("screenshots"), { recursive: true });
   await installSyntheticApis(page);
 });
 
-test("Chunk 5 exact-ten selection remains usable at every required width", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "One Chromium run captures the exact required viewport matrix.");
+test("Chunk 5 exact-ten selection remains usable at every required width", async ({ page }) => {
   test.setTimeout(600_000);
   for (const width of widths) {
     await page.setViewportSize({ width, height: width < 600 ? 844 : 960 });
@@ -76,8 +73,7 @@ test("Chunk 5 exact-ten selection remains usable at every required width", async
   }
 });
 
-test("Chunk 5 selection checkout, delivery, proposals, references, support, and staff states are accessible", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "The state matrix is captured once at mobile and desktop widths.");
+test("Chunk 5 selection checkout, delivery, proposals, references, support, and staff states are accessible", async ({ page }) => {
   test.setTimeout(600_000);
   for (const width of [390, 1440] as const) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 960 });
@@ -125,8 +121,7 @@ test("Chunk 5 selection checkout, delivery, proposals, references, support, and 
   }
 });
 
-test("Chunk 5 supports keyboard focus, reduced motion, forced colors, and 200 percent zoom", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "The accessibility-mode matrix runs once in Chromium.");
+test("Chunk 5 supports keyboard focus, reduced motion, forced colors, and 200 percent zoom", async ({ page }) => {
   test.setTimeout(300_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/e2e/chunk5?state=selection");
@@ -139,5 +134,5 @@ test("Chunk 5 supports keyboard focus, reduced motion, forced colors, and 200 pe
   await expect(page.locator(":focus")).toBeVisible();
   await page.evaluate(() => { document.documentElement.style.zoom = "2"; });
   await expect(page.locator(".match-card")).toHaveCount(10);
-  await page.screenshot({ path: resolve(output, "390-forced-colors-reduced-motion-200-percent.png"), fullPage: true, animations: "disabled", scale: "css" });
+  await page.screenshot({ path: test.info().outputPath("screenshots", "390-forced-colors-reduced-motion-200-percent.png"), fullPage: true, animations: "disabled", scale: "css" });
 });

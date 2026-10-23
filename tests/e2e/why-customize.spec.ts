@@ -49,7 +49,7 @@ test("why-customize is discoverable and its internal destinations resolve", asyn
 
   const sitemap = await request.get("/sitemap.xml");
   expect(sitemap.status()).toBe(200);
-  expect(await sitemap.text()).toContain("/why-customize");
+  expect(await sitemap.text()).not.toContain("<loc>");
 
   await page.setViewportSize({ width: 390, height: 844 });
   await gotoStable(page, "/why-customize");
@@ -116,8 +116,7 @@ test("comparison drag, buttons, keyboard, and page scrolling share one stable st
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(beforeScroll);
 });
 
-test("comparison supports touch dragging and cancels cleanly for vertical scrolling", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "mobile", "Touch behavior is exercised in the mobile Chromium project.");
+test("comparison supports touch dragging and cancels cleanly for vertical scrolling", async ({ page }) => {
   await gotoStable(page, "/why-customize#comparison");
   const canvas = page.getByTestId("resume-comparison-canvas");
   const slider = page.getByRole("slider");

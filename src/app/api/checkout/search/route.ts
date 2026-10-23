@@ -11,11 +11,8 @@ import { isSameOriginRequest } from "@/lib/security/origin";
 import { assertConfiguredPrice, createStripeSearchClient } from "@/lib/stripe/server";
 import { SEARCH_CONTRACT_VERSION, SEARCH_PRICE_CENTS } from "@/lib/domain/applypack";
 import { manualLaunchFixedTotalIsSafe, STRIPE_NO_ADDED_TAX } from "@/lib/commerce/fixed-total";
-import {
-  evaluateLaunchInfrastructure,
-  manualLaunchCanaryCheckoutGate,
-  manualLaunchCheckoutGate,
-} from "@/lib/operations/launch-readiness";
+import { authorizeCheckout } from "@/lib/commerce/checkout-authorization";
+import { createOrResumeCheckoutSession } from "@/lib/commerce/checkout-initiation";
 
 const schema = z.object({
   snapshotId: z.uuid(),
@@ -89,27 +86,19 @@ export async function POST(request: Request) {
     || view.state !== "COMPLETE" || view.outcome !== "LIKELY" || view.checkoutEligible !== true) {
     return NextResponse.json({ error: "This search is not currently eligible for Checkout. No payment was started." }, { status: 409 });
   }
-  const infrastructure = await evaluateLaunchInfrastructure(context.admin).catch(() => null);
-  const publicCheckoutAllowed = Boolean(infrastructure
-    && await manualLaunchCheckoutGate(context.admin, infrastructure, "SEARCH").catch(() => false));
-  let canaryReleaseSha: string | null = null;
-  if (!publicCheckoutAllowed && infrastructure) {
-    const snapshot = await context.admin.from("ap_intake_snapshots")
+  const snapshot = await context.admin.from("ap_intake_snapshots")
       .select("access_email_normalized").eq("id", parsed.data.snapshotId)
       .eq("draft_id", context.capability.draftId).maybeSingle();
-    const customer = snapshot.data?.access_email_normalized
+  const customer = snapshot.data?.access_email_normalized
       ? await context.admin.rpc("ap_find_customer_by_access_email", {
         p_email: snapshot.data.access_email_normalized,
       })
       : null;
-    if (customer?.data && await manualLaunchCanaryCheckoutGate(context.admin, "SEARCH", {
-      expectedCustomerId: customer.data,
-      searchDraftId: context.capability.draftId,
-    }, infrastructure).catch(() => false)) {
-      canaryReleaseSha = infrastructure.deployedSha;
-    }
-  }
-  if (!publicCheckoutAllowed && !canaryReleaseSha) {
+  const authorization = await authorizeCheckout(context.admin, "SEARCH", {
+    customerId: typeof customer?.data === "string" ? customer.data : null,
+    resourceId: context.capability.draftId,
+  }).catch(() => null);
+  if (!authorization) {
     return NextResponse.json({ error: "Checkout remains locked until the exact release and launch evidence are healthy." }, { status: 503 });
   }
 
@@ -117,7 +106,7 @@ export async function POST(request: Request) {
     .select("canonical_site_url,access_callback_url,search_price_cents,material_line_price_cents,currency,tax_inclusive,tax_treatment,pricing_version,tax_version,terms_version,privacy_version,payment_provider,payment_api_version,immediate_payment_methods,provider_idempotent_email_approved,provider_email_approval_reference,checkout_enabled")
     .eq("singleton", true).maybeSingle();
   const commerce = configuration as CommerceConfiguration | null;
-  if (configurationError || !commerce || !commerce.checkout_enabled
+  if (configurationError || !commerce || (!commerce.checkout_enabled && authorization.mode !== "REHEARSAL")
     || commerce.canonical_site_url !== applicationOrigin || commerce.access_callback_url !== `${applicationOrigin}/auth/callback`
     || !manualLaunchFixedTotalIsSafe(commerce)
     || !commerce.pricing_version || !commerce.tax_version || !commerce.terms_version || !commerce.privacy_version
@@ -199,7 +188,11 @@ export async function POST(request: Request) {
     }
   }
 
-  const { data: prepared, error: prepareError } = await context.admin.rpc("ap_begin_invited_search_checkout", {
+  const { data: prepared, error: prepareError } = await context.admin.rpc("ap_begin_authorized_search_checkout", {
+    p_mode: authorization.mode,
+    p_customer_id: authorization.customerId,
+    p_release_sha: authorization.releaseSha,
+    p_authorization_id: authorization.authorizationId,
     p_invitation_id: parsed.data.invitationId,
     p_invitation_secret_hash: hashCapabilitySecret(parsed.data.invitationSecret),
     p_draft_id: context.capability.draftId,
@@ -222,43 +215,13 @@ export async function POST(request: Request) {
     || !checkout.reservation_expires_at || !checkout.access_email) {
     return NextResponse.json({ error: "The current capacity reservation or immutable quote could not be created. No payment was started." }, { status: 409 });
   }
-  let canaryDesignationId: string | null = null;
-  let canaryDesignationActorId: string | null = null;
-  if (canaryReleaseSha) {
-    const designation = await context.admin.rpc("ap_bind_manual_launch_canary_payment", {
-      p_payment_attempt_id: String(checkout.payment_attempt_id),
-      p_release_sha: canaryReleaseSha,
-    });
-    if (designation.error || !designation.data) {
-      await context.admin.rpc("ap_compensate_search_checkout", {
-        p_checkout_attempt_id: String(checkout.checkout_attempt_id),
-        p_failure_code: "CANARY_AUTHORIZATION_BINDING_FAILED",
-      });
-      return NextResponse.json({ error: "The canary authorization could not be bound. No payment was started." }, { status: 409 });
-    }
-    canaryDesignationId = String(designation.data);
-    const designationOwner = await context.admin.from("ap_manual_launch_canary_designations")
-      .select("designated_by")
-      .eq("id", canaryDesignationId)
-      .maybeSingle();
-    if (designationOwner.error || !designationOwner.data?.designated_by) {
-      await context.admin.rpc("ap_compensate_search_checkout", {
-        p_checkout_attempt_id: String(checkout.checkout_attempt_id),
-        p_failure_code: "CANARY_DESIGNATION_OWNER_UNAVAILABLE",
-      });
-      return NextResponse.json({ error: "The canary authorization owner could not be verified. No payment was started." }, { status: 409 });
-    }
-    canaryDesignationActorId = designationOwner.data.designated_by;
-  }
-
   let session;
   try {
-    session = await stripe.checkout.sessions.create({
+    session = await createOrResumeCheckoutSession(context.admin, stripe, String(checkout.checkout_attempt_id), {
       mode: "payment",
       ...STRIPE_NO_ADDED_TAX,
       payment_method_types: ["card"],
       customer_email: String(checkout.access_email),
-      expires_at: Math.floor(new Date(String(checkout.reservation_expires_at)).getTime() / 1_000),
       success_url: `${applicationOrigin}/checkout/return`,
       cancel_url: `${applicationOrigin}/checkout/return?cancelled=1`,
       line_items: [{ quantity: 1, price: priceId }],
@@ -268,7 +231,7 @@ export async function POST(request: Request) {
         product_kind: "job_search",
         contract_version: SEARCH_CONTRACT_VERSION,
       },
-    }, { idempotencyKey: String(checkout.provider_idempotency_key) });
+    });
   } catch {
     return NextResponse.json({
       error: "Checkout creation has an ambiguous provider result. Retry safely; the same command key will be reconciled and no second quote is created.",
@@ -277,39 +240,6 @@ export async function POST(request: Request) {
   }
   if (!session.url) {
     return NextResponse.json({ error: "Checkout did not return a secure URL. No unverified order was activated." }, { status: 502 });
-  }
-  const promoted = await context.admin.rpc("ap_promote_search_checkout", {
-    p_checkout_attempt_id: String(checkout.checkout_attempt_id),
-    p_provider_session_id: session.id,
-    p_provider_session_expires_at: new Date(session.expires_at * 1_000).toISOString(),
-  });
-  if (promoted.error || !promoted.data) {
-    let expiredSession: Stripe.Checkout.Session | null = null;
-    try {
-      expiredSession = await stripe.checkout.sessions.expire(session.id);
-    } catch {
-      // Reconciliation remains required; a worker must not assume provider cancellation.
-    }
-    if (expiredSession) {
-      if (canaryReleaseSha && canaryDesignationId && canaryDesignationActorId) {
-        await context.admin.rpc("ap_reconcile_manual_launch_canary_provider_terminal", {
-          p_designation_id: canaryDesignationId,
-          p_release_sha: canaryReleaseSha,
-          p_actor_id: canaryDesignationActorId,
-          p_provider_session_id: expiredSession.id,
-          p_provider_session_status: expiredSession.status,
-          p_provider_payment_status: expiredSession.payment_status,
-          p_evidence_reference: "automatic-post-create-provider-expiry",
-        });
-      } else {
-        await context.admin.rpc("ap_compensate_search_checkout", {
-          p_checkout_attempt_id: String(checkout.checkout_attempt_id),
-          p_failure_code: "LOCAL_PROMOTION_FAILED_PROVIDER_EXPIRED",
-          p_provider_session_id: session.id,
-        });
-      }
-    }
-    return NextResponse.json({ error: "Checkout could not be safely linked. No work was activated." }, { status: 502 });
   }
 
   const response = NextResponse.json({
@@ -326,4 +256,3 @@ export async function POST(request: Request) {
   }), cookie);
   return response;
 }
-import type Stripe from "stripe";

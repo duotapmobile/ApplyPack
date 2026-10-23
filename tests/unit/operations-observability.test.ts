@@ -300,6 +300,27 @@ describe("maintenance policy", () => {
     expect(diagnostic.failClosedCodes).toContain("STORAGE_CLEANUP_DEAD_LETTER");
   });
 
+  it("reports overdue cleanup as a separate condition and recovers it only after cleanup", () => {
+    const before = summary({ queues: { ...summary().queues,
+      storageCleanup: { states: { pending: 24, awsDue: 24, deadLetter: 0 }, oldestItemAgeSeconds: 1800, stale: true },
+    } });
+    expect(diagnoseOperations(before).failClosedCodes).toEqual(["STORAGE_CLEANUP_OVERDUE"]);
+    expect(maintenanceOutcome(before, before).unresolvedCodes).toEqual(["STORAGE_CLEANUP_OVERDUE"]);
+    expect(maintenanceOutcome(before, summary()).recoveredCodes).toEqual(["STORAGE_CLEANUP_OVERDUE"]);
+    const failed = maintenanceOutcome(summary(), summary(), [{ code: "EXPIRATION_CLEANUP", status: "FAILED" }]);
+    expect(failed.unresolvedCodes).toEqual(["EXPIRATION_CLEANUP_FAILED"]);
+  });
+
+  it("fails closed for due cleanup with an unreadable age but does not label a recent dead letter overdue", () => {
+    const queues = summary().queues;
+    expect(diagnoseOperations(summary({ queues: { ...queues,
+      storageCleanup: { states: { pending: 1, awsDue: 1, deadLetter: 0 }, oldestItemAgeSeconds: null, stale: true },
+    } })).codes).toContain("STORAGE_CLEANUP_OVERDUE");
+    expect(diagnoseOperations(summary({ queues: { ...queues,
+      storageCleanup: { states: { pending: 0, awsDue: 1, deadLetter: 1 }, oldestItemAgeSeconds: 60, stale: true },
+    } })).codes).toEqual(["STORAGE_CLEANUP_DEAD_LETTER"]);
+  });
+
   it("refreshes the heartbeat when only explicitly dormant board actions are skipped", async () => {
     const alertIn = vi.fn().mockResolvedValue({ error: null });
     const alertEq = vi.fn().mockReturnValue({ in: alertIn });

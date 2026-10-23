@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -175,7 +176,8 @@ describe("Windows staging database safeguard", () => {
 
   it("runs the dynamic DPAPI safeguard on a dedicated Windows CI job", () => {
     expect(ciWorkflow).toMatch(/staging-database-safeguard:\s*\n\s*runs-on: windows-latest/u);
-    expect(ciWorkflow).toContain("npm run test:staging-database-safeguard");
+    expect(ciWorkflow).toContain("npm.cmd run test:staging-database-safeguard -- --reporter=default --reporter=json --outputFile=staging-backup-results.json");
+    expect(ciWorkflow).toContain("npm.cmd run test:staging-manual-launch-migrations -- --reporter=default --reporter=json --outputFile=staging-migration-results.json");
     expect(ciWorkflow).not.toMatch(
       /staging-database-safeguard:[\s\S]*?secrets\./u,
     );
@@ -191,7 +193,9 @@ describe("Windows staging database safeguard", () => {
     expect(script).not.toContain("select * from %I.%I");
   });
 
-  it.runIf(process.platform === "win32")(
+  // The required Windows CI job executes this platform-specific contract.
+  if (process.platform === "win32") {
+  it(
     "passes the DPAPI/tamper/truncation/cleanup/no-secret self-test",
     () => {
       const pwsh = resolvePowerShell();
@@ -222,4 +226,5 @@ describe("Windows staging database safeguard", () => {
     },
     65_000,
   );
+  }
 });

@@ -1,39 +1,52 @@
 import { expect, test } from "@playwright/test";
 import { gotoStable } from "./helpers/hydration";
 
-test("manual launch removes the public board and fails closed for board checkout", async ({ page, request }) => {
+// These denial routes do not share state. Report each independently so cold
+// development compilation for one route does not consume another route's
+// existing 120-second per-test budget. Every response assertion remains required.
+test("manual launch removes the public board and prohibits indexing", async ({ page }) => {
   const board = await gotoStable(page, "/job-board");
   expect(board?.status()).toBe(404);
   const robotDirectives = await page.locator('meta[name="robots"]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute("content")));
   expect(robotDirectives.length).toBeGreaterThan(0);
   expect(robotDirectives.every((content) => content?.includes("noindex"))).toBe(true);
+});
 
+test("manual launch rejects retired subscription checkout", async ({ request }) => {
   const subscription = await request.post("/api/checkout/job-board", { data: {} });
   expect(subscription.status()).toBe(410);
   expect(await subscription.json()).toMatchObject({ error: expect.stringContaining("not offered") });
+});
 
+test("manual launch rejects retired board-material checkout", async ({ request }) => {
   const boardMaterial = await request.post("/api/checkout/board-materials/10000000-0000-4000-8000-000000000001", { data: {} });
   expect(boardMaterial.status()).toBe(410);
+});
 
-  for (const path of [
-    "/my-applypack/job-board",
-    "/my-applypack/job-board/10000000-0000-4000-8000-000000000001",
-  ]) {
+for (const path of [
+  "/my-applypack/job-board",
+  "/my-applypack/job-board/10000000-0000-4000-8000-000000000001",
+]) {
+  test(`manual launch removes private board page ${path}`, async ({ request }) => {
     const response = await request.get(path);
     expect(response.status()).toBe(404);
-  }
+  });
+}
 
-  for (const path of [
-    "/api/customer/job-board",
-    "/api/customer/job-board/10000000-0000-4000-8000-000000000001",
-    "/api/customer/job-board/10000000-0000-4000-8000-000000000001/apply-link",
-  ]) {
+for (const path of [
+  "/api/customer/job-board",
+  "/api/customer/job-board/10000000-0000-4000-8000-000000000001",
+  "/api/customer/job-board/10000000-0000-4000-8000-000000000001/apply-link",
+]) {
+  test(`manual launch rejects retired customer board API ${path}`, async ({ request }) => {
     const response = await request.get(path);
     expect(response.status()).toBe(410);
     expect(response.headers()["cache-control"]).toContain("no-store");
     expect(await response.json()).toMatchObject({ error: expect.stringContaining("not offered") });
-  }
+  });
+}
 
+test("manual launch denies billing portal without a legacy entitlement", async ({ request }) => {
   const billingPortal = await request.post("/api/customer/billing/portal");
   expect(billingPortal.status()).toBe(410);
   expect(billingPortal.headers()["cache-control"]).toContain("no-store");
@@ -78,7 +91,8 @@ test("canonical metadata and sitemap reflect only active public routes", async (
   expect(canonical).toBeTruthy();
   expect(new URL(canonical!).pathname).toBe("/pricing");
   const sitemap = await (await request.get("/sitemap.xml")).text();
-  expect(sitemap).toContain("/pricing");
-  expect(sitemap).toContain("2026-10-02");
+  // Fixture servers are not production and must not advertise crawlable URLs.
+  expect(sitemap).not.toContain("<loc>");
+  expect(sitemap).not.toContain("<lastmod>");
   expect(sitemap).not.toContain("/job-board");
 });

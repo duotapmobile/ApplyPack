@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
+import { AWS_TEMPORARY_CLEANUP_MAX_OVERDUE_MS } from "@/lib/files/aws-temporary-cleanup";
 import { sendTransactionalEmail } from "@/lib/email/send";
 import {
   deploymentEnvironment,
@@ -51,6 +52,7 @@ export type DiagnosticCode =
   | "OUTBOX_QUEUE_STALE"
   | "COMMERCE_RECONCILIATION_STALE"
   | "STORAGE_CLEANUP_DEAD_LETTER"
+  | "STORAGE_CLEANUP_OVERDUE"
   | "MAINTENANCE_DIAGNOSIS_FAILED"
   | "CAPACITY_ROLLOVER_FAILED"
   | "EXPIRED_LEASE_RECOVERY_FAILED"
@@ -70,6 +72,7 @@ const FAIL_CLOSED_CODES: readonly DiagnosticCode[] = [
   "SOURCE_PERMISSION_COVERAGE_MISSING",
   "CRITICAL_SECURITY_OR_INTEGRITY_ALERT_OPEN",
   "STORAGE_CLEANUP_DEAD_LETTER",
+  "STORAGE_CLEANUP_OVERDUE",
 ];
 
 const MANAGED_ALERT_CODES: readonly DiagnosticCode[] = [
@@ -86,6 +89,7 @@ const MANAGED_ALERT_CODES: readonly DiagnosticCode[] = [
   "OUTBOX_QUEUE_STALE",
   "COMMERCE_RECONCILIATION_STALE",
   "STORAGE_CLEANUP_DEAD_LETTER",
+  "STORAGE_CLEANUP_OVERDUE",
   "MAINTENANCE_DIAGNOSIS_FAILED",
   "CAPACITY_ROLLOVER_FAILED",
   "EXPIRED_LEASE_RECOVERY_FAILED",
@@ -102,6 +106,7 @@ const ACTION_FAILURE_CODE_BY_ACTION: Readonly<Partial<Record<DiagnosticCode, Mai
   EXPIRED_LEASE_RECOVERY_FAILED: "EXPIRED_LEASE_RECOVERY",
   EXPIRATION_CLEANUP_FAILED: "EXPIRATION_CLEANUP",
   STORAGE_CLEANUP_DEAD_LETTER: "EXPIRATION_CLEANUP",
+  STORAGE_CLEANUP_OVERDUE: "EXPIRATION_CLEANUP",
   DOCUMENT_PROCESSING_FAILED: "DOCUMENT_PROCESSING",
   BOUNDED_QUEUE_PROCESSING_FAILED: "BOUNDED_QUEUE_PROCESSING",
   STRIPE_RECONCILIATION_FAILED: "STRIPE_RECONCILIATION",
@@ -136,6 +141,11 @@ export function diagnoseOperations(summary: OperationsSummary) {
   if (summary.queues.outbox.stale) codes.push("OUTBOX_QUEUE_STALE");
   if (summary.queues.commerceReconciliation.stale) codes.push("COMMERCE_RECONCILIATION_STALE");
   if ((summary.queues.storageCleanup.states.deadLetter || 0) > 0) codes.push("STORAGE_CLEANUP_DEAD_LETTER");
+  const cleanup = summary.queues.storageCleanup;
+  if ((cleanup.states.awsDue || 0) > 0 && cleanup.stale
+    && (cleanup.oldestItemAgeSeconds === null || cleanup.oldestItemAgeSeconds >= AWS_TEMPORARY_CLEANUP_MAX_OVERDUE_MS / 1_000)) {
+    codes.push("STORAGE_CLEANUP_OVERDUE");
+  }
   return {
     codes,
     failClosedCodes: codes.filter((code) => FAIL_CLOSED_CODES.includes(code)),
@@ -157,7 +167,10 @@ export function maintenanceOutcome(
   const afterDiagnostic = diagnoseOperations(after);
   const failedActionCodes = actions.filter((action) => action.status === "FAILED").map((action) => action.code);
   const actionFailureCodes = Object.entries(ACTION_FAILURE_CODE_BY_ACTION)
-    .filter(([, action]) => failedActionCodes.includes(action!)).map(([code]) => code as DiagnosticCode);
+    // Observed backlog/dead-letter conditions are not inferred from an unrelated
+    // cleanup failure; their mapping only governs alert preservation/recovery.
+    .filter(([code, action]) => code.endsWith("_FAILED") && failedActionCodes.includes(action!))
+    .map(([code]) => code as DiagnosticCode);
   const unresolvedCodes = uniqueCodes([...afterDiagnostic.codes, ...additionalCodes, ...actionFailureCodes]);
   return {
     beforeCodes,

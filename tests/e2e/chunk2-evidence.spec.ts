@@ -5,9 +5,8 @@ import { expect, test } from "@playwright/test";
 import { waitForHydration } from "./helpers/hydration";
 
 test("capture Chunk 2 four-step and adaptive/error evidence", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "One Chromium evidence set is sufficient.");
   test.setTimeout(240_000);
-  const output = resolve("evidence/chunk-2/screenshots");
+  const output = testInfo.outputPath("screenshots");
   mkdirSync(output, { recursive: true });
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
