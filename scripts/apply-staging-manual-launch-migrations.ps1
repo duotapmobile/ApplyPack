@@ -778,8 +778,8 @@ function Get-MigrationText {
 
 function Assert-MigrationTransactionBoundary {
     param([Parameter(Mandatory = $true)][string]$Text)
-    $beginMatches = [Regex]::Matches($Text, '(?im)^[ \t]*begin[ \t]*;[ \t]*(?:--[^\r\n]*)?$')
-    $commitMatches = [Regex]::Matches($Text, '(?im)^[ \t]*commit[ \t]*;[ \t]*(?:--[^\r\n]*)?$')
+    $beginMatches = [Regex]::Matches($Text, '(?im)^[ \t]*begin[ \t]*;[ \t]*(?:--[^\r\n]*)?\r?$')
+    $commitMatches = [Regex]::Matches($Text, '(?im)^[ \t]*commit[ \t]*;[ \t]*(?:--[^\r\n]*)?\r?$')
     $finalCommit = [Regex]::Match($Text, '(?im)^[ \t]*commit[ \t]*;[ \t]*(?:\r?\n)?\z')
     if ($beginMatches.Count -ne 1 -or $commitMatches.Count -ne 1 -or -not $finalCommit.Success -or
         $finalCommit.Index -ne $commitMatches[0].Index) {
@@ -1469,6 +1469,28 @@ function Invoke-SelfTest {
             }
         }
 
+        # Exercise both checkout line endings without normalizing real migration text.
+        # Each source must be preserved exactly inside its atomic ledger statement.
+        $fixtureMigration = $script:MigrationPlan[0]
+        $fixtureSourceTag = '$applypack_source_' + [string]$fixtureMigration.version + '$'
+        foreach ($lineEnding in @("`n", "`r`n")) {
+            $fixtureSource = "begin;${lineEnding}select 1;${lineEnding}commit;${lineEnding}"
+            $fixturePayload = Get-MigrationExecutionPayload -Migration $fixtureMigration -SourceText $fixtureSource
+            if (-not $fixturePayload.Contains($fixtureSourceTag + $fixtureSource + $fixtureSourceTag, [StringComparison]::Ordinal)) {
+                Throw-Controlled 'SELF_TEST_FAILED'
+            }
+            foreach ($invalidSource in @(
+                ($fixtureSource + "commit;${lineEnding}"),
+                ("begin;${lineEnding}" + $fixtureSource),
+                ($fixtureSource + "select 2;${lineEnding}")
+            )) {
+                $invalidBoundaryRejected = $false
+                try { [void](Assert-MigrationTransactionBoundary -Text $invalidSource) }
+                catch { $invalidBoundaryRejected = (Get-ControlledCode $_) -eq 'MIGRATION_TRANSACTION_BOUNDARY_INVALID' }
+                if (-not $invalidBoundaryRejected) { Throw-Controlled 'SELF_TEST_FAILED' }
+            }
+        }
+
         $migrationHashes = [ordered]@{}
         foreach ($migration in $script:MigrationPlan) {
             $path = Join-Path $script:RepoRoot ([string]$migration.relativePath)
@@ -1582,6 +1604,7 @@ function Invoke-SelfTest {
             conflictAndUnexpectedOutputFailClosed = $true
             migrationHashBindingVerified = $true
             transactionAndLedgerAtomicityVerified = $true
+            lfAndCrLfTransactionBytesPreserved = $true
             exactLedgerTupleVerified = $true
             predecessorLedgerIdentityAndDigestVerified = $true
             passwordStdinOnlyVerified = $true

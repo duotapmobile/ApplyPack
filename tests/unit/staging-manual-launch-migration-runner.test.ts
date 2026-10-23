@@ -67,7 +67,7 @@ const forbiddenEnvironment = [
   ["DOCKER_CERT_PATH", "FORBIDDEN_DOCKER_ENVIRONMENT"],
 ] as const;
 
-function cleanTestChildEnvironment(environment: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+function cleanTestChildEnvironment(environment: Record<string, string | undefined> = process.env): Record<string, string | undefined> {
   const forbiddenNames = new Set<string>(forbiddenEnvironment.map(([name]) => name));
   return Object.fromEntries(Object.entries(environment)
     .filter(([name]) => !forbiddenNames.has(name.toUpperCase())));
@@ -392,7 +392,7 @@ describe("credential-safe staging migrations 081 through 084", () => {
           cwd: repoRoot,
           encoding: "utf8",
           windowsHide: true,
-          env: cleanTestChildEnvironment(),
+          env: { ...cleanTestChildEnvironment(), NODE_ENV: process.env.NODE_ENV },
           timeout: 60_000,
         },
       );
@@ -406,6 +406,7 @@ describe("credential-safe staging migrations 081 through 084", () => {
       );
       expect(report.productionBindingRejected).toBe(true);
       expect(report.transactionAndLedgerAtomicityVerified).toBe(true);
+      expect(report.lfAndCrLfTransactionBytesPreserved).toBe(true);
       expect(report.exactLedgerTupleVerified).toBe(true);
       expect(report.predecessorLedgerIdentityAndDigestVerified).toBe(true);
       expect(report.passwordFirstShellHandoffVerified).toBe(true);
@@ -431,7 +432,7 @@ describe("credential-safe staging migrations 081 through 084", () => {
       expect(pwsh, "PowerShell 7 is required for the Windows SelfTest").toBeTruthy();
       for (const [name, expectedCode] of forbiddenEnvironment) {
         const marker = `DO_NOT_LOG_${name}_VALUE_92841`;
-        const env = { ...cleanTestChildEnvironment(), [name]: marker };
+        const env = { ...cleanTestChildEnvironment(), NODE_ENV: process.env.NODE_ENV, [name]: marker };
         const result = spawnSync(
           pwsh!,
           ["-NoLogo", "-NoProfile", "-File", runnerPath, "-Mode", "SelfTest"],
