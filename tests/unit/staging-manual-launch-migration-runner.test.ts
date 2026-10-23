@@ -67,6 +67,12 @@ const forbiddenEnvironment = [
   ["DOCKER_CERT_PATH", "FORBIDDEN_DOCKER_ENVIRONMENT"],
 ] as const;
 
+function cleanTestChildEnvironment(environment: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const forbiddenNames = new Set<string>(forbiddenEnvironment.map(([name]) => name));
+  return Object.fromEntries(Object.entries(environment)
+    .filter(([name]) => !forbiddenNames.has(name.toUpperCase())));
+}
+
 function resolvePowerShell(): string | undefined {
   const explicit = process.env.PWSH_EXE;
   if (explicit && existsSync(explicit)) return explicit;
@@ -282,7 +288,7 @@ describe("credential-safe staging migrations 081 through 084", () => {
     );
     expect(runner).toContain("statements[1]=$sourceTag$SourceText$sourceTag");
     expect(runner).toContain("$prefix = $SourceText.Substring(0, $finalCommit.Index)");
-    expect(runner).toContain("commit;\n\\echo $marker");
+    expect(runner).toMatch(/commit;\r?\n\\echo \$marker/u);
     expect(runner).not.toContain("supabase db push");
     expect(runner).not.toContain("supabase migration repair");
     expect(runner).not.toContain("supabase db pull");
@@ -359,6 +365,19 @@ describe("credential-safe staging migrations 081 through 084", () => {
     );
   });
 
+  it("isolates test child environments from case-insensitive inherited connection settings", () => {
+    const inherited = {
+      Path: "synthetic-path",
+      TEMP: "synthetic-temp",
+      ...Object.fromEntries(forbiddenEnvironment.flatMap(([name]) => [
+        [name, "synthetic-forbidden"], [name.toLowerCase(), "synthetic-forbidden"],
+      ])),
+    };
+    expect(cleanTestChildEnvironment(inherited)).toEqual({ Path: "synthetic-path", TEMP: "synthetic-temp" });
+    expect(inherited).toHaveProperty("PGPASSWORD", "synthetic-forbidden");
+    expect(inherited).toHaveProperty("pgpassword", "synthetic-forbidden");
+  });
+
   // These native checks are required in the Windows CI job.
   if (process.platform === "win32") {
   it(
@@ -373,6 +392,7 @@ describe("credential-safe staging migrations 081 through 084", () => {
           cwd: repoRoot,
           encoding: "utf8",
           windowsHide: true,
+          env: cleanTestChildEnvironment(),
           timeout: 60_000,
         },
       );
@@ -411,7 +431,7 @@ describe("credential-safe staging migrations 081 through 084", () => {
       expect(pwsh, "PowerShell 7 is required for the Windows SelfTest").toBeTruthy();
       for (const [name, expectedCode] of forbiddenEnvironment) {
         const marker = `DO_NOT_LOG_${name}_VALUE_92841`;
-        const env = { ...process.env, [name]: marker };
+        const env = { ...cleanTestChildEnvironment(), [name]: marker };
         const result = spawnSync(
           pwsh!,
           ["-NoLogo", "-NoProfile", "-File", runnerPath, "-Mode", "SelfTest"],
