@@ -31,8 +31,11 @@ $script:PostgresImageDigest = 'public.ecr.aws/supabase/postgres@sha256:b3bfedb10
 $script:DockerCliReviewedPath = 'C:\Program Files\Docker\Docker\resources\bin\docker.exe'
 $script:DockerEndpoint = 'npipe:////./pipe/dockerDesktopLinuxEngine'
 $script:ResolvedDockerCliPath = $null
-$script:RunnerVersion = 2
+$script:RunnerVersion = 3
 $script:PsqlPasswordHandoffShell = 'IFS= read -r PGPASSWORD; export PGPASSWORD; export PGSSLMODE=verify-full; export PGSSLROOTCERT=/certs/root.crt; export PGCONNECT_TIMEOUT=15; exec "$@"'
+$script:ConnectionInfoBegin = 'APPLYPACK_MIGRATION_CONNINFO_BEGIN'
+$script:ConnectionInfoEnd = 'APPLYPACK_MIGRATION_CONNINFO_END'
+$script:ClientTlsLinePattern = '^SSL connection \(protocol: TLSv1\.[23], cipher: [A-Za-z0-9_-]+, compression: (?:off|no)(?:, ALPN: [A-Za-z0-9_-]+|)\)$'
 $script:ForbiddenConnectionEnvironmentNames = @(
     'PGPASSWORD', 'PGPASSFILE', 'PGSERVICE', 'PGSERVICEFILE',
     'DATABASE_URL', 'AP_PREMIGRATION_DATABASE_URL'
@@ -128,6 +131,7 @@ $script:PublicErrorCodes = [Collections.Generic.HashSet[string]]::new([StringCom
     'MIGRATION_SOURCE_HASH_DRIFT', 'MIGRATION_TRANSACTION_BOUNDARY_INVALID',
     'MIGRATION_LEDGER_ENCODING_INVALID', 'CREDENTIAL_NOT_FOUND', 'CREDENTIAL_TARGET_MISMATCH',
     'CREDENTIAL_SECRET_INVALID', 'CREDENTIAL_IDENTITY_INVALID', 'DATABASE_ATTESTATION_FAILED',
+    'CLIENT_TLS_ATTESTATION_FAILED',
     'INVENTORY_IDENTITY_PREFLIGHT_FAILED', 'INVENTORY_IDENTITY_PREFLIGHT_CONFLICT',
     'PREMIGRATION_SCHEMA_INVALID', 'MIGRATION_STEP_STATE_INVALID', 'MIGRATION_APPLY_FAILED',
     'POSTMIGRATION_SCHEMA_INVALID', 'UNEXPECTED_DATABASE_OUTPUT', 'PSQL_PROCESS_TIMEOUT',
@@ -647,17 +651,35 @@ function Assert-ExactMarkers {
     }
 }
 
+function Assert-ClientTlsAndGetMarkers {
+    param([Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Actual)
+    if ($Actual.Count -lt 5 -or
+        $Actual[0] -ne $script:ConnectionInfoBegin -or
+        $Actual[3] -ne $script:ConnectionInfoEnd) {
+        Throw-Controlled 'CLIENT_TLS_ATTESTATION_FAILED'
+    }
+    $connectionLinePattern = '^You are connected to database "' +
+        [Regex]::Escape($script:DatabaseName) + '" as user "' +
+        [Regex]::Escape($script:LoginUser) + '" on host "' +
+        [Regex]::Escape($script:DatabaseHost) + '" \(address "[0-9A-Fa-f:.]+"\) at port "' +
+        [Regex]::Escape($script:DatabasePort) + '"\.$'
+    if ($Actual[1] -notmatch $connectionLinePattern -or
+        $Actual[2] -notmatch $script:ClientTlsLinePattern) {
+        Throw-Controlled 'CLIENT_TLS_ATTESTATION_FAILED'
+    }
+    return @($Actual[4..($Actual.Count - 1)])
+}
+
 function Get-ConnectionAttestationSql {
     return @'
+\echo APPLYPACK_MIGRATION_CONNINFO_BEGIN
+\conninfo
+\echo APPLYPACK_MIGRATION_CONNINFO_END
 set client_min_messages=warning;
 do $applypack_attestation$
 begin
   if current_database() is distinct from 'postgres'
     or current_user is distinct from 'postgres'
-    or not exists (
-      select 1 from pg_catalog.pg_stat_ssl
-      where pid=pg_catalog.pg_backend_pid() and ssl
-    )
   then
     raise exception 'staging_connection_attestation_failed';
   end if;
@@ -729,7 +751,8 @@ function Invoke-InventoryAndSchemaPreflight {
         [Parameter(Mandatory = $true)][string]$ExpectedPreflightHash
     )
     $result = Invoke-PsqlPayload -Credential $Credential -CaPath $CaPath -Payload (Get-PreflightPayload -ExpectedHash $ExpectedPreflightHash) -Operation 'preflight' -TimeoutMilliseconds 300000
-    $lines = @(Get-OutputLines -Text $result.stdout)
+    $rawLines = @(Get-OutputLines -Text $result.stdout)
+    $lines = @(Assert-ClientTlsAndGetMarkers -Actual $rawLines)
     if ($lines.Count -eq 2 -and
         $lines[0] -eq 'STAGING_MIGRATION_CONNECTION_ATTESTED' -and
         $lines[1] -eq 'INVENTORY_IDENTITY_PREFLIGHT_CONFLICT') {
@@ -854,7 +877,7 @@ end
 commit;
 \echo $marker
 "@
-    return $prefix + $ledger
+    return (Get-ConnectionAttestationSql) + "`n" + $prefix + $ledger
 }
 
 function Invoke-MigrationStep {
@@ -866,8 +889,9 @@ function Invoke-MigrationStep {
     )
     $version = [string]$Migration.version
     $guardResult = Invoke-PsqlPayload -Credential $Credential -CaPath $CaPath -Payload (Get-StepGuardSql $Migration) -Operation "guard-$version" -TimeoutMilliseconds 300000
+    $rawGuardLines = @(Get-OutputLines $guardResult.stdout)
+    $guardLines = @(Assert-ClientTlsAndGetMarkers -Actual $rawGuardLines)
     if ($guardResult.exitCode -ne 0) { Throw-Controlled 'MIGRATION_STEP_STATE_INVALID' }
-    $guardLines = @(Get-OutputLines $guardResult.stdout)
     Assert-ExactMarkers -Actual $guardLines -Expected @(
         'STAGING_MIGRATION_CONNECTION_ATTESTED',
         "STAGING_MIGRATION_${version}_STEP_READY"
@@ -876,9 +900,13 @@ function Invoke-MigrationStep {
     $payload = Get-MigrationExecutionPayload -Migration $Migration -SourceText $sourceText
     $script:MutationMayHaveCommitted = $true
     $result = Invoke-PsqlPayload -Credential $Credential -CaPath $CaPath -Payload $payload -Operation "apply-$version" -TimeoutMilliseconds 300000
+    $rawResultLines = @(Get-OutputLines $result.stdout)
+    $resultLines = @(Assert-ClientTlsAndGetMarkers -Actual $rawResultLines)
     if ($result.exitCode -ne 0) { Throw-Controlled 'MIGRATION_APPLY_FAILED' }
-    $resultLines = @(Get-OutputLines $result.stdout)
-    Assert-ExactMarkers -Actual $resultLines -Expected @([string]$Migration.marker)
+    Assert-ExactMarkers -Actual $resultLines -Expected @(
+        'STAGING_MIGRATION_CONNECTION_ATTESTED',
+        [string]$Migration.marker
+    )
     if (-not [string]::Equals((Get-Sha256 (Join-Path $script:RepoRoot ([string]$Migration.relativePath))), $ExpectedHash, [StringComparison]::Ordinal)) {
         Throw-Controlled 'MIGRATION_SOURCE_HASH_DRIFT'
     }
@@ -940,8 +968,9 @@ function Invoke-PostMigrationVerification {
         [Parameter(Mandatory = $true)][Collections.IDictionary]$MigrationTexts
     )
     $result = Invoke-PsqlPayload -Credential $Credential -CaPath $CaPath -Payload (Get-PostMigrationStateSql $MigrationTexts) -Operation 'poststate' -TimeoutMilliseconds 300000
+    $rawLines = @(Get-OutputLines $result.stdout)
+    $lines = @(Assert-ClientTlsAndGetMarkers -Actual $rawLines)
     if ($result.exitCode -ne 0) { Throw-Controlled 'POSTMIGRATION_SCHEMA_INVALID' }
-    $lines = @(Get-OutputLines $result.stdout)
     Assert-ExactMarkers -Actual $lines -Expected @(
         'STAGING_MIGRATION_CONNECTION_ATTESTED',
         'STAGING_MIGRATION_POSTSTATE_VERIFIED'
@@ -1257,6 +1286,7 @@ function Invoke-Apply {
             serverLockTimeout = '30s'
             serverStatementTimeout = '240s'
             clientTimeout = '300s'
+            clientTlsVerified = $true
             preflightMarkers = @($preflightMarkers)
             preState = [ordered]@{
                 latestSchemaVersion = $script:PreSchemaVersion
@@ -1412,6 +1442,24 @@ function Invoke-SelfTest {
         catch { $oneMarkerRejected = (Get-ControlledCode $_) -eq 'UNEXPECTED_DATABASE_OUTPUT' }
         if ($oneMarkerLines.Count -ne 1 -or -not $oneMarkerRejected) { Throw-Controlled 'SELF_TEST_FAILED' }
 
+        $validClientTlsLines = @(
+            $script:ConnectionInfoBegin,
+            "You are connected to database `"$($script:DatabaseName)`" as user `"$($script:LoginUser)`" on host `"$($script:DatabaseHost)`" (address `"2001:db8::1`") at port `"$($script:DatabasePort)`".",
+            'SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off)',
+            $script:ConnectionInfoEnd,
+            'EXPECTED'
+        )
+        $clientTlsMarkers = @(Assert-ClientTlsAndGetMarkers -Actual $validClientTlsLines)
+        Assert-ExactMarkers -Actual $clientTlsMarkers -Expected @('EXPECTED')
+        $unverifiedClientTlsRejected = $false
+        try {
+            $invalidClientTlsLines = @($validClientTlsLines)
+            $invalidClientTlsLines[2] = 'You are connected without SSL.'
+            [void](Assert-ClientTlsAndGetMarkers -Actual $invalidClientTlsLines)
+        }
+        catch { $unverifiedClientTlsRejected = (Get-ControlledCode $_) -eq 'CLIENT_TLS_ATTESTATION_FAILED' }
+        if (-not $unverifiedClientTlsRejected) { Throw-Controlled 'SELF_TEST_FAILED' }
+
         $predecessorLedgerSql = Get-PredecessorLedgerChecksSql
         foreach ($entry in $script:PredecessorLedgerPlan) {
             if ($predecessorLedgerSql -notmatch [Regex]::Escape("version='$([string]$entry.version)' and name='$([string]$entry.name)'") -or
@@ -1430,6 +1478,8 @@ function Invoke-SelfTest {
             $payload = Get-MigrationExecutionPayload -Migration $migration -SourceText $text
             if ($payload -notmatch [Regex]::Escape("insert into supabase_migrations.schema_migrations(version,name,statements)") -or
                 $payload -notmatch [Regex]::Escape("values ('$([string]$migration.version)','$([string]$migration.name)',array[") -or
+                $payload -notmatch [Regex]::Escape($script:ConnectionInfoBegin) -or
+                $payload -notmatch [Regex]::Escape('\conninfo') -or
                 $payload -match [Regex]::Escape($secretMarker)) {
                 Throw-Controlled 'SELF_TEST_FAILED'
             }
@@ -1538,6 +1588,7 @@ function Invoke-SelfTest {
             passwordFirstShellHandoffVerified = $true
             remainingSqlStdinVerified = $true
             zeroAndOneMarkerHandlingVerified = $true
+            clientTlsConninfoVerified = $true
             noSecretArgumentsEnvironmentOrFilesVerified = $true
             forbiddenEnvironmentRejectionVerified = $true
             childEnvironmentScrubbingVerified = $true

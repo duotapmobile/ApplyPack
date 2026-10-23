@@ -152,13 +152,16 @@ describe("credential-safe staging migrations 081 through 084", () => {
     );
     expect(runner).not.toContain("-Actual (Get-OutputLines");
     expect(runner).toContain(
-      "$lines = @(Get-OutputLines -Text $result.stdout)",
+      "$rawLines = @(Get-OutputLines -Text $result.stdout)",
     );
     expect(runner).toContain(
-      "$guardLines = @(Get-OutputLines $guardResult.stdout)",
+      "$rawGuardLines = @(Get-OutputLines $guardResult.stdout)",
     );
     expect(runner).toContain(
-      "$resultLines = @(Get-OutputLines $result.stdout)",
+      "$rawResultLines = @(Get-OutputLines $result.stdout)",
+    );
+    expect(runner).toContain(
+      "$lines = @(Assert-ClientTlsAndGetMarkers -Actual $rawLines)",
     );
   });
 
@@ -218,7 +221,13 @@ describe("credential-safe staging migrations 081 through 084", () => {
     expect(runner).toContain("INVENTORY_IDENTITY_PREFLIGHT_CONFLICT");
     expect(runner).toContain("UNEXPECTED_DATABASE_OUTPUT");
     expect(runner).toContain("STAGING_MIGRATION_CONNECTION_ATTESTED");
-    expect(runner).toContain("pg_catalog.pg_stat_ssl");
+    expect(runner).toContain("APPLYPACK_MIGRATION_CONNINFO_BEGIN");
+    expect(runner).toContain("APPLYPACK_MIGRATION_CONNINFO_END");
+    expect(runner).toContain("\\conninfo");
+    expect(runner).toContain("CLIENT_TLS_ATTESTATION_FAILED");
+    expect(runner).toContain("$script:ClientTlsLinePattern");
+    expect(runner).toContain("clientTlsVerified = $true");
+    expect(runner).not.toContain("pg_catalog.pg_stat_ssl");
   });
 
   it("requires the exact pre-state and post-state without selecting customer data", () => {
@@ -379,6 +388,7 @@ describe("credential-safe staging migrations 081 through 084", () => {
       expect(report.passwordFirstShellHandoffVerified).toBe(true);
       expect(report.remainingSqlStdinVerified).toBe(true);
       expect(report.zeroAndOneMarkerHandlingVerified).toBe(true);
+      expect(report.clientTlsConninfoVerified).toBe(true);
       expect(report.noSecretArgumentsEnvironmentOrFilesVerified).toBe(true);
       expect(report.forbiddenEnvironmentRejectionVerified).toBe(true);
       expect(report.childEnvironmentScrubbingVerified).toBe(true);
