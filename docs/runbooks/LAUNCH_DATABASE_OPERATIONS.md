@@ -1,5 +1,7 @@
 # Launch database operations
 
+**October 23 update:** the October 22 procedures below retain the historical 085 command and receipt contracts. The current launch uses amendment17 and forward migration `202610230086_sandbox_validation_launch_activation.sql`; use the [current execution record](PAID_LAUNCH_EXECUTION_2026-10-23.md) and the reviewed current tool contracts for new operations. Production now supports verified predecessors080–085 through086, and the dedicated staging manual-launch runner supports084 through086. Do not copy the historical schema085 manifest or authorization examples into a new086 operation. The current CI performs mandatory isolated structural recovery; it does not establish hosted recovery or authorize migration.
+
 The October 22 launch plan adds separate schema-084 recovery and migration-085 paths. The schema-080 safeguard and 081–084 staging migration runner remain unchanged. These tools do not grant provider permission, prove recovery, or change launch status. Execute only from a reviewed committed candidate in the canonical checkout. Keep writers quiesced throughout backup, restore verification, migration and postflight; preserve inbound webhook events for reconciliation.
 
 ## Local validation

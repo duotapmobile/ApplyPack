@@ -63,7 +63,7 @@
     "saxes": "6.0.0",
     "server-only": "^0.0.1",
     "stripe": "^22.6.0",
-    "zod": "^4.5.4"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
