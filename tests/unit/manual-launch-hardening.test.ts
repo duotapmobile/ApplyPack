@@ -56,16 +56,18 @@ describe("October 2 manual-launch hardening", () => {
     const legalPages = source("src/content/public-pages.ts");
     const wizard = source("src/app/get-started/wizard-v3.tsx");
     const presentation = source("src/lib/legal/presentation.ts");
+    // The historical rollback pins the entire wizard source. The later focus
+    // repair must remain incompatible with that pin even though its legal copy is unchanged.
     expect(verifyRollbackLegalSource({
       publicPagesSource: legalPages,
       wizardSource: wizard,
       presentationSource: presentation,
-    })).toEqual({ ok: false, failures: ["legal_pages_source_mismatch"] });
+    })).toEqual({ ok: false, failures: ["legal_pages_source_mismatch", "legal_acceptance_copy_mismatch"] });
     expect(verifyRollbackLegalSource({
       publicPagesSource: legalPages.replace("Effective October 2, 2026", "Effective October 3, 2026"),
       wizardSource: wizard,
       presentationSource: presentation,
-    })).toEqual({ ok: false, failures: ["legal_pages_source_mismatch"] });
+    })).toEqual({ ok: false, failures: ["legal_pages_source_mismatch", "legal_acceptance_copy_mismatch"] });
     const spoofedPresentation = presentation
       .replace('prefix: "I agree to the "', 'prefix: "Different disclosure: "')
       .concat('\n// prefix: "I agree to the "\n');

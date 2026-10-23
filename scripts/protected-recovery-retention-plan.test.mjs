@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createRetentionVersionReader, inspectRecoveryRetention, planRecoveryRetention } from "./lib/protected-recovery-retention-plan.mjs";
+import { createRetentionVersionReader, inspectRecoveryRetention, parseRetentionManifestEvidence, planRecoveryRetention, RETENTION_EVIDENCE_LIMITS } from "./lib/protected-recovery-retention-plan.mjs";
 import { RECOVERY_BUCKETS, RECOVERY_TABLES, recoveryInventoryDigest } from "./lib/protected-recovery-protocol.mjs";
 import { RECOVERY_ARCHIVE_BUCKET } from "./lib/protected-recovery-s3.mjs";
-import { canonicalSha256, sha256 } from "./lib/protected-recovery-core.mjs";
+import { canonicalBytes, canonicalSha256, sha256 } from "./lib/protected-recovery-core.mjs";
+import { readRetentionManifestEvidenceFile, retentionPlanArguments, retentionPlanSummary } from "./plan-protected-recovery-retention.mjs";
+import { mkdtemp, rm, rmdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const now = Date.parse("2026-10-23T22:00:00.000Z"); const releaseSha = "a".repeat(40);
 const time = (offset) => new Date(now + offset).toISOString();
@@ -126,4 +130,205 @@ test("stuck read-only provider requests are bounded by a hard run deadline", asy
   const f = fixture();
   await assert.rejects(inspectRecoveryRetention({ releaseSha, now: () => now, maximumRunMilliseconds: 10,
     source: { readInventory: async () => f.inventory }, archive: { listVersions: () => new Promise(() => {}) } }), /ABORTED/u);
+});
+
+function sealInventory(inventory) {
+  inventory.counts.objects = inventory.objects.length;
+  inventory.counts.references = inventory.references.length;
+  inventory.counts.tombstones = inventory.tombstones.length;
+  inventory.inventoryDigest = recoveryInventoryDigest(inventory);
+}
+function updateManifest(f, index = 0) {
+  const evidence = f.manifestEvidence[index];
+  const row = f.versions.find((entry) => entry.versionId === evidence.versionId);
+  sealInventory(evidence.manifest.inventory);
+  evidence.digest = canonicalSha256(evidence.manifest);
+  row.key = `manifests/${evidence.digest}.json`;
+  row.size = canonicalBytes(evidence.manifest).byteLength;
+}
+function mappingFixture() {
+  const f = fixture(); const object = f.inventory.objects[0];
+  f.inventory.references = [{ table: "ap_document_versions", id: "11111111-1111-4111-8111-111111111111", field: "storage_path",
+    bucket: object.bucket, key: object.key, expectedSha256: null, retentionExpiresAt: null }];
+  f.inventory.counts.tables.ap_document_versions = 1; sealInventory(f.inventory);
+  const historical = structuredClone(f.inventory);
+  historical.startedAt = time(-12000); historical.completedAt = time(-11000);
+  const manifest = { schemaVersion: "applypack-protected-recovery-manifest-v1",
+    archive: { bucket: RECOVERY_ARCHIVE_BUCKET, kmsKeyArn: "arn:aws:kms:us-east-1:838445019912:key/11111111-1111-4111-8111-111111111111" },
+    inventory: historical, secondInventoryReceipt: "synthetic-second-receipt".padEnd(128, "x"), watermark: historical.startedAt,
+    createdAt: time(-9000), previousManifestDigest: null,
+    entries: [{ bucket: object.bucket, key: object.key, sourceVersion: object.sourceVersion, size: object.size,
+      sha256: sha256(Buffer.alloc(object.size)), archiveKey: f.currentKey, archiveVersionId: "current1" }] };
+  f.manifestEvidence = [{ versionId: "manifest-proof1", digest: canonicalSha256(manifest), manifest }];
+  f.versions = [f.versions[0], { key: `manifests/${f.manifestEvidence[0].digest}.json`, versionId: "manifest-proof1",
+    lastModified: time(-8000), size: canonicalBytes(manifest).byteLength }];
+  return f;
+}
+function mapped(f) { return planRecoveryRetention({ ...f, releaseSha, now }).plan; }
+
+test("complete historical mapping verifies only replacement metadata and retains every exact version", () => {
+  const f = mappingFixture(); const plan = mapped(f);
+  const mapping = plan.historicalMapping;
+  assert.deepEqual(plan.proposedRemovals, []); assert.equal(plan.retainedVersions.length, f.versions.length);
+  assert.equal(mapping.manifestCoverage.missing.length, 0);
+  assert.equal(mapping.objectVersions[0].historical[0].references[0].currentRelationship, "UNCHANGED_VERSION");
+  assert.equal(mapping.objectVersions[0].historical[0].unboundedOrHeldRetention, true);
+  assert.deepEqual(mapping.replacementCheckpoint, { status: "METADATA_VERIFIED_ONLY", manifestDigest: f.manifestEvidence[0].digest,
+    manifestVersionId: "manifest-proof1", providerBytesVerified: false, applicationCompletionVerified: false, hostedRestoreVerified: false });
+  assert.equal(mapping.allVersionsPreserved, true);
+});
+
+test("missing historical manifest coverage leaves replacement unresolved, including a held older version", () => {
+  const f = mappingFixture();
+  f.versions.push({ key: `manifests/${"9".repeat(64)}.json`, versionId: "unimported", lastModified: time(-8 * 86400000), size: 123 });
+  const plan = mapped(f);
+  assert.equal(plan.historicalMapping.replacementCheckpoint.status, "INCOMPLETE_MANIFEST_EVIDENCE");
+  assert.equal(plan.historicalMapping.manifestCoverage.missing[0].versionId, "unimported");
+  assert.equal(plan.retainedVersions.length, 3); assert.deepEqual(plan.proposedRemovals, []);
+});
+
+test("missing exact blob version prevents a replacement claim even when another version of the same key exists", () => {
+  const f = mappingFixture(); f.versions[0].versionId = "different-version";
+  const plan = mapped(f);
+  assert.deepEqual(plan.historicalMapping.manifests[0].missingArchiveVersions, [{ key: f.currentKey, versionId: "current1" }]);
+  assert.equal(plan.historicalMapping.replacementCheckpoint.status, "NO_MATCHING_CURRENT_CHECKPOINT");
+  assert.equal(plan.historicalMapping.objectVersions[0].mappingStatus, "UNMAPPED_PRESERVE");
+  assert.deepEqual(plan.proposedRemovals, []);
+});
+
+test("null historical reference retention remains protected despite finite object expiry", () => {
+  const f = mappingFixture();
+  f.manifestEvidence[0].manifest.inventory.objects[0].retentionExpiresAt = time(-1);
+  updateManifest(f);
+  const history = mapped(f).historicalMapping.objectVersions[0].historical[0];
+  assert.equal(history.retentionExpiresAt, time(-1));
+  assert.equal(history.references[0].retentionExpiresAt, null);
+  assert.equal(history.unboundedOrHeldRetention, true);
+});
+
+for (const kind of ["current object hold", "new shared paid reference"]) test(`finite historical retention is protected by a ${kind}`, () => {
+  const f = mappingFixture(); const historical = f.manifestEvidence[0].manifest.inventory;
+  historical.objects[0].retentionExpiresAt = time(60000); historical.references[0].retentionExpiresAt = time(60000); updateManifest(f);
+  f.inventory.objects[0].retentionExpiresAt = kind === "current object hold" ? null : time(60000);
+  f.inventory.references[0].retentionExpiresAt = time(60000);
+  if (kind === "current object hold") f.inventory.references[0].retentionExpiresAt = null;
+  else f.inventory.references.push({ ...f.inventory.references[0], table: "apply_pack_delivery_revisions",
+    id: "22222222-2222-4222-8222-222222222222", retentionExpiresAt: null });
+  sealInventory(f.inventory);
+  const row = mapped(f).historicalMapping.objectVersions[0].historical[0];
+  assert.equal(row.retentionExpiresAt, time(60000)); assert.equal(row.references[0].retentionExpiresAt, time(60000));
+  assert.equal(row.unboundedOrHeldRetention, true); assert.equal(row.currentPathRetention.unboundedReferenceCount, 1);
+});
+
+test("same-second S3 publication precision is accepted but an earlier provider second is rejected", () => {
+  const f = mappingFixture(); f.manifestEvidence[0].manifest.createdAt = time(-8550);
+  f.versions[1].lastModified = time(-9000); updateManifest(f);
+  assert.equal(mapped(f).historicalMapping.replacementCheckpoint.status, "METADATA_VERIFIED_ONLY");
+  f.versions[1].lastModified = time(-10000);
+  assert.throws(() => mapped(f), /MANIFEST_LIST_BINDING/u);
+});
+
+test("repeated published manifest versions preserve deterministic mapping independent of import order", () => {
+  const f = mappingFixture(); const second = structuredClone(f.manifestEvidence[0]); second.versionId = "manifest-proof2";
+  f.manifestEvidence.push(second); f.versions.push({ ...f.versions[1], versionId: second.versionId });
+  const first = mapped(f); f.manifestEvidence.reverse(); f.versions.reverse();
+  assert.deepEqual(mapped(f), first);
+});
+
+test("shared historical file maps a cleared reference and an unchanged paid reference without losing either obligation", () => {
+  const f = mappingFixture();
+  const paid = { ...f.inventory.references[0], table: "apply_pack_delivery_revisions", id: "22222222-2222-4222-8222-222222222222" };
+  f.manifestEvidence[0].manifest.inventory.references.push(paid);
+  f.manifestEvidence[0].manifest.inventory.counts.tables.apply_pack_delivery_revisions = 1; updateManifest(f);
+  f.inventory.references = [paid]; f.inventory.counts.tables.apply_pack_delivery_revisions = 1; sealInventory(f.inventory);
+  const plan = mapped(f); const history = plan.historicalMapping.objectVersions[0].historical[0];
+  assert.deepEqual(history.references.map((reference) => reference.currentRelationship), ["ABSENT", "UNCHANGED_VERSION"]);
+  assert.equal(history.unboundedOrHeldRetention, true); assert.equal(plan.retainedVersions.length, 2);
+  assert.deepEqual(plan.proposedRemovals, []);
+});
+
+for (const reason of ["DELETED", "REVOKED"]) test(`${reason} provenance is mapped but never becomes deletion authority`, () => {
+  const f = mappingFixture(); const reference = f.inventory.references[0];
+  const subject = { ...reference }; delete subject.expectedSha256; delete subject.retentionExpiresAt;
+  f.inventory.tombstones.push({ ...subject, kind: reason, effectiveAt: time(-3500) }); sealInventory(f.inventory);
+  const plan = mapped(f);
+  assert.equal(plan.historicalMapping.objectVersions[0].historical[0].latestRestrictions[0].kind, reason);
+  assert.equal(plan.historicalMapping.replacementCheckpoint.status, "NO_MATCHING_CURRENT_CHECKPOINT");
+  assert.deepEqual(plan.proposedRemovals, []);
+});
+
+for (const [label, mutate] of [
+  ["digest mismatch", (f) => { f.manifestEvidence[0].digest = "0".repeat(64); }],
+  ["unlisted manifest version", (f) => { f.manifestEvidence[0].versionId = "not-listed"; }],
+  ["duplicate evidence", (f) => { f.manifestEvidence.push(structuredClone(f.manifestEvidence[0])); }],
+  ["unknown envelope field", (f) => { f.manifestEvidence[0].trusted = true; }],
+  ["manifest listed size mismatch", (f) => { f.versions[1].size++; }],
+  ["blob listed size mismatch", (f) => { f.versions[0].size++; }],
+  ["blob uploaded after manifest", (f) => { f.versions[0].lastModified = time(-7000); }],
+  ["manifest created after current scan", (f) => { f.manifestEvidence[0].manifest.createdAt = time(-1000); f.versions[1].lastModified = time(-500); updateManifest(f); }],
+  ["wrong source project", (f) => { f.manifestEvidence[0].manifest.inventory.sourceProjectRef = "fmugizadzdnqfckujqlw"; updateManifest(f); }],
+  ["missing reference coverage", (f) => { f.manifestEvidence[0].manifest.entries = []; updateManifest(f); }],
+]) test(`imported historical metadata rejects ${label}`, () => {
+  const f = mappingFixture(); mutate(f); assert.throws(() => mapped(f));
+});
+
+for (const [label, mutate, expected] of [
+  ["wrong release", (f) => { f.manifestEvidence[0].manifest.inventory.releaseSha = "b".repeat(40); updateManifest(f); }, "RELEASE_MISMATCH"],
+  ["stale checkpoint", (f) => { const m = f.manifestEvidence[0].manifest; m.inventory.startedAt = time(-700000); m.watermark = m.inventory.startedAt; updateManifest(f); }, "CHECKPOINT_STALE"],
+  ["superseded source version", (f) => { f.inventory.objects[0].sourceVersion = "9".repeat(64); sealInventory(f.inventory); }, "CURRENT_GRAPH_MISMATCH"],
+  ["expired retained reference", (f) => { f.inventory.objects[0].retentionExpiresAt = time(-1); f.inventory.references[0].retentionExpiresAt = time(-1); sealInventory(f.inventory); }, "CURRENT_RETENTION_RESTRICTIONS"],
+]) test(`replacement metadata is unavailable for ${label}`, () => {
+  const f = mappingFixture(); mutate(f); const plan = mapped(f);
+  assert(plan.historicalMapping.manifests[0].replacementMetadataReasons.includes(expected));
+  assert.equal(plan.historicalMapping.replacementCheckpoint.status, "NO_MATCHING_CURRENT_CHECKPOINT");
+  assert.deepEqual(plan.proposedRemovals, []); assert.equal(plan.retainedVersions.length, f.versions.length);
+});
+
+test("conflicting manifest claims for one immutable source version fail closed", () => {
+  const f = mappingFixture(); const other = structuredClone(f.manifestEvidence[0]); other.versionId = "manifest-proof2";
+  other.manifest.entries[0].sha256 = "d".repeat(64);
+  f.manifestEvidence.push(other); f.versions.push({ ...f.versions[1], versionId: other.versionId }); updateManifest(f, 1);
+  assert.throws(() => mapped(f), /ARCHIVE_VERSION_CONFLICT/u);
+});
+
+test("historical evidence cannot mix archive encryption identities", () => {
+  const f = mappingFixture(); const other = structuredClone(f.manifestEvidence[0]); other.versionId = "manifest-proof2";
+  other.manifest.archive.kmsKeyArn = "arn:aws:kms:us-east-1:838445019912:key/22222222-2222-4222-8222-222222222222";
+  f.manifestEvidence.push(other); f.versions.push({ ...f.versions[1], versionId: other.versionId }); updateManifest(f, 1);
+  assert.throws(() => mapped(f), /MANIFEST_ARCHIVE_CONFLICT/u);
+});
+
+test("private evidence reader and fixed CLI flag accept bounded metadata without adding provider authority", async () => {
+  const f = mappingFixture(); const bytes = canonicalBytes(f.manifestEvidence);
+  assert.deepEqual(parseRetentionManifestEvidence(bytes), f.manifestEvidence);
+  assert.equal(retentionPlanArguments([]), null);
+  assert.equal(retentionPlanArguments(["--manifest-evidence", "private.json"]), "private.json");
+  for (const args of [["--delete"], ["--manifest-evidence"], ["--manifest-evidence", "x", "--execute"], ["--manifest-evidence", ""]]) assert.throws(() => retentionPlanArguments(args));
+  assert.throws(() => parseRetentionManifestEvidence(Buffer.from([0xff])));
+  assert.throws(() => parseRetentionManifestEvidence(Buffer.from("{}")));
+  assert.throws(() => parseRetentionManifestEvidence(Buffer.from("[{}]")));
+  assert.throws(() => parseRetentionManifestEvidence(new Uint8Array(RETENTION_EVIDENCE_LIMITS.bytes + 1)));
+  const directory = await mkdtemp(join(tmpdir(), "applypack-retention-evidence-"));
+  try {
+    const path = join(directory, "manifest-evidence.json"); await writeFile(path, bytes);
+    assert.deepEqual(await readRetentionManifestEvidenceFile(path), f.manifestEvidence);
+    await writeFile(path, "{}"); await assert.rejects(readRetentionManifestEvidenceFile(path));
+    await assert.rejects(readRetentionManifestEvidenceFile(directory));
+  } finally { await rm(join(directory, "manifest-evidence.json"), { force: true }); await rmdir(directory); }
+});
+
+test("CLI summary never serializes private storage paths, filenames, versions or reference identities", () => {
+  const f = mappingFixture();
+  const result = planRecoveryRetention({ ...f, releaseSha, now });
+  result.plan.historicalMapping.objectVersions[0].historical[0].key = "private/Example Person resume.docx";
+  result.plan.historicalMapping.objectVersions[0].historical[0].latestRestrictions = [{ privateNote: "PRIVATE_RESTRICTION_MARKER" }];
+  const summary = retentionPlanSummary(result); const serialized = JSON.stringify(summary);
+  for (const value of ["owner/resume.docx", "Example Person", "PRIVATE_RESTRICTION_MARKER", "11111111-1111-4111-8111-111111111111",
+    f.currentKey, "current1", "manifest-proof1", "references", "latestRestrictions", "historicalMapping"]) assert.equal(serialized.includes(value), false);
+  assert.equal(summary.reportDigest, result.digest); assert.equal(summary.retainedVersionCount, 2);
+  assert.equal(summary.proposedRemovalCount, 0); assert.equal(summary.allVersionsPreserved, true);
+  assert.equal(summary.replacementMetadataStatus, "METADATA_VERIFIED_ONLY");
+  assert.equal(summary.providerBytesVerified, false); assert.equal(summary.hostedRestoreVerified, false);
+  result.plan.historicalMapping.replacementCheckpoint.status = "PRIVATE_STATUS_MARKER";
+  assert.throws(() => retentionPlanSummary(result), /SUMMARY_INVALID/u);
 });
