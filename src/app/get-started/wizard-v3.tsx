@@ -3,7 +3,7 @@ import { SourceAnnotation } from "@/components/intake/source-annotation";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { cloneElement, isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, LockKeyhole, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { feasibilityPresentation, SEARCH_CHECKOUT_CTA, type FeasibilityView } from "@/lib/commerce/presentation";
 import { LEGAL_ACCEPTANCE_PRESENTATION } from "@/lib/legal/presentation";
@@ -41,6 +41,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutInvitation, setCheckoutInvitation] = useState<{ id: string; secret: string } | null>(null);
   const [returnToReview, setReturnToReview] = useState(false);
+  const loading = saveState === "LOADING";
   const headingRef = useRef<HTMLHeadingElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const readyRef = useRef(false);
@@ -138,14 +139,15 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     void read();
     return () => { active = false; if (timer) window.clearTimeout(timer); };
   }, [finalized, fixtureMode, legalContentAccepted]);
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (loading) return;
     const controlId = pendingEditFocus.current;
     pendingEditFocus.current = null;
-    requestAnimationFrame(() => {
-      if (controlId) document.getElementById(controlId)?.focus();
-      else headingRef.current?.focus();
-    });
-  }, [step]);
+    // Set the new step's focus before keyboard input can reach its controls.
+    // A deferred frame can otherwise steal focus between Space down and up.
+    if (controlId) document.getElementById(controlId)?.focus();
+    else headingRef.current?.focus();
+  }, [loading, step]);
   useEffect(() => { void fetch("/api/intake/event", { method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ event: "STEP_VIEWED", step: step + 1 }) }).catch(() => undefined); }, [step]);
 
