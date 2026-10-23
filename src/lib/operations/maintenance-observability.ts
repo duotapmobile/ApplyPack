@@ -45,6 +45,8 @@ export type DiagnosticCode =
   | "FILE_SAFETY_NOT_READY"
   | "ENCRYPTION_NOT_READY"
   | "DOCUMENT_RENDERING_NOT_READY"
+  | "PROTECTED_RECOVERY_NOT_READY"
+  | "PROTECTED_RECOVERY_AGING"
   | "SOURCE_PERMISSION_COVERAGE_MISSING"
   | "CRITICAL_SECURITY_OR_INTEGRITY_ALERT_OPEN"
   | "RECOMPUTE_QUEUE_STALE"
@@ -64,6 +66,7 @@ export type DiagnosticCode =
   | "MAINTENANCE_VERIFICATION_FAILED";
 
 const FAIL_CLOSED_CODES: readonly DiagnosticCode[] = [
+  "PROTECTED_RECOVERY_NOT_READY",
   "DATABASE_NOT_READY",
   "PAYMENT_INTEGRITY_NOT_READY",
   "FILE_SAFETY_NOT_READY",
@@ -76,6 +79,8 @@ const FAIL_CLOSED_CODES: readonly DiagnosticCode[] = [
 ];
 
 const MANAGED_ALERT_CODES: readonly DiagnosticCode[] = [
+  "PROTECTED_RECOVERY_NOT_READY",
+  "PROTECTED_RECOVERY_AGING",
   "DATABASE_NOT_READY",
   "PAYMENT_INTEGRITY_NOT_READY",
   "EMAIL_NOT_READY",
@@ -132,6 +137,8 @@ export function diagnoseOperations(summary: OperationsSummary) {
   if (!summary.readiness.fileSafety) codes.push("FILE_SAFETY_NOT_READY");
   if (summary.readiness.encryption === false) codes.push("ENCRYPTION_NOT_READY");
   if (summary.readiness.documentRendering === false) codes.push("DOCUMENT_RENDERING_NOT_READY");
+  if (summary.environment === "production" && !summary.protectedRecovery?.ready) codes.push("PROTECTED_RECOVERY_NOT_READY");
+  else if (summary.protectedRecovery?.required && summary.protectedRecovery.warning) codes.push("PROTECTED_RECOVERY_AGING");
   if (summary.inventory.unauthorizedScheduledAutomatedRealSources > 0) {
     codes.push("SOURCE_PERMISSION_COVERAGE_MISSING");
   }
@@ -204,6 +211,12 @@ async function reconcileMaintenanceAlerts(
 ) {
   const desired = uniqueCodes(activeCodes).filter((code) => !NON_PERSISTED_DERIVED_CODES.includes(code));
   for (const code of desired) {
+    // Only the transition out of RESOLVED starts another alert episode. A
+    // concurrent/repeated diagnosis must retain the existing episode identity.
+    const reopened = await admin.from("ap_operational_alerts")
+      .update({ state: "OPEN", resolved_at: null, opened_at: nowIso })
+      .eq("alert_key", `maintenance/${code}`).in("state", ["RESOLVED"]);
+    if (reopened.error) throw new Error("MAINTENANCE_ALERT_REOPEN_FAILED");
     const result = await admin.from("ap_operational_alerts").upsert({
       alert_key: `maintenance/${code}`,
       category: alertCategory(code),
@@ -251,7 +264,40 @@ export async function recordMaintenanceDiagnosis(admin: AdminClient, before: Ope
     actions: [],
     unresolvedCodes: diagnostic.codes,
   }, nowIso);
-  return diagnostic;
+  const protectedRecoveryAlert = await sendProtectedRecoveryAlert(admin, before, diagnostic.codes, now);
+  return { ...diagnostic, protectedRecoveryAlert };
+}
+
+/** Alert failures never interrupt already-paid work; the cron receipt reports delivery separately. */
+export async function sendProtectedRecoveryAlert(
+  admin: AdminClient, summary: OperationsSummary, codes: readonly DiagnosticCode[], now = new Date(),
+): Promise<"not_needed" | "sent" | "already_sent" | "failed"> {
+  const recoveryCodes = codes.filter((code) => code === "PROTECTED_RECOVERY_NOT_READY" || code === "PROTECTED_RECOVERY_AGING");
+  if (!recoveryCodes.length) return "not_needed";
+  const recipient = process.env.APP_ADMIN_ALERT_EMAIL;
+  if (!recipient || !summary.readiness.email) return "failed";
+  try {
+    const markers = await recoveryEpisodeMarkers(admin, recoveryCodes);
+    if (markers.length !== recoveryCodes.length) return "failed";
+    const idempotencyKey = `protected-recovery-alert/${createHash("sha256")
+      .update([summary.environment, ...recoveryCodes.sort(), ...markers].join("|")).digest("hex").slice(0, 32)}`;
+    const existing = await admin.from("email_events").select("status").eq("idempotency_key", idempotencyKey).maybeSingle();
+    if (existing.error) return "failed";
+    if (existing.data?.status === "sent") return "already_sent";
+    const sent = await sendTransactionalEmail({
+      to: recipient, subject: "ApplyPack protected recovery needs attention",
+      lines: [`Environment: ${summary.environment}`, `Time: ${now.toISOString()}`, `Release: ${summary.releaseSha}`,
+        `Condition: ${recoveryCodes.join(", ")}`,
+        "Check the recovery service and archive before reopening new intake or checkout. Existing paid obligations remain in the service workflow."],
+      actionLabel: "Open operations", actionUrl: "https://applypack.work/admin", idempotencyKey,
+    });
+    if (sent.skipped || !sent.providerMessageId) return "failed";
+    const recorded = await admin.from("email_events").upsert({
+      recipient, template: "admin_protected_recovery", status: "sent",
+      provider_message_id: sent.providerMessageId, idempotency_key: idempotencyKey,
+    }, { onConflict: "idempotency_key" });
+    return recorded.error ? "failed" : "sent";
+  } catch { return "failed"; }
 }
 
 export async function recordMaintenanceFailure(

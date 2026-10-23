@@ -1,3 +1,4 @@
+import { newIntakeRecoveryHold } from "@/lib/operations/protected-recovery-readiness";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { deterministicUuid } from "@/lib/commerce/server";
@@ -17,6 +18,8 @@ export async function POST(request: Request) {
   if (!isSameOriginRequest(request)) return NextResponse.json({ error: "This intake request was rejected." }, { status: 403 });
   const context = await anonymousDraftContext();
   if (!context) return NextResponse.json({ error: "The saved draft is unavailable." }, { status: 404 });
+  const recoveryHold = await newIntakeRecoveryHold(context.admin);
+  if (recoveryHold) return recoveryHold;
   const parsed = inputSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "The intake is invalid." }, { status: 400 });
   const answers = normalizedFourStepDraft(parsed.data.answers);

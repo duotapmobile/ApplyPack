@@ -456,4 +456,19 @@ do $$ declare definition text; begin
   execute definition;
 end $$;
 
+-- Forward disclosure for the approved encrypted processing and recovery design.
+-- Prior paid orders and immutable acceptance/content receipts are not rewritten.
+update public.ap_commerce_configuration
+set privacy_version='privacy-2026-10-23-v2',
+    privacy_content_sha256='9fa809f25bf55a03fab529f991b1d5870849fcc2294c08b324f1d2cf0187ea16',
+    updated_at=clock_timestamp()
+where singleton and privacy_version='privacy-v1'
+  and privacy_content_sha256='9832a38d7fe5bbff04622a1e1a34e09febd44156dbf78eec4ea975283c1e92e9';
+do $$ begin
+  if not exists(select 1 from public.ap_commerce_configuration where singleton
+    and privacy_version='privacy-2026-10-23-v2'
+    and privacy_content_sha256='9fa809f25bf55a03fab529f991b1d5870849fcc2294c08b324f1d2cf0187ea16')
+  then raise exception 'protected_recovery_privacy_version_conflict'; end if;
+end $$;
+
 commit;

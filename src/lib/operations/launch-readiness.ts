@@ -14,6 +14,7 @@ import { launchSchemaReadinessIsCurrent } from "@/lib/operations/launch-schema";
 import { manualLaunchFixedTotalIsSafe } from "@/lib/commerce/fixed-total";
 import { AWS_TEMPORARY_CLEANUP_MAX_OVERDUE_MS } from "@/lib/files/aws-temporary-cleanup";
 import { SANDBOX_ACTIVATION_CONTRACT_VERSION, sandboxValidationMatchesRelease } from "@/lib/operations/sandbox-validation";
+import { readProtectedRecoveryReadiness } from "@/lib/operations/protected-recovery-readiness";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 type LaunchCapacityResource = "SEARCH" | "MATERIALS";
@@ -96,6 +97,7 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
     manualInventoryReady: false,
     releaseSha: false,
     legalContent: false,
+    protectedRecovery: false,
   };
   const deployedSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.APP_RELEASE_SHA || "";
   let capacityAvailable = false;
@@ -104,6 +106,7 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
   if (supabaseConfigured) {
     const admin = adminClient || createSupabaseAdminClient();
     if (admin) {
+      checks.protectedRecovery = (await readProtectedRecoveryReadiness(admin)).ready;
       checks.documentRendering = await checkDocumentRendererReadiness(admin).catch(() => false);
       const [
         { data: heartbeat, error: heartbeatError },

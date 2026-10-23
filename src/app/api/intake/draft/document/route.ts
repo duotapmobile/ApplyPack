@@ -1,3 +1,4 @@
+import { newIntakeRecoveryHold } from "@/lib/operations/protected-recovery-readiness";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { validateDocumentSafety } from "@/lib/files/document-safety";
@@ -21,6 +22,8 @@ export async function POST(request: Request) {
   if (!supabase || !admin) return NextResponse.json({ error: "Private storage is unavailable." }, { status: 503 });
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) return NextResponse.json({ error: "Sign in before uploading." }, { status: 401 });
+  const recoveryHold = await newIntakeRecoveryHold(admin);
+  if (recoveryHold) return recoveryHold;
 
   const form = await request.formData();
   const kind = form.get("kind");

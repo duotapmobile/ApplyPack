@@ -1,3 +1,4 @@
+import { newIntakeRecoveryHold } from "@/lib/operations/protected-recovery-readiness";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { validateDocumentSafety } from "@/lib/files/document-safety";
@@ -39,6 +40,8 @@ export async function POST(request: Request) {
   }
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) return NextResponse.json({ error: "Secure email sign-in is required.", authRequired: true }, { status: 401 });
+  const recoveryHold = await newIntakeRecoveryHold(admin);
+  if (recoveryHold) return recoveryHold;
   const rate = await consumeRateLimit({ request, scope: "intake_submit", identity: authData.user.id, limit: 10, windowSeconds: 60 * 60 });
   if (!rate.allowed) return NextResponse.json({ error: "Too many intake attempts. Try again later." }, { status: 429 });
 

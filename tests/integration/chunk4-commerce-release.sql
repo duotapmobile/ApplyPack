@@ -1,5 +1,11 @@
 begin;
 
+-- These behavioral fixtures also run against the explicit historical085 target.
+-- Read its current immutable binding; never force a retired privacy version onto086.
+select set_config('applypack_test.privacy_version',privacy_version,true),
+       set_config('applypack_test.privacy_sha256',privacy_content_sha256,true)
+from public.ap_commerce_configuration where singleton;
+
 create function pg_temp.assert_true(value boolean, failure_message text)
 returns void language plpgsql as $$
 begin
@@ -99,7 +105,7 @@ update public.ap_commerce_configuration set
   launch_activation_id='a4200000-0000-4000-8000-000000000001',launch_release_sha=repeat('a',40),
   document_worker_network_attestation_sha256=repeat('b',64),
   pricing_version='manual-launch-pricing-2026-10-02-v2',tax_version='tax-inclusive-v1',
-  terms_version='manual-launch-terms-2026-10-02-v2',privacy_version='privacy-v1',canonical_site_url='https://applypack-staging-staging.up.railway.app',
+  terms_version='manual-launch-terms-2026-10-02-v2',privacy_version=current_setting('applypack_test.privacy_version'),canonical_site_url='https://applypack-staging-staging.up.railway.app',
   access_callback_url='https://applypack.work/auth/callback',provider_idempotent_email_approved=true,
   provider_email_approval_reference='rollback-only-integration-fixture',payment_provider='stripe',
   payment_api_version='2026-08-27.basil',immediate_payment_methods=array['card'],release_verification_ttl_seconds=3600
@@ -212,14 +218,14 @@ insert into public.ap_feasibility_requests(
 
 select public.ap_record_snapshot_legal_acceptance(
   '34000000-0000-4000-8000-000000000001',repeat('a',64),
-  '54000000-0000-4000-8000-000000000001','manual-launch-terms-2026-10-02-v2','privacy-v1',repeat('7',64)
+  '54000000-0000-4000-8000-000000000001','manual-launch-terms-2026-10-02-v2',current_setting('applypack_test.privacy_version'),repeat('7',64)
 );
 select public.ap_record_snapshot_legal_content_receipt(
   '34000000-0000-4000-8000-000000000001',repeat('a',64),
   '54000000-0000-4000-8000-000000000001',
   (select id from public.ap_snapshot_legal_acceptances where snapshot_id='54000000-0000-4000-8000-000000000001'),
   'manual-launch-terms-2026-10-02-v2','eeec6398df29e6bd831aa1130453762927a467ee1b7a8d98b3659e07b8069d8c',
-  'privacy-v1','9832a38d7fe5bbff04622a1e1a34e09febd44156dbf78eec4ea975283c1e92e9',
+  current_setting('applypack_test.privacy_version'),current_setting('applypack_test.privacy_sha256'),
   'applypack-legal-acceptance-copy-2026-10-04-v1','0d687e93a090a536b90b1508cf61746cb0167d464a951d9ae5cfe0739d7bd283',
   'applypack-c14n-v1','applypack-legal-content-receipt-v1',repeat('7',64)
 );

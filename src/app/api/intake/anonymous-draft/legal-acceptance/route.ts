@@ -1,3 +1,4 @@
+import { newIntakeRecoveryHold } from "@/lib/operations/protected-recovery-readiness";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { anonymousDraftContext, anonymousDraftError } from "@/lib/drafts/anonymous-server";
@@ -13,6 +14,8 @@ export async function POST(request: Request) {
   }
   const context = await anonymousDraftContext();
   if (!context) return NextResponse.json({ error: "The saved draft is unavailable." }, { status: 404 });
+  const recoveryHold = await newIntakeRecoveryHold(context.admin);
+  if (recoveryHold) return recoveryHold;
   const parsed = inputSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Confirm the current Terms and Privacy Policy." }, { status: 400 });
 

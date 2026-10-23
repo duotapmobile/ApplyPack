@@ -7,6 +7,7 @@ export const productionBinding = Object.freeze({
   environmentId: "c841e757-e60d-441e-b951-f5c75244df3e", environmentName: "production",
   webServiceId: "793579f2-525f-463f-90ac-cf6689433cc3", webServiceName: "ApplyPack",
   maintenanceServiceName: "ApplyPack-production-maintenance",
+  recoveryServiceName: "ApplyPack-production-recovery",
 });
 
 // This authoring guard binds reviewed inputs; it does not establish provider
@@ -57,5 +58,25 @@ export default defineRailway((ctx: RailwayContext) => {
       APP_DEPLOYMENT_ENV: "production", APP_EXPECTED_RELEASE_SHA: sha,
     },
   });
-  return project(binding.projectName, { resources: [web, maintenance] });
+  const recovery = service(binding.recoveryServiceName, {
+    source, configFile: "railway.launch.recovery.json",
+    build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile.launch" },
+    start: "node scripts/run-protected-recovery.mjs",
+    deploy: { cronSchedule: "*/5 * * * *", restartPolicyType: "NEVER" },
+    networking: { privateNetworkEndpoint: "applypack-production-recovery" },
+    env: {
+      APP_DEPLOYMENT_ENV: "production", APP_BASE_URL: "https://applypack.work", APP_EXPECTED_RELEASE_SHA: sha,
+      AWS_REGION: "us-east-1", APP_AWS_ACCOUNT_ID: "838445019912",
+      APP_RECOVERY_READER_SECRET: preserve(), APP_RECOVERY_COMPLETION_SECRET: preserve(),
+      APP_BACKUP_BUCKET: "applypack-production-protected-recovery-838445019912",
+      APP_BACKUP_KMS_KEY_ARN: preserve(), APP_BACKUP_AWS_RA_DEPLOYMENT_ENV: "production",
+      APP_BACKUP_AWS_RA_TRUST_ANCHOR_ARN: preserve(), APP_BACKUP_AWS_RA_PROFILE_ARN: preserve(),
+      APP_BACKUP_AWS_RA_ROLE_ARN: "arn:aws:iam::838445019912:role/applypack/production/applypack-production-recovery-writer",
+      APP_BACKUP_AWS_RA_HELPER_PATH: "/usr/local/bin/aws_signing_helper",
+      APP_BACKUP_AWS_RA_CERTIFICATE_PEM_BASE64: preserve(), APP_BACKUP_AWS_RA_PRIVATE_KEY_PEM_BASE64: preserve(),
+      APP_BACKUP_AWS_RA_CA_CERTIFICATE_PEM_BASE64: preserve(), APP_BACKUP_AWS_RA_CERTIFICATE_SHA256: preserve(),
+      APP_BACKUP_AWS_RA_CA_CERTIFICATE_SHA256: preserve(),
+    },
+  });
+  return project(binding.projectName, { resources: [web, maintenance, recovery] });
 });

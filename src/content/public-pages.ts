@@ -88,14 +88,15 @@ export const publicPages: Record<string, PublicPage> = {
   },
   privacy: {
     slug: "privacy", eyebrow: "PRIVACY POLICY", title: "Your information is for providing your service.", seoTitle: "Privacy Policy | ApplyPack",
-    description: "How ApplyPack, operated by DuoTap LLC d/b/a ApplyPack, handles information.", intro: ["Effective September 2, 2026."],
+    description: "How ApplyPack, operated by DuoTap LLC d/b/a ApplyPack, handles information.", intro: ["Effective October 23, 2026. Version privacy-2026-10-23-v2."],
     sections: [
       { title: "Information and use", body: ["We collect contact details, approved search criteria and preferences, documents you upload, order and delivery records, support messages, and limited operational security logs. We use them to authenticate you, perform and deliver the service, take payment, provide support, prevent abuse, and meet legal or accounting obligations."] },
       { title: "AI assistance and human review", body: ["AI-assisted tools may support research, comparison, and drafting. A person reviews every customer-facing delivery, and factual claims remain grounded in information you provide."] },
       { title: "Uploads and document safety", body: ["After account access is established, uploads use private storage with randomized storage keys and restricted access. Supported files are checked for allowed type, size, file structure, and prohibited active content."] },
-      { title: "Providers", body: ["Supabase supports authentication, database, and private file storage. Railway hosts the application. Stripe processes payments. Configured email providers deliver authentication, order, and support messages."] },
+      { title: "Providers", body: ["Supabase supports authentication, database, and private file storage. Railway hosts the application and scheduled operations. Amazon Web Services supports encryption keys, isolated document processing, and private encrypted recovery copies. Stripe processes payments. Configured email providers deliver authentication, order, and support messages."] },
       { title: "Sharing and analytics", body: ["We do not sell resumes or personal information. We share information only as needed to provide or secure the service, comply with law, resolve a transaction, or follow your direction."] },
       { title: "Retention and security", body: ["Saved intake drafts expire after seven days. Source documents are scheduled for deletion according to the posted retention period. Access is restricted by account and role, and signed links are time-limited. No system can promise absolute security."] },
+      { title: "Recovery copies", body: ["We keep private encrypted recovery copies to restore the service after a failure. Recovery copies of source documents follow the same deletion deadlines and applicable holds as the source records. Delivered files remain available under the customer's existing access, and superseded recovery versions are retained for up to seven days. Deletion records are applied before restored customer access is enabled."] },
       { title: "Your choices", body: ["Email help@applypack.work for access, correction, or deletion requests. Some records may be retained for transactions, disputes, security, or law."] },
     ], ctaLabel: "Contact Privacy", ctaHref: "mailto:help@applypack.work",
   },

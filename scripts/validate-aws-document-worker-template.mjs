@@ -243,7 +243,11 @@ assert(fn(bucketManagement?.Resource, "Sub") === "arn:${AWS::Partition}:s3:::app
   && ["s3:GetBucketPolicy", "s3:PutBucketPolicy", "s3:DeleteBucketPolicy"].every((action) => actions(bucketManagement).includes(action)),
 "bucket policy management must stay scoped to the exact environment bucket");
 
-assert((dockerfile.match(/debian:bookworm-slim@sha256:/g) || []).length === 2, "both Docker stages must pin the base-image digest");
+assert((dockerfile.match(/ubuntu:26\.04@sha256:c098726dd9b9733f3e885f8de0ef375206a311b0a317eadc40d347b1115fb944/g) || []).length === 2,
+  "both Docker stages must pin the reviewed Ubuntu LTS base-image digest");
+assert(dockerfile.includes("libreoffice-writer-nogui libreoffice-core-nogui"), "worker must use the reviewed headless renderer packages");
+assert(/&& rm -rf [^\r\n]*\/usr\/bin\/pebble(?:\r?\n|$)/u.test(dockerfile),
+  "unused inherited supervisor must be removed from the worker");
 assert(dockerfile.includes("ADD --checksum=sha256:"), "font download must be checksum pinned");
 for (const hash of [
   "76d04c18ea243f426b7de1f3ad208e927008f961dc5945e5aad352d0dfde8ee8",

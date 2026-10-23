@@ -3,6 +3,7 @@ import { AWS_TEMPORARY_CLEANUP_MAX_OVERDUE_MS } from "@/lib/files/aws-temporary-
 
 import { checkDocumentRendererReadiness } from "./renderer-readiness";
 import { checkRuntimeFileSafety } from "./runtime-readiness";
+import { readProtectedRecoveryReadiness } from "./protected-recovery-readiness";
 import { checkSensitivePayloadHealth } from "@/lib/security/kms-health";
 import { checkoutConfiguration } from "@/lib/stripe/mode";
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -54,6 +55,7 @@ export type OperationsSummary = {
     heartbeatAgeSeconds: number | null;
     stale: boolean;
   };
+  protectedRecovery?: { required: boolean; ready: boolean; warning: boolean; ageSeconds: number | null };
   alerts: {
     openWarnings: number;
     openCritical: number;
@@ -329,6 +331,7 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
   const encryption = await checkSensitivePayloadHealth();
   const fileSafety = await checkRuntimeFileSafety();
   const documentRendering = await checkDocumentRendererReadiness(admin).catch(() => false);
+  const protectedRecovery = await readProtectedRecoveryReadiness(admin);
   const commerceCounts = commerceSnapshot(commerce.error ? null : commerce.data);
   const oldestAwsCleanupDueAge = ageSeconds(firstTimestamp(oldestAwsCleanupDue, "not_before"), now);
   const awsCleanupOverdue = countOf(oldestAwsCleanupDue) > 0 && (oldestAwsCleanupDueAge === null
@@ -404,6 +407,10 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
       },
     },
     maintenance: { heartbeatAgeSeconds, stale: maintenanceStale },
+    protectedRecovery: {
+      required: protectedRecovery.required, ready: protectedRecovery.ready,
+      warning: protectedRecovery.warning, ageSeconds: protectedRecovery.ageSeconds,
+    },
     alerts: { openWarnings: countOf(warnings), openCritical: countOf(critical), blockingCritical: countOf(blockingCritical) },
   };
 }

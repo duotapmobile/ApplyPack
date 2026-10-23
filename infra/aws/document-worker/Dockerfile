@@ -1,15 +1,15 @@
 # syntax=docker/dockerfile:1.7
-FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 AS python-packages
+FROM ubuntu:26.04@sha256:c098726dd9b9733f3e885f8de0ef375206a311b0a317eadc40d347b1115fb944 AS python-packages
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential ca-certificates cmake libcurl4-openssl-dev python3 python3-pip \
     && python3 -m pip install --break-system-packages --no-cache-dir --target /opt/python awslambdaric==4.1.0 boto3==1.43.108 \
     && rm -rf /var/lib/apt/lists/*
 
-FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
+FROM ubuntu:26.04@sha256:c098726dd9b9733f3e885f8de0ef375206a311b0a317eadc40d347b1115fb944
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates fontconfig libreoffice-writer poppler-utils python3 \
+    && apt-get install -y --no-install-recommends ca-certificates fontconfig libreoffice-writer-nogui libreoffice-core-nogui poppler-utils python3 \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
 # Liberation Sans 2.1.5 is licensed under SIL OFL 1.1. The upstream archive,
@@ -35,7 +35,11 @@ RUN mkdir -p /tmp/liberation-fonts /usr/local/share/fonts/truetype/applypack \
     && test "$(fc-match --format='%{family}' 'Liberation Sans:style=Bold')" = "Liberation Sans" \
     && test "$(fc-match --format='%{family}' 'Liberation Sans:style=Italic')" = "Liberation Sans" \
     && test "$(fc-match --format='%{family}' 'Liberation Sans:style=Bold Italic')" = "Liberation Sans" \
-    && rm -rf /tmp/liberation-fonts /tmp/liberation-fonts-ttf-2.1.5.tar.gz
+    && rm -rf /tmp/liberation-fonts /tmp/liberation-fonts-ttf-2.1.5.tar.gz /usr/bin/pebble
+
+# The inherited Pebble supervisor is unused: Lambda runs awslambdaric directly.
+# Remove its vulnerable executable from the final filesystem; do not suppress it
+# in the image scan or remove package metadata to conceal runtime dependencies.
 
 COPY --from=python-packages /opt/python /opt/python
 COPY handler.py offline-smoke.py /var/task/

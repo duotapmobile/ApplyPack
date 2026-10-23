@@ -11,6 +11,7 @@ import {
   SEARCH_PRICE_CENTS,
 } from "@/lib/domain/applypack";
 import { currentLegalContentBinding } from "@/lib/legal/content-hash";
+import { LAUNCH_LEGAL_BINDING } from "../../scripts/launch-legal-contract.mjs";
 import { hasDatabaseErrorCode } from "@/lib/matching/persistence-error";
 import {
   launchSchemaReadinessIsCurrent,
@@ -34,9 +35,9 @@ describe("October 2 manual-launch hardening", () => {
   it("binds legal acceptance to the exact displayed Terms, Privacy Policy, and acknowledgement copy", () => {
     expect(currentLegalContentBinding()).toEqual({
       termsVersion: "manual-launch-terms-2026-10-02-v2",
-      privacyVersion: "privacy-v1",
+      privacyVersion: "privacy-2026-10-23-v2",
       termsContentSha256: "eeec6398df29e6bd831aa1130453762927a467ee1b7a8d98b3659e07b8069d8c",
-      privacyContentSha256: "9832a38d7fe5bbff04622a1e1a34e09febd44156dbf78eec4ea975283c1e92e9",
+      privacyContentSha256: "9fa809f25bf55a03fab529f991b1d5870849fcc2294c08b324f1d2cf0187ea16",
       acceptanceCopyVersion: "applypack-legal-acceptance-copy-2026-10-04-v1",
       acceptanceCopySha256: "0d687e93a090a536b90b1508cf61746cb0167d464a951d9ae5cfe0739d7bd283",
       contentCanonicalizationVersion: "applypack-c14n-v1",
@@ -46,7 +47,12 @@ describe("October 2 manual-launch hardening", () => {
 
   it("keeps later legal revisions append-only and rejects a rollback with altered legal text", () => {
     const binding = currentLegalContentBinding();
-    expect(APPROVED_ROLLBACK_LEGAL_CONTRACT).toMatchObject(binding);
+    expect(LAUNCH_LEGAL_BINDING).toEqual(binding);
+    expect(APPROVED_ROLLBACK_LEGAL_CONTRACT.privacyVersion).toBe("privacy-v1");
+    expect(APPROVED_ROLLBACK_LEGAL_CONTRACT.privacyContentSha256).not.toBe(binding.privacyContentSha256);
+    const forward = source("supabase/migrations/202610230086_sandbox_validation_launch_activation.sql");
+    expect(forward).toContain(`privacy_version='${binding.privacyVersion}'`);
+    expect(forward).toContain(`privacy_content_sha256='${binding.privacyContentSha256}'`);
     const legalPages = source("src/content/public-pages.ts");
     const wizard = source("src/app/get-started/wizard-v3.tsx");
     const presentation = source("src/lib/legal/presentation.ts");
@@ -54,7 +60,7 @@ describe("October 2 manual-launch hardening", () => {
       publicPagesSource: legalPages,
       wizardSource: wizard,
       presentationSource: presentation,
-    })).toEqual({ ok: true, failures: [] });
+    })).toEqual({ ok: false, failures: ["legal_pages_source_mismatch"] });
     expect(verifyRollbackLegalSource({
       publicPagesSource: legalPages.replace("Effective October 2, 2026", "Effective October 3, 2026"),
       wizardSource: wizard,
@@ -67,7 +73,7 @@ describe("October 2 manual-launch hardening", () => {
       publicPagesSource: legalPages,
       wizardSource: wizard,
       presentationSource: spoofedPresentation,
-    })).toEqual({ ok: false, failures: ["legal_acceptance_copy_mismatch"] });
+    })).toEqual({ ok: false, failures: ["legal_pages_source_mismatch", "legal_acceptance_copy_mismatch"] });
     expect(APPROVED_ROLLBACK_LEGAL_CONTRACT.presentationSourceSha256).toHaveLength(64);
     expect(APPROVED_ROLLBACK_LEGAL_CONTRACT.wizardSourceSha256).toHaveLength(64);
     expect(APPROVED_ROLLBACK_LEGAL_CONTRACT.legacyWizardSourceSha256).toHaveLength(64);
@@ -106,9 +112,9 @@ describe("October 2 manual-launch hardening", () => {
 
     const rollback = source("scripts/run-supabase-rollback-test.mjs") + source("scripts/lib/supabase-structural-recovery.mjs");
     expect(rollback).toContain("verifyRollbackLegalSource");
-    expect(rollback).toContain("APPROVED_ROLLBACK_LEGAL_CONTRACT.termsContentSha256");
-    expect(rollback).toContain("APPROVED_ROLLBACK_LEGAL_CONTRACT.privacyContentSha256");
-    expect(rollback).toContain("APPROVED_ROLLBACK_LEGAL_CONTRACT.acceptanceCopySha256");
+    expect(rollback).toContain("LAUNCH_LEGAL_BINDING.termsContentSha256");
+    expect(rollback).toContain("LAUNCH_LEGAL_BINDING.privacyContentSha256");
+    expect(rollback).toContain("LAUNCH_LEGAL_BINDING.acceptanceCopySha256");
   });
 
   it("maps an atomic duplicate race to an operator conflict without exposing other database errors", () => {

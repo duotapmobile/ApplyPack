@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { APPROVED_ROLLBACK_LEGAL_CONTRACT } from "../rollback-legal-contract.mjs";
+import { LAUNCH_LEGAL_BINDING } from "../launch-legal-contract.mjs";
 
 function runCommand(command, args, stdin) {
   const result = spawnSync(command, args, {
@@ -55,14 +55,14 @@ select case when
   and exists (
     select 1 from public.ap_commerce_configuration
     where singleton
-      and terms_version='${APPROVED_ROLLBACK_LEGAL_CONTRACT.termsVersion}'
-      and terms_content_sha256='${APPROVED_ROLLBACK_LEGAL_CONTRACT.termsContentSha256}'
-      and privacy_version='${APPROVED_ROLLBACK_LEGAL_CONTRACT.privacyVersion}'
-      and privacy_content_sha256='${APPROVED_ROLLBACK_LEGAL_CONTRACT.privacyContentSha256}'
-      and legal_acceptance_copy_version='${APPROVED_ROLLBACK_LEGAL_CONTRACT.acceptanceCopyVersion}'
-      and legal_acceptance_copy_sha256='${APPROVED_ROLLBACK_LEGAL_CONTRACT.acceptanceCopySha256}'
-      and legal_content_canonicalization_version='${APPROVED_ROLLBACK_LEGAL_CONTRACT.contentCanonicalizationVersion}'
-      and legal_receipt_schema_version='${APPROVED_ROLLBACK_LEGAL_CONTRACT.receiptSchemaVersion}'
+      and terms_version='${LAUNCH_LEGAL_BINDING.termsVersion}'
+      and terms_content_sha256='${LAUNCH_LEGAL_BINDING.termsContentSha256}'
+      and privacy_version='${LAUNCH_LEGAL_BINDING.privacyVersion}'
+      and privacy_content_sha256='${LAUNCH_LEGAL_BINDING.privacyContentSha256}'
+      and legal_acceptance_copy_version='${LAUNCH_LEGAL_BINDING.acceptanceCopyVersion}'
+      and legal_acceptance_copy_sha256='${LAUNCH_LEGAL_BINDING.acceptanceCopySha256}'
+      and legal_content_canonicalization_version='${LAUNCH_LEGAL_BINDING.contentCanonicalizationVersion}'
+      and legal_receipt_schema_version='${LAUNCH_LEGAL_BINDING.receiptSchemaVersion}'
   )
   and exists (
     select 1 from pg_constraint

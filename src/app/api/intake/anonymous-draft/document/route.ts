@@ -1,3 +1,4 @@
+import { newIntakeRecoveryHold } from "@/lib/operations/protected-recovery-readiness";
 import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { anonymousDraftContext, anonymousDraftError } from "@/lib/drafts/anonymous-server";
@@ -18,6 +19,8 @@ export async function POST(request: Request) {
   if (!isSameOriginRequest(request)) return NextResponse.json({ error: "This upload request was rejected." }, { status: 403 });
   const context = await anonymousDraftContext();
   if (!context) return NextResponse.json({ error: "The saved draft is unavailable." }, { status: 404 });
+  const recoveryHold = await newIntakeRecoveryHold(context.admin);
+  if (recoveryHold) return recoveryHold;
   const rate = await consumeRateLimit({ request, scope: "anonymous_draft_document_upload", identity: context.capability.draftId, limit: 12, windowSeconds: 60 * 60 });
   if (!rate.configured || !rate.allowed) return NextResponse.json({ error: "A document cannot be uploaded right now." }, { status: rate.configured ? 429 : 503 });
   const contentLength = Number(request.headers.get("content-length"));

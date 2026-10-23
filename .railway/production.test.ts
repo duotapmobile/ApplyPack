@@ -19,20 +19,27 @@ test("production refuses staging, preview, other project and incomplete identiti
   }
   await assert.rejects(async () => staging(createRailwayContext({ ...context, command: "plan" }), undefined as never), /IDENTITY_MISMATCH/);
 });
-test("production pins both services to one full main SHA and keeps private maintenance credential scope", async () => {
+test("production pins services to one full main SHA and isolates maintenance and recovery credentials", async () => {
   await withEnvironment({ APPLYPACK_RAILWAY_LAUNCH_RELEASE_SHA: sha }, async () => {
     const graph = await production(createRailwayContext({ ...context, command: "plan" }), undefined as never);
     const services = graph.resources?.flat();
-    assert.equal(services?.length, 2);
+    assert.equal(services?.length, 3);
     const serialized = JSON.stringify(graph);
-    assert.equal((serialized.match(new RegExp(`"commitSha":"${sha}"`, "g")) || []).length, 2);
-    assert.equal((serialized.match(/"checkSuites":true/g) || []).length, 2);
-    assert.equal((serialized.match(/"branch":"main"/g) || []).length, 2);
+    assert.equal((serialized.match(new RegExp(`"commitSha":"${sha}"`, "g")) || []).length, 3);
+    assert.equal((serialized.match(/"checkSuites":true/g) || []).length, 3);
+    assert.equal((serialized.match(/"branch":"main"/g) || []).length, 3);
     assert.match(serialized, /ApplyPack-production-maintenance/);
     const maintenance = JSON.stringify(services?.[1]);
     assert.doesNotMatch(maintenance, /STRIPE_|SUPABASE_|AWS_|RESEND_/);
     assert.match(maintenance, /CRON_SECRET/);
     assert.match(maintenance, /\*\/15 \* \* \* \*/);
+    const recovery = JSON.stringify(services?.[2]);
+    assert.doesNotMatch(recovery, /STRIPE_|SUPABASE_|RESEND_|CRON_SECRET|APP_RECOVERY_RECEIPT_SECRET|"APP_AWS_RA_/);
+    assert.match(recovery, /APP_RECOVERY_READER_SECRET/);
+    assert.match(recovery, /APP_RECOVERY_COMPLETION_SECRET/);
+    assert.match(recovery, /APP_BACKUP_AWS_RA_PROFILE_ARN/);
+    assert.match(recovery, /\*\/5 \* \* \* \*/);
+    assert.match(recovery, /run-protected-recovery\.mjs/);
     assert.match(JSON.stringify(services?.[0]), /"APP_PAYMENT_MODE":\{"type":"literal","value":"live"\}/);
   });
 });

@@ -1,0 +1,95 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "ApplyPack production-only isolated network and sensitive-payload KMS foundation",
+  "Rules": {
+    "AccountMustBeApprovedProduction": {
+      "Assertions": [{ "Assert": { "Fn::Equals": [{ "Ref": "AWS::AccountId" }, "838445019912"] }, "AssertDescription": "The production account must match the approved target manifest." }]
+    },
+    "RegionMustBeUsEast1": {
+      "Assertions": [{ "Assert": { "Fn::Equals": [{ "Ref": "AWS::Region" }, "us-east-1"] }, "AssertDescription": "The production foundation is restricted to us-east-1." }]
+    }
+  },
+  "Resources": {
+    "ProductionVpc": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.85.0.0/16", "EnableDnsHostnames": true, "EnableDnsSupport": true, "InstanceTenancy": "default",
+        "Tags": [{ "Key": "Application", "Value": "ApplyPack" }, { "Key": "Environment", "Value": "production" }, { "Key": "ManagedBy", "Value": "CloudFormation" }]
+      }
+    },
+    "PrivateSubnetA": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "AvailabilityZone": { "Fn::Select": [0, { "Fn::GetAZs": "" }] }, "CidrBlock": "10.85.0.0/24", "MapPublicIpOnLaunch": false, "VpcId": { "Ref": "ProductionVpc" },
+        "Tags": [{ "Key": "Application", "Value": "ApplyPack" }, { "Key": "Environment", "Value": "production" }, { "Key": "ManagedBy", "Value": "CloudFormation" }]
+      }
+    },
+    "PrivateSubnetB": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "AvailabilityZone": { "Fn::Select": [1, { "Fn::GetAZs": "" }] }, "CidrBlock": "10.85.1.0/24", "MapPublicIpOnLaunch": false, "VpcId": { "Ref": "ProductionVpc" },
+        "Tags": [{ "Key": "Application", "Value": "ApplyPack" }, { "Key": "Environment", "Value": "production" }, { "Key": "ManagedBy", "Value": "CloudFormation" }]
+      }
+    },
+    "PrivateRouteTableA": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": { "VpcId": { "Ref": "ProductionVpc" }, "Tags": [{ "Key": "Application", "Value": "ApplyPack" }, { "Key": "Environment", "Value": "production" }, { "Key": "ManagedBy", "Value": "CloudFormation" }] }
+    },
+    "PrivateRouteTableB": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": { "VpcId": { "Ref": "ProductionVpc" }, "Tags": [{ "Key": "Application", "Value": "ApplyPack" }, { "Key": "Environment", "Value": "production" }, { "Key": "ManagedBy", "Value": "CloudFormation" }] }
+    },
+    "PrivateSubnetRouteTableAssociationA": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": { "RouteTableId": { "Ref": "PrivateRouteTableA" }, "SubnetId": { "Ref": "PrivateSubnetA" } }
+    },
+    "PrivateSubnetRouteTableAssociationB": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": { "RouteTableId": { "Ref": "PrivateRouteTableB" }, "SubnetId": { "Ref": "PrivateSubnetB" } }
+    },
+    "ProductionSensitivePayloadKey": {
+      "Type": "AWS::KMS::Key", "DeletionPolicy": "RetainExceptOnCreate", "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "Description": "ApplyPack production sensitive-payload envelope key", "Enabled": true, "EnableKeyRotation": true,
+        "KeySpec": "SYMMETRIC_DEFAULT", "KeyUsage": "ENCRYPT_DECRYPT", "MultiRegion": false, "Origin": "AWS_KMS", "PendingWindowInDays": 30,
+        "KeyPolicy": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "DelegateKeyAdministrationWithinAccount", "Effect": "Allow", "Principal": { "AWS": { "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:root" } },
+              "Action": ["kms:CancelKeyDeletion", "kms:CreateAlias", "kms:DeleteAlias", "kms:DescribeKey", "kms:DisableKey", "kms:DisableKeyRotation", "kms:EnableKey", "kms:EnableKeyRotation", "kms:GetKeyPolicy", "kms:GetKeyRotationStatus", "kms:ListResourceTags", "kms:PutKeyPolicy", "kms:ScheduleKeyDeletion", "kms:TagResource", "kms:UntagResource", "kms:UpdateAlias", "kms:UpdateKeyDescription"], "Resource": "*"
+            },
+            {
+              "Sid": "DelegateProductionPayloadUseWithinAccount", "Effect": "Allow", "Principal": { "AWS": { "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:root" } },
+              "Action": ["kms:Decrypt", "kms:Encrypt"], "Resource": "*",
+              "Condition": { "StringEquals": { "kms:EncryptionContext:application": "ApplyPack", "kms:EncryptionContext:deployment": "production" } }
+            },
+            {
+              "Sid": "DelegateKeyDescriptionWithinAccount", "Effect": "Allow", "Principal": { "AWS": { "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:root" } },
+              "Action": "kms:DescribeKey", "Resource": "*"
+            }
+          ]
+        },
+        "Tags": [{ "Key": "Application", "Value": "ApplyPack" }, { "Key": "Environment", "Value": "production" }, { "Key": "ManagedBy", "Value": "CloudFormation" }]
+      }
+    },
+    "ProductionSensitivePayloadAlias": {
+      "Type": "AWS::KMS::Alias",
+      "Properties": { "AliasName": "alias/applypack-production-sensitive-payloads", "TargetKeyId": { "Ref": "ProductionSensitivePayloadKey" } }
+    }
+  },
+  "Outputs": {
+    "AwsRegion": { "Value": { "Ref": "AWS::Region" } },
+    "DeploymentEnvironment": { "Value": "production" },
+    "VpcId": { "Value": { "Ref": "ProductionVpc" } },
+    "PrivateSubnetAId": { "Value": { "Ref": "PrivateSubnetA" } },
+    "PrivateSubnetBId": { "Value": { "Ref": "PrivateSubnetB" } },
+    "PrivateSubnetIds": { "Value": { "Fn::Join": [",", [{ "Ref": "PrivateSubnetA" }, { "Ref": "PrivateSubnetB" }]] } },
+    "PrivateRouteTableAId": { "Value": { "Ref": "PrivateRouteTableA" } },
+    "PrivateRouteTableBId": { "Value": { "Ref": "PrivateRouteTableB" } },
+    "PrivateRouteTableIds": { "Value": { "Fn::Join": [",", [{ "Ref": "PrivateRouteTableA" }, { "Ref": "PrivateRouteTableB" }]] } },
+    "KmsKeyArn": { "Value": { "Fn::GetAtt": ["ProductionSensitivePayloadKey", "Arn"] } },
+    "KmsKeyId": { "Value": { "Ref": "ProductionSensitivePayloadKey" } },
+    "KmsAliasName": { "Value": { "Ref": "ProductionSensitivePayloadAlias" } }
+  }
+}

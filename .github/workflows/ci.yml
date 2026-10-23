@@ -33,8 +33,10 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run validate:aws-document-worker
       - run: node --test scripts/report-staging-readiness.test.mjs scripts/assert-required-test-results.test.mjs
-      - run: node --test scripts/check-launch-recovery-strategy.test.mjs scripts/check-database-types.test.mjs
+      - run: node --test scripts/check-launch-recovery-strategy.test.mjs scripts/check-database-types.test.mjs scripts/run-windows-release-self-test.test.mjs scripts/production-aws-foundation.test.mjs
       - run: node --test scripts/verify-sandbox-launch-evidence.test.mjs
+      - name: Protected recovery credentials, copy, bootstrap, source, archive and read-only retention contracts
+        run: npm run test:protected-recovery
       - run: node --test scripts/test-maintenance-runner.test.mjs scripts/test-renderer-runtime.test.mjs scripts/railway-staging-iac-cutover.test.mjs
       - run: npm run build
       - name: Record tested checkout identity (PR runs may be synthetic merge commits)
@@ -69,6 +71,8 @@ jobs:
           npm.cmd run test:staging-manual-launch-migrations -- --reporter=default --reporter=json --outputFile=staging-migration-results.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/assert-required-test-results.mjs staging-migration-results.json
+      - name: Verify networkless self-test launcher safeguards
+        run: node --test scripts/run-windows-release-self-test.test.mjs
       - name: Run AWS staging foundation control self-test
         shell: pwsh
         run: .\scripts\test-aws-staging-foundation-controls.ps1
@@ -76,7 +80,7 @@ jobs:
       - run: npm run test:rehearsal-migration
       - name: Validate084-to086 staged launch migration controls
         shell: pwsh
-        run: .\scripts\apply-staging-rehearsal-migration.ps1 -Mode SelfTest -TargetSchemaVersion 202610230086
+        run: node scripts/run-windows-release-self-test.mjs rehearsal-086
       - run: npm run test:staging-schema084-backup
       - run: npm run test:production-migration
       - run: npm run test:production-backup
@@ -105,6 +109,23 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Use the canonical Ubuntu archive for browser dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The runner's Azure mirror stalled before tests could start. Keep the
+          # same signed Ubuntu suites and packages while using its main archive.
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          paths = [Path('/etc/apt/sources.list'), *Path('/etc/apt/sources.list.d').glob('*.sources'), *Path('/etc/apt/sources.list.d').glob('*.list')]
+          for path in paths:
+              if not path.is_file():
+                  continue
+              before = path.read_text()
+              after = before.replace('http://azure.archive.ubuntu.com/ubuntu', 'https://archive.ubuntu.com/ubuntu').replace('https://azure.archive.ubuntu.com/ubuntu', 'https://archive.ubuntu.com/ubuntu')
+              if after != before:
+                  path.write_text(after)
+          PY
       - run: npx playwright install --with-deps ${{ matrix.browser }}
       - run: npm run test:e2e -- --project=${{ matrix.project }} --reporter=list,json
         env:

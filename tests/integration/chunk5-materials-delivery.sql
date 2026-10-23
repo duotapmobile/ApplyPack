@@ -1,5 +1,11 @@
 begin;
 
+-- These behavioral fixtures also run against the explicit historical085 target.
+-- Read its current immutable binding; never force a retired privacy version onto086.
+select set_config('applypack_test.privacy_version',privacy_version,true),
+       set_config('applypack_test.privacy_sha256',privacy_content_sha256,true)
+from public.ap_commerce_configuration where singleton;
+
 create function pg_temp.assert_true(value boolean, failure_message text)
 returns void language plpgsql as $$
 begin
@@ -488,7 +494,7 @@ insert into public.ap_releases(
   'bc500000-0000-4000-8000-000000000001','15000000-0000-4000-8000-000000000001',
   '25000000-0000-4000-8000-000000000001','bb500000-0000-4000-8000-000000000001',
   'MATERIAL_PAIR',clock_timestamp()-interval '1 minute',clock_timestamp()+interval '23 hours 40 minutes',
-  '{"pricingVersion":"manual-launch-pricing-2026-10-02-v2","termsVersion":"manual-launch-terms-2026-10-02-v2","privacyVersion":"privacy-v1"}',
+  jsonb_build_object('pricingVersion','manual-launch-pricing-2026-10-02-v2','termsVersion','manual-launch-terms-2026-10-02-v2','privacyVersion',current_setting('applypack_test.privacy_version')),
   '15000000-0000-4000-8000-000000000003'
 );
 do $$

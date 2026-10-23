@@ -3,7 +3,7 @@ import { canonicalSha256, CANONICALIZATION_VERSION } from "@/lib/domain/foundati
 import { LEGAL_ACCEPTANCE_COPY_VERSION, LEGAL_ACCEPTANCE_PRESENTATION } from "@/lib/legal/presentation";
 
 export const CURRENT_TERMS_VERSION = "manual-launch-terms-2026-10-02-v2";
-export const CURRENT_PRIVACY_VERSION = "privacy-v1";
+export const CURRENT_PRIVACY_VERSION = "privacy-2026-10-23-v2";
 export const LEGAL_RECEIPT_SCHEMA_VERSION = "applypack-legal-content-receipt-v1";
 
 function visibleLegalContent(page: PublicPage) {

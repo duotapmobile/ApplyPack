@@ -19,7 +19,7 @@ jobs:
         with:
           node-version: 22
       - name: Offline Roles Anywhere contracts
-        run: node --test scripts/test-aws-roles-anywhere.mjs scripts/assert-launch-image-scan.test.mjs
+        run: node --test scripts/test-aws-roles-anywhere.mjs scripts/test-aws-backup-workload-credentials.mjs scripts/assert-launch-image-scan.test.mjs scripts/assert-worker-image-scan.test.mjs
       - name: Verify signed immutable runtime base
         run: |
           set -euo pipefail
@@ -81,4 +81,74 @@ jobs:
             launch-image-scanner-version.txt
             launch-image-vulnerabilities.json
             launch-image-scan-coverage.json
+          if-no-files-found: error
+
+  document-worker-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Worker profile isolation and failure cleanup
+        run: python3 scripts/test-document-worker-profile.py
+      - name: Build the isolated document worker from this checkout
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD > worker-image-tested-commit.txt
+          docker buildx build --platform linux/amd64 --provenance=false --load \
+            --file infra/aws/document-worker/Dockerfile \
+            --label "org.opencontainers.image.revision=$(cat worker-image-tested-commit.txt)" \
+            --tag applypack-document-worker:ci infra/aws/document-worker 2>&1 | tee worker-image-build.log
+          docker image inspect applypack-document-worker:ci > worker-image-identity.json
+          docker run --rm --pull never --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --user 65534:65534 --entrypoint /usr/bin/python3 \
+            applypack-document-worker:ci -c 'import awslambdaric.bootstrap,boto3,importlib.metadata as m,json; print(json.dumps(sorted([{"name": d.metadata["Name"], "version": d.version} for d in m.distributions(path=["/opt/python"])], key=lambda d:d["name"])))' \
+            > worker-image-python-inventory.json
+      - name: Render and extract synthetic documents in the isolated worker image
+        run: |
+          set -euo pipefail
+          # Both an arbitrary UID and the image's nobody account must work.
+          # Lambda's actual runtime/network/KMS behavior is verified later.
+          for worker_user in 424242:424242 65534:65534; do
+            printf 'WORKER_USER=%s\n' "$worker_user" | tee -a worker-image-smoke.log
+            docker run --rm --pull never --network none --read-only \
+              --tmpfs /tmp:rw,noexec,nosuid,nodev,size=512m --shm-size 16m \
+              --cap-drop ALL --security-opt no-new-privileges --user "$worker_user" \
+              --env PYTHONDONTWRITEBYTECODE=1 --entrypoint /usr/bin/python3 \
+              applypack-document-worker:ci -c 'import os,pwd,runpy; assert os.getuid() in (424242,65534); assert any(p.pw_uid == os.getuid() for p in pwd.getpwall()) == (os.getuid() == 65534); runpy.run_path("/var/task/offline-smoke.py", run_name="__main__")' \
+              2>&1 | tee -a worker-image-smoke.log
+          done
+      - name: Install checksum-pinned worker image scanner
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/trivy_0.76.1_Linux-64bit.tar.gz"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 2 \
+            https://github.com/aquasecurity/trivy/releases/download/v0.76.1/trivy_0.76.1_Linux-64bit.tar.gz \
+            --output "$archive"
+          printf '%s  %s\n' c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0 "$archive" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/applypack-trivy"
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP/applypack-trivy" trivy
+          "$RUNNER_TEMP/applypack-trivy/trivy" --version > worker-image-scanner-version.txt
+      - name: Reject high and critical findings with OS and Python coverage
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/applypack-trivy/trivy" image --image-src docker --scanners vuln --disable-telemetry --skip-version-check \
+            --list-all-pkgs --severity HIGH,CRITICAL --ignorefile /dev/null --exit-code 1 --timeout 10m \
+            --format json --output worker-image-vulnerabilities.json applypack-document-worker:ci
+          node scripts/assert-worker-image-scan.mjs worker-image-vulnerabilities.json worker-image-python-inventory.json > worker-image-scan-coverage.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: document-worker-image-local-contracts
+          path: |
+            worker-image-tested-commit.txt
+            worker-image-build.log
+            worker-image-identity.json
+            worker-image-python-inventory.json
+            worker-image-smoke.log
+            worker-image-scanner-version.txt
+            worker-image-vulnerabilities.json
+            worker-image-scan-coverage.json
           if-no-files-found: error

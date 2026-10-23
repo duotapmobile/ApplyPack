@@ -34,4 +34,25 @@ select public.ap_record_search_refund_result_verified('86ff0000-0000-4000-8000-0
   'pi_Historical086',1899,'USD','86ff0000-0000-4000-8000-000000000031','evt_Historical086',null,repeat('c',64),clock_timestamp(),'refund.updated');
 select pg_temp.assert_upgrade((select count(*)=1 from public.ap_outbox_messages where deduplication_key='refund-state:86ff0000-0000-4000-8000-000000000031:SUCCEEDED'),
   'historical refund replay duplicated delivery');
+-- The forward disclosure never rewrites a historical customer's acceptance.
+select pg_temp.assert_upgrade((select to_jsonb(receipt)=(select value from legal_receipt_before_086)
+  and receipt.privacy_version='privacy-v1'
+  from public.ap_snapshot_legal_content_receipts receipt where snapshot_id='86300000-0000-4000-8000-000000000001'),
+  '086 changed a previously accepted privacy content receipt');
+select pg_temp.assert_upgrade((select privacy_version='privacy-2026-10-23-v2'
+  and privacy_content_sha256='9fa809f25bf55a03fab529f991b1d5870849fcc2294c08b324f1d2cf0187ea16'
+  from public.ap_commerce_configuration where singleton), '086 current privacy disclosure binding is wrong');
+select pg_temp.assert_upgrade(not public.ap_has_current_content_bound_legal_acceptance(
+  '86000000-0000-4000-8000-000000000001','86300000-0000-4000-8000-000000000001'),
+  'pre-086 acceptance improperly authorizes a new current purchase');
+do $$ begin
+  perform public.ap_upgrade_completed_intake_legal_acceptance(
+    '86000000-0000-4000-8000-000000000001',repeat('a',64),
+    'manual-launch-terms-2026-10-02-v2','eeec6398df29e6bd831aa1130453762927a467ee1b7a8d98b3659e07b8069d8c',
+    'privacy-v1','9832a38d7fe5bbff04622a1e1a34e09febd44156dbf78eec4ea975283c1e92e9',
+    'applypack-legal-acceptance-copy-2026-10-04-v1','0d687e93a090a536b90b1508cf61746cb0167d464a951d9ae5cfe0739d7bd283',
+    'applypack-c14n-v1','applypack-legal-content-receipt-v1',repeat('9',64));
+  raise exception 'old_privacy_accepted_as_current';
+exception when others then if sqlerrm<>'current_legal_versions_unavailable' then raise; end if; end $$;
+
 select 'SANDBOX_ACTIVATION_086_UPGRADE_VERIFY_OK';

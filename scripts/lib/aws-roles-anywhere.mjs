@@ -125,7 +125,8 @@ export function createRefreshingProvider(refresh, now = Date.now) {
   };
 }
 
-async function runHelper(configuration, material) {
+// Shared execution primitive. Workload-specific entry points validate their fixed identity first.
+export async function runRolesAnywhereHelper(configuration, material) {
   if (process.platform !== "linux" || process.arch !== "x64" || process.getuid() === 0) denied("runtime_platform_unsupported");
   const executable = realpathSync(configuration.helperPath);
   const info = lstatSync(configuration.helperPath);
@@ -176,7 +177,7 @@ export function awsWorkloadCredentials(environment = process.env) {
   if (!providers.has(cacheKey)) providers.set(cacheKey, createRefreshingProvider(async () => {
     const material = inspectCertificateMaterial(environment, configuration);
     try {
-      const output = await runHelper(configuration, material);
+      const output = await runRolesAnywhereHelper(configuration, material);
       const credentials = parseTemporaryCredentials(output);
       // Explicit credentials and endpoint prevent recursive/default-chain identity lookup.
       const { STSClient, GetCallerIdentityCommand } = await import("@aws-sdk/client-sts");

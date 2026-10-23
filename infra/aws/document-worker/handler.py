@@ -116,7 +116,9 @@ def _probe_document(data, limits):
         pdf = Path(work) / "probe.pdf"
         source.write_bytes(data)
         subprocess.run([
-            os.environ.get("LIBREOFFICE_BIN", "libreoffice"), "--headless", "--nologo", "--nodefault", "--nofirststartwizard",
+            os.environ.get("LIBREOFFICE_BIN", "libreoffice"),
+            "-env:UserInstallation=" + (Path(work) / "libreoffice-profile").resolve().as_uri(),
+            "--headless", "--nologo", "--nodefault", "--nofirststartwizard",
             "--convert-to", "pdf", "--outdir", work, str(source)
         ], capture_output=True, timeout=max(1, limits["milliseconds"] / 1000), check=True,
             env={**os.environ, "HOME": work})
@@ -202,7 +204,9 @@ def _render_docx(data, event, limits):
         environment = {**os.environ, "HOME": work}
         remaining = deadline - time.monotonic()
         subprocess.run([
-            os.environ.get("LIBREOFFICE_BIN", "libreoffice"), "--headless", "--nologo", "--nodefault", "--nolockcheck", "--norestore",
+            os.environ.get("LIBREOFFICE_BIN", "libreoffice"),
+            "-env:UserInstallation=" + (Path(work) / "libreoffice-profile").resolve().as_uri(),
+            "--headless", "--nologo", "--nodefault", "--nolockcheck", "--norestore",
             "--convert-to", 'pdf:writer_pdf_Export:{"UseTaggedPDF":{"type":"boolean","value":"true"}}',
             "--outdir", work, str(source),
         ], capture_output=True, text=True, timeout=max(0.1, remaining), check=True, env=environment)

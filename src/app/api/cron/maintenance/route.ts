@@ -375,6 +375,7 @@ export async function POST(request: Request) {
     recoveredStorageObjects,
     staleJobs: Number(staleJobs || 0),
     alerts,
+    protectedRecoveryAlert: beforeDiagnostic.protectedRecoveryAlert,
     workflow,
     feasibility,
     fileScans,

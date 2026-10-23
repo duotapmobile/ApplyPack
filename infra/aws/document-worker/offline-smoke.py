@@ -50,9 +50,11 @@ with tempfile.TemporaryDirectory(prefix="applypack-worker-smoke-") as work:
     profile = Path(work) / "profile"
     profile.mkdir()
     conversion = subprocess.run(
-        [os.environ.get("LIBREOFFICE_BIN", "libreoffice"), "--headless", "--convert-to", "docx", "--outdir", work, str(odt)],
+        [os.environ.get("LIBREOFFICE_BIN", "libreoffice"), "-env:UserInstallation=" + profile.resolve().as_uri(),
+         "--headless", "--convert-to", "docx", "--outdir", work, str(odt)],
         check=True,
         capture_output=True,
+        timeout=30,
         env={**os.environ, "HOME": str(profile)},
     )
     source = Path(work) / "synthetic.docx"
