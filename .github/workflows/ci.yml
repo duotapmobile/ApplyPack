@@ -52,7 +52,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [desktop, firefox, webkit, mobile-webkit, mobile]
+        include:
+          - project: desktop
+            browser: chromium
+          - project: firefox
+            browser: firefox
+          - project: webkit
+            browser: webkit
+          - project: mobile-webkit
+            browser: webkit
+          - project: mobile
+            browser: chromium
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -60,7 +70,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
       - run: npm run test:e2e -- --project=${{ matrix.project }}
       - uses: actions/upload-artifact@v4
         if: always()
