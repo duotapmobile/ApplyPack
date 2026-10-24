@@ -1152,7 +1152,8 @@ function Invoke-Restore {
         for ($attempt = 0; $attempt -lt 45; $attempt += 1) {
             try {
                 [void](Invoke-SafeNativeText -FileName $DockerExecutable -Arguments @(
-                    'exec', $containerName, 'pg_isready', '--username', 'postgres', '--dbname', 'postgres'
+                    # The temporary init server is socket-only and will be stopped.
+                    'exec', $containerName, 'pg_isready', '--host', '127.0.0.1', '--username', 'postgres', '--dbname', 'postgres'
                 ) -FailureCode 'RESTORE_CONTAINER_NOT_READY')
                 $ready = $true
                 break

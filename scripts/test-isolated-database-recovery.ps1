@@ -24,7 +24,8 @@ try {
     $ready = $false
     for ($attempt=0; $attempt -lt 45; $attempt++) {
         try {
-            [void](Invoke-SafeNativeText -FileName $DockerExecutable -Arguments @('exec',$container,'pg_isready','-U','postgres'))
+            # Wait for the final server, not the entrypoint's temporary Unix socket.
+            [void](Invoke-SafeNativeText -FileName $DockerExecutable -Arguments @('exec',$container,'pg_isready','--host','127.0.0.1','-U','postgres'))
             $ready = $true
             break
         } catch { Start-Sleep -Milliseconds 1000 }
