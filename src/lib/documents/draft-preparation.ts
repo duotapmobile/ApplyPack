@@ -61,8 +61,8 @@ export function prepareMaterialDraft(input: {
     segments: claims.map((claim) => ({ text: claim.text, candidateFactIds: claim.candidateFactIds! })),
   }));
   const words = coverLetterParagraphs.map((claim) => claim.text).join(" ").trim().split(/\s+/).length;
-  if (words < DOCUMENT_REQUIREMENTS.coverLetter.supportedWordMinimum || words > DOCUMENT_REQUIREMENTS.coverLetter.supportedWordMaximum) {
-    throw new Error("Confirmed cover-letter evidence must support 250–350 words without padding. Review the passages before drafting.");
+  if (words > DOCUMENT_REQUIREMENTS.coverLetter.supportedWordMaximum) {
+    throw new Error("Confirmed cover-letter evidence exceeds the normal 350-word range. Shorten it instead of padding or compressing the layout.");
   }
   const pointCount = new Set(selected.flatMap((claim) => claim.candidateFactIds || [])).size;
   if (pointCount < 2 || pointCount > 4) throw new Error("The letter needs two to four distinct confirmed evidence points.");
@@ -81,7 +81,7 @@ export function prepareMaterialDraft(input: {
   };
   validateMaterialClaims({ ...draft, contact: { displayName: "", email: "", phone: "", cityState: "", candidateFactIds: [] },
     job: input.job, finalVersionAt: new Date(0).toISOString(), careerBreak: { choice: input.careerBreakChoice, mentionInCoverLetter: false, candidateFactIds: [] },
-    rules: { outputFormat: "DOCX", resumePageLimit: 1 } }, facts, input.requirements);
+    rules: { outputFormat: "DOCX", resumePageLimit: null } }, facts, input.requirements);
   return draft;
 }
 

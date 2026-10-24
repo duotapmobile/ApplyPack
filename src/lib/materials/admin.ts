@@ -1,7 +1,11 @@
 import "server-only";
 
 import type { MaterialStaffLine } from "@/components/admin/chunk5-material-staff-queue";
-import { isCurrentDocumentGeneratorVersion } from "@/lib/documents/requirements";
+import {
+  isCurrentDocumentGeneratorVersion,
+  isSupportedDocumentGeneratorVersion,
+  supportedDocumentFontFamily,
+} from "@/lib/documents/requirements";
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
@@ -40,7 +44,7 @@ export async function loadMaterialStaffLines(admin: AdminClient): Promise<Materi
   const files = filesResult.data || [];
   const fileIds = files.map((file) => file.id);
   const qualityResult = fileIds.length ? await admin.from("ap_artifact_quality_reviews")
-    .select("file_version_id,automated_passed_at,content_approved_at,visual_approved_at,renderer_identity,arial_resolved,invalidated_at")
+    .select("file_version_id,automated_passed_at,content_approved_at,visual_approved_at,renderer_identity,document_font_family,document_font_resolved,invalidated_at")
     .in("file_version_id", fileIds) : { data: [], error: null };
   if (qualityResult.error) throw new Error("material_staff_quality_unavailable");
   const jobs = new Map((jobsResult.data || []).map((job) => [job.id, job]));
@@ -55,10 +59,11 @@ export async function loadMaterialStaffLines(admin: AdminClient): Promise<Materi
     const regeneration = (regenerationsResult.data || []).filter((candidate) => candidate.material_line_id === line.id)
       .sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))[0];
     const lineFiles = artifacts.filter((artifact) => artifact.material_line_id === line.id
-      && isCurrentDocumentGeneratorVersion(artifact.generator_version)).flatMap((artifact) => {
+      && isSupportedDocumentGeneratorVersion(artifact.generator_version)).flatMap((artifact) => {
       const file = files.find((candidate) => candidate.artifact_id === artifact.id && Number(candidate.version) === Number(artifact.current_file_version));
       const quality = file ? qualities.get(file.id) : null;
       if (!file || !quality || file.superseded_at || file.downloads_revoked_at || quality.invalidated_at) return [];
+      const expectedFontFamily = supportedDocumentFontFamily(artifact.generator_version);
       return [{
         artifactType: artifact.artifact_type,
         fileVersionId: file.id,
@@ -68,7 +73,11 @@ export async function loadMaterialStaffLines(admin: AdminClient): Promise<Materi
         contentApproved: Boolean(quality.content_approved_at),
         visualApproved: Boolean(quality.visual_approved_at),
         rendererIdentity: quality.renderer_identity,
-        arialResolved: Boolean(quality.arial_resolved),
+        fontFamily: quality.document_font_family || "Unverified",
+        fontResolved: Boolean(expectedFontFamily && quality.document_font_resolved
+          && quality.document_font_family === expectedFontFamily),
+        currentStandard: isCurrentDocumentGeneratorVersion(artifact.generator_version),
+        referenceRegenerationId: artifact.reference_regeneration_id,
       }];
     });
     return {

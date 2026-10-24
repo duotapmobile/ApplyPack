@@ -1,3 +1,4 @@
+import { newIntakeRecoveryHold } from "@/lib/operations/protected-recovery-readiness";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -10,6 +11,8 @@ export async function POST(request: Request) {
   if (!isSameOriginRequest(request)) return NextResponse.json({ error: "This retry request was rejected." }, { status: 403 });
   const context = await anonymousDraftContext();
   if (!context) return NextResponse.json({ error: "The saved draft is unavailable." }, { status: 404 });
+  const recoveryHold = await newIntakeRecoveryHold(context.admin);
+  if (recoveryHold) return recoveryHold;
   const rate = await consumeRateLimit({ request, scope: "anonymous_document_extraction_retry", identity: context.capability.draftId, limit: 6, windowSeconds: 3600 });
   if (!rate.configured || !rate.allowed) return NextResponse.json({ error: "Document retry is temporarily unavailable." }, { status: rate.configured ? 429 : 503 });
   const parsed = schema.safeParse(await request.json().catch(() => null));

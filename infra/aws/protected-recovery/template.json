@@ -1,0 +1,93 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "ApplyPack production durable private recovery archive and separate writer, independent recovery, and retention identities. No network, paid CA, database, or temporary worker resources.",
+  "Parameters": {
+    "EnableWriter": { "Type": "String", "AllowedValues": ["false", "true"], "Default": "false" },
+    "EnableRetention": { "Type": "String", "AllowedValues": ["false", "true"], "Default": "false" },
+    "ProductionTrustAnchorArn": { "Type": "String", "AllowedPattern": "^arn:aws:rolesanywhere:us-east-1:838445019912:trust-anchor/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$", "Description": "Already verified production public-CA trust anchor; its private key remains in independent offline custody." },
+    "IndependentRecoveryPrincipalArn": { "Type": "String", "AllowedPattern": "^arn:aws:iam::838445019912:user/[A-Za-z0-9+=,.@_/-]{1,128}$", "Description": "Verified owner recovery IAM user, independently recoverable after loss of the original machine. MFA required. Never the Railway writer or staging operator." }
+  },
+  "Rules": {
+    "ExactProductionTarget": { "Assertions": [
+      { "Assert": { "Fn::Equals": [{ "Ref": "AWS::AccountId" }, "838445019912"] }, "AssertDescription": "Only the verified ApplyPack account is allowed." },
+      { "Assert": { "Fn::Equals": [{ "Ref": "AWS::Region" }, "us-east-1"] }, "AssertDescription": "Only the reviewed archive region is allowed." },
+      { "Assert": { "Fn::Not": [{ "Fn::Equals": [{ "Ref": "IndependentRecoveryPrincipalArn" }, "arn:aws:iam::838445019912:user/applypack-staging-operator"] }] }, "AssertDescription": "Recovery must use independent access, not the existing staging operator identity." }
+    ] }
+  },
+  "Conditions": { "WriterEnabled": { "Fn::Equals": [{ "Ref": "EnableWriter" }, "true"] }, "RetentionEnabled": { "Fn::Equals": [{ "Ref": "EnableRetention" }, "true"] } },
+  "Resources": {
+    "ArchiveKey": {
+      "Type": "AWS::KMS::Key", "DeletionPolicy": "Retain", "UpdateReplacePolicy": "Retain",
+      "Properties": { "Description": "ApplyPack production protected recovery only", "EnableKeyRotation": true, "PendingWindowInDays": 30,
+        "KeyPolicy": { "Version": "2012-10-17", "Statement": [{ "Sid": "AccountAdministrationAndScopedIamDelegation", "Effect": "Allow",
+          "Principal": { "AWS": "arn:aws:iam::838445019912:root" }, "Action": "kms:*", "Resource": "*" }] },
+        "Tags": [{ "TagKey": "Application", "TagValue": "ApplyPack" }, { "TagKey": "Environment", "TagValue": "production" }, { "TagKey": "Purpose", "TagValue": "protected-recovery" }] }
+    },
+    "ArchiveKeyAlias": { "Type": "AWS::KMS::Alias", "Properties": { "AliasName": "alias/applypack-production-protected-recovery", "TargetKeyId": { "Ref": "ArchiveKey" } } },
+    "ArchiveBucket": {
+      "Type": "AWS::S3::Bucket", "DeletionPolicy": "Retain", "UpdateReplacePolicy": "Retain",
+      "Properties": { "BucketName": "applypack-production-protected-recovery-838445019912",
+        "VersioningConfiguration": { "Status": "Enabled" },
+        "OwnershipControls": { "Rules": [{ "ObjectOwnership": "BucketOwnerEnforced" }] },
+        "PublicAccessBlockConfiguration": { "BlockPublicAcls": true, "BlockPublicPolicy": true, "IgnorePublicAcls": true, "RestrictPublicBuckets": true },
+        "BucketEncryption": { "ServerSideEncryptionConfiguration": [{ "BucketKeyEnabled": false,
+          "ServerSideEncryptionByDefault": { "SSEAlgorithm": "aws:kms", "KMSMasterKeyID": { "Fn::GetAtt": ["ArchiveKey", "Arn"] } } }] },
+        "LifecycleConfiguration": { "Rules": [{ "Id": "AbortIncompleteMultipartOnly", "Status": "Enabled", "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 1 } }] },
+        "Tags": [{ "Key": "Application", "Value": "ApplyPack" }, { "Key": "Environment", "Value": "production" }, { "Key": "Purpose", "Value": "protected-recovery" }] }
+    },
+    "ArchiveBucketPolicy": { "Type": "AWS::S3::BucketPolicy", "Properties": { "Bucket": { "Ref": "ArchiveBucket" }, "PolicyDocument": {
+      "Version": "2012-10-17", "Statement": [
+        { "Sid": "TlsOnly", "Effect": "Deny", "Principal": "*", "Action": "s3:*", "Resource": [{ "Fn::GetAtt": ["ArchiveBucket", "Arn"] }, { "Fn::Sub": "${ArchiveBucket.Arn}/*" }], "Condition": { "Bool": { "aws:SecureTransport": "false" } } },
+        { "Sid": "ExactKmsEncryption", "Effect": "Deny", "Principal": "*", "Action": "s3:PutObject", "Resource": { "Fn::Sub": "${ArchiveBucket.Arn}/*" }, "Condition": { "StringNotEquals": { "s3:x-amz-server-side-encryption": "aws:kms" } } },
+        { "Sid": "ExactArchiveKey", "Effect": "Deny", "Principal": "*", "Action": "s3:PutObject", "Resource": { "Fn::Sub": "${ArchiveBucket.Arn}/*" }, "Condition": { "StringNotEquals": { "s3:x-amz-server-side-encryption-aws-kms-key-id": { "Fn::GetAtt": ["ArchiveKey", "Arn"] } } } }
+      ] } } },
+    "WriterBoundary": { "Type": "AWS::IAM::ManagedPolicy", "Properties": { "ManagedPolicyName": "applypack-production-recovery-writer-boundary", "Path": "/applypack/production/",
+      "PolicyDocument": { "Version": "2012-10-17", "Statement": [
+        { "Effect": "Allow", "Action": ["s3:PutObject"], "Resource": [
+          { "Fn::Sub": "${ArchiveBucket.Arn}/objects/customer-source-documents/*" }, { "Fn::Sub": "${ArchiveBucket.Arn}/objects/customer-deliveries/*" },
+          { "Fn::Sub": "${ArchiveBucket.Arn}/objects/operator-drafts/*" }, { "Fn::Sub": "${ArchiveBucket.Arn}/objects/operator-render-previews/*" }, { "Fn::Sub": "${ArchiveBucket.Arn}/manifests/*" }] },
+        { "Effect": "Allow", "Action": ["s3:GetObject", "s3:GetObjectVersion"], "Resource": { "Fn::Sub": "${ArchiveBucket.Arn}/manifests/*" } },
+        { "Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": { "Fn::GetAtt": ["ArchiveBucket", "Arn"] }, "Condition": { "StringLike": { "s3:prefix": "manifests/*" } } },
+        { "Effect": "Allow", "Action": ["kms:GenerateDataKey"], "Resource": { "Fn::GetAtt": ["ArchiveKey", "Arn"] }, "Condition": { "StringEquals": { "kms:ViaService": "s3.us-east-1.amazonaws.com", "kms:CallerAccount": "838445019912" }, "StringLike": { "kms:EncryptionContext:aws:s3:arn": [{ "Fn::Sub": "${ArchiveBucket.Arn}/objects/*" }, { "Fn::Sub": "${ArchiveBucket.Arn}/manifests/*" }] } } },
+        { "Effect": "Allow", "Action": ["kms:Decrypt"], "Resource": { "Fn::GetAtt": ["ArchiveKey", "Arn"] }, "Condition": { "StringEquals": { "kms:ViaService": "s3.us-east-1.amazonaws.com", "kms:CallerAccount": "838445019912" }, "StringLike": { "kms:EncryptionContext:aws:s3:arn": { "Fn::Sub": "${ArchiveBucket.Arn}/manifests/*" } } } }
+      ] } } },
+    "WriterRole": { "Type": "AWS::IAM::Role", "Properties": { "RoleName": "applypack-production-recovery-writer", "Path": "/applypack/production/", "MaxSessionDuration": 3600,
+      "PermissionsBoundary": { "Ref": "WriterBoundary" }, "ManagedPolicyArns": [{ "Ref": "WriterBoundary" }],
+      "AssumeRolePolicyDocument": { "Version": "2012-10-17", "Statement": [{ "Effect": "Allow", "Principal": { "Service": "rolesanywhere.amazonaws.com" }, "Action": ["sts:AssumeRole", "sts:TagSession", "sts:SetSourceIdentity"],
+        "Condition": { "StringEquals": { "aws:SourceAccount": "838445019912", "aws:PrincipalTag/x509Subject/CN": "applypack-production-recovery-writer" }, "ArnEquals": { "aws:SourceArn": { "Ref": "ProductionTrustAnchorArn" } } } }] },
+      "Tags": [{ "Key": "Application", "Value": "ApplyPack" }, { "Key": "Environment", "Value": "production" }] } },
+    "WriterProfile": { "Type": "AWS::RolesAnywhere::Profile", "Properties": { "Name": "applypack-production-recovery-writer", "Enabled": { "Fn::If": ["WriterEnabled", true, false] },
+      "DurationSeconds": 3600, "AcceptRoleSessionName": false, "RoleArns": [{ "Fn::GetAtt": ["WriterRole", "Arn"] }],
+      "Tags": [{ "Key": "Application", "Value": "ApplyPack" }, { "Key": "Environment", "Value": "production" }] } },
+    "RecoveryBoundary": { "Type": "AWS::IAM::ManagedPolicy", "Properties": { "ManagedPolicyName": "applypack-production-recovery-reader-boundary", "Path": "/applypack/production/", "PolicyDocument": {
+      "Version": "2012-10-17", "Statement": [
+        { "Effect": "Allow", "Action": ["s3:ListBucket", "s3:ListBucketVersions", "s3:GetBucketVersioning", "s3:GetEncryptionConfiguration"], "Resource": { "Fn::GetAtt": ["ArchiveBucket", "Arn"] } },
+        { "Effect": "Allow", "Action": ["s3:GetObject", "s3:GetObjectVersion"], "Resource": { "Fn::Sub": "${ArchiveBucket.Arn}/*" } },
+        { "Effect": "Allow", "Action": ["kms:Decrypt"], "Resource": { "Fn::GetAtt": ["ArchiveKey", "Arn"] }, "Condition": { "StringEquals": { "kms:ViaService": "s3.us-east-1.amazonaws.com", "kms:CallerAccount": "838445019912" }, "StringLike": { "kms:EncryptionContext:aws:s3:arn": { "Fn::Sub": "${ArchiveBucket.Arn}/*" } } } }
+      ] } } },
+    "RecoveryRole": { "Type": "AWS::IAM::Role", "Properties": { "RoleName": "applypack-production-recovery-reader", "Path": "/applypack/production/", "MaxSessionDuration": 3600,
+      "PermissionsBoundary": { "Ref": "RecoveryBoundary" }, "ManagedPolicyArns": [{ "Ref": "RecoveryBoundary" }],
+      "AssumeRolePolicyDocument": { "Version": "2012-10-17", "Statement": [{ "Effect": "Allow", "Principal": { "AWS": { "Ref": "IndependentRecoveryPrincipalArn" } }, "Action": "sts:AssumeRole", "Condition": { "Bool": { "aws:MultiFactorAuthPresent": "true" }, "NumericLessThanEquals": { "aws:MultiFactorAuthAge": "900" } } }] } } },
+    "RetentionBoundary": { "Type": "AWS::IAM::ManagedPolicy", "Properties": { "ManagedPolicyName": "applypack-production-recovery-retention-boundary", "Path": "/applypack/production/", "PolicyDocument": {
+      "Version": "2012-10-17", "Statement": [
+        { "Effect": "Allow", "Action": ["s3:ListBucketVersions"], "Resource": { "Fn::GetAtt": ["ArchiveBucket", "Arn"] }, "Condition": { "StringLike": { "s3:prefix": ["objects/*", "manifests/*"] } } },
+        { "Effect": "Allow", "Action": ["s3:DeleteObjectVersion"], "Resource": [{ "Fn::Sub": "${ArchiveBucket.Arn}/objects/*" }, { "Fn::Sub": "${ArchiveBucket.Arn}/manifests/*" }] }
+      ] } } },
+    "RetentionRole": { "Type": "AWS::IAM::Role", "Properties": { "RoleName": "applypack-production-recovery-retention", "Path": "/applypack/production/", "MaxSessionDuration": 3600,
+      "PermissionsBoundary": { "Ref": "RetentionBoundary" }, "ManagedPolicyArns": [{ "Ref": "RetentionBoundary" }],
+      "AssumeRolePolicyDocument": { "Version": "2012-10-17", "Statement": [{ "Effect": "Allow", "Principal": { "Service": "rolesanywhere.amazonaws.com" }, "Action": ["sts:AssumeRole", "sts:TagSession", "sts:SetSourceIdentity"],
+        "Condition": { "StringEquals": { "aws:SourceAccount": "838445019912", "aws:PrincipalTag/x509Subject/CN": "applypack-production-recovery-retention" }, "ArnEquals": { "aws:SourceArn": { "Ref": "ProductionTrustAnchorArn" } } } }] } } },
+    "RetentionProfile": { "Type": "AWS::RolesAnywhere::Profile", "Properties": { "Name": "applypack-production-recovery-retention", "Enabled": { "Fn::If": ["RetentionEnabled", true, false] },
+      "DurationSeconds": 3600, "AcceptRoleSessionName": false, "RoleArns": [{ "Fn::GetAtt": ["RetentionRole", "Arn"] }],
+      "Tags": [{ "Key": "Application", "Value": "ApplyPack" }, { "Key": "Environment", "Value": "production" }] } }
+  },
+  "Outputs": {
+    "ArchiveBucketName": { "Value": { "Ref": "ArchiveBucket" } },
+    "ArchiveKeyArn": { "Value": { "Fn::GetAtt": ["ArchiveKey", "Arn"] } },
+    "WriterRoleArn": { "Value": { "Fn::GetAtt": ["WriterRole", "Arn"] } },
+    "WriterProfileArn": { "Value": { "Fn::GetAtt": ["WriterProfile", "ProfileArn"] } },
+    "RecoveryRoleArn": { "Value": { "Fn::GetAtt": ["RecoveryRole", "Arn"] } },
+    "RetentionRoleArn": { "Value": { "Fn::GetAtt": ["RetentionRole", "Arn"] } },
+    "RetentionProfileArn": { "Value": { "Fn::GetAtt": ["RetentionProfile", "ProfileArn"] } }
+  }
+}

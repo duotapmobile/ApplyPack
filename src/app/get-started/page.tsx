@@ -5,7 +5,7 @@ import { IntakeWizard } from "./wizard-v3";
 
 export const metadata: Metadata = {
   title: { absolute: "Get Started With ApplyPack | Find 10 Researched Job Matches" },
-  description: "Tell ApplyPack what fits your life and what experience you bring. Start your 10-job search for $20.",
+  description: "Tell ApplyPack what fits your life and what experience you bring. Request exactly 10 current, human-reviewed job matches for $18.99.",
   robots: { index: false, follow: false },
 };
 

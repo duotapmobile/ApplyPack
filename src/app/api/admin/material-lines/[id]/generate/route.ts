@@ -12,8 +12,10 @@ import {
   type GeneratedArtifact,
   type ReferenceSheetRecord,
 } from "@/lib/documents/generate";
-import { documentRendererConfiguration, renderDocumentLocallyForQa } from "@/lib/documents/renderer";
+import { documentRendererConfiguration, renderDocumentForQa } from "@/lib/documents/renderer";
+import { documentWorkerConfiguration, documentWorkerExecutionMode } from "@/lib/files/aws-document-worker";
 import { validateMaterialClaims } from "@/lib/documents/claim-validation";
+import { DOCUMENT_FONT_CONTRACT, selectDocumentDelivery } from "@/lib/documents/requirements";
 import { materialFilename } from "@/lib/materials/contract";
 import { readReferencePayload, type StoredReferenceEnvelope } from "@/lib/materials/references";
 import { readMaterialContact, type StoredMaterialContactEnvelope } from "@/lib/materials/server";
@@ -100,32 +102,45 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
   }
   const ownership = await auth.admin.rpc("ap_customer_owns_snapshot", { p_customer_id: purchase.customer_id, p_snapshot_id: revision.source_snapshot_id });
   if (ownership.error || ownership.data !== true) return response({ error: "Current source ownership could not be verified." }, 409);
-  const [{ data: intent }, { data: job }, { data: rule }, { data: generationConfiguration }] = await Promise.all([
+  const [{ data: intent }, { data: job }, { data: rule }, { data: generationConfiguration }, { data: applicantFormatRequest }] = await Promise.all([
     auth.admin.from("ap_material_checkout_intents").select("contact_payload_id,career_break_choice,career_break_custom_label,cover_letter_break_consent")
       .eq("id", purchase.checkout_intent_id).eq("customer_id", purchase.customer_id).maybeSingle(),
-    auth.admin.from("ap_job_snapshots").select("id,company,exact_title,location_and_work_mode,content_sha256,captured_listing")
+    auth.admin.from("ap_job_snapshots").select("id,company,exact_title,location_and_work_mode,canonical_application_url,retrieved_at,posted_on,content_sha256,captured_listing")
       .eq("id", revision.job_snapshot_id).maybeSingle(),
     auth.admin.from("ap_employer_submission_rules")
       .select("id,content_sha256,allowed_formats,resume_page_limit,resume_filename_instruction,cover_letter_filename_instruction,reference_filename_instruction,reference_timing,reference_count,hard_block_reason,injection_scan_state,is_current,checked_at")
       .eq("id", revision.employer_rule_snapshot_id).eq("job_snapshot_id", revision.job_snapshot_id).maybeSingle(),
     auth.admin.from("ap_commerce_configuration")
-      .select("materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_sha256,document_safety_policy")
+      .select("materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_sha256,document_font_manifest_sha256,document_safety_policy")
       .eq("singleton", true).maybeSingle(),
+    auth.admin.from("ap_applicant_document_format_requests")
+      .select("id,delivery_format,request_reference_sha256,recorded_at")
+      .eq("material_line_id", line.id).eq("customer_id", purchase.customer_id)
+      .order("recorded_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   if (!intent || !job || !rule || !rule.is_current || rule.hard_block_reason || rule.injection_scan_state !== "CLEAR") {
     return response({ error: "Current employer instructions are not generation-ready." }, 409);
   }
   const rendererConfiguration = documentRendererConfiguration();
+  const workerConfiguration = documentWorkerConfiguration();
+  const workerMode = documentWorkerExecutionMode();
+  const rendererReady = workerMode === "remote"
+    ? workerConfiguration.ready
+      && workerConfiguration.identity === generationConfiguration?.document_renderer_identity
+      && workerConfiguration.fontSha256 === generationConfiguration?.document_font_sha256
+      && workerConfiguration.fontManifestSha256 === generationConfiguration?.document_font_manifest_sha256
+    : workerMode === "local" && rendererConfiguration.ready
+      && rendererConfiguration.identity === generationConfiguration?.document_renderer_identity
+      && rendererConfiguration.documentFont.sha256 === generationConfiguration?.document_font_sha256
+      && generationConfiguration?.document_font_manifest_sha256 === DOCUMENT_FONT_CONTRACT.manifestSha256;
 
   if (!generationConfiguration?.materials_generation_approved
     || !generationConfiguration.materials_generation_approval_reference
     || !Array.isArray(generationConfiguration.material_output_formats)
     || !generationConfiguration.material_output_formats.length
-    || !rendererConfiguration.ready
-    || rendererConfiguration.identity !== generationConfiguration.document_renderer_identity
-    || rendererConfiguration.documentFont.sha256 !== generationConfiguration.document_font_sha256
+    || !rendererReady
     || generationConfiguration.document_safety_policy !== "generated-structural-v1") {
-    return response({ error: "Approved Liberation Sans rendering and structural document policy are required." }, 503);
+    return response({ error: "Approved Liberation Sans 2.1.5 rendering and structural document policy are required." }, 503);
   }
   const now = new Date();
   const dueAt = line.materials_due_at ? new Date(line.materials_due_at) : null;
@@ -189,10 +204,17 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
   }
   const location = stringValue(job.location_and_work_mode, "location") || stringValue(job.location_and_work_mode, "locationText") || null;
   const allowedFormats = Array.isArray(rule.allowed_formats) ? rule.allowed_formats : [];
-  const outputFormat: "DOCX" | "PDF" | null = allowedFormats.includes("DOCX")
-    && generationConfiguration.material_output_formats.includes("DOCX") ? "DOCX"
-    : allowedFormats.includes("PDF") && generationConfiguration.material_output_formats.includes("PDF") ? "PDF" : null;
-  if (!outputFormat) return response({ error: "No approved output format satisfies the current employer instructions." }, 409);
+  const applicantWordRequested = applicantFormatRequest?.delivery_format === "DOCX";
+  if (applicantWordRequested && !allowedFormats.includes("DOCX")) {
+    return response({ error: "The applicant’s Word-format request conflicts with the current employer instructions." }, 409);
+  }
+  const deliveryDecision = selectDocumentDelivery(
+    allowedFormats,
+    generationConfiguration.material_output_formats,
+    applicantWordRequested,
+  );
+  if (!deliveryDecision) return response({ error: "No approved output format satisfies the current employer instructions." }, 409);
+  const outputFormat = deliveryDecision.format;
   if (!/^[0-9a-f]{64}$/i.test(job.content_sha256)
     || !job.captured_listing || typeof job.captured_listing !== "object" || Array.isArray(job.captured_listing)
     || !Object.keys(job.captured_listing).length) {
@@ -217,6 +239,9 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
       exactTitle: job.exact_title,
       employer: job.company,
       location,
+      canonicalApplicationUrl: job.canonical_application_url,
+      retrievedAt: job.retrieved_at,
+      postedOn: job.posted_on,
       postingContentSha256: job.content_sha256,
       jobEvidenceIds: requirementIds,
     },
@@ -313,7 +338,7 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
       },
       rules: {
         outputFormat: "DOCX",
-        resumePageLimit: rule.resume_page_limit === 2 ? 2 : 1,
+        resumePageLimit: rule.resume_page_limit === 1 || rule.resume_page_limit === 2 ? rule.resume_page_limit : null,
         resumeFilenameInstruction: outputFormat === "DOCX" ? rule.resume_filename_instruction : null,
         coverLetterFilenameInstruction: outputFormat === "DOCX" ? rule.cover_letter_filename_instruction : null,
         referenceFilenameInstruction: outputFormat === "DOCX" ? rule.reference_filename_instruction : null,
@@ -340,6 +365,15 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
       ...(generated.referenceSheet ? [{ type: "REFERENCE_SHEET" as const, artifact: generated.referenceSheet }] : []),
     ];
   }
+
+  const deliveryFormatDecision = {
+    format: outputFormat,
+    reason: deliveryDecision.reason,
+    employerRuleId: rule.id,
+    applicantRequestId: applicantWordRequested ? applicantFormatRequest.id : null,
+    requestReferenceSha256: applicantWordRequested ? applicantFormatRequest.request_reference_sha256 : null,
+  } as const;
+  for (const current of artifacts) current.artifact.provenance.deliveryFormatDecision = deliveryFormatDecision;
 
   const registered = [];
   for (const current of artifacts) {
@@ -435,7 +469,7 @@ async function validateUploadAndRegister(input: {
 }) {
   const inspection = await inspectDocxPackage(input.artifact.buffer, input.artifactType);
   if (!inspection.passed) throw new Error("docx_package_inspection_failed");
-  const render = await renderDocumentLocallyForQa({
+  const render = await renderDocumentForQa({
     docx: input.artifact.buffer,
     expectedPages: input.artifact.expectedPageCount,
     expectedExtractedTextSha256: inspection.extractedTextSha256,
@@ -461,20 +495,57 @@ async function validateUploadAndRegister(input: {
   const fileVersionId = randomUUID();
   const extension = input.outputFormat.toLowerCase();
   const storagePath = `${input.customerId}/materials/${input.lineId}/${fileVersionId}/${filename}`;
+  const editableSourcePath = `${input.customerId}/materials/${input.lineId}/${fileVersionId}/editable-source/${input.artifact.filename}`;
   const previewPath = `${input.customerId}/materials/${input.lineId}/${fileVersionId}/render-preview.pdf`;
+  const editableSource = {
+    storageBucket: "operator-drafts" as const,
+    storagePath: editableSourcePath,
+    safeFilename: input.artifact.filename,
+    checksumSha256: hash(input.artifact.buffer),
+    sizeBytes: input.artifact.buffer.byteLength,
+    mimeType: DOCX_MIME,
+  };
+  const uploadCleanup = [
+    { storageBucket: editableSource.storageBucket, storagePath: editableSource.storagePath },
+    { storageBucket: "operator-render-previews" as const, storagePath: previewPath },
+    { storageBucket: "customer-deliveries" as const, storagePath },
+  ];
+  const cleanupIntent = await input.admin.from("storage_cleanup_queue").upsert(uploadCleanup.map((upload) => ({
+    bucket: upload.storageBucket,
+    storage_path: upload.storagePath,
+    reason: "material_sensitive_upload_intent",
+    attempts: 0,
+    last_error: null,
+    last_attempt_at: null,
+    not_before: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
+  })), { onConflict: "bucket,storage_path" });
+  if (cleanupIntent.error) throw new Error("sensitive_upload_cleanup_intent_failed");
+  const sourceUpload = await input.admin.storage.from(editableSource.storageBucket).upload(
+    editableSource.storagePath,
+    input.artifact.buffer,
+    { contentType: DOCX_MIME, cacheControl: "0", upsert: false },
+  );
+  if (sourceUpload.error) throw sourceUpload.error;
   const previewUpload = await input.admin.storage.from("operator-render-previews").upload(previewPath, render.searchablePdf, {
     contentType: PDF_MIME,
     cacheControl: "0",
     upsert: false,
   });
-  if (previewUpload.error) throw previewUpload.error;
+  if (previewUpload.error) {
+    await Promise.all(uploadCleanup.map((upload) => removeSensitiveUploadOrQueue(
+      input.admin, upload, "material_preview_upload_failed",
+    )));
+    throw previewUpload.error;
+  }
   const artifactUpload = await input.admin.storage.from("customer-deliveries").upload(storagePath, bytes, {
     contentType: input.outputFormat === "PDF" ? PDF_MIME : DOCX_MIME,
     cacheControl: "0",
     upsert: false,
   });
   if (artifactUpload.error) {
-    await input.admin.storage.from("operator-render-previews").remove([previewPath]);
+    await Promise.all(uploadCleanup.map((upload) => removeSensitiveUploadOrQueue(
+      input.admin, upload, "material_delivery_upload_failed",
+    )));
     throw artifactUpload.error;
   }
   const structuralChecks = {
@@ -514,9 +585,13 @@ async function validateUploadAndRegister(input: {
       && new Set(input.artifact.provenance.requirementMappings.map((mapping) => mapping.jobEvidenceId)).size
         === input.artifact.provenance.requirementMappings.length,
     postingContentBound: /^[0-9a-f]{64}$/i.test(input.artifact.provenance.postingContentSha256),
-    versionTupleBound: input.artifact.provenance.versions.content === input.artifact.versions.content
+    versionTupleBound: input.artifact.provenance.versions.instructions === input.artifact.versions.instructions
+      && input.artifact.provenance.versions.content === input.artifact.versions.content
       && input.artifact.provenance.versions.template === input.artifact.versions.template
       && input.artifact.provenance.versions.exporter === input.artifact.versions.exporter,
+    directApplicationUrlBound: input.artifact.provenance.jobBinding.canonicalApplicationUrl.startsWith("https://")
+      && Boolean(input.artifact.provenance.jobBinding.retrievedAt),
+    cacheIdentityBound: /^[0-9a-f]{64}$/i.test(input.artifact.provenance.cacheIdentitySha256),
   };
   const registered = await input.admin.rpc("ap_register_material_artifact_version", {
     p_artifact_id: artifactId,
@@ -529,7 +604,17 @@ async function validateUploadAndRegister(input: {
     p_job_snapshot_id: input.jobSnapshotId,
     p_reference_regeneration_id: input.regenerationId,
     p_reference_permission_ids: input.permissionIds,
-    p_claim_provenance: input.artifact.provenance,
+    p_claim_provenance: {
+      ...input.artifact.provenance,
+      documentFontAttestation: {
+        family: render.documentFontFamily,
+        version: render.documentFontVersion,
+        manifestSha256: render.documentFontManifestSha256,
+        styleSha256: render.documentFontStyleSha256,
+      },
+      editableSource,
+      uploadCleanup,
+    },
     p_generator_version: input.artifact.provenance.generatorVersion,
     p_storage_bucket: "customer-deliveries",
     p_storage_path: storagePath,
@@ -553,16 +638,37 @@ async function validateUploadAndRegister(input: {
     p_arial_resolved: render.documentFontResolved,
   });
   if (registered.error || !registered.data) {
-    await Promise.all([
-      input.admin.storage.from("operator-render-previews").remove([previewPath]),
-      input.admin.storage.from("customer-deliveries").remove([storagePath]),
-    ]);
+    await Promise.all(uploadCleanup.map((upload) => removeSensitiveUploadOrQueue(
+      input.admin, upload, "material_registration_failed",
+    )));
     throw registered.error || new Error("artifact_registration_failed");
   }
   if (bytes !== input.artifact.buffer) bytes.fill(0);
   render.searchablePdf.fill(0);
   render.pageImages.forEach((page) => page.bytes.fill(0));
   return registered.data;
+}
+
+async function removeSensitiveUploadOrQueue(
+  admin: AdminClient,
+  upload: { storageBucket: "operator-drafts" | "operator-render-previews" | "customer-deliveries"; storagePath: string },
+  reason: string,
+) {
+  const removal = await admin.storage.from(upload.storageBucket).remove([upload.storagePath]);
+  if (!removal.error) {
+    const cleared = await admin.from("storage_cleanup_queue").delete()
+      .eq("bucket", upload.storageBucket).eq("storage_path", upload.storagePath);
+    if (cleared.error) throw new Error("sensitive_upload_cleanup_intent_clear_failed");
+    return;
+  }
+  const queued = await admin.from("storage_cleanup_queue").upsert({
+    bucket: upload.storageBucket,
+    storage_path: upload.storagePath,
+    reason,
+    last_error: "storage_remove_failed",
+    not_before: new Date().toISOString(),
+  }, { onConflict: "bucket,storage_path" });
+  if (queued.error) throw new Error("sensitive_upload_cleanup_queue_failed");
 }
 
 function sentenceFactIds(value: { candidateFactIds: string[]; jobEvidenceIds: string[] }, key: "candidateFactIds" | "jobEvidenceIds") {

@@ -90,7 +90,7 @@ export function EmailCodeSignIn({ defaultDestination = "/my-applypack" }: { defa
           </form>
         )}
         {message ? <p className="form-message" role="status" aria-live="polite">{message}</p> : null}
-        {step === "email" ? <p>New to ApplyPack? Start with 10 researched job matches for $20. <Link href="/get-started">Find My 10 Jobs</Link></p> : null}
+        {step === "email" ? <p>New to ApplyPack? Request exactly 10 current, human-reviewed job matches for $18.99. <Link href="/get-started">Request My 10 Jobs</Link></p> : null}
       </section>
     </main>
   );

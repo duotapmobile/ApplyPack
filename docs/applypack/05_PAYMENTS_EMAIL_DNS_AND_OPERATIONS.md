@@ -1,5 +1,7 @@
 # ApplyPack Payments, Email, DNS, and Operations
 
+> October 2, 2026 authority: `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` controls new prices and checkout activation. Historical price examples below are not valid for new checkout sessions.
+
 Last updated: September 1, 2026
 
 ## Provider rule

@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import type Stripe from "stripe";
 import { z } from "zod";
 import { canonicalApplicationOrigin, deterministicUuid, postgresBytea } from "@/lib/commerce/server";
 import { documentRendererConfiguration } from "@/lib/documents/renderer";
+import { DOCUMENT_FONT_CONTRACT } from "@/lib/documents/requirements";
+import { documentWorkerConfiguration, documentWorkerExecutionMode } from "@/lib/files/aws-document-worker";
+import { manualLaunchFixedTotalIsSafe, STRIPE_NO_ADDED_TAX } from "@/lib/commerce/fixed-total";
 
 import { careerBreakPresentation, MATERIAL_LINE_PRICE_CENTS, materialTotalCents } from "@/lib/materials/contract";
 import { materialCheckoutRequestKey, materialSelectionSha256 } from "@/lib/materials/server";
@@ -16,6 +18,9 @@ import {
   sensitivePayloadEncryptionReady,
 } from "@/lib/security/sensitive-payload";
 import { assertConfiguredPrice, createStripeMaterialsClient } from "@/lib/stripe/server";
+import { APPLY_PACK_CONTRACT_VERSION } from "@/lib/domain/applypack";
+import { authorizeCheckout, selectedJobResourceSha256 } from "@/lib/commerce/checkout-authorization";
+import { createOrResumeCheckoutSession } from "@/lib/commerce/checkout-initiation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -66,8 +71,7 @@ const schema = z.object({
 
 type CommerceConfiguration = {
   canonical_site_url: string | null;
-  tax_configuration_approved: boolean;
-  tax_approval_reference: string | null;
+  search_price_cents: number;
   tax_treatment: string;
   material_line_price_cents: number;
   currency: string;
@@ -82,6 +86,7 @@ type CommerceConfiguration = {
   material_output_formats: string[];
   document_renderer_identity: string | null;
   document_font_sha256: string | null;
+  document_font_manifest_sha256: string | null;
   document_safety_policy: string | null;
 };
 
@@ -124,6 +129,13 @@ export async function POST(request: Request) {
   });
   if (!rate.configured) return NextResponse.json({ error: "Secure checkout controls are unavailable." }, { status: 503 });
   if (!rate.allowed) return NextResponse.json({ error: "Too many checkout attempts. Try again later." }, { status: 429 });
+  const authorization = await authorizeCheckout(admin, "MATERIALS", {
+    customerId: authData.user.id, resourceId: input.deliveredReleaseId,
+    resourceSha256: selectedJobResourceSha256(matchIds),
+  }).catch(() => null);
+  if (!authorization) {
+    return NextResponse.json({ error: "Checkout remains locked until the exact release and launch evidence are healthy." }, { status: 503 });
+  }
 
   let applicationOrigin: string;
   try {
@@ -132,27 +144,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "The canonical secure site URL is not configured." }, { status: 503 });
   }
   const { data: configuration, error: configurationError } = await admin.from("ap_commerce_configuration")
-    .select("canonical_site_url,tax_configuration_approved,tax_approval_reference,tax_treatment,material_line_price_cents,currency,tax_inclusive,pricing_version,tax_version,materials_rule_ttl_seconds,immediate_payment_methods,checkout_enabled,materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_sha256,document_safety_policy")
+    .select("canonical_site_url,search_price_cents,tax_treatment,material_line_price_cents,currency,tax_inclusive,pricing_version,tax_version,materials_rule_ttl_seconds,immediate_payment_methods,checkout_enabled,materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_sha256,document_font_manifest_sha256,document_safety_policy")
     .eq("singleton", true).maybeSingle();
   const commerce = configuration as CommerceConfiguration | null;
   const renderer = documentRendererConfiguration();
+  const worker = documentWorkerConfiguration();
+  const workerMode = documentWorkerExecutionMode();
+  const productionRendererReady = workerMode === "remote"
+    ? worker.ready && worker.identity === commerce?.document_renderer_identity
+      && worker.fontSha256 === commerce?.document_font_sha256
+      && worker.fontManifestSha256 === commerce?.document_font_manifest_sha256
+    : workerMode === "local" && renderer.ready && renderer.identity === commerce?.document_renderer_identity
+      && renderer.documentFont.sha256 === commerce?.document_font_sha256
+      && commerce?.document_font_manifest_sha256 === DOCUMENT_FONT_CONTRACT.manifestSha256;
 
-  if (configurationError || !commerce || !commerce.checkout_enabled
+  if (configurationError || !commerce || (!commerce.checkout_enabled && authorization.mode !== "REHEARSAL")
     || commerce.canonical_site_url !== applicationOrigin
-    || !commerce.tax_configuration_approved || !commerce.tax_approval_reference
-    || commerce.tax_treatment !== "TAX_INCLUSIVE_NO_ADDED_AMOUNT"
-    || commerce.material_line_price_cents !== MATERIAL_LINE_PRICE_CENTS
-    || commerce.currency !== "USD" || !commerce.tax_inclusive
+    || !manualLaunchFixedTotalIsSafe(commerce)
     || !commerce.pricing_version || !commerce.tax_version
     || commerce.materials_rule_ttl_seconds !== 3_600
     || commerce.immediate_payment_methods.length !== 1 || commerce.immediate_payment_methods[0] !== "card"
     || !commerce.materials_generation_approved || !commerce.materials_generation_approval_reference
     || !commerce.material_output_formats.length
-    || !renderer.ready || renderer.identity !== commerce.document_renderer_identity
-    || renderer.documentFont.sha256 !== commerce.document_font_sha256
+    || !productionRendererReady
     || commerce.document_safety_policy !== "generated-structural-v1") {
     return NextResponse.json({
-      error: "Checkout is disabled until the approved tax-inclusive price and production commerce controls are configured.",
+      error: "Checkout is disabled until the fixed total and production commerce controls are configured.",
     }, { status: 503 });
   }
   const priceId = process.env.STRIPE_APPLY_PACK_PRICE_ID;
@@ -194,7 +211,9 @@ export async function POST(request: Request) {
     careerBreakCustomLabel: input.careerBreakCustomLabel,
     coverLetterBreakConsent: input.coverLetterBreakConsent,
   });
-  const requestKey = materialCheckoutRequestKey(selectionSha256);
+  const baseRequestKey = materialCheckoutRequestKey(selectionSha256);
+  const requestKey = authorization.authorizationId
+    ? `${baseRequestKey}:${authorization.mode.toLowerCase()}:${authorization.authorizationId}` : baseRequestKey;
   const contactPayloadId = deterministicUuid(`material-contact:${requestKey}`);
   const providerSelections = selections.map((selection) => ({
     ...selection,
@@ -243,7 +262,10 @@ export async function POST(request: Request) {
     contactPlaintext.fill(0);
   }
 
-  const { data: prepared, error: prepareError } = await admin.rpc("ap_begin_material_checkout", {
+  const { data: prepared, error: prepareError } = await admin.rpc("ap_begin_authorized_material_checkout", {
+    p_mode: authorization.mode,
+    p_release_sha: authorization.releaseSha,
+    p_authorization_id: authorization.authorizationId,
     p_customer_id: authData.user.id,
     p_delivered_order_id: input.deliveredOrderId,
     p_delivered_release_id: input.deliveredReleaseId,
@@ -260,28 +282,27 @@ export async function POST(request: Request) {
   });
   const checkout = prepared && typeof prepared === "object" && !Array.isArray(prepared)
     ? prepared as Record<string, unknown> : null;
-  if (prepareError || !checkout?.checkoutIntentId || !checkout.expiresAt || !checkout.providerIdempotencyKey) {
+  if (prepareError || !checkout?.checkoutIntentId || !checkout.paymentAttemptId
+    || !checkout.expiresAt || !checkout.providerIdempotencyKey) {
     return NextResponse.json({
       error: "One or more jobs, instructions, references, entitlements, or capacity records are not checkout-ready. No charge was made.",
     }, { status: 409 });
   }
-
-  let session: Stripe.Checkout.Session;
+  let session;
   try {
-    session = await stripe.checkout.sessions.create({
+    session = await createOrResumeCheckoutSession(admin, stripe, String(checkout.checkoutIntentId), {
       mode: "payment",
+      ...STRIPE_NO_ADDED_TAX,
       payment_method_types: ["card"],
-      customer_email: authData.user.email,
-      expires_at: Math.floor(new Date(String(checkout.expiresAt)).getTime() / 1_000),
       success_url: `${applicationOrigin}/checkout/return`,
       cancel_url: `${applicationOrigin}/checkout/return?cancelled=1`,
       line_items: [{ quantity: providerSelections.length, price: priceId }],
       metadata: {
         checkout_intent_id: String(checkout.checkoutIntentId),
         product_kind: "apply_pack",
-        contract_version: "chunk5-v1",
+        contract_version: APPLY_PACK_CONTRACT_VERSION,
       },
-    }, { idempotencyKey: String(checkout.providerIdempotencyKey) });
+    });
   } catch {
     return NextResponse.json({
       error: "Checkout creation has an ambiguous provider result. Retry safely; the same command will be reconciled.",
@@ -290,27 +311,6 @@ export async function POST(request: Request) {
   }
   if (!session.url) {
     return NextResponse.json({ error: "Checkout did not return a secure URL. No work was activated." }, { status: 502 });
-  }
-  const promoted = await admin.rpc("ap_promote_material_checkout", {
-    p_checkout_intent_id: String(checkout.checkoutIntentId),
-    p_provider_session_id: session.id,
-    p_provider_session_expires_at: new Date(session.expires_at * 1_000).toISOString(),
-  });
-  if (promoted.error || !promoted.data) {
-    let providerExpired = false;
-    try {
-      await stripe.checkout.sessions.expire(session.id);
-      providerExpired = true;
-    } catch {
-      // The reconciliation worker retains the ambiguous command for review.
-    }
-    if (providerExpired) {
-      await admin.rpc("ap_expire_material_checkout", {
-        p_checkout_intent_id: String(checkout.checkoutIntentId),
-        p_reason_code: "LOCAL_PROMOTION_FAILED_PROVIDER_EXPIRED",
-      });
-    }
-    return NextResponse.json({ error: "Checkout could not be safely linked. No work was activated." }, { status: 502 });
   }
   return NextResponse.json({
     url: session.url,

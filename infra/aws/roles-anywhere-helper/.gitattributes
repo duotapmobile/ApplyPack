@@ -1,0 +1,2 @@
+# Exact upstream and patched bytes are checked during every build.
+* text eol=lf

@@ -1,5 +1,7 @@
 # ApplyPack Site Copy and Page Map
 
+> October 2, 2026 authority: `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` replaces conflicting prices and removes the subscription board from launch navigation, sitemap, pricing, and public calls to action.
+
 Last updated: September 1, 2026
 
 ## Copy authority

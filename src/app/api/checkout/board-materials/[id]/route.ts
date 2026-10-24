@@ -4,6 +4,8 @@ import type Stripe from "stripe";
 import { z } from "zod";
 import { canonicalApplicationOrigin, deterministicUuid, postgresBytea } from "@/lib/commerce/server";
 import { documentRendererConfiguration } from "@/lib/documents/renderer";
+import { DOCUMENT_FONT_CONTRACT } from "@/lib/documents/requirements";
+import { documentWorkerConfiguration, documentWorkerExecutionMode } from "@/lib/files/aws-document-worker";
 
 import { requireBoardAccess } from "@/lib/job-board/access";
 import { careerBreakPresentation, MATERIAL_LINE_PRICE_CENTS } from "@/lib/materials/contract";
@@ -12,6 +14,7 @@ import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { remoteKmsAdapter } from "@/lib/security/remote-kms";
 import { encryptSensitivePayload, sensitivePayloadConfiguration, sensitivePayloadEncryptionReady } from "@/lib/security/sensitive-payload";
 import { assertConfiguredPrice, createStripeMaterialsClient } from "@/lib/stripe/server";
+import { manualLaunchFixedTotalIsSafe, STRIPE_NO_ADDED_TAX } from "@/lib/commerce/fixed-total";
 
 export const runtime = "nodejs";
 
@@ -30,17 +33,29 @@ const schema = z.object({
 }).strict();
 
 type CommerceConfiguration = {
-  canonical_site_url: string | null; tax_configuration_approved: boolean; tax_approval_reference: string | null;
+  canonical_site_url: string | null; search_price_cents: number;
   tax_treatment: string; material_line_price_cents: number; currency: string; tax_inclusive: boolean;
   pricing_version: string | null; tax_version: string | null; materials_rule_ttl_seconds: number | null;
   immediate_payment_methods: string[]; checkout_enabled: boolean; materials_generation_approved: boolean;
   materials_generation_approval_reference: string | null; material_output_formats: string[];
-  document_renderer_identity: string | null; document_font_sha256: string | null; document_safety_policy: string | null;
+  document_renderer_identity: string | null; document_font_sha256: string | null;
+  document_font_manifest_sha256: string | null; document_safety_policy: string | null;
 };
 
 const response = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "cache-control": "private, no-store, max-age=0" } });
 
+function boardOriginCheckoutIsDisabled(): boolean {
+  return true;
+}
+
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  if (boardOriginCheckoutIsDisabled()) {
+    return NextResponse.json(
+      { error: "Board-origin materials checkout is not offered in the manual launch." },
+      { status: 410, headers: { "cache-control": "no-store" } },
+    );
+  }
+  /* istanbul ignore next -- historical implementation remains unreachable for reconciliation reference. */
   if (!isSameOriginRequest(request)) return response({ error: "This checkout request was rejected." }, 403);
   const input = schema.safeParse(await request.json().catch(() => null));
   if (!input.success) return response({ error: "Review the contact details and required acknowledgments." }, 400);
@@ -69,22 +84,28 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   let origin: string;
   try { origin = canonicalApplicationOrigin(); } catch { return response({ error: "The canonical secure site URL is not configured." }, 503); }
   const configResult = await access.admin.from("ap_commerce_configuration")
-    .select("canonical_site_url,tax_configuration_approved,tax_approval_reference,tax_treatment,material_line_price_cents,currency,tax_inclusive,pricing_version,tax_version,materials_rule_ttl_seconds,immediate_payment_methods,checkout_enabled,materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_sha256,document_safety_policy")
+    .select("canonical_site_url,search_price_cents,tax_treatment,material_line_price_cents,currency,tax_inclusive,pricing_version,tax_version,materials_rule_ttl_seconds,immediate_payment_methods,checkout_enabled,materials_generation_approved,materials_generation_approval_reference,material_output_formats,document_renderer_identity,document_font_sha256,document_font_manifest_sha256,document_safety_policy")
     .eq("singleton", true).maybeSingle();
   const commerce = configResult.data as CommerceConfiguration | null;
   const renderer = documentRendererConfiguration();
+  const worker = documentWorkerConfiguration();
+  const workerMode = documentWorkerExecutionMode();
+  const rendererReady = workerMode === "remote"
+    ? worker.ready && worker.identity === commerce?.document_renderer_identity
+      && worker.fontSha256 === commerce?.document_font_sha256
+      && worker.fontManifestSha256 === commerce?.document_font_manifest_sha256
+    : workerMode === "local" && renderer.ready && renderer.identity === commerce?.document_renderer_identity
+      && renderer.documentFont.sha256 === commerce?.document_font_sha256
+      && commerce?.document_font_manifest_sha256 === DOCUMENT_FONT_CONTRACT.manifestSha256;
 
   if (configResult.error || !commerce || !commerce.checkout_enabled || commerce.canonical_site_url !== origin
-    || !commerce.tax_configuration_approved || !commerce.tax_approval_reference
-    || commerce.tax_treatment !== "TAX_INCLUSIVE_NO_ADDED_AMOUNT"
-    || commerce.material_line_price_cents !== MATERIAL_LINE_PRICE_CENTS || commerce.currency !== "USD" || !commerce.tax_inclusive
+    || !manualLaunchFixedTotalIsSafe(commerce)
     || !commerce.pricing_version || !commerce.tax_version || commerce.materials_rule_ttl_seconds !== 3_600
     || commerce.immediate_payment_methods.length !== 1 || commerce.immediate_payment_methods[0] !== "card"
     || !commerce.materials_generation_approved || !commerce.materials_generation_approval_reference
-    || !commerce.material_output_formats.length || !renderer.ready || renderer.identity !== commerce.document_renderer_identity
-    || renderer.documentFont.sha256 !== commerce.document_font_sha256
+    || !commerce.material_output_formats.length || !rendererReady
     || commerce.document_safety_policy !== "generated-structural-v1") {
-    return response({ error: "Materials checkout is disabled until approved document validation, tax, and fulfillment controls are configured." }, 503);
+    return response({ error: "Materials checkout is disabled until fixed-total document validation and fulfillment controls are configured." }, 503);
   }
   const priceId = process.env.STRIPE_APPLY_PACK_PRICE_ID;
   if (!priceId) return response({ error: "Materials pricing is not configured." }, 503);
@@ -140,7 +161,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
   let session: Stripe.Checkout.Session;
   try {
-    session = await stripe.checkout.sessions.create({ mode: "payment", payment_method_types: ["card"],
+    session = await stripe.checkout.sessions.create({ mode: "payment", ...STRIPE_NO_ADDED_TAX, payment_method_types: ["card"],
       customer_email: input.data.contact.email.toLowerCase(), expires_at: Math.floor(new Date(String(checkout.expiresAt)).getTime() / 1_000),
       success_url: `${origin}/checkout/return`, cancel_url: `${origin}/my-applypack/job-board/${jobId}?checkout=cancelled`,
       line_items: [{ quantity: 1, price: priceId }], metadata: { checkout_intent_id: String(checkout.checkoutIntentId),

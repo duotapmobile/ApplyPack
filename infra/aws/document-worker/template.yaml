@@ -1,0 +1,281 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ApplyPack bounded no-internet document extraction and render worker
+Parameters:
+  DeploymentEnvironment:
+    Type: String
+    AllowedValues: [staging, production]
+    Default: production
+    Description: Environment boundary for resource identity and KMS encryption context
+  WorkerImageDigest:
+    Type: String
+    AllowedPattern: "^sha256:[0-9a-f]{64}$"
+    Description: Immutable image digest from the current account's environment repository
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  PrivateRouteTableIds:
+    Type: CommaDelimitedList
+  S3PrefixListId:
+    Type: String
+    Description: Regional com.amazonaws.us-east-1.s3 managed prefix list ID
+  PrimaryAlertEmail:
+    Type: String
+    AllowedPattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+  SecondaryAlertEmail:
+    Type: String
+    AllowedPattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+  CreateBudget:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+  KmsKeyArn:
+    Type: String
+    AllowedPattern: "^arn:aws:kms:us-east-1:[0-9]{12}:key/[A-Za-z0-9-]+$"
+  KmsKeyVersion:
+    Type: String
+    MinLength: 1
+    AllowedPattern: "^[A-Za-z0-9._:-]{1,64}$"
+  WorkerRolePermissionsBoundaryArn:
+    Type: String
+    AllowedPattern: "^arn:aws:iam::[0-9]{12}:policy/applypack/(staging|production)/applypack-(staging|production)-document-worker-boundary$"
+    Description: Environment-specific permissions boundary for the Lambda execution role
+Rules:
+  RegionMustBeUsEast1:
+    Assertions:
+      - Assert: !Equals [!Ref "AWS::Region", us-east-1]
+        AssertDescription: The ApplyPack document worker is approved only in us-east-1.
+Conditions:
+  ShouldCreateBudget: !Equals [!Ref CreateBudget, "true"]
+Resources:
+  TemporaryBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "applypack-${AWS::AccountId}-${DeploymentEnvironment}-document-worker-temp"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteTemporaryWorkerObjects
+            Status: Enabled
+            ExpirationInDays: 1
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+      Tags:
+        - { Key: Application, Value: ApplyPack }
+        - { Key: Environment, Value: !Ref DeploymentEnvironment }
+  TemporaryBucketVersioningPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TemporaryBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: NeverEnableTemporaryBucketVersioning
+            Effect: Deny
+            Principal: "*"
+            Action: s3:PutBucketVersioning
+            Resource: !GetAtt TemporaryBucket.Arn
+  WorkerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ApplyPack document worker no outbound internet
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          DestinationPrefixListId: !Ref S3PrefixListId
+      Tags:
+        - { Key: Application, Value: ApplyPack }
+        - { Key: Environment, Value: !Ref DeploymentEnvironment }
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      VpcId: !Ref VpcId
+      RouteTableIds: !Ref PrivateRouteTableIds
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+            Resource: !Sub "${TemporaryBucket.Arn}/ephemeral/*"
+            Condition:
+              Bool: { "aws:SecureTransport": "true" }
+      Tags:
+        - { Key: Application, Value: ApplyPack }
+        - { Key: Environment, Value: !Ref DeploymentEnvironment }
+  WorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "applypack-${DeploymentEnvironment}-document-worker-execution"
+      Path: !Sub "/applypack/${DeploymentEnvironment}/"
+      PermissionsBoundary: !Ref WorkerRolePermissionsBoundaryArn
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: WorkerTemporaryObjectOnly
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+                Resource: !Sub "${TemporaryBucket.Arn}/ephemeral/*"
+                Condition:
+                  Bool: { "aws:SecureTransport": "true" }
+              - Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DescribeSubnets
+                  - ec2:DeleteNetworkInterface
+                  - ec2:AssignPrivateIpAddresses
+                  - ec2:UnassignPrivateIpAddresses
+                Resource: "*"
+                Condition:
+                  StringEquals: { "aws:RequestedRegion": us-east-1 }
+      Tags:
+        - { Key: Application, Value: ApplyPack }
+        - { Key: Environment, Value: !Ref DeploymentEnvironment }
+  Worker:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "applypack-${DeploymentEnvironment}-document-worker"
+      PackageType: Image
+      Code:
+        ImageUri: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/applypack-${DeploymentEnvironment}-document-worker@${WorkerImageDigest}"
+      Role: !GetAtt WorkerRole.Arn
+      Architectures: [x86_64]
+      MemorySize: 512
+      Timeout: 30
+      ReservedConcurrentExecutions: 2
+      EphemeralStorage: { Size: 1024 }
+      VpcConfig:
+        SecurityGroupIds: [!Ref WorkerSecurityGroup]
+        SubnetIds: !Ref PrivateSubnetIds
+      Environment:
+        Variables:
+          PYTHONUNBUFFERED: "1"
+          APPLYPACK_WORKER_IMAGE_URI: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/applypack-${DeploymentEnvironment}-document-worker@${WorkerImageDigest}"
+          APPLYPACK_WORKER_DEPLOYMENT_ENV: !Ref DeploymentEnvironment
+      Tags:
+        - { Key: Application, Value: ApplyPack }
+        - { Key: Environment, Value: !Ref DeploymentEnvironment }
+  WorkerVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref Worker
+      Description: !Sub "ApplyPack immutable document worker ${WorkerImageDigest}"
+  WebRuntimePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "applypack-${DeploymentEnvironment}-document-worker-runtime"
+      Path: !Sub "/applypack/${DeploymentEnvironment}/"
+      Description: !Sub "ApplyPack ${DeploymentEnvironment} web runtime access to its isolated worker and wrapping key context"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: lambda:InvokeFunction
+            Resource: !Ref WorkerVersion
+          - Effect: Allow
+            Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+            Resource: !Sub "${TemporaryBucket.Arn}/ephemeral/*"
+            Condition:
+              Bool: { "aws:SecureTransport": "true" }
+          - Effect: Allow
+            Action: [kms:Encrypt, kms:Decrypt]
+            Resource: !Ref KmsKeyArn
+            Condition:
+              StringEquals:
+                kms:EncryptionContext:application: ApplyPack
+                kms:EncryptionContext:deployment: !Ref DeploymentEnvironment
+                kms:EncryptionContext:keyVersion: !Ref KmsKeyVersion
+          - Effect: Allow
+            Action: kms:DescribeKey
+            Resource: !Ref KmsKeyArn
+  Budget:
+    Type: AWS::Budgets::Budget
+    Condition: ShouldCreateBudget
+    Properties:
+      Budget:
+        BudgetLimit: { Amount: 5, Unit: USD }
+        BudgetName: ApplyPack-new-AWS-cost-ceiling
+        BudgetType: COST
+        TimeUnit: MONTHLY
+      NotificationsWithSubscribers:
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: FORECASTED
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref PrimaryAlertEmail
+              SubscriptionType: EMAIL
+            - Address: !Ref SecondaryAlertEmail
+              SubscriptionType: EMAIL
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: ACTUAL
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref PrimaryAlertEmail
+              SubscriptionType: EMAIL
+            - Address: !Ref SecondaryAlertEmail
+              SubscriptionType: EMAIL
+Outputs:
+  DeploymentEnvironment:
+    Description: APP_DEPLOYMENT_ENV and APP_DOCUMENT_WORKER_DEPLOYMENT_ENV
+    Value: !Ref DeploymentEnvironment
+  AwsRegion:
+    Description: AWS_REGION
+    Value: !Ref "AWS::Region"
+  BucketName:
+    Description: APP_DOCUMENT_WORKER_BUCKET
+    Value: !Ref TemporaryBucket
+  FunctionVersionArn:
+    Description: APP_DOCUMENT_WORKER_FUNCTION_ARN; use only the immutable version ARN
+    Value: !Ref WorkerVersion
+  WorkerIdentity:
+    Description: APP_DOCUMENT_WORKER_IDENTITY
+    Value: applypack-document-worker-v2-liberation-sans-2.1.5
+  WorkerFontSha256:
+    Description: APP_DOCUMENT_WORKER_FONT_SHA256
+    Value: 76d04c18ea243f426b7de1f3ad208e927008f961dc5945e5aad352d0dfde8ee8
+  WorkerFontManifestSha256:
+    Description: APP_DOCUMENT_WORKER_FONT_MANIFEST_SHA256
+    Value: d89582771ff8dde19015f5aa3965810d656f93fcb08cee6280497e780de614bb
+  WorkerImageUri:
+    Description: Immutable ECR image URI used by this environment
+    Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/applypack-${DeploymentEnvironment}-document-worker@${WorkerImageDigest}"
+  WorkerImageDigest:
+    Description: APP_DOCUMENT_WORKER_IMAGE_DIGEST
+    Value:
+      Fn::Select: [1, { Fn::Split: [":", !Ref WorkerImageDigest] }]
+  EcrRepositoryName:
+    Description: Exact environment-scoped ECR repository
+    Value: !Sub "applypack-${DeploymentEnvironment}-document-worker"
+  KmsKeyIdentity:
+    Description: APP_KMS_KEY_IDENTITY
+    Value: !Ref KmsKeyArn
+  KmsKeyVersion:
+    Description: APP_KMS_KEY_VERSION
+    Value: !Ref KmsKeyVersion
+  WebRuntimePolicyArn:
+    Description: Attach only to the web runtime identity for this DeploymentEnvironment
+    Value: !Ref WebRuntimePolicy

@@ -1,0 +1,67 @@
+# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+# Exact AWS source and dependency-only security rebuild; no unpublished local artifact.
+FROM golang:1.26.10-bookworm@sha256:88750ccdd0f2a77fcc00a14b1a48d6409bd8ddb5d7c2dd6ec0b4a2e916daf9d9 AS signing-helper-build
+USER root
+COPY infra/aws/roles-anywhere-helper/ /helper-build/
+RUN bash /helper-build/build.sh prepare
+RUN --network=none bash /helper-build/build.sh compile
+
+# Official Node 22.23.4 builder; package managers remain in build stages only.
+FROM node:22-bookworm-slim@sha256:ea11b74b986d520137cdef9a5346e447a00f275ecc4abc0055b7151226231e09 AS node-build-base
+USER root
+WORKDIR /app
+
+FROM node-build-base AS helper-install
+COPY scripts/lib/aws-roles-anywhere.mjs ./scripts/lib/aws-roles-anywhere.mjs
+COPY scripts/install-aws-signing-helper.mjs scripts/test-aws-signing-helper-install.mjs ./scripts/
+COPY --from=signing-helper-build /out/aws_signing_helper /opt/applypack-helper-input/aws_signing_helper
+RUN --network=none node scripts/test-aws-signing-helper-install.mjs
+
+# Maintained, signature-verified Node 22.23.4 Debian 13 runtime. Preserve OS/package metadata.
+FROM gcr.io/distroless/nodejs22-debian13:nonroot-amd64@sha256:eed5cbf9fcdb7f97de1fb39adde1972efa57df1085c0c76a5ea17c7c27ff8f6c AS credential-runtime
+WORKDIR /app
+COPY --chown=0:0 --from=helper-install /usr/local/bin/aws_signing_helper /usr/local/bin/aws_signing_helper
+COPY --chown=0:0 --from=signing-helper-build /out/provenance /usr/share/applypack/signing-helper/provenance
+COPY --chown=0:0 --from=signing-helper-build /out/licenses /usr/share/applypack/signing-helper/licenses
+COPY --chown=0:0 scripts/lib/aws-roles-anywhere.mjs ./scripts/lib/aws-roles-anywhere.mjs
+COPY --chown=0:0 scripts/check-launch-container.mjs ./scripts/
+ENV APP_AWS_RA_HELPER_PATH=/usr/local/bin/aws_signing_helper \
+    APP_RENDERER_RUNTIME_DISCOVERY=false \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PATH=/nodejs/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+USER 1000:1000
+ENTRYPOINT []
+CMD ["node", "scripts/check-launch-container.mjs"]
+
+FROM node-build-base AS application-build
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY next.config.ts tsconfig.json postcss.config.mjs ./
+COPY src ./src
+COPY public ./public
+COPY scripts ./scripts
+ARG NEXT_PUBLIC_APP_URL
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+ARG APP_DEPLOYMENT_ENV
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
+    NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY \
+    APP_DEPLOYMENT_ENV=$APP_DEPLOYMENT_ENV \
+    NEXT_TELEMETRY_DISABLED=1
+RUN npm run build && npm prune --omit=dev --no-audit --no-fund
+
+FROM credential-runtime AS web
+USER root
+COPY --from=application-build /app/package.json /app/package-lock.json ./
+COPY --from=application-build /app/node_modules ./node_modules
+COPY --from=application-build /app/.next ./.next
+COPY --from=application-build /app/public ./public
+COPY --from=application-build /app/scripts ./scripts
+COPY --from=application-build /app/next.config.ts /app/tsconfig.json ./
+COPY --from=application-build /app/src/config/indexing.ts ./src/config/indexing.ts
+RUN ["/nodejs/bin/node", "--input-type=module", "-e", "import { mkdirSync, chownSync } from 'node:fs'; mkdirSync('/app/.next/cache', { recursive: true }); chownSync('/app/.next/cache', 1000, 1000);"]
+ENV NODE_ENV=production PORT=3000
+USER 1000:1000
+EXPOSE 3000
+CMD ["node", "scripts/start-production.mjs"]

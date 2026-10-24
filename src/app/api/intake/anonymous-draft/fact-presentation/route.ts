@@ -1,3 +1,4 @@
+import { newIntakeRecoveryHold } from "@/lib/operations/protected-recovery-readiness";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { anonymousDraftContext, anonymousDraftError } from "@/lib/drafts/anonymous-server";
@@ -9,6 +10,8 @@ export async function POST(request: Request) {
   if (!isSameOriginRequest(request)) return NextResponse.json({ error: "This review request was rejected." }, { status: 403 });
   const context = await anonymousDraftContext();
   if (!context) return NextResponse.json({ error: "The saved draft is unavailable." }, { status: 404 });
+  const recoveryHold = await newIntakeRecoveryHold(context.admin);
+  if (recoveryHold) return recoveryHold;
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "The review request is invalid." }, { status: 400 });
   const result = await context.admin.rpc("ap_record_fact_presentation", { p_draft_id: context.capability.draftId,

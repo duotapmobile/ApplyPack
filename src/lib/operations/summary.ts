@@ -1,7 +1,9 @@
 import "server-only";
+import { AWS_TEMPORARY_CLEANUP_MAX_OVERDUE_MS } from "@/lib/files/aws-temporary-cleanup";
 
 import { checkDocumentRendererReadiness } from "./renderer-readiness";
 import { checkRuntimeFileSafety } from "./runtime-readiness";
+import { readProtectedRecoveryReadiness } from "./protected-recovery-readiness";
 import { checkSensitivePayloadHealth } from "@/lib/security/kms-health";
 import { checkoutConfiguration } from "@/lib/stripe/mode";
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -47,11 +49,13 @@ export type OperationsSummary = {
     workflow: QueueCounts;
     outbox: QueueCounts;
     commerceReconciliation: QueueCounts;
+    storageCleanup: QueueCounts;
   };
   maintenance: {
     heartbeatAgeSeconds: number | null;
     stale: boolean;
   };
+  protectedRecovery?: { required: boolean; ready: boolean; warning: boolean; ageSeconds: number | null };
   alerts: {
     openWarnings: number;
     openCritical: number;
@@ -257,6 +261,7 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
     oldestRecomputeDue, oldestRecomputeExpiredLease,
     oldestWorkflowDue, oldestWorkflowExpiredLease,
     oldestOutboxScheduled, oldestOutboxImmediate, oldestOutboxSending,
+    storageCleanupPending, storageCleanupDeadLetter, awsCleanupPending, awsCleanupDeadLetter, oldestAwsCleanupDue,
     heartbeat, warnings, critical, blockingCritical, commerce,
   ] = await Promise.all([
     count("job_source_runs").eq("source_id", SYNTHETIC_SOURCE_ID),
@@ -290,6 +295,12 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
     admin.from("ap_outbox_messages").select("created_at").in("state", ["QUEUED", "RETRY"])
       .is("next_attempt_at", null).lte("created_at", nowIso).order("created_at").limit(1),
     admin.from("ap_outbox_messages").select("updated_at").eq("state", "SENDING").order("updated_at").limit(1),
+    count("storage_cleanup_queue").lt("attempts", 20),
+    count("storage_cleanup_queue").gte("attempts", 20),
+    count("ap_aws_temporary_cleanup").is("completed_at", null).lt("attempts", 20),
+    count("ap_aws_temporary_cleanup").is("completed_at", null).gte("attempts", 20),
+    admin.from("ap_aws_temporary_cleanup").select("not_before", { count: "exact" })
+      .is("completed_at", null).lte("not_before", nowIso).order("not_before").limit(1),
     admin.from("operational_heartbeats").select("last_succeeded_at").eq("task_name", "maintenance").maybeSingle(),
     count("ap_operational_alerts").eq("state", "OPEN").eq("severity", "WARNING"),
     count("ap_operational_alerts").eq("state", "OPEN").eq("severity", "CRITICAL"),
@@ -303,9 +314,14 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
     recomputePending, recomputeProcessing, recomputeRetry, recomputeDead, workflowQueued, workflowProcessing, workflowReview,
     workflowBlocked, workflowFailed, outboxQueued, outboxSending, outboxRetry, outboxDead,
     oldestRecomputeDue, oldestRecomputeExpiredLease, oldestWorkflowDue, oldestWorkflowExpiredLease,
-    oldestOutboxScheduled, oldestOutboxImmediate, oldestOutboxSending, heartbeat, warnings, critical, blockingCritical, commerce];
+    oldestOutboxScheduled, oldestOutboxImmediate, oldestOutboxSending,
+    storageCleanupPending, storageCleanupDeadLetter, awsCleanupPending, awsCleanupDeadLetter, oldestAwsCleanupDue,
+    heartbeat, warnings, critical, blockingCritical, commerce];
   const currentSources = currentSourceReadiness(sourceReadiness.error ? null : sourceReadiness.data);
-  const database = authorityComplete && currentSources.valid && results.every((result) => !result.error);
+  const awsCleanupCountsValid = [awsCleanupPending, awsCleanupDeadLetter, oldestAwsCleanupDue]
+    .every((result) => typeof result.count === "number" && Number.isSafeInteger(result.count) && result.count >= 0);
+  const database = authorityComplete && currentSources.valid && awsCleanupCountsValid
+    && results.every((result) => !result.error);
   const heartbeatAt = !heartbeat.error && heartbeat.data && typeof heartbeat.data.last_succeeded_at === "string"
     ? heartbeat.data.last_succeeded_at
     : null;
@@ -315,7 +331,11 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
   const encryption = await checkSensitivePayloadHealth();
   const fileSafety = await checkRuntimeFileSafety();
   const documentRendering = await checkDocumentRendererReadiness(admin).catch(() => false);
+  const protectedRecovery = await readProtectedRecoveryReadiness(admin);
   const commerceCounts = commerceSnapshot(commerce.error ? null : commerce.data);
+  const oldestAwsCleanupDueAge = ageSeconds(firstTimestamp(oldestAwsCleanupDue, "not_before"), now);
+  const awsCleanupOverdue = countOf(oldestAwsCleanupDue) > 0 && (oldestAwsCleanupDueAge === null
+    || oldestAwsCleanupDueAge >= AWS_TEMPORARY_CLEANUP_MAX_OVERDUE_MS / 1_000);
   const oldestRecomputeActionable = earliestTimestamp(
     firstTimestamp(oldestRecomputeDue, "available_at"),
     firstTimestamp(oldestRecomputeExpiredLease, "lease_expires_at"),
@@ -336,12 +356,22 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
     releaseSha: safeReleaseSha(),
     readiness: {
       database,
-      payments: payment.ready && payment.searchReady && payment.boardReady,
+      // Provider/webhook integrity is independent of whether either checkout
+      // gate is currently accepting new orders. Dormant board prices are not a
+      // manual-launch dependency.
+      payments: payment.commerceConfigured,
       email: recentEmailVerification(process.env, now),
       fileSafety,
       encryption,
       documentRendering,
-      maintenance: Boolean(process.env.CRON_SECRET) && !maintenanceStale,
+      maintenance: Boolean(process.env.CRON_SECRET)
+        && !maintenanceStale
+        && !storageCleanupDeadLetter.error
+        && !awsCleanupDeadLetter.error
+        && !oldestAwsCleanupDue.error
+        && awsCleanupCountsValid
+        && !awsCleanupOverdue
+        && countOf(storageCleanupDeadLetter) + countOf(awsCleanupDeadLetter) === 0,
     },
     inventory: {
       manualReady: currentSources.manualReady, automatedReady: currentSources.automatedReady,
@@ -366,8 +396,21 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
           || commerceCounts.expiredLease > 0
           || (commerceCounts.pending > 0 && commerceCounts.oldestAgeSeconds !== null && commerceCounts.oldestAgeSeconds > 15 * 60),
       },
+      storageCleanup: {
+        states: {
+          pending: countOf(storageCleanupPending) + countOf(awsCleanupPending),
+          awsDue: countOf(oldestAwsCleanupDue),
+          deadLetter: countOf(storageCleanupDeadLetter) + countOf(awsCleanupDeadLetter),
+        },
+        oldestItemAgeSeconds: oldestAwsCleanupDueAge,
+        stale: awsCleanupOverdue || countOf(storageCleanupDeadLetter) + countOf(awsCleanupDeadLetter) > 0,
+      },
     },
     maintenance: { heartbeatAgeSeconds, stale: maintenanceStale },
+    protectedRecovery: {
+      required: protectedRecovery.required, ready: protectedRecovery.ready,
+      warning: protectedRecovery.warning, ageSeconds: protectedRecovery.ageSeconds,
+    },
     alerts: { openWarnings: countOf(warnings), openCritical: countOf(critical), blockingCritical: countOf(blockingCritical) },
   };
 }

@@ -54,7 +54,7 @@ alter default privileges for role postgres in schema public grant all on functio
 $bootstrapPath = Join-Path $inputPath 'bootstrap.sql'
 Set-Content -LiteralPath $bootstrapPath -Value $bootstrap -Encoding utf8
 $migrationFiles = @(Get-ChildItem (Join-Path $repoRoot 'supabase/migrations') -Filter '*.sql' | Sort-Object Name)
-$fixtures = @('chunk1-foundation.sql', 'chunk2-four-step.sql', 'chunk3-matching-engine.sql', 'chunk4-commerce-release.sql', 'chunk5-materials-delivery.sql', 'chunk6-final-integration.sql', 'employer-first-aggregation.sql', 'matching-fulfillment.sql', 'unpaid-source-retention.sql')
+$fixtures = @('unpaid-source-retention.sql', 'chunk1-foundation.sql', 'chunk2-four-step.sql', 'chunk3-matching-engine.sql', 'chunk4-commerce-release.sql', 'chunk5-materials-delivery.sql', 'chunk6-final-integration.sql', 'employer-first-aggregation.sql', 'matching-fulfillment.sql', 'manual-launch-hardening.sql', 'sandbox-validation-launch-activation.sql', 'atomic-intake-legal-acceptance.sql', 'document-standard-compatibility.sql', 'source-upload-cleanup.sql', 'material-filename-cleanup-compatibility.sql', 'aws-temporary-cleanup.sql', 'open-font-document-contract.sql', 'legacy-board-read-only-archive.sql', 'legacy-board-terminal-event-ordering.sql')
 if ($LegacyBackfill) { $fixtures = @('chunk1-legacy-fixture.sql', 'chunk1-legacy-verify.sql') }
 $inputs = @([pscustomobject]@{Kind='bootstrap'; Name='bootstrap.sql'; Path=$bootstrapPath})
 foreach ($migration in $migrationFiles) {
@@ -78,6 +78,14 @@ $sharedFixture = 'reviewed-source-fixture.sql'
 $sharedFixtureCopy = Join-Path $inputPath $sharedFixture
 Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$sharedFixture") -Destination $sharedFixtureCopy
 $inputs += [pscustomobject]@{Kind='helper'; Name=$sharedFixture; Path=$sharedFixtureCopy}
+$rehearsalFixture = 'rehearsal-checkout-attempts.sql'
+$rehearsalFixtureCopy = Join-Path $inputPath $rehearsalFixture
+Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$rehearsalFixture") -Destination $rehearsalFixtureCopy
+$inputs += [pscustomobject]@{Kind='helper'; Name=$rehearsalFixture; Path=$rehearsalFixtureCopy}
+$materialRehearsalFixture = 'rehearsal-material-checkout.sql'
+$materialRehearsalFixtureCopy = Join-Path $inputPath $materialRehearsalFixture
+Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$materialRehearsalFixture") -Destination $materialRehearsalFixtureCopy
+$inputs += [pscustomobject]@{Kind='helper'; Name=$materialRehearsalFixture; Path=$materialRehearsalFixtureCopy}
 $inputs | ForEach-Object { [pscustomobject]@{Kind=$_.Kind;Name=$_.Name;Sha256=(Get-FileHash -LiteralPath $_.Path -Algorithm SHA256).Hash} } | ConvertTo-Json | Set-Content (Join-Path $evidenceRoot 'input-hashes.json')
 @"
 Native PostgreSQL engine validation only. Synthetic auth.users/auth.uid/auth.jwt,

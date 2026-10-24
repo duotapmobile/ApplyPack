@@ -25,16 +25,16 @@ function truthfulFixture() {
 }
 
 describe("canonical document generation", () => {
-  it("preserves natural names and an unbolded signature", async () => {
+  it("preserves the exact supplied name and an unbolded signature", async () => {
     const input = documentFixture();
     input.contact.displayName = "MARISSA WRIGHT";
     const artifacts = await generateEvidenceBoundMaterials(input);
     const zip = await JSZip.loadAsync(artifacts.coverLetter.buffer);
     const xml = await zip.file("word/document.xml")!.async("string");
-    const names = [...xml.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)].map((match) => match[0]).filter((p) => p.includes("Marissa Wright"));
+    const names = [...xml.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)].map((match) => match[0]).filter((p) => p.includes("MARISSA WRIGHT"));
     expect(names).toHaveLength(2);
     expect(names[1]).not.toMatch(/<w:b\b/);
-    expect(xml).not.toContain("MARISSA WRIGHT");
+    expect(xml).not.toContain("Marissa Wright");
   });
   it("rejects fabricated metrics even with an authentic fact ID", () => {
     const input = documentFixture();

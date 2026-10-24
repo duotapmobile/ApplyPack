@@ -1,0 +1,191 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ApplyPack staging-only isolated network and sensitive-payload KMS foundation
+
+Rules:
+  AccountMustBeApprovedStaging:
+    Assertions:
+      - Assert: !Equals [!Ref "AWS::AccountId", "838445019912"]
+        AssertDescription: This foundation is approved only for the ApplyPack staging AWS account.
+  RegionMustBeUsEast1:
+    Assertions:
+      - Assert: !Equals [!Ref "AWS::Region", us-east-1]
+        AssertDescription: The ApplyPack staging foundation is approved only in us-east-1.
+
+Resources:
+  StagingVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.84.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      InstanceTenancy: default
+      Tags:
+        - { Key: Application, Value: ApplyPack }
+        - { Key: Environment, Value: staging }
+        - { Key: ManagedBy, Value: CloudFormation }
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ""
+      CidrBlock: 10.84.0.0/24
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref StagingVpc
+      Tags:
+        - { Key: Application, Value: ApplyPack }
+        - { Key: Environment, Value: staging }
+        - { Key: ManagedBy, Value: CloudFormation }
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ""
+      CidrBlock: 10.84.1.0/24
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref StagingVpc
+      Tags:
+        - { Key: Application, Value: ApplyPack }
+        - { Key: Environment, Value: staging }
+        - { Key: ManagedBy, Value: CloudFormation }
+
+  PrivateRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref StagingVpc
+      Tags:
+        - { Key: Application, Value: ApplyPack }
+        - { Key: Environment, Value: staging }
+        - { Key: ManagedBy, Value: CloudFormation }
+
+  PrivateRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref StagingVpc
+      Tags:
+        - { Key: Application, Value: ApplyPack }
+        - { Key: Environment, Value: staging }
+        - { Key: ManagedBy, Value: CloudFormation }
+
+  PrivateSubnetRouteTableAssociationA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableA
+      SubnetId: !Ref PrivateSubnetA
+
+  PrivateSubnetRouteTableAssociationB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableB
+      SubnetId: !Ref PrivateSubnetB
+
+  StagingSensitivePayloadKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: RetainExceptOnCreate
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: ApplyPack staging sensitive-payload envelope key
+      Enabled: true
+      EnableKeyRotation: true
+      KeySpec: SYMMETRIC_DEFAULT
+      KeyUsage: ENCRYPT_DECRYPT
+      MultiRegion: false
+      Origin: AWS_KMS
+      PendingWindowInDays: 30
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DelegateKeyAdministrationWithinAccount
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+            Action:
+              - kms:CancelKeyDeletion
+              - kms:CreateAlias
+              - kms:DeleteAlias
+              - kms:DescribeKey
+              - kms:DisableKey
+              - kms:DisableKeyRotation
+              - kms:EnableKey
+              - kms:EnableKeyRotation
+              - kms:GetKeyPolicy
+              - kms:GetKeyRotationStatus
+              - kms:ListResourceTags
+              - kms:PutKeyPolicy
+              - kms:ScheduleKeyDeletion
+              - kms:TagResource
+              - kms:UntagResource
+              - kms:UpdateAlias
+              - kms:UpdateKeyDescription
+            Resource: "*"
+          - Sid: DelegateStagingPayloadUseWithinAccount
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+            Action:
+              - kms:Decrypt
+              - kms:Encrypt
+            Resource: "*"
+            Condition:
+              StringEquals:
+                kms:EncryptionContext:application: ApplyPack
+                kms:EncryptionContext:deployment: staging
+          - Sid: DelegateKeyDescriptionWithinAccount
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+            Action: kms:DescribeKey
+            Resource: "*"
+      Tags:
+        - { Key: Application, Value: ApplyPack }
+        - { Key: Environment, Value: staging }
+        - { Key: ManagedBy, Value: CloudFormation }
+
+  StagingSensitivePayloadAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/applypack-staging-sensitive-payloads
+      TargetKeyId: !Ref StagingSensitivePayloadKey
+
+Outputs:
+  AwsRegion:
+    Description: AWS_REGION for the staging worker
+    Value: !Ref "AWS::Region"
+  DeploymentEnvironment:
+    Description: Fixed environment boundary
+    Value: staging
+  VpcId:
+    Description: VpcId input for infra/aws/document-worker/template.yaml
+    Value: !Ref StagingVpc
+  PrivateSubnetAId:
+    Description: First private staging subnet
+    Value: !Ref PrivateSubnetA
+  PrivateSubnetBId:
+    Description: Second private staging subnet
+    Value: !Ref PrivateSubnetB
+  PrivateSubnetIds:
+    Description: PrivateSubnetIds input for infra/aws/document-worker/template.yaml
+    Value: !Join [",", [!Ref PrivateSubnetA, !Ref PrivateSubnetB]]
+  PrivateRouteTableAId:
+    Description: Effective route table for PrivateSubnetA
+    Value: !Ref PrivateRouteTableA
+  PrivateRouteTableBId:
+    Description: Effective route table for PrivateSubnetB
+    Value: !Ref PrivateRouteTableB
+  PrivateRouteTableIds:
+    Description: PrivateRouteTableIds input for infra/aws/document-worker/template.yaml
+    Value: !Join [",", [!Ref PrivateRouteTableA, !Ref PrivateRouteTableB]]
+  KmsKeyArn:
+    Description: KmsKeyArn input and APP_KMS_KEY_IDENTITY for staging
+    Value: !GetAtt StagingSensitivePayloadKey.Arn
+  KmsKeyId:
+    Description: Customer-managed staging key identifier
+    Value: !Ref StagingSensitivePayloadKey
+  KmsAliasName:
+    Description: Stable staging key alias; applications still bind the key ARN
+    Value: !Ref StagingSensitivePayloadAlias

@@ -21,9 +21,11 @@ import {
 } from "@/lib/operations/summary";
 import {
   diagnoseOperations,
+  maintenanceActionsSucceeded,
   maintenanceOutcome,
   recordMaintenanceDiagnosis,
   recordMaintenanceFailure,
+  recordMaintenanceOutcome,
   recoveryEmailIdempotencyKey,
 } from "@/lib/operations/maintenance-observability";
 
@@ -49,6 +51,7 @@ function summary(change: Partial<OperationsSummary> = {}): OperationsSummary {
       workflow: { states: { queued: 0 }, oldestItemAgeSeconds: null, stale: false },
       outbox: { states: { queued: 0 }, oldestItemAgeSeconds: null, stale: false },
       commerceReconciliation: { states: { pending: 0 }, oldestItemAgeSeconds: null, stale: false },
+      storageCleanup: { states: { pending: 0, deadLetter: 0 }, oldestItemAgeSeconds: null, stale: false },
     },
     maintenance: { heartbeatAgeSeconds: 30, stale: false },
     alerts: { openWarnings: 0, openCritical: 0 },
@@ -187,7 +190,7 @@ describe("employer-first operations inventory", () => {
           else result.count += 1;
         }
         const query: Record<string, unknown> = {};
-        for (const method of ["select", "eq", "neq", "in", "lt", "lte", "order", "limit", "not", "is", "maybeSingle"]) query[method] = () => query;
+        for (const method of ["select", "eq", "neq", "in", "lt", "lte", "gte", "order", "limit", "not", "is", "maybeSingle"]) query[method] = () => query;
         query.then = (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve);
         return query;
       },
@@ -262,6 +265,7 @@ describe("maintenance policy", () => {
     });
     const outcome = maintenanceOutcome(before, summary());
     expect(outcome.actionCodes).toEqual([
+      "CAPACITY_ROLLOVER",
       "EXPIRATION_CLEANUP",
       "EXPIRED_LEASE_RECOVERY",
       "DOCUMENT_PROCESSING",
@@ -283,6 +287,107 @@ describe("maintenance policy", () => {
     expect(outcome.actionCodes).toEqual([]);
     expect(outcome.failedActionCodes).toEqual(["STRIPE_RECONCILIATION"]);
     expect(outcome.unresolvedCodes).toEqual(["STRIPE_RECONCILIATION_FAILED"]);
+  });
+
+  it("fails closed while a sensitive storage cleanup item is dead-lettered", () => {
+    const diagnostic = diagnoseOperations(summary({
+      queues: {
+        ...summary().queues,
+        storageCleanup: { states: { pending: 0, deadLetter: 1 }, oldestItemAgeSeconds: null, stale: true },
+      },
+    }));
+    expect(diagnostic.codes).toContain("STORAGE_CLEANUP_DEAD_LETTER");
+    expect(diagnostic.failClosedCodes).toContain("STORAGE_CLEANUP_DEAD_LETTER");
+  });
+
+  it("reports overdue cleanup as a separate condition and recovers it only after cleanup", () => {
+    const before = summary({ queues: { ...summary().queues,
+      storageCleanup: { states: { pending: 24, awsDue: 24, deadLetter: 0 }, oldestItemAgeSeconds: 1800, stale: true },
+    } });
+    expect(diagnoseOperations(before).failClosedCodes).toEqual(["STORAGE_CLEANUP_OVERDUE"]);
+    expect(maintenanceOutcome(before, before).unresolvedCodes).toEqual(["STORAGE_CLEANUP_OVERDUE"]);
+    expect(maintenanceOutcome(before, summary()).recoveredCodes).toEqual(["STORAGE_CLEANUP_OVERDUE"]);
+    const failed = maintenanceOutcome(summary(), summary(), [{ code: "EXPIRATION_CLEANUP", status: "FAILED" }]);
+    expect(failed.unresolvedCodes).toEqual(["EXPIRATION_CLEANUP_FAILED"]);
+  });
+
+  it("fails closed for due cleanup with an unreadable age but does not label a recent dead letter overdue", () => {
+    const queues = summary().queues;
+    expect(diagnoseOperations(summary({ queues: { ...queues,
+      storageCleanup: { states: { pending: 1, awsDue: 1, deadLetter: 0 }, oldestItemAgeSeconds: null, stale: true },
+    } })).codes).toContain("STORAGE_CLEANUP_OVERDUE");
+    expect(diagnoseOperations(summary({ queues: { ...queues,
+      storageCleanup: { states: { pending: 0, awsDue: 1, deadLetter: 1 }, oldestItemAgeSeconds: 60, stale: true },
+    } })).codes).toEqual(["STORAGE_CLEANUP_DEAD_LETTER"]);
+  });
+
+  it("refreshes the heartbeat when only explicitly dormant board actions are skipped", async () => {
+    const alertIn = vi.fn().mockResolvedValue({ error: null });
+    const alertEq = vi.fn().mockReturnValue({ in: alertIn });
+    const alertUpdate = vi.fn().mockReturnValue({ eq: alertEq });
+    const heartbeatUpsert = vi.fn().mockResolvedValue({ error: null });
+    const admin = {
+      from: vi.fn((table: string) => table === "ap_operational_alerts"
+        ? { update: alertUpdate }
+        : { upsert: heartbeatUpsert }),
+    };
+    const actions = [
+      { code: "CAPACITY_ROLLOVER", status: "SUCCEEDED" },
+      { code: "STRIPE_RECONCILIATION", status: "SKIPPED" },
+      { code: "BOARD_RECOMPUTATION", status: "SKIPPED" },
+    ] as const;
+    const allowedSkippedActions = ["STRIPE_RECONCILIATION", "BOARD_RECOMPUTATION"] as const;
+
+    expect(maintenanceActionsSucceeded(actions, allowedSkippedActions)).toBe(true);
+    await recordMaintenanceOutcome(
+      admin as never,
+      summary(),
+      summary(),
+      actions,
+      new Date("2026-10-03T12:00:00.000Z"),
+      allowedSkippedActions,
+    );
+
+    expect(heartbeatUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      task_name: "maintenance",
+      last_succeeded_at: "2026-10-03T12:00:00.000Z",
+      summary: expect.objectContaining({
+        phase: "VERIFIED",
+        actions: expect.arrayContaining([
+          { code: "STRIPE_RECONCILIATION", status: "SKIPPED" },
+          { code: "BOARD_RECOMPUTATION", status: "SKIPPED" },
+        ]),
+      }),
+    }), { onConflict: "task_name" });
+  });
+
+  it("does not refresh the heartbeat for an unapproved skipped action", async () => {
+    const alertIn = vi.fn().mockResolvedValue({ error: null });
+    const alertEq = vi.fn().mockReturnValue({ in: alertIn });
+    const alertUpdate = vi.fn().mockReturnValue({ eq: alertEq });
+    const heartbeatEq = vi.fn().mockResolvedValue({ error: null });
+    const heartbeatUpdate = vi.fn().mockReturnValue({ eq: heartbeatEq });
+    const heartbeatUpsert = vi.fn();
+    const admin = {
+      from: vi.fn((table: string) => table === "ap_operational_alerts"
+        ? { update: alertUpdate }
+        : { update: heartbeatUpdate, upsert: heartbeatUpsert }),
+    };
+    const actions = [{ code: "DOCUMENT_PROCESSING", status: "SKIPPED" }] as const;
+
+    expect(maintenanceActionsSucceeded(actions)).toBe(false);
+    await recordMaintenanceOutcome(
+      admin as never,
+      summary(),
+      summary(),
+      actions,
+      new Date("2026-10-03T12:00:00.000Z"),
+    );
+
+    expect(heartbeatUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      summary: expect.objectContaining({ phase: "FAILED" }),
+    }));
+    expect(heartbeatUpsert).not.toHaveBeenCalled();
   });
 
   it("derives a stable recovery-email key from the condition episode rather than invocation time", () => {
@@ -363,7 +468,8 @@ describe("operations route contract", () => {
     expect(cron.match(/processWorkflowTasks\(/g)).toHaveLength(1);
     expect(cron.match(/processChunk4Workers\(/g)).toHaveLength(1);
     expect(cron.match(/await reconcileBoardSubscriptions\(/g)).toHaveLength(1);
-    expect(cron.match(/await processBoardRecomputeJobs\(/g)).toHaveLength(1);
+    expect(cron).not.toContain("processBoardRecomputeJobs");
+    expect(cron).toContain('const boardAdmissions = { status: "retired"');
   });
 
   it("keeps all real inventory visible and uses actionable queue timestamps", () => {
@@ -373,6 +479,9 @@ describe("operations route contract", () => {
     expect(operations).toContain(`.select("available_at").in("state", ["PENDING", "RETRY"])`);
     expect(operations).toContain(`.select("not_before").in("status", ["queued", "failed"])`);
     expect(operations).toContain(`.lte("not_before", nowIso)`);
+    expect(operations).toContain(`count("storage_cleanup_queue").gte("attempts", 20)`);
+    expect(cron).toContain("storageCleanupDeadLettered");
+    expect(cron).not.toContain('return fail("STORAGE_CLEANUP_DEAD_LETTER"');
     expect(operations).not.toContain(`.select("created_at").in("status", ["queued", "processing", "awaiting_review"`);
   });
 });

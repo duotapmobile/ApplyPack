@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { pendingProjectionRow, projectSourceRun, SOURCE_PROJECTOR_VERSION } from "@/lib/jobs/source-projection";
 import type { RawJobPosting } from "@/lib/jobs/types";
 
@@ -9,6 +9,13 @@ const posting: RawJobPosting = {
   officialApplicationUrl: "https://jobs.lever.co/vipdesk/lever-123/apply",
   lastVerifiedAt: "2026-09-20T12:00:00.000Z",
 };
+
+beforeAll(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-21T12:00:00.000Z"));
+});
+
+afterAll(() => vi.useRealTimers());
 
 function observation(overrides: Partial<RawJobPosting> = {}) {
   const captured = { ...posting, ...overrides };

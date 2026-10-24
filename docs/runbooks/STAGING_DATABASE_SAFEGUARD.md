@@ -1,0 +1,238 @@
+# Staging database encrypted backup and isolated restore
+
+## Purpose and boundary
+
+Use `scripts/staging-database-safeguard.ps1` to create the governed pre-migration staging backup and to prove that the encrypted backup can be restored into a disposable local container. The helper is Windows-only and supports the staging Supabase project reference `fmugizadzdnqfckujqlw` only.
+
+This helper does **not** apply migrations. It expects the source database to be at schema `202610040080` with migrations 081 through 084 absent. Applying migrations 081 through 084 remains a separately reviewed forward-only operation after the backup and restore evidence passes. The helper has no production binding and rejects `AP_DEPLOYMENT_ENV=production`.
+
+The implementation provides these controls:
+
+- Reads exactly the Windows Generic Credential Manager target `ApplyPack/Supabase/Staging/Database` with `CredReadW`. It does not enumerate credentials.
+- Keeps the password in memory, encodes it into an explicit temporary byte buffer, passes that buffer to the database client over standard input, and clears managed and unmanaged buffers best-effort. It does not use a buffered text writer and never logs or persists the password or a database URI.
+- Pins the staging project reference, session-pooler endpoint, port, database, tenant-qualified login, connected `current_user`, provider CA hash, PostgreSQL 17.6 client image, and image digest.
+- Forces libpq `verify-full` with the reviewed provider CA.
+- Streams `pg_dump --format=custom` directly into an authenticated encrypted envelope. No plaintext dump is written to disk.
+- Protects a random per-backup 64-byte data key with Windows DPAPI `CurrentUser`. The envelope uses AES-256-CBC plus HMAC-SHA-256 encrypt-then-MAC. Restore authenticates the complete envelope before releasing plaintext.
+- Writes only to an explicit existing directory outside every Git repository or worktree, rejects `.git` and reparse-point ancestors, binds the directory identity approved during path validation to the later long-lived non-delete-sharing handle, and repeats the complete repository/reparse/worktree exclusion while that handle is held. It validates the opened file handle as a direct child before and after publication, creates the ciphertext as a same-directory partial file, flushes it, and atomically renames it. A directory substituted between approval and handle capture is rejected before file creation; failure cleanup deletes only the verified partial by handle.
+- On every backup-stream, encryption, output, flush, or process failure, terminates the complete child process tree, waits for exit, drains redirected streams, disposes handles, clears credential buffers, removes the named source container, and independently verifies its absence before returning.
+- Opens the encrypted restore source once with `FileShare.None` and keeps that handle through metadata authentication, archive-list validation, and restore. A second valid CurrentUser envelope cannot replace the authenticated bytes between phases. Restore independently repeats the clean exact-release helper gate, requires `AP_PREMIGRATION_EXPECTED_RELEASE_SHA` to be the full current `HEAD`, rejects an otherwise valid envelope from any other release, and records only that verified value in its receipt.
+- Restores only into the pinned PostgreSQL 17.6 container with `--network none`, no published ports, and a temporary in-memory data directory. Inside that isolated container it creates the dedicated `applypack_restore_drill` database from `template0`, owned by the image's built-in `supabase_admin` role, then restores as `supabase_admin` with `--exit-on-error --no-owner --no-privileges` and without destructive clean options. Restore evidence is queried from that dedicated database and must report the exact database and role identities. The container is removed and absence is verified before a success receipt is written. A primary restore error remains primary if teardown also fails; the controlled cleanup code is attached separately.
+- Records sanitized counts, a deterministic SHA-256 over sorted per-public-table row counts, tool versions, image identity, release SHA, RLS/schema/ledger integrity, and teardown evidence. It records no row contents, identifiers, URLs, document data, password, or connection URI.
+
+The encrypted file is bound to the Windows user profile that created it. A different Windows user cannot decrypt it. Preserve the Windows profile and test recovery under the same operator account. DPAPI `CurrentUser` does **not** protect against malware, an attacker already running as that same Windows user, a compromised interactive session, or an administrator able to act as that user. Run this workflow only from a clean, patched operator machine; lock the session when unattended; restrict the evidence directory ACL; and move the encrypted evidence to controlled offline storage after verification. DPAPI is an operator-machine safeguard, not a replacement for the provider's retained backups.
+
+## Prerequisites
+
+Stop if any prerequisite is missing:
+
+1. Work from the exact reviewed commit on `codex/manual-launch-hardening-2026-10-02` after the required supervisor reviews pass.
+2. Keep `APP_CHECKOUT_ENABLED=false` and `APP_CANARY_CHECKOUT_ENABLED=false`.
+3. Quiesce every staging web, admin, maintenance, and direct-service writer. Keep them quiesced until migrations 081 through 084 and the post-migration readiness verification are complete.
+4. In Windows Credential Manager, create or update one **Generic credential**:
+   - Internet or network address: `ApplyPack/Supabase/Staging/Database`
+   - User name: `postgres.fmugizadzdnqfckujqlw`
+   - Password: the current staging database password
+5. Never paste the password into PowerShell, a command argument, an environment variable, chat, Git, or an evidence file. If authentication fails, reset the staging database password in Supabase and update only that Generic credential through the Windows Credential Manager UI.
+6. Retain the reviewed provider CA file. Its required SHA-256 is `700723581420DD1AC98FD7E9AC529F0EF210EADCAF87FC868A3AD7D114C2F3B7`.
+7. Docker Desktop must be running and the pinned image must already exist locally:
+
+   ```text
+   public.ecr.aws/supabase/postgres:17.6.1.166
+   public.ecr.aws/supabase/postgres@sha256:b3bfedb107413abb3b8cb0d0874b0414a1dceb3d55bc0c778de6ad22d1f7dc86
+   ```
+
+8. Create a dedicated, ordinary directory that is not inside this repository, any other Git worktree, OneDrive reparse paths, or a synced folder. The examples use `C:\ApplyPack-Staging-Evidence`; the directory must exist before the command runs.
+
+## Synthetic self-test
+
+Run this before any credential or database operation:
+
+```powershell
+$repo = 'C:\Users\mskir\Desktop\Apply_Pack\applypack-production-v2'
+& pwsh -NoLogo -NoProfile -File "$repo\scripts\staging-database-safeguard.ps1" -Mode SelfTest
+```
+
+Required marker:
+
+```text
+STAGING_DATABASE_SAFEGUARD_SELF_TEST_OK
+```
+
+The self-test uses only synthetic bytes, a local disposable child process, a local disposable Git fixture, and a temporary directory. It proves a DPAPI round trip, authenticated encrypt/decrypt, tamper rejection, truncation rejection, non-shareable envelope-handle pinning, rejection of an authenticated older-release envelope, mismatched release-SHA rejection, dirty-helper rejection, repository-path rejection, both pre-capture directory substitution and held-handle directory-race rejection, partial-file cleanup, process-tree termination and wait, simulated container cleanup, credential-buffer clearing, restore-error precedence, and secret-log redaction. It does not read Credential Manager, run Docker, or contact a database. The dedicated `windows-latest` CI safeguard job runs this dynamic test without secrets; Linux CI gates remain unchanged.
+
+## Bind the immutable staging identity
+
+Set only these non-secret process variables in the PowerShell window used for the operation:
+
+```powershell
+$env:AP_DEPLOYMENT_ENV = 'staging'
+$env:AP_PREMIGRATION_EXPECTED_PROJECT_REF = 'fmugizadzdnqfckujqlw'
+$env:AP_PREMIGRATION_EXPECTED_HOST = 'aws-0-us-west-2.pooler.supabase.com'
+$env:AP_PREMIGRATION_EXPECTED_PORT = '5432'
+$env:AP_PREMIGRATION_EXPECTED_DATABASE = 'postgres'
+$env:AP_PREMIGRATION_EXPECTED_LOGIN_USER = 'postgres.fmugizadzdnqfckujqlw'
+$env:AP_PREMIGRATION_EXPECTED_CURRENT_USER = 'postgres'
+$env:AP_PREMIGRATION_EXPECTED_RELEASE_SHA = git -C 'C:\Users\mskir\Desktop\Apply_Pack\applypack-production-v2' rev-parse HEAD
+$env:APP_CHECKOUT_ENABLED = 'false'
+$env:APP_CANARY_CHECKOUT_ENABLED = 'false'
+```
+
+Do not set or construct a database URI. The helper independently reconstructs the exact arguments and rejects every different value. It also requires the two executable helper files to be tracked and byte-for-byte clean at `HEAD`, and requires the explicit release-SHA binding to equal that 40-character commit.
+
+## Create the encrypted pre-migration backup
+
+Choose new filenames. The helper refuses to overwrite an existing backup or receipt.
+
+```powershell
+$repo = 'C:\Users\mskir\Desktop\Apply_Pack\applypack-production-v2'
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$backup = "C:\ApplyPack-Staging-Evidence\applypack-staging-pre-081-$stamp.apdb"
+$receipt = "C:\ApplyPack-Staging-Evidence\applypack-staging-pre-081-$stamp.backup.json"
+$ca = 'C:\Users\mskir\Downloads\prod-ca-2021.crt'
+
+& pwsh -NoLogo -NoProfile -File "$repo\scripts\staging-database-safeguard.ps1" `
+  -Mode Backup `
+  -BackupPath $backup `
+  -ReceiptPath $receipt `
+  -CaCertificatePath $ca
+```
+
+Required status: `STAGING_BACKUP_ENCRYPTED`. Stop if the helper returns any error code. Do not retry authentication repeatedly. Correct the reviewed credential or identity mismatch first.
+
+The source attestation must prove:
+
+- TLS is active and hostname validation used the pinned CA.
+- `current_database()` is `postgres` and `current_user` is `postgres`.
+- PostgreSQL server version is at least 17.6.
+- The latest migration is exactly `202610040080`.
+- Migration 080 exists and migrations 081 through 084 are absent.
+- `ap_manual_launch_schema_readiness()` reports version `202610040080` and `ready: true`.
+- No invalid public index exists.
+- The receipt includes the release SHA, envelope SHA-256, encrypted byte counts, CA hash, image digest, tool versions, safe schema/RLS/ledger counts, per-public-table row counts, and their deterministic SHA-256 only. Table names and counts are retained; row contents and identifiers are never selected.
+
+## Isolated restore drill
+
+Run the restore drill against the just-created encrypted file. Use a new receipt filename:
+
+```powershell
+$repo = 'C:\Users\mskir\Desktop\Apply_Pack\applypack-production-v2'
+$restoreReceipt = "C:\ApplyPack-Staging-Evidence\applypack-staging-pre-081-$stamp.restore.json"
+
+& pwsh -NoLogo -NoProfile -File "$repo\scripts\staging-database-safeguard.ps1" `
+  -Mode Restore `
+  -BackupPath $backup `
+  -ReceiptPath $restoreReceipt
+```
+
+Required status: `STAGING_RESTORE_DRILL_VERIFIED`. Restore first proves that the two helper sources are tracked and clean at the exact full SHA in `AP_PREMIGRATION_EXPECTED_RELEASE_SHA`; it then holds one non-shareable source handle across metadata authentication, exact equality of the authenticated envelope `releaseSha` to that verified SHA, safe archive-list validation, and streaming restore into a disposable container. The helper creates only the fixed `applypack_restore_drill` database from `template0` as the built-in `supabase_admin`, restores into it as `supabase_admin` with `--exit-on-error --no-owner --no-privileges`, and does not use `--clean` or `--if-exists`. Each consumer authenticates the complete envelope before releasing plaintext. It queries evidence from that dedicated database, requires `current_database()` to be `applypack_restore_drill` and `current_user` to be `supabase_admin`, and compares aggregate schema, migration-ledger, RLS-policy, trigger, function, index, and readiness evidence plus exact per-public-table row counts and their deterministic SHA-256 with the authenticated source metadata. It never publishes a container port or enables container networking. An envelope made by an older or different valid release is deliberately rejected and must be restored only by its separately reviewed exact release.
+
+After success, independently verify that no container whose name starts with `applypack-staging-restore-` remains. The signed-off evidence packet contains the backup receipt, restore receipt, their SHA-256 values, the exact reviewed release SHA, operator and supervisor signatures, writer-quiescence proof, and the later migration/readiness receipts. Do not commit the `.apdb` file or receipts.
+
+## Apply the reviewed staging migrations 081 through 084
+
+Do this only after the encrypted backup and isolated restore drill for the same exact reviewed release have produced `STAGING_BACKUP_ENCRYPTED` and `STAGING_RESTORE_DRILL_VERIFIED`, two independent supervisors have accepted that evidence, and every staging writer remains quiesced. The migration runner is staging-only. It does not support production, does not unlock checkout, and must not be used to apply any migration other than the four files named below. Migrations 077 through 080 are not in the authorized apply scope: they are the required verified predecessor and are never reapplied by this runner.
+
+Before any 081-through-084 mutation, the runner requires the exact predecessor ledger provenance below. Each digest is lower-case SHA-256 of `array_to_json(statements)::text` encoded as UTF-8; a matching checkpoint or version number without the exact name, statement count, and digest is insufficient.
+
+| Version | Name | Statements | Reviewed statements-array digest |
+| --- | --- | ---: | --- |
+| `202610040077` | `atomic_inventory_identity_enforcement` | 12 | `a905fd140c31aeeef0261be33b9e2330c17cedc8195a1f7427a449e8febfa754` |
+| `202610040078` | `requeue_identity_policy_feasibility` | 3 | `1e45eca04b7335e162826e2b200a778873c4d25585102deb1575919492c06da5` |
+| `202610040079` | `runtime_launch_schema_readiness` | 8 | `2fb8c49604344702c185ad66cb0857d329741164faab40f9e00789c768abe2a7` |
+| `202610040080` | `persistent_inventory_identity_guard` | 12 | `e7287f02ba7af66dfec6885545514127e24b81db770f064171f4360ef284d2bb` |
+
+Run its static and networkless synthetic checks first:
+
+```powershell
+$repo = 'C:\Users\mskir\Desktop\Apply_Pack\applypack-production-v2'
+npm --prefix $repo run test:staging-manual-launch-migrations
+& pwsh -NoLogo -NoProfile -File "$repo\scripts\apply-staging-manual-launch-migrations.ps1" -Mode SelfTest
+```
+
+Required SelfTest status:
+
+```text
+STAGING_MANUAL_LAUNCH_MIGRATION_SELF_TEST_OK
+```
+
+Bind the same immutable non-secret staging identity used for the backup and restore. `AP_PREMIGRATION_EXPECTED_RELEASE_SHA` must be the full current `HEAD`; the runner itself, the Credential Manager helper, the authoritative inventory preflight SQL, and exactly migrations 081 through 084 must all be tracked and clean at that commit.
+
+```powershell
+$env:AP_DEPLOYMENT_ENV = 'staging'
+$env:AP_PREMIGRATION_EXPECTED_PROJECT_REF = 'fmugizadzdnqfckujqlw'
+$env:AP_PREMIGRATION_EXPECTED_HOST = 'aws-0-us-west-2.pooler.supabase.com'
+$env:AP_PREMIGRATION_EXPECTED_PORT = '5432'
+$env:AP_PREMIGRATION_EXPECTED_DATABASE = 'postgres'
+$env:AP_PREMIGRATION_EXPECTED_LOGIN_USER = 'postgres.fmugizadzdnqfckujqlw'
+$env:AP_PREMIGRATION_EXPECTED_CURRENT_USER = 'postgres'
+$env:AP_PREMIGRATION_EXPECTED_RELEASE_SHA = git -C $repo rev-parse HEAD
+$env:APP_CHECKOUT_ENABLED = 'false'
+$env:APP_CANARY_CHECKOUT_ENABLED = 'false'
+```
+
+Before either SelfTest or Apply, remove inherited values for `PGPASSWORD`, `PGPASSFILE`, `PGSERVICE`, `PGSERVICEFILE`, `DATABASE_URL`, `AP_PREMIGRATION_DATABASE_URL`, `DOCKER_HOST`, `DOCKER_CONTEXT`, `DOCKER_TLS_VERIFY`, and `DOCKER_CERT_PATH`. A nonempty value for any one fails closed before a child process starts; every child process also has all ten names stripped from its environment. Keep the password only in the exact Windows Generic Credential Manager target documented above.
+
+Apply resolves only `C:\Program Files\Docker\Docker\resources\bin\docker.exe`, rejects a reparse-point executable, and pins every Docker command to `npipe:////./pipe/dockerDesktopLinuxEngine`. It proves that endpoint is a local Linux Docker Desktop engine before reading the credential. The pinned image must already be local and all runs use pull-never semantics. Do not substitute another Docker context, daemon, CLI, or TCP endpoint.
+
+Choose a new receipt filename in the governed evidence directory; the runner refuses to overwrite it. Before credential access or database preflight, it reserves a create-new partial file and holds the guarded directory identity and file identity continuously across preflight, all four possible mutations, postflight, teardown, and atomic publication. Failure deletes only that verified partial. A successful receipt is flushed before its same-directory atomic rename. Every database payload sets server `lock_timeout` to 30 seconds and `statement_timeout` to 240 seconds, both below the runner's 300-second client timeout.
+
+```powershell
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$migrationReceipt = "C:\ApplyPack-Staging-Evidence\applypack-staging-081-084-$stamp.migration.json"
+$ca = 'C:\Users\mskir\Downloads\prod-ca-2021.crt'
+
+& pwsh -NoLogo -NoProfile -File "$repo\scripts\apply-staging-manual-launch-migrations.ps1" `
+  -Mode Apply `
+  -ReceiptPath $migrationReceipt `
+  -CaCertificatePath $ca
+```
+
+The runner first proves exact database, user, TLS, release, CA, local Docker Desktop endpoint, image, psql 17.6, exact 077-through-080 predecessor ledger provenance, pre-081 readiness, zero invalid public indexes, and a clean result from `scripts/preflight-inventory-identity-conflicts.sql`. It then applies, in order:
+
+1. `202610190081_open_font_document_contract.sql`
+2. `202610190082_tax_activation_decision.sql`
+3. `202610190083_legacy_board_read_only_archive.sql`
+4. `202610190084_legacy_board_terminal_event_ordering.sql`
+
+Each reviewed file must have exactly one top-level `begin;` and one final top-level `commit;`. In memory only, the runner replaces that final commit with the exact Supabase migration-ledger insert and then commits, making the reviewed migration and its `(version, name, statements)` row one transaction. The single `statements[]` element is the exact reviewed file text. No rewritten SQL, password, or database URI is written to a temporary file.
+
+Required Apply status:
+
+```text
+STAGING_MANUAL_LAUNCH_MIGRATIONS_APPLIED
+```
+
+Success additionally proves each of the four ledger/checkpoint rows exists exactly once, the ledger maximum and readiness `requiredSchemaVersion` are both `202610190084`, readiness is true, no public index is invalid, every migration hash still matches the reviewed release, and all named Docker containers are absent. The create-new atomic receipt contains only sanitized staging identities, exact release and file hashes, controlled markers, schema/readiness counts, pinned CA/image/client identities, timestamps, and teardown proof. It contains no row data, row counts, password, connection URI, or raw provider error.
+
+Any controlled error is a stop condition. Do not use `supabase db pull`, `supabase db push`, or `supabase migration repair`; do not rerun or edit history to force a pass. Preserve the encrypted backup and existing receipts, keep every checkout flag false and writers quiesced, verify container absence, and obtain a separately reviewed forward-only recovery for the exact observed state.
+
+A failure returned before the runner crosses the first migration-attempt boundary is pre-mutation; preserve the controlled code and verify the hosted state before any new attempt. `STAGING_DATABASE_ADVANCEMENT_REQUIRES_INSPECTION` has a narrower and more serious meaning: the runner crossed that boundary without publishing a complete receipt and therefore cannot prove that no migration committed. The database process may not have started, one or more of 081 through 084 may have committed, all four may have committed before receipt publication failed, or the database may still be at 080. Receipt presence or absence does not prove database state. Perform only a separately reviewed read-only observed-state inspection of the exact ledger tuples and hashes, checkpoints, maximum schema, readiness, and invalid-index state. Recovery must be designed forward-only from those observations; never blindly rerun this runner or destructively reverse a published migration.
+
+## Stop conditions
+
+Stop without applying migrations when any of these occurs:
+
+- Environment, project reference, endpoint, login, connected user, CA, local Docker Desktop endpoint, image, or schema identity differs.
+- Any forbidden libpq/database or Docker routing environment variable is nonempty.
+- Either checkout flag is not false.
+- The Credential Manager user name differs or the password contains a line break.
+- Authentication fails or SSL cannot be proven.
+- Source migration ledger is not exactly pre-081, including every exact 077-through-080 version, name, statement count, and reviewed statements-array digest.
+- Output path is inside a Git repository or worktree, crosses a reparse point, changes directory identity between approval and capture, exists already, or has the wrong extension.
+- Restore helper sources are untracked or dirty, the expected release value is not the exact full current SHA, or the authenticated envelope release differs from it.
+- Encryption, authentication, flush, hash, atomic move, restore, aggregate comparison, or container teardown fails.
+- The dedicated `template0` restore database cannot be created as `supabase_admin`, or restored evidence reports any other database or current user.
+- Any receipt contains a database URI, password, customer row, document content, job URL, or customer identifier.
+
+On failure, preserve the controlled error code and sanitized operator timestamp only. Do not copy raw provider errors into evidence. Checkout remains locked. Say that migrations remain unapplied only when a separately verified pre-mutation state proves it; if a mutation process started or receipt publication failed, the applied state is unknown until the read-only inspection above completes.
+
+## Recovery
+
+- A backup failure removes the ciphertext partial file. Correct the cause, choose new output filenames, and rerun only after checking that writers are still quiesced.
+- A receipt failure removes the completed backup so an unreceipted artifact cannot be mistaken for governed evidence.
+- A restore failure removes the disposable container in `finally` and independently verifies absence. If restore and teardown both fail, the restore code remains primary and the teardown code is attached as `cleanupError`; if teardown alone fails, it is the primary controlled error. Remove the named container manually and document only the sanitized container name and result before any retry.
+- A tampered, truncated, or wrong-Windows-user envelope fails authentication before plaintext is emitted. It is not recoverable from that copy; use another verified encrypted copy or the provider backup.
+- A migration-runner failure before the first mutation process starts permits no blind retry: first confirm the unchanged 080 predecessor state with the separately reviewed read-only inspection.
+- `STAGING_DATABASE_ADVANCEMENT_REQUIRES_INSPECTION`, including a receipt-publication failure after possible commits, requires read-only observed-state inspection and a separately approved forward-only recovery. Do not infer which migrations committed, do not rerun the four-file sequence, and do not destructively roll back.
+- Never weaken TLS, change the pinned identity, bypass the ledger check, decrypt to a file, or reverse a published migration to make a drill pass.

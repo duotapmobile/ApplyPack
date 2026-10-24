@@ -2,12 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { remoteKmsAdapter } from "@/lib/security/remote-kms";
+import { kmsProviderConfigured, remoteKmsAdapter } from "@/lib/security/remote-kms";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("remote KMS adapter", () => {
   const environment = {
+    NODE_ENV: "test" as const,
+    APP_KMS_PROVIDER: "remote",
     APP_KMS_WRAP_URL: "https://kms.example.invalid/wrap",
     APP_KMS_UNWRAP_URL: "https://kms.example.invalid/unwrap",
     APP_KMS_BEARER_TOKEN: "synthetic-token",
@@ -34,7 +36,7 @@ describe("remote KMS adapter", () => {
 
   it("fails closed for missing configuration, non-HTTPS URLs, and mismatched responses", async () => {
     await expect(
-      remoteKmsAdapter({}).wrapDataKey({ ...input, plaintextDataKey: new Uint8Array(32) }),
+      remoteKmsAdapter({ NODE_ENV: "test", APP_KMS_PROVIDER: "remote" }).wrapDataKey({ ...input, plaintextDataKey: new Uint8Array(32) }),
     ).rejects.toThrow("kms_remote_not_configured");
     await expect(
       remoteKmsAdapter({ ...environment, APP_KMS_WRAP_URL: "http://localhost/wrap" }).wrapDataKey({
@@ -53,5 +55,25 @@ describe("remote KMS adapter", () => {
     await expect(
       remoteKmsAdapter(environment).wrapDataKey({ ...input, plaintextDataKey: new Uint8Array(32) }),
     ).rejects.toThrow("kms_remote_response_invalid");
+  });
+
+  it.each(["staging", "production"])("rejects legacy remote KMS in hosted %s before any request", (deployment) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    for (const provider of ["remote", undefined]) {
+      const hosted = { ...environment, APP_DEPLOYMENT_ENV: deployment, APP_KMS_PROVIDER: provider };
+      expect(kmsProviderConfigured(hosted)).toBe(false);
+      expect(() => remoteKmsAdapter(hosted)).toThrow("kms_hosted_requires_aws");
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("requires explicit local QA selection and rejects unknown or missing deployment context", () => {
+    expect(kmsProviderConfigured(environment)).toBe(true);
+    for (const change of [{ NODE_ENV: "production" as const }, { NODE_ENV: undefined },
+      { APP_DEPLOYMENT_ENV: "preview" }, { APP_KMS_PROVIDER: undefined }]) {
+      expect(kmsProviderConfigured({ ...environment, ...change })).toBe(false);
+      expect(() => remoteKmsAdapter({ ...environment, ...change })).toThrow("kms_remote_local_only");
+    }
   });
 });

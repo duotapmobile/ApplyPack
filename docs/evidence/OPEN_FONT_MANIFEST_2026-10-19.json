@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "applypack-open-font-manifest-v1",
+  "family": "Liberation Sans",
+  "version": "2.1.5",
+  "license": "SIL Open Font License 1.1",
+  "upstreamArchiveSha256": "7191c669bf38899f73a2094ed00f7b800553364f90e2637010a69c0e268f25d0",
+  "styleSha256": {
+    "regular": "76d04c18ea243f426b7de1f3ad208e927008f961dc5945e5aad352d0dfde8ee8",
+    "bold": "788abee4c806d660e8aee46689dd8540cd4bb98da03dcc9d171ce3efd99a9173",
+    "italic": "e5bae5c4cde31f22142753855f4f8fb86da6ff39955ed3c0a11248b0d16948b0",
+    "boldItalic": "698da70fc191cc5f33ad4d6d3fe830fe4624b898ea2e3169955928b7c491f1ee"
+  },
+  "canonicalManifestSha256": "d89582771ff8dde19015f5aa3965810d656f93fcb08cee6280497e780de614bb",
+  "canonicalManifestSerialization": "{\"family\":\"Liberation Sans\",\"version\":\"2.1.5\",\"styles\":{\"regular\":\"76d04c18ea243f426b7de1f3ad208e927008f961dc5945e5aad352d0dfde8ee8\",\"bold\":\"788abee4c806d660e8aee46689dd8540cd4bb98da03dcc9d171ce3efd99a9173\",\"italic\":\"e5bae5c4cde31f22142753855f4f8fb86da6ff39955ed3c0a11248b0d16948b0\",\"boldItalic\":\"698da70fc191cc5f33ad4d6d3fe830fe4624b898ea2e3169955928b7c491f1ee\"}}"
+}

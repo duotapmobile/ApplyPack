@@ -137,8 +137,7 @@ test("choosing neither removes the prior cover letter and its processing eligibi
   await expect(page.getByRole("group", { name: "How may we use the previous cover letter?" })).toHaveCount(0);
 });
 
-test("Chromium browser-level 200 percent scale reflows without CSS zoom", async ({ page, context }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "One Chromium browser-level zoom proof is sufficient.");
+test("Chromium browser-level 200 percent scale reflows without CSS zoom", async ({ page, context }) => {
   const session = await context.newCDPSession(page);
   await session.send("Emulation.setDeviceMetricsOverride", {
     width: 720,
@@ -157,4 +156,43 @@ test("Chromium browser-level 200 percent scale reflows without CSS zoom", async 
   expect(metrics).toEqual({ cssWidth: 720, devicePixelRatio: 2, cssZoom: "" });
   await expect(page.getByLabel("Full name required")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
+test("checkout-locked intake confirms the current legal content with keyboard-only 320px reflow", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto("/get-started?legal=legacy-locked");
+
+  const agreement = page.getByLabel(/I agree to/);
+  const confirm = page.getByRole("button", { name: "Confirm current Terms" });
+  await expect(confirm).toBeDisabled();
+  await expect(page.getByText("FEASIBILITY RESULT")).toHaveCount(0);
+
+  await tabTo(page, agreement);
+  await page.keyboard.press("Space");
+  await tabTo(page, confirm);
+  expect(await confirm.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe("none");
+  await page.keyboard.press("Enter");
+
+  const notice = page.locator(".save-notice");
+  await expect(notice).toHaveAttribute("aria-live", "polite");
+  await expect(notice).toContainText("The current Terms and Privacy Policy were confirmed. No payment was started.");
+  await expect(page.getByText("FEASIBILITY RESULT")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
+test("completed intake announces a re-consent error and succeeds on an idempotent retry", async ({ page }) => {
+  await page.goto("/get-started?legal=legacy-error");
+  await page.getByLabel(/I agree to/).check();
+  const confirm = page.getByRole("button", { name: "Confirm current Terms" });
+  await confirm.click();
+
+  const notice = page.locator(".save-notice");
+  await expect(notice).toHaveAttribute("aria-live", "assertive");
+  await expect(notice).toContainText("The current legal terms could not be confirmed. Please try again.");
+  await expect(confirm).toBeEnabled();
+
+  await confirm.click();
+  await expect(notice).toHaveAttribute("aria-live", "polite");
+  await expect(notice).toContainText("The current Terms and Privacy Policy were confirmed. No payment was started.");
+  await expect(page.getByText("FEASIBILITY RESULT")).toBeVisible();
 });

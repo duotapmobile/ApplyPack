@@ -1,16 +1,132 @@
 "use client";
+
 import { useState } from "react";
 import { MatchingGuidedControls } from "./matching-guided-controls";
 import { ManualResearchControls } from "./manual-research-controls";
-export function MatchingWorkbench(){
- const [snapshot,setSnapshot]=useState("");const [packet,setPacket]=useState<unknown>(null);const [payload,setPayload]=useState("");const [endpoint,setEndpoint]=useState("matching-research");const [message,setMessage]=useState("");const [busy,setBusy]=useState(false);
- async function run(load=false){setBusy(true);try{const response=await fetch(load?`/api/admin/matching-research?snapshotId=${encodeURIComponent(snapshot)}`:`/api/admin/${endpoint}`,load?{cache:"no-store"}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(JSON.parse(payload))});const result=await response.json();if(!response.ok)throw new Error(result.error||"Review request failed");if(load)setPacket(result);else setMessage(JSON.stringify(result));}catch(e){setMessage(e instanceof Error?e.message:"Review failed");}finally{setBusy(false);}}
- return <section aria-labelledby="matching-workbench"><h2 id="matching-workbench">Research and evidence authoring</h2><p>Use current immutable criteria and source evidence. Questions and unanswered requirements remain unresolved. Recording a review does not release jobs.</p><label>Criteria snapshot ID<input value={snapshot} onChange={e=>setSnapshot(e.target.value)}/></label><button disabled={busy||!snapshot} onClick={()=>run(true)}>Load private review packet</button>
- {packet!==null&&<details><summary>Criteria, facts, coverage, evaluations and reviews</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(packet,null,2)}</pre></details>}
- {packet!==null&&<MatchingGuidedControls snapshotId={snapshot} packet={packet} onPrepare={(target,value)=>{setEndpoint(target);setPayload(JSON.stringify(value,null,2));setMessage("Prepared from the selected evidence. Review it and validate below.");}}/>}
- {packet!==null&&<ManualResearchControls packet={packet} onPrepare={value=>{setEndpoint("matching-research");setPayload(JSON.stringify(value,null,2));setMessage("Review the manual checklist before recording it below.");}}/>}
- <label>Operation<select value={endpoint} onChange={e=>setEndpoint(e.target.value)}><option value="matching-research">Research round, verified snapshot admission or candidate question</option><option value="matching-reviews">Evidence or equivalence review</option><option value="matching-evaluations">Evaluate current reviews</option><option value="job-source-manual-observations">Record an official manual source observation</option></select></label>
- {endpoint==="job-source-manual-observations"&&<div><h3>Official listing observed by an operator</h3><p>Use a source with current manual permission. Open and inspect the official listing and application path yourself; record the exact text and check time within the last 15 minutes. This action does not activate collection or publish the job.</p><ol><li>Provide a new <code>observationId</code> UUID and a <code>posting</code> object with <code>sourceId</code>, <code>employerName</code>, <code>title</code> and <code>externalJobId</code> (null if unknown). Optional fields: location, employmentType, salaryMin, salaryMax, salaryCurrency, payPeriod, eligibleStates, eligibleCountries, closingAt. Preserve unknown values.</li><li>Provide a <code>review</code> object with <code>checkedAt</code> (ISO time), <code>officialListingUrl</code>, <code>officialApplicationUrl</code>, <code>capturedText</code>, <code>evidenceNotes</code> and <code>transitionReason</code> (both at least 20 characters). Set employerIdentityConfirmed, applicationPathConfirmed, listingActiveConfirmed and legitimacyConfirmed to true only after actually verifying each fact. Use lifecycleAction UNCHANGED, CHANGED or REOPENED to match the actual transition.</li><li>Validate the operation below. Keep its returned jobSnapshotId, then use matching-research ADMIT with the exact criteria snapshotId and inventoryVersionId. Complete the candidate evidence evaluation and bounded manual checklist separately.</li></ol><p>Reuse the same observationId only for an identical retry. A changed listing requires fresh evidence and an explicit transition reason.</p></div>}
- <p>COMPLETE_CELL with cellId, runId and evidence notes records complete research only after every listing has verified snapshot and evaluation evidence. Research: BEGIN with snapshotId, configurationIds and round (1–3); ADMIT with snapshotId, inventoryVersionId and jobSnapshotId; QUESTION with snapshotId, jobSnapshotId, nodeId and prompt. Evidence review requires exact source nodes, confirmed fact versions and rationale. Evaluation accepts review IDs, never scores or supplied gate results.</p>
- <label>Reviewed operation JSON<textarea rows={12} value={payload} onChange={e=>setPayload(e.target.value)} spellCheck={false}/></label><button disabled={busy||!payload} onClick={()=>run()}>Validate and record evidence</button><p role="status">{message}</p></section>;
+import { ManualSourceObservation, type ManualObservationSource } from "./manual-source-observation";
+import { evidenceRecord, evidenceRows, evidenceText, type PreparedResearchOperation } from "./matching-review-form";
+
+type CapturedListing = { id: string; label: string };
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function MatchingWorkbench({ intakes = [] }: { intakes?: Array<{ id: string; label: string }> }) {
+  const [snapshot, setSnapshot] = useState("");
+  const [loadedSnapshot, setLoadedSnapshot] = useState("");
+  const [packet, setPacket] = useState<unknown>(null);
+  const [sources, setSources] = useState<ManualObservationSource[]>([]);
+  const [captured, setCaptured] = useState<CapturedListing[]>([]);
+  const [pending, setPending] = useState<PreparedResearchOperation | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+  const [needsRefresh, setNeedsRefresh] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const available = packet !== null && loadedSnapshot === snapshot;
+
+  async function load(id = snapshot) {
+    if (!intakes.some((intake) => intake.id === id)) throw new Error("Choose a current intake from the list.");
+    const [packetResponse, sourcesResponse] = await Promise.all([
+      fetch("/api/admin/matching-research?snapshotId=" + encodeURIComponent(id), { cache: "no-store" }),
+      fetch("/api/admin/job-sources", { cache: "no-store" }),
+    ]);
+    const result = await packetResponse.json();
+    if (!packetResponse.ok) throw new Error(result.error || "Current review evidence could not be loaded.");
+    const sourceResult = await sourcesResponse.json().catch(() => ({}));
+    setSources(sourcesResponse.ok && Array.isArray(sourceResult.sources) ? sourceResult.sources : []);
+    setPacket(result); setLoadedSnapshot(id); setPending(null); setConfirmed(false); setNeedsRefresh(false);
+    setRevision((current) => current + 1);
+    if (!sourcesResponse.ok) setMessage("Review evidence loaded. Source permissions are unavailable; reload before capturing another listing.");
+  }
+  async function refresh() {
+    setBusy(true); setMessage("");
+    try { await load(); } catch (error) { setPacket(null); setPending(null); setMessage(error instanceof Error ? error.message : "Review evidence could not be loaded."); }
+    finally { setBusy(false); }
+  }
+  function prepare(operation: PreparedResearchOperation) {
+    if (busy || needsRefresh || !available) return;
+    setPending(operation); setConfirmed(false); setMessage("");
+  }
+  async function recordOperation() {
+    if (busy || !pending || !confirmed || needsRefresh) return;
+    const operation = pending;
+    setBusy(true); setMessage("");
+    try {
+      const response = await fetch("/api/admin/" + operation.endpoint, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(operation.payload),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "The reviewed operation was not accepted.");
+      if (operation.endpoint === "job-source-manual-observations") {
+        if (!uuid.test(result.jobSnapshotId || "")) throw new Error("The listing response was incomplete.");
+        const posting = evidenceRecord(operation.payload.posting);
+        const listing = { id: result.jobSnapshotId, label: evidenceText(posting.title) + " at " + evidenceText(posting.employerName) };
+        setCaptured((current) => [...current.filter((item) => item.id !== listing.id), listing]);
+      }
+      if (operation.payload.action === "ADMIT") setCaptured((current) => current.filter((item) => item.id !== operation.payload.jobSnapshotId));
+      await load();
+      setMessage(operation.endpoint === "job-source-manual-observations"
+        ? "Official listing recorded. Choose its research round below and admit it before leaving this page."
+        : "Reviewed operation recorded. Current evidence has been reloaded; no jobs were released.");
+    } catch (error) {
+      setConfirmed(false);
+      if (operation.endpoint !== "job-source-manual-observations") setNeedsRefresh(true);
+      setMessage((error instanceof Error ? error.message : "The operation could not be confirmed.")
+        + (operation.endpoint === "job-source-manual-observations"
+          ? " An unchanged retry uses the same observation reference."
+          : " Reload the evidence before making another change; the prior request may have completed."));
+    } finally { setBusy(false); }
+  }
+
+  return <section aria-labelledby="matching-workbench">
+    <h2 id="matching-workbench">Research and evidence review</h2>
+    <p>Choose an intake, review official listings and confirmed candidate facts, then calculate each match. Questions and missing evidence remain unresolved. Customer release requires the separate final review.</p>
+    <label>Customer intake<select value={snapshot} disabled={busy || Boolean(pending)} onChange={(event) => {
+      setSnapshot(event.target.value); setPacket(null); setPending(null); setCaptured([]); setConfirmed(false); setNeedsRefresh(false);
+    }}><option value="">Choose a current intake</option>{intakes.map((intake) => <option key={intake.id} value={intake.id}>{intake.label}</option>)}</select></label>
+    {!intakes.length ? <p>No current intake is waiting for research.</p> : null}
+    <button type="button" disabled={busy || !snapshot} onClick={() => void refresh()}>Load or refresh review evidence</button>
+    {available ? <fieldset disabled={busy || Boolean(pending) || needsRefresh} key={revision}>
+      <legend>Current intake research</legend>
+      <MatchingGuidedControls snapshotId={snapshot} packet={packet} onPrepare={prepare} />
+      <ManualSourceObservation sources={sources} busy={busy} onPrepare={(payload, summary) => prepare({
+        endpoint: "job-source-manual-observations", payload, summary,
+      })} />
+      <AdmitListing snapshotId={snapshot} packet={packet} captured={captured} onPrepare={prepare} />
+      <ManualResearchControls packet={packet} onPrepare={(payload) => prepare({
+        endpoint: "matching-research", payload: evidenceRecord(payload),
+        summary: "Complete the bounded manual research checklist. " + evidenceText(evidenceRecord(payload).notes),
+      })} />
+    </fieldset> : null}
+    {pending ? <section aria-labelledby="prepared-research-title">
+      <h3 id="prepared-research-title">Confirm this reviewed operation</h3>
+      <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{pending.summary}</p>
+      <label><input type="checkbox" checked={confirmed} disabled={busy || needsRefresh} onChange={(event) => setConfirmed(event.target.checked)} />I confirm this exact prepared operation and its evidence.</label>
+      <button type="button" disabled={busy || needsRefresh || !confirmed} onClick={() => void recordOperation()}>{busy ? "Recording…" : "Record reviewed operation"}</button>
+      <button type="button" disabled={busy || needsRefresh} onClick={() => { setPending(null); setConfirmed(false); }}>Cancel and revise</button>
+    </section> : null}
+    <p role="status" aria-live="polite">{message}</p>
+  </section>;
+}
+
+function AdmitListing({ snapshotId, packet, captured, onPrepare }: {
+  snapshotId: string; packet: unknown; captured: CapturedListing[]; onPrepare: (operation: PreparedResearchOperation) => void;
+}) {
+  const [listingId, setListingId] = useState("");
+  const [planId, setPlanId] = useState("");
+  const [reviewed, setReviewed] = useState(false);
+  const plans = evidenceRows(evidenceRecord(packet).ap_feasibility_coverage_plans)
+    .filter((plan) => plan.snapshot_id === snapshotId && uuid.test(evidenceText(plan.inventory_version_id)));
+  const listing = captured.find((item) => item.id === listingId);
+  const plan = plans.find((item) => item.id === planId);
+  return <fieldset><legend>Add a captured listing to this research</legend>
+    {!captured.length ? <p>Record an official listing above first. Its verified record can then be added without copying an identifier.</p> : <>
+      <label>Captured official listing<select value={listingId} onChange={(event) => { setListingId(event.target.value); setReviewed(false); }}><option value="">Choose the listing just recorded</option>{captured.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+      <label>Research round receiving this listing<select value={planId} onChange={(event) => { setPlanId(event.target.value); setReviewed(false); }}><option value="">Choose a current research round</option>{plans.map((item) => <option key={evidenceText(item.id)} value={evidenceText(item.id)}>Round {evidenceText(evidenceRecord(item.typed_inputs).round) || "recorded"} · {evidenceText(item.created_at)}</option>)}</select></label>
+      <label><input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} />I reviewed this captured listing and chose the appropriate research round for this customer.</label>
+      <button type="button" disabled={!listing || !plan || !reviewed} onClick={() => onPrepare({
+        endpoint: "matching-research", payload: { action: "ADMIT", snapshotId, inventoryVersionId: plan?.inventory_version_id, jobSnapshotId: listing?.id },
+        summary: "Admit " + listing?.label + " to the selected customer research round. This does not approve its fit or release it.",
+      })}>Prepare listing admission</button>
+    </>}
+  </fieldset>;
 }

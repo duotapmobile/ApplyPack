@@ -1,0 +1,179 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ApplyPack environment-scoped CloudFormation service role and permissions boundaries
+Parameters:
+  DeploymentEnvironment:
+    Type: String
+    AllowedValues: [staging, production]
+    Default: production
+Rules:
+  RegionMustBeUsEast1:
+    Assertions:
+      - Assert: !Equals [!Ref "AWS::Region", us-east-1]
+        AssertDescription: The ApplyPack document worker is approved only in us-east-1.
+Resources:
+  WorkerRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "applypack-${DeploymentEnvironment}-document-worker"
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration: { ScanOnPush: true }
+      EncryptionConfiguration: { EncryptionType: AES256 }
+      LifecyclePolicy:
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"Keep only three immutable worker images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":3},"action":{"type":"expire"}}]}'
+      RepositoryPolicyText:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EnvironmentLambdaImageRetrieval
+            Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: [ecr:GetDownloadUrlForLayer, ecr:BatchGetImage]
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:lambda:us-east-1:${AWS::AccountId}:function:applypack-${DeploymentEnvironment}-document-worker"
+      Tags:
+        - { Key: Application, Value: ApplyPack }
+        - { Key: Environment, Value: !Ref DeploymentEnvironment }
+  WorkerRoleBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "applypack-${DeploymentEnvironment}-document-worker-boundary"
+      Path: !Sub "/applypack/${DeploymentEnvironment}/"
+      Description: !Sub "Boundary for the ${DeploymentEnvironment} document worker execution role"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+            Resource: !Sub "arn:${AWS::Partition}:s3:::applypack-${AWS::AccountId}-${DeploymentEnvironment}-document-worker-temp/ephemeral/*"
+            Condition:
+              Bool: { "aws:SecureTransport": "true" }
+          - Effect: Allow
+            Action:
+              - ec2:CreateNetworkInterface
+              - ec2:DescribeNetworkInterfaces
+              - ec2:DescribeSubnets
+              - ec2:DeleteNetworkInterface
+              - ec2:AssignPrivateIpAddresses
+              - ec2:UnassignPrivateIpAddresses
+            Resource: "*"
+            Condition:
+              StringEquals: { "aws:RequestedRegion": us-east-1 }
+  DeploymentRoleBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "applypack-${DeploymentEnvironment}-document-worker-deployment-boundary"
+      Path: !Sub "/applypack/${DeploymentEnvironment}/"
+      Description: !Sub "Boundary for the ${DeploymentEnvironment} document-worker CloudFormation role"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: CreateExactWorkerRoleWithBoundary
+            Effect: Allow
+            Action: iam:CreateRole
+            Resource: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/applypack/${DeploymentEnvironment}/applypack-${DeploymentEnvironment}-document-worker-execution"
+            Condition:
+              StringEquals:
+                iam:PermissionsBoundary: !Ref WorkerRoleBoundary
+          - Sid: ManageExactWorkerRole
+            Effect: Allow
+            Action: [iam:DeleteRole, iam:GetRole, iam:TagRole, iam:UntagRole, iam:PutRolePolicy, iam:DeleteRolePolicy, iam:GetRolePolicy]
+            Resource: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/applypack/${DeploymentEnvironment}/applypack-${DeploymentEnvironment}-document-worker-execution"
+          - Sid: ConstrainedPassRole
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/applypack/${DeploymentEnvironment}/applypack-${DeploymentEnvironment}-document-worker-execution"
+            Condition:
+              StringEquals:
+                iam:PassedToService: lambda.amazonaws.com
+          - Sid: ExactManagedPolicies
+            Effect: Allow
+            Action: [iam:CreatePolicy, iam:DeletePolicy, iam:GetPolicy, iam:GetPolicyVersion, iam:ListPolicyVersions, iam:CreatePolicyVersion, iam:DeletePolicyVersion, iam:TagPolicy, iam:UntagPolicy]
+            Resource:
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/applypack/${DeploymentEnvironment}/applypack-${DeploymentEnvironment}-document-worker-runtime"
+          - Sid: ExactBucket
+            Effect: Allow
+            Action:
+              - s3:CreateBucket
+              - s3:DeleteBucket
+              - s3:GetBucketEncryption
+              - s3:PutBucketEncryption
+              - s3:GetBucketPublicAccessBlock
+              - s3:PutBucketPublicAccessBlock
+              - s3:GetBucketPolicy
+              - s3:PutBucketPolicy
+              - s3:DeleteBucketPolicy
+              - s3:GetLifecycleConfiguration
+              - s3:PutLifecycleConfiguration
+              - s3:GetBucketTagging
+              - s3:PutBucketTagging
+            Resource: !Sub "arn:${AWS::Partition}:s3:::applypack-${AWS::AccountId}-${DeploymentEnvironment}-document-worker-temp"
+          - Sid: ExactFunction
+            Effect: Allow
+            Action:
+              - lambda:CreateFunction
+              - lambda:DeleteFunction
+              - lambda:GetFunction
+              - lambda:GetFunctionConfiguration
+              - lambda:UpdateFunctionCode
+              - lambda:UpdateFunctionConfiguration
+              - lambda:PublishVersion
+              - lambda:ListVersionsByFunction
+              - lambda:TagResource
+              - lambda:UntagResource
+              - lambda:PutFunctionConcurrency
+              - lambda:DeleteFunctionConcurrency
+            Resource:
+              - !Sub "arn:${AWS::Partition}:lambda:us-east-1:${AWS::AccountId}:function:applypack-${DeploymentEnvironment}-document-worker"
+              - !Sub "arn:${AWS::Partition}:lambda:us-east-1:${AWS::AccountId}:function:applypack-${DeploymentEnvironment}-document-worker:*"
+          - Sid: ScopedEc2Mutation
+            Effect: Allow
+            Action:
+              - ec2:CreateSecurityGroup
+              - ec2:DeleteSecurityGroup
+              - ec2:AuthorizeSecurityGroupEgress
+              - ec2:RevokeSecurityGroupEgress
+              - ec2:CreateVpcEndpoint
+              - ec2:DeleteVpcEndpoints
+              - ec2:ModifyVpcEndpoint
+              - ec2:CreateTags
+              - ec2:DeleteTags
+            Resource: "*"
+            Condition:
+              StringEquals: { "aws:RequestedRegion": us-east-1 }
+          - Sid: Ec2ReadOnly
+            Effect: Allow
+            Action: [ec2:DescribeSecurityGroups, ec2:DescribeVpcs, ec2:DescribeSubnets, ec2:DescribeRouteTables, ec2:DescribeVpcEndpoints, ec2:DescribeManagedPrefixLists]
+            Resource: "*"
+            Condition:
+              StringEquals: { "aws:RequestedRegion": us-east-1 }
+          - Sid: ExactBudget
+            Effect: Allow
+            Action: [budgets:CreateBudget, budgets:ModifyBudget, budgets:DeleteBudget, budgets:ViewBudget]
+            Resource: "*"
+  DeploymentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "applypack-${DeploymentEnvironment}-document-worker-cloudformation"
+      Path: !Sub "/applypack/${DeploymentEnvironment}/"
+      PermissionsBoundary: !Ref DeploymentRoleBoundary
+      ManagedPolicyArns: [!Ref DeploymentRoleBoundary]
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: cloudformation.amazonaws.com }
+            Action: sts:AssumeRole
+      Tags:
+        - { Key: Application, Value: ApplyPack }
+        - { Key: Environment, Value: !Ref DeploymentEnvironment }
+Outputs:
+  EcrRepositoryName:
+    Value: !Ref WorkerRepository
+  EcrRepositoryUri:
+    Value: !GetAtt WorkerRepository.RepositoryUri
+  DeploymentRoleArn:
+    Value: !GetAtt DeploymentRole.Arn
+  DeploymentRoleBoundaryArn:
+    Value: !Ref DeploymentRoleBoundary
+  WorkerRoleBoundaryArn:
+    Value: !Ref WorkerRoleBoundary

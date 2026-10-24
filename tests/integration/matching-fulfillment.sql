@@ -52,11 +52,14 @@ select pg_temp.assert_true((select count(*)=1 from public.ap_candidate_facts whe
 select pg_temp.assert_true(not public.ap_customer_owns_snapshot('45000000-0000-4000-8000-000000000099','45000000-0000-4000-8000-000000000005'),'unclaimed draft became customer owned');
 update public.ap_candidate_facts set verification='DISPUTED' where draft_id='45000000-0000-4000-8000-000000000001' and snapshot_id is null and value_kind='EMPLOYMENT';
 select pg_temp.assert_true((select verification='DISPUTED' from public.ap_candidate_facts where snapshot_id='45000000-0000-4000-8000-000000000005'),'disputed source did not invalidate snapshot copy');
--- Fixture claim represents already verified account ownership; it does not prove a real payment.
+-- Fixture claim represents already verified account ownership created before
+-- migration 083 froze the legacy board ledger; it does not prove a real payment.
 insert into auth.users(id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
 values('45000000-0000-4000-8000-000000000010','00000000-0000-0000-0000-000000000000','authenticated','authenticated','synthetic@example.invalid','',now(),'{}','{}',now(),now());
+set local session_replication_role='replica';
 insert into public.ap_board_profile_claims(profile_snapshot_id,draft_id,customer_id,profile_version,access_email_normalized)
 values('45000000-0000-4000-8000-000000000005','45000000-0000-4000-8000-000000000001','45000000-0000-4000-8000-000000000010',1,'synthetic@example.invalid');
+set local session_replication_role='origin';
 insert into public.ap_job_snapshots(id,origin,discovery_source,canonical_application_url,application_host_type,source_url,company,exact_title,normalized_fingerprint,captured_listing,retrieved_at,posted_on,posted_date_unknown,live_verified_at,location_and_work_mode,parser_version,content_sha256,legacy_compatibility)
 values('45000000-0000-4000-8000-000000000011','APPLYPACK_FOUND','manual-reviewed','https://synthetic.invalid/apply','EMPLOYER_HOSTED','https://synthetic.invalid/job','Synthetic Company','Coordinator',repeat('a',64),'{}',now(),null,true,now(),'{}','synthetic-v1',repeat('b',64),true);
 insert into public.ap_requirement_nodes(id,job_snapshot_id,parent_id,position,node_kind,criterion_type,stable_criterion_id,semantic_key,requirement_strength,source_locator,parser_certainty,criterion_version,typed_value,source_excerpt,classification_method,human_correction_history)

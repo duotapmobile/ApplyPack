@@ -11,7 +11,7 @@ import { pathToFileURL } from "node:url";
 import { pdfFontTableUsesApprovedFont } from "@/lib/documents/font-validation";
 import { pdfTextBoundsAreValid } from "@/lib/documents/pdf-bounds";
 import { pdfStructureIsValid, pdfCatalogLanguageMatches } from "@/lib/documents/pdf-validation";
-import { DOCUMENT_REQUIREMENTS } from "@/lib/documents/requirements";
+import { DOCUMENT_FONT_CONTRACT, DOCUMENT_REQUIREMENTS } from "@/lib/documents/requirements";
 import { normalizeRenderedDocumentText } from "@/lib/documents/text-validation";
 import type { ArtifactProvenance, DocumentMetadata } from "@/lib/documents/generate";
 
@@ -20,9 +20,13 @@ const SHA256 = /^[0-9a-f]{64}$/i;
 
 type LocalTool = { path: string; sha256: string };
 
-export type LocalRenderResult = {
+export type DocumentRenderResult = {
   rendererIdentity: string;
+  documentFontFamily: typeof DOCUMENT_FONT_CONTRACT.family;
+  documentFontVersion: typeof DOCUMENT_FONT_CONTRACT.version;
+  documentFontManifestSha256: typeof DOCUMENT_FONT_CONTRACT.manifestSha256;
   documentFontSha256: string;
+  documentFontStyleSha256: typeof DOCUMENT_FONT_CONTRACT.styles;
   pageCount: 1 | 2;
   documentFontResolved: true;
   extractedTextSha256: string;
@@ -32,6 +36,15 @@ export type LocalRenderResult = {
   structureTreeSha256: string;
   searchablePdf: Buffer;
   searchablePdfSha256: string;
+};
+export type LocalRenderResult = DocumentRenderResult;
+
+export type DocumentRenderInput = {
+  docx: Buffer;
+  expectedPages: 1 | 2;
+  expectedExtractedTextSha256: string;
+  artifactType: ArtifactProvenance["artifact"];
+  expectedMetadata: DocumentMetadata;
 };
 
 export function documentRendererConfiguration(environment: Partial<NodeJS.ProcessEnv> = process.env) {
@@ -46,30 +59,46 @@ export function documentRendererConfiguration(environment: Partial<NodeJS.Proces
     pdfText: tool("APP_PDFTOTEXT_EXECUTABLE", "APP_PDFTOTEXT_EXECUTABLE_SHA256"),
     pdfPpm: tool("APP_PDFTOPPM_EXECUTABLE", "APP_PDFTOPPM_EXECUTABLE_SHA256"),
   };
-  const documentFont = tool("APP_DOCUMENT_FONT_FILE", "APP_DOCUMENT_FONT_FILE_SHA256");
+  const documentFontStyles = {
+    regular: tool("APP_DOCUMENT_FONT_FILE", "APP_DOCUMENT_FONT_FILE_SHA256"),
+    bold: tool("APP_DOCUMENT_FONT_BOLD_FILE", "APP_DOCUMENT_FONT_BOLD_FILE_SHA256"),
+    italic: tool("APP_DOCUMENT_FONT_ITALIC_FILE", "APP_DOCUMENT_FONT_ITALIC_FILE_SHA256"),
+    boldItalic: tool("APP_DOCUMENT_FONT_BOLD_ITALIC_FILE", "APP_DOCUMENT_FONT_BOLD_ITALIC_FILE_SHA256"),
+  };
+  const documentFont = documentFontStyles.regular;
   const identity = environment.APP_DOCUMENT_RENDERER_IDENTITY?.trim() || "";
+  const documentFontManifestSha256 = environment.APP_DOCUMENT_FONT_MANIFEST_SHA256?.trim().toLowerCase() || "";
+  const discoveryFailed = environment.APP_RENDERER_RUNTIME_DISCOVERY_FAILED === "true";
   const values = Object.values(tools);
   return {
     identity,
+    documentFontManifestSha256,
     tools,
     documentFont,
-    ready: identity.length >= 3
+    documentFontStyles,
+    ready: !discoveryFailed && identity.length >= 3
+      && documentFontManifestSha256 === DOCUMENT_FONT_CONTRACT.manifestSha256
       && values.every((value) => isAbsolute(value.path) && SHA256.test(value.sha256))
-      && isAbsolute(documentFont.path) && SHA256.test(documentFont.sha256),
+      && Object.entries(documentFontStyles).every(([style, value]) =>
+        isAbsolute(value.path) && value.sha256 === DOCUMENT_FONT_CONTRACT.styles[style as keyof typeof documentFontStyles]),
   } as const;
 }
 
-export async function renderDocumentLocallyForQa(input: {
-  docx: Buffer;
-  expectedPages: 1 | 2;
-  expectedExtractedTextSha256: string;
-  artifactType: ArtifactProvenance["artifact"];
-  expectedMetadata: DocumentMetadata;
-}): Promise<LocalRenderResult> {
+export async function renderDocumentForQa(input: DocumentRenderInput): Promise<DocumentRenderResult> {
+  const { documentWorkerExecutionMode, renderWithDocumentWorker } = await import("@/lib/files/aws-document-worker");
+  const mode = documentWorkerExecutionMode();
+  if (mode === "remote") {
+    return renderWithDocumentWorker(input);
+  }
+  if (mode === "unavailable") throw new Error("document_worker_not_configured");
+  return renderDocumentLocallyForQa(input);
+}
+
+export async function renderDocumentLocallyForQa(input: DocumentRenderInput): Promise<LocalRenderResult> {
   const configuration = documentRendererConfiguration();
   if (!configuration.ready) throw new Error("approved_local_document_renderer_not_configured");
   await Promise.all(Object.values(configuration.tools).map(verifyTool));
-  await verifyTool(configuration.documentFont);
+  await Promise.all(Object.values(configuration.documentFontStyles).map(verifyTool));
   const work = await mkdtemp(join(tmpdir(), "applypack-render-"));
   const resolvedWork = resolve(work);
   const safeRoot = resolve(tmpdir()) + sep;
@@ -79,10 +108,21 @@ export async function renderDocumentLocallyForQa(input: {
   const pdfPath = join(work, `${stem}.pdf`);
   const textPath = join(work, `${stem}.txt`);
   const imageStem = join(work, `${stem}-page`);
-  const officeProfile = pathToFileURL(join(work, "libreoffice-profile")).href;
   try {
     await writeFile(inputPath, input.docx, { flag: "wx" });
-    await execute(configuration.tools.office.path, [`-env:UserInstallation=${officeProfile}`, "--headless", "--nologo", "--nodefault", "--nolockcheck", "--norestore", "--convert-to", DOCUMENT_REQUIREMENTS.pdfExportFilter, "--outdir", work, inputPath], 45_000);
+    let conversionError: unknown;
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const officeProfile = pathToFileURL(join(work, `libreoffice-profile-${attempt}`)).href;
+      try {
+        await execute(configuration.tools.office.path, [`-env:UserInstallation=${officeProfile}`, "--headless", "--nologo", "--nodefault", "--nolockcheck", "--norestore", "--convert-to", DOCUMENT_REQUIREMENTS.pdfExportFilter, "--outdir", work, inputPath], 45_000);
+        conversionError = undefined;
+        break;
+      } catch (error) {
+        conversionError = error;
+        await rm(pdfPath, { force: true });
+      }
+    }
+    if (conversionError) throw conversionError;
     const pdfInfo = await execute(configuration.tools.pdfInfo.path, [pdfPath], 10_000);
     if (!/^Tagged:\s+yes\s*$/im.test(pdfInfo)) throw new Error("rendered_pdf_not_tagged");
     assertPdfMetadata(pdfInfo, input.expectedMetadata);
@@ -117,7 +157,11 @@ export async function renderDocumentLocallyForQa(input: {
     if (!searchablePdf.subarray(0, 5).equals(Buffer.from("%PDF-"))) throw new Error("rendered_pdf_invalid");
     return {
       rendererIdentity: configuration.identity,
+      documentFontFamily: DOCUMENT_FONT_CONTRACT.family,
+      documentFontVersion: DOCUMENT_FONT_CONTRACT.version,
+      documentFontManifestSha256: configuration.documentFontManifestSha256 as typeof DOCUMENT_FONT_CONTRACT.manifestSha256,
       documentFontSha256: configuration.documentFont.sha256,
+      documentFontStyleSha256: DOCUMENT_FONT_CONTRACT.styles,
       pageCount: pageCount as 1 | 2,
       documentFontResolved: true,
       extractedTextSha256,

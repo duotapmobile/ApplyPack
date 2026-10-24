@@ -16,7 +16,6 @@ const requiredPages = {
 describe("controlling public copy and navigation", () => {
   it("keeps the corrected desktop navigation in order", () => {
     expect(siteConfig.navigation).toEqual([
-      { href: "/job-board", label: "Job Board" },
       { href: "/why-apply-pack", label: "Why Apply Pack?" },
       { href: "/how-it-works", label: "How It Works" },
       { href: "/experience-connections", label: "How Matching Works" },
@@ -33,18 +32,41 @@ describe("controlling public copy and navigation", () => {
     }
   });
 
+  it("publishes the complete October 2 manual-launch Terms contract", () => {
+    const terms = publicPages.terms;
+    expect(terms.intro).toContain("Effective October 2, 2026. Version manual-launch-terms-2026-10-02-v2. ApplyPack is operated by DuoTap LLC d/b/a ApplyPack.");
+    const sectionTitles = terms.sections.map((section) => section.title);
+    for (const required of [
+      "Service description",
+      "Eligibility",
+      "10 Current Human-Reviewed Job Matches",
+      "Tailored Resume + Cover Letter",
+      "24-hour turnaround",
+      "Your accuracy and review responsibility",
+      "No application submission",
+      "Job availability, match review, and corrections",
+      "Payments, cancellations, and refunds",
+      "Acceptable use",
+      "Intellectual property",
+      "Disclaimers and no hiring guarantee",
+      "Limitation of liability",
+      "Changes to these Terms",
+      "Contact",
+    ]) expect(sectionTitles).toContain(required);
+  });
+
   it("keeps the approved seven-section homepage offer and boundaries", () => {
     const home = readFileSync("src/app/page.tsx", "utf8");
     expect(home.match(/<section\b/g)).toHaveLength(7);
     for (const copy of [
       "Finding the right job shouldn&apos;t become your full-time job.",
       "Find My 10 Jobs",
-      "The $20 Top 10 requires no subscription. You choose where to apply.",
+      "There is no subscription. Checkout is offered only after a person verifies that your search can support ten suitable opportunities.",
       "A job can fit your abilities and still be wrong for your life.",
       "You may not be unqualified. You may be searching under the wrong job titles.",
       "Hours of searching become 10 focused choices.",
       "Four clear steps. You stay in control of every decision.",
-      "Pay for the kind of help you need.",
+      "Pay only for the help you choose.",
       "Honest help, without promises no one can make.",
     ]) expect(home, copy).toContain(copy);
     expect(home.match(/<ButtonLink href="\/get-started"/g)?.length).toBeLessThanOrEqual(4);

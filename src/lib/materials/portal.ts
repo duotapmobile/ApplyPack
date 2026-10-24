@@ -4,7 +4,7 @@ import type { MatchForSelection } from "@/components/portal/apply-pack-selector-
 import type { MaterialDeliveryView } from "@/components/portal/material-deliveries";
 import type { DeliveredReferenceJob } from "@/components/portal/reference-manager";
 import { publicMaterialState } from "@/lib/materials/contract";
-import { isCurrentDocumentGeneratorVersion } from "@/lib/documents/requirements";
+import { isSupportedDocumentGeneratorVersion } from "@/lib/documents/requirements";
 import type { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type Supabase = NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>;
@@ -169,11 +169,12 @@ export async function loadMaterialDeliveries(input: { supabase: Supabase; custom
     const regeneration = (regenerationsResult.data || []).filter((candidate) => candidate.material_line_id === line.id)
       .sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))[0];
     const lineArtifacts = artifacts.filter((artifact) => artifact.material_line_id === line.id
-      && isCurrentDocumentGeneratorVersion(artifact.generator_version)).flatMap((artifact) => {
+      && isSupportedDocumentGeneratorVersion(artifact.generator_version)).flatMap((artifact) => {
       const current = (filesResult.data || []).find((file) => file.artifact_id === artifact.id && Number(file.version) === Number(artifact.current_file_version));
       if (!current || !current.safe_filename) return [];
       return [{
         id: artifact.id,
+        fileVersionId: current.id,
         type: artifact.artifact_type,
         version: Number(current.version),
         filename: current.safe_filename,

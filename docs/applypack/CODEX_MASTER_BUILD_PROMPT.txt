@@ -1,5 +1,7 @@
 # CODEX MASTER BUILD PROMPT, APPLYPACK PRODUCTION BACKEND
 
+> Historical implementation prompt. For the October 2, 2026 manual launch, `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` supersedes conflicting prices, subscription-board scope, checkout timing, and activation instructions below.
+
 Copy everything below into a new Codex conversation.
 
 ---
@@ -228,7 +230,7 @@ Your single preflight must cover these categories:
 - Login status
 - Permission to create test and live products, prices, webhooks, restricted keys, and settings
 - Permission to perform a real live payment and refund smoke test
-- Confirmation of $20 and $8 prices
+- Confirmation of the current fixed $18.99 and $7.99 prices
 - Immediate payment methods only for the 24-hour clock
 - Tax handling and Stripe Tax decision
 - Exact refund, job-closure, replacement, and missed-deadline rules

@@ -9,15 +9,26 @@ import { remoteKmsAdapter } from "@/lib/security/remote-kms";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { isSameOriginRequest } from "@/lib/security/origin";
 import { assertConfiguredPrice, createStripeSearchClient } from "@/lib/stripe/server";
+import { SEARCH_CONTRACT_VERSION, SEARCH_PRICE_CENTS } from "@/lib/domain/applypack";
+import { manualLaunchFixedTotalIsSafe, STRIPE_NO_ADDED_TAX } from "@/lib/commerce/fixed-total";
+import { authorizeCheckout } from "@/lib/commerce/checkout-authorization";
+import { createOrResumeCheckoutSession } from "@/lib/commerce/checkout-initiation";
 
 const schema = z.object({
   snapshotId: z.uuid(),
   assessmentId: z.uuid(),
+  invitationId: z.uuid(),
+  invitationSecret: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
 }).strict();
 
 type CommerceConfiguration = {
   canonical_site_url: string | null;
   access_callback_url: string | null;
+  search_price_cents: number;
+  material_line_price_cents: number;
+  currency: string;
+  tax_inclusive: boolean;
+  tax_treatment: string;
   pricing_version: string | null;
   tax_version: string | null;
   terms_version: string | null;
@@ -75,21 +86,37 @@ export async function POST(request: Request) {
     || view.state !== "COMPLETE" || view.outcome !== "LIKELY" || view.checkoutEligible !== true) {
     return NextResponse.json({ error: "This search is not currently eligible for Checkout. No payment was started." }, { status: 409 });
   }
+  const snapshot = await context.admin.from("ap_intake_snapshots")
+      .select("access_email_normalized").eq("id", parsed.data.snapshotId)
+      .eq("draft_id", context.capability.draftId).maybeSingle();
+  const customer = snapshot.data?.access_email_normalized
+      ? await context.admin.rpc("ap_find_customer_by_access_email", {
+        p_email: snapshot.data.access_email_normalized,
+      })
+      : null;
+  const authorization = await authorizeCheckout(context.admin, "SEARCH", {
+    customerId: typeof customer?.data === "string" ? customer.data : null,
+    resourceId: context.capability.draftId,
+  }).catch(() => null);
+  if (!authorization) {
+    return NextResponse.json({ error: "Checkout remains locked until the exact release and launch evidence are healthy." }, { status: 503 });
+  }
 
   const { data: configuration, error: configurationError } = await context.admin.from("ap_commerce_configuration")
-    .select("canonical_site_url,access_callback_url,pricing_version,tax_version,terms_version,privacy_version,payment_provider,payment_api_version,immediate_payment_methods,provider_idempotent_email_approved,provider_email_approval_reference,checkout_enabled")
+    .select("canonical_site_url,access_callback_url,search_price_cents,material_line_price_cents,currency,tax_inclusive,tax_treatment,pricing_version,tax_version,terms_version,privacy_version,payment_provider,payment_api_version,immediate_payment_methods,provider_idempotent_email_approved,provider_email_approval_reference,checkout_enabled")
     .eq("singleton", true).maybeSingle();
   const commerce = configuration as CommerceConfiguration | null;
-  if (configurationError || !commerce || !commerce.checkout_enabled
+  if (configurationError || !commerce || (!commerce.checkout_enabled && authorization.mode !== "REHEARSAL")
     || commerce.canonical_site_url !== applicationOrigin || commerce.access_callback_url !== `${applicationOrigin}/auth/callback`
+    || !manualLaunchFixedTotalIsSafe(commerce)
     || !commerce.pricing_version || !commerce.tax_version || !commerce.terms_version || !commerce.privacy_version
     || commerce.payment_provider !== "stripe" || !commerce.payment_api_version
     || commerce.immediate_payment_methods.length !== 1 || commerce.immediate_payment_methods[0] !== "card"
     || !commerce.provider_idempotent_email_approved || !commerce.provider_email_approval_reference) {
-    return NextResponse.json({ error: "Checkout is disabled until the required tax, payment, access, and email settings are approved." }, { status: 503 });
+    return NextResponse.json({ error: "Checkout is disabled until the fixed total, payment, access, and email settings are approved." }, { status: 503 });
   }
   try {
-    await assertConfiguredPrice(stripe, priceId, { unitAmount: 2_000, productName: "Job Match Search" });
+    await assertConfiguredPrice(stripe, priceId, { unitAmount: SEARCH_PRICE_CENTS, productName: "Job Match Search" });
   } catch {
     return NextResponse.json({ error: "Checkout pricing failed verification. No charge was made." }, { status: 503 });
   }
@@ -98,6 +125,7 @@ export async function POST(request: Request) {
     draftId: context.capability.draftId,
     snapshotId: parsed.data.snapshotId,
     assessmentId: parsed.data.assessmentId,
+    invitationId: parsed.data.invitationId,
   });
   const quoteId = deterministicUuid(`quote:${requestKey}`);
   const commandId = deterministicUuid(`checkout-command:${requestKey}`);
@@ -160,7 +188,13 @@ export async function POST(request: Request) {
     }
   }
 
-  const { data: prepared, error: prepareError } = await context.admin.rpc("ap_begin_search_checkout", {
+  const { data: prepared, error: prepareError } = await context.admin.rpc("ap_begin_authorized_search_checkout", {
+    p_mode: authorization.mode,
+    p_customer_id: authorization.customerId,
+    p_release_sha: authorization.releaseSha,
+    p_authorization_id: authorization.authorizationId,
+    p_invitation_id: parsed.data.invitationId,
+    p_invitation_secret_hash: hashCapabilitySecret(parsed.data.invitationSecret),
     p_draft_id: context.capability.draftId,
     p_secret_hash: context.secretHash,
     p_snapshot_id: parsed.data.snapshotId,
@@ -177,17 +211,17 @@ export async function POST(request: Request) {
     p_access_payload_id: accessPayloadId,
   });
   const checkout = Array.isArray(prepared) ? prepared[0] : prepared;
-  if (prepareError || !checkout?.checkout_attempt_id || !checkout.reservation_expires_at || !checkout.access_email) {
+  if (prepareError || !checkout?.checkout_attempt_id || !checkout.payment_attempt_id
+    || !checkout.reservation_expires_at || !checkout.access_email) {
     return NextResponse.json({ error: "The current capacity reservation or immutable quote could not be created. No payment was started." }, { status: 409 });
   }
-
   let session;
   try {
-    session = await stripe.checkout.sessions.create({
+    session = await createOrResumeCheckoutSession(context.admin, stripe, String(checkout.checkout_attempt_id), {
       mode: "payment",
+      ...STRIPE_NO_ADDED_TAX,
       payment_method_types: ["card"],
       customer_email: String(checkout.access_email),
-      expires_at: Math.floor(new Date(String(checkout.reservation_expires_at)).getTime() / 1_000),
       success_url: `${applicationOrigin}/checkout/return`,
       cancel_url: `${applicationOrigin}/checkout/return?cancelled=1`,
       line_items: [{ quantity: 1, price: priceId }],
@@ -195,9 +229,9 @@ export async function POST(request: Request) {
         checkout_attempt_id: String(checkout.checkout_attempt_id),
         quote_id: String(checkout.quote_id),
         product_kind: "job_search",
-        contract_version: "chunk4-v1",
+        contract_version: SEARCH_CONTRACT_VERSION,
       },
-    }, { idempotencyKey: String(checkout.provider_idempotency_key) });
+    });
   } catch {
     return NextResponse.json({
       error: "Checkout creation has an ambiguous provider result. Retry safely; the same command key will be reconciled and no second quote is created.",
@@ -207,34 +241,13 @@ export async function POST(request: Request) {
   if (!session.url) {
     return NextResponse.json({ error: "Checkout did not return a secure URL. No unverified order was activated." }, { status: 502 });
   }
-  const promoted = await context.admin.rpc("ap_promote_search_checkout", {
-    p_checkout_attempt_id: String(checkout.checkout_attempt_id),
-    p_provider_session_id: session.id,
-    p_provider_session_expires_at: new Date(session.expires_at * 1_000).toISOString(),
-  });
-  if (promoted.error || !promoted.data) {
-    let expired = false;
-    try {
-      await stripe.checkout.sessions.expire(session.id);
-      expired = true;
-    } catch {
-      // Reconciliation remains required; a worker must not assume provider cancellation.
-    }
-    if (expired) {
-      await context.admin.rpc("ap_compensate_search_checkout", {
-        p_checkout_attempt_id: String(checkout.checkout_attempt_id),
-        p_failure_code: "LOCAL_PROMOTION_FAILED_PROVIDER_EXPIRED",
-        p_provider_session_id: session.id,
-      });
-    }
-    return NextResponse.json({ error: "Checkout could not be safely linked. No work was activated." }, { status: 502 });
-  }
 
   const response = NextResponse.json({
     url: session.url,
     expiresAt: new Date(session.expires_at * 1_000).toISOString(),
-    amountCents: 2_000,
+    amountCents: SEARCH_PRICE_CENTS,
     currency: "USD",
+    taxInclusive: true,
   });
   const cookie = checkoutCookieSettings();
   response.cookies.set(cookie.name, serializeCheckoutCapability({

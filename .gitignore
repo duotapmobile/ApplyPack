@@ -51,3 +51,10 @@ next-env.d.ts
 
 # Python helper caches
 __pycache__/
+
+# Preserve raw historical browser captures locally; publish reviewed summaries.
+/docs/evidence/launch-execution-2026-10-22/browser-final-artifacts/
+/docs/evidence/launch-execution-2026-10-22/**/*.log
+/docs/evidence/launch-execution-2026-10-22/**/*.json
+/docs/evidence/launch-execution-2026-10-22/**/*.txt
+/docs/evidence/launch-execution-2026-10-22/**/*.patch

@@ -1,4 +1,6 @@
-export const MATERIAL_LINE_PRICE_CENTS = 800;
+import { APPLY_PACK_PRICE_CENTS } from "@/lib/domain/applypack";
+
+export const MATERIAL_LINE_PRICE_CENTS = APPLY_PACK_PRICE_CENTS;
 export const MATERIAL_MAX_LINES = 10;
 export const MATERIAL_CURRENCY = "USD";
 export const MATERIAL_DOWNLOAD_SECONDS = 15 * 60;
@@ -37,6 +39,8 @@ const promptInjectionPatterns = [
 
 const placeholderPattern = /\[[^\]]+\]|\b(?:TBD|TODO|PLACEHOLDER|INSERT (?:NAME|DATE|COMPANY|TITLE)|YOUR NAME)\b/i;
 const genericVersionToken = /(^|_)(?:final|updated|new|v2)(?=_|\.)/i;
+const unsafeFilenameFormatControl = /\p{Cf}/u;
+const windowsReservedFilename = /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9]|CONIN\$|CONOUT\$)(?:\.|$)/i;
 
 export function materialTotalCents(selectedIds: readonly string[]) {
   const unique = new Set(selectedIds);
@@ -64,9 +68,11 @@ export function cleanUntrustedDocumentText(value: string) {
 }
 
 export function assertDeliverableText(value: string) {
-  const cleaned = cleanUntrustedDocumentText(value);
-  if (!cleaned || placeholderPattern.test(cleaned)) throw new Error("deliverable_placeholder_or_empty_text");
-  return cleaned;
+  const securityNormalized = cleanUntrustedDocumentText(value);
+  if (!securityNormalized || placeholderPattern.test(securityNormalized)) throw new Error("deliverable_placeholder_or_empty_text");
+  return value.normalize("NFC")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, "")
+    .replace(/\s+/gu, " ").trim();
 }
 
 export function careerBreakPresentation(input: {
@@ -119,20 +125,34 @@ export function materialFilename(input: {
   const result = [person, input.artifact, company].join("_") + "." + input.extension;
   if (!safeFilename(result)) throw new Error("generated_filename_invalid");
   if (input.employerInstruction) {
-    const explicit = input.employerInstruction.normalize("NFKC").replace(/[\\/:*?"<>|]/g, "_").replace(/\s+/g, "_");
+    const instruction = cleanUntrustedDocumentText(input.employerInstruction);
+    if (placeholderPattern.test(instruction)) throw new Error("unsafe_employer_filename_instruction");
+    const explicit = instruction.normalize("NFKC").replace(/\s+/g, "_");
     const withExtension = explicit.toLowerCase().endsWith("." + input.extension) ? explicit : explicit + "." + input.extension;
-    if (!safeFilename(withExtension)) throw new Error("unsafe_employer_filename_instruction");
-    if (withExtension.toLocaleLowerCase("en-US") !== result.toLocaleLowerCase("en-US")) {
-      throw new Error("employer_filename_conflicts_with_delivery_contract");
-    }
+    if (!safeExplicitEmployerFilename(withExtension, input.extension)) throw new Error("unsafe_employer_filename_instruction");
+    return withExtension;
   }
   return result;
+}
+
+function safeExplicitEmployerFilename(value: string, extension: "docx" | "pdf") {
+  const basename = value.slice(0, -(extension.length + 1));
+  return Boolean(basename)
+    && value.length <= 180
+    && new RegExp(`^[^/\\\\:*?"<>|]{1,175}\\.${extension}$`, "i").test(value)
+    && !/[\[\]]/.test(value)
+    && !unsafeFilenameFormatControl.test(value)
+    && !windowsReservedFilename.test(value)
+    && !/[. ]$/.test(basename)
+    && !/(?:^|\.)\.?\.?(?:\/|\\)/.test(value);
 }
 
 export function safeFilename(value: string) {
   return value.length <= 180
     && /^[^/\\]{1,175}\.(docx|pdf)$/i.test(value)
     && !/[\[\]]/.test(value)
+    && !unsafeFilenameFormatControl.test(value)
+    && !windowsReservedFilename.test(value)
     && !genericVersionToken.test(value);
 }
 
@@ -144,8 +164,8 @@ export function publicMaterialState(input: {
   now?: Date;
 }) {
   const now = input.now || new Date();
-  if (input.refundState === "SUCCEEDED") return { label: "Refunded", message: "The full $8 line refund was confirmed." };
-  if (input.refundState === "PENDING") return { label: "Refund processing", message: "The required $8 line refund is still processing." };
+  if (input.refundState === "SUCCEEDED") return { label: "Refunded", message: "The full $7.99 line refund was confirmed." };
+  if (input.refundState === "PENDING") return { label: "Refund processing", message: "The required $7.99 line refund is still processing." };
   if (input.refundState === "FAILED") return { label: "Refund problem", message: "The required refund needs staff attention." };
   if (input.substitution === "REQUIRED" || input.substitution === "OFFERED") {
     return { label: "Choose a substitute or refund", message: "This listing or its submission instructions changed. ApplyPack will never substitute silently." };

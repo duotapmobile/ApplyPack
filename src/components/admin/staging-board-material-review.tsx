@@ -27,7 +27,7 @@ export function StagingBoardMaterialReview({ initialJobs }: { initialJobs: Job[]
   return <section className="admin-table-wrap" aria-labelledby="staging-board-review-heading">
     <div className="portal-section__heading"><div><p className="eyebrow">STAGING ONLY</p>
       <h2 id="staging-board-review-heading">Fictional board materials preflight</h2></div>
-      <p>These records exercise board-origin $8 checkout. They never prove a real source, employer, or vacancy.</p></div>
+      <p>These records preserve historical board-origin $8 reconciliation evidence. New board checkout is disabled and these records never prove a real source, employer, or vacancy.</p></div>
     {message ? <p role="status">{message}</p> : null}
     <div className="material-staff-grid">{jobs.map((job) => <article key={job.id}>
       <h3>{job.title}</h3><p>{job.company}</p>

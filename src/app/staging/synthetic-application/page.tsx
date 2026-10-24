@@ -13,7 +13,7 @@ export default async function SyntheticApplicationPage({ searchParams }: { searc
         <div className="inner-hero__intro">
           <p>No employer, vacancy, or application exists here. This page proves that the board can preserve a safe, active HTTPS application link without sending synthetic test traffic to a real employer.</p>
           <p>Fixture: <strong>{job || "unspecified"}</strong>.</p>
-          <Link className="button-link button-link--primary" href="/my-applypack/job-board"><span>Return to the test board</span></Link>
+          <Link className="button-link button-link--primary" href="/my-applypack"><span>Return to My ApplyPack</span></Link>
         </div>
       </div>
     </section>

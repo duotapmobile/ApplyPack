@@ -4,17 +4,21 @@
 
 Build and maintain ApplyPack as a production-ready job-search and application-preparation service.
 
-The service must let a customer securely submit her background and preferences, pay $20, receive 10 job matches within 24 hours, select one or more jobs, pay $8 per selected job, and receive a tailored resume and cover letter for each selected job within 24 hours.
+The service must let a customer securely submit her background and preferences, receive an operator-approved checkout invitation, pay $18.99, receive exactly 10 distinct current human-reviewed job matches within 24 hours, select one or more jobs, pay $7.99 per selected job, and receive a tailored resume and cover letter for each selected job within 24 hours.
 
 ## Read first
 
 Before analysis or edits, read:
 
 1. This `AGENTS.md`
-2. Every file under `docs/applypack/`
-3. Root `DESIGN.md` when present
-4. Repository `README`, `START_HERE`, `PROJECT_MAP`, `PROJECT_STATUS`, `RECOVERY`, and `.agent-guidance` files when present
-5. Package, deployment, environment, migration, and test configuration
+2. `docs/applypack/17_OCTOBER_23_SANDBOX_VALIDATION_LAUNCH_AMENDMENT.md`
+3. `docs/applypack/16_OCTOBER_19_TAX_ACTIVATION_AMENDMENT.md`
+4. `docs/applypack/14_OCTOBER_19_OPEN_FONT_AMENDMENT.md`
+5. `docs/applypack/12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md`
+6. Every remaining file under `docs/applypack/`, preserving historical documents where the amendments say they are historical
+7. Root `DESIGN.md` when present
+8. Repository `README`, `START_HERE`, `PROJECT_MAP`, `PROJECT_STATUS`, `RECOVERY`, and `.agent-guidance` files when present
+9. Package, deployment, environment, migration, and test configuration
 
 If the handoff remains outside the repository, read every file in:
 
@@ -27,12 +31,16 @@ C:\Users\mskir\Desktop\Apply_Pack\Chat docs
 Use this order when instructions conflict:
 
 1. User's latest direct instruction
-2. `DESIGN.md`, for visual design only
-3. `docs/applypack/01_PRODUCT_SOURCE_OF_TRUTH.md`
-4. `docs/applypack/02_SITE_COPY_AND_PAGE_MAP.md`
-5. `docs/applypack/03_CUSTOMER_AND_ADMIN_WORKFLOWS.md`
-6. Remaining ApplyPack handoff documents
-7. Existing implementation where compatible
+2. `docs/applypack/17_OCTOBER_23_SANDBOX_VALIDATION_LAUNCH_AMENDMENT.md`, for sandbox proof, production activation and recovery authority
+3. `docs/applypack/16_OCTOBER_19_TAX_ACTIVATION_AMENDMENT.md`, for tax-activation and fixed-total authority
+4. `docs/applypack/14_OCTOBER_19_OPEN_FONT_AMENDMENT.md`, for document font and delivery-format authority
+5. `docs/applypack/12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md`
+6. `DESIGN.md`, for visual design only
+7. `docs/applypack/01_PRODUCT_SOURCE_OF_TRUTH.md`
+8. `docs/applypack/02_SITE_COPY_AND_PAGE_MAP.md`
+9. `docs/applypack/03_CUSTOMER_AND_ADMIN_WORKFLOWS.md`
+10. Remaining ApplyPack handoff documents
+11. Existing implementation where compatible
 
 Record material conflicts and resolutions in `docs/evidence/IMPLEMENTATION_DECISIONS.md`.
 
@@ -59,13 +67,14 @@ Ask another question only when no safe reversible default exists and guessing co
 Do not change without direct user approval:
 
 ```text
-Job Match Search: $20
+Job Match Search: $18.99
 Job Match Search deliverable: exactly 10 jobs
 Job Match Search turnaround: 24 hours
-Apply Pack: $8 per selected job
+Apply Pack: $7.99 per selected job
 Apply Pack deliverable: one tailored resume and one tailored cover letter
 Apply Pack turnaround: 24 hours
 No subscription
+Invitation-based search checkout
 No auto-apply
 No interview, offer, compensation, or employment guarantee
 Customer selects which jobs receive Apply Packs
@@ -273,7 +282,7 @@ State evidence and remaining user-owned actions precisely.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
-# This is NOT the Next.js you know
+## This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 

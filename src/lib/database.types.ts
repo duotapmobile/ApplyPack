@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -154,6 +149,44 @@ export type Database = {
             columns: ["finalized_snapshot_id"]
             isOneToOne: false
             referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_applicant_document_format_requests: {
+        Row: {
+          customer_id: string
+          delivery_format: string
+          id: string
+          material_line_id: string
+          recorded_at: string
+          recorded_by: string
+          request_reference_sha256: string
+        }
+        Insert: {
+          customer_id: string
+          delivery_format: string
+          id: string
+          material_line_id: string
+          recorded_at?: string
+          recorded_by: string
+          request_reference_sha256: string
+        }
+        Update: {
+          customer_id?: string
+          delivery_format?: string
+          id?: string
+          material_line_id?: string
+          recorded_at?: string
+          recorded_by?: string
+          request_reference_sha256?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_applicant_document_format_requests_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: true
+            referencedRelation: "ap_material_lines"
             referencedColumns: ["id"]
           },
         ]
@@ -359,6 +392,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ap_aws_temporary_cleanup: {
+        Row: {
+          attempts: number
+          bucket: string
+          completed_at: string | null
+          created_at: string
+          deployment_environment: string
+          id: string
+          last_attempt_at: string | null
+          last_error: string | null
+          not_before: string
+          operation_id: string
+          storage_path: string
+        }
+        Insert: {
+          attempts?: number
+          bucket: string
+          completed_at?: string | null
+          created_at?: string
+          deployment_environment: string
+          id?: string
+          last_attempt_at?: string | null
+          last_error?: string | null
+          not_before?: string
+          operation_id: string
+          storage_path: string
+        }
+        Update: {
+          attempts?: number
+          bucket?: string
+          completed_at?: string | null
+          created_at?: string
+          deployment_environment?: string
+          id?: string
+          last_attempt_at?: string | null
+          last_error?: string | null
+          not_before?: string
+          operation_id?: string
+          storage_path?: string
+        }
+        Relationships: []
       }
       ap_board_admissions: {
         Row: {
@@ -671,6 +746,7 @@ export type Database = {
           id: string
           last_provider_event_created: number
           last_provider_event_id: string | null
+          last_reconciled_at: string | null
           plan_id: string
           provider_checkout_session_id: string | null
           provider_customer_id: string
@@ -690,6 +766,7 @@ export type Database = {
           id?: string
           last_provider_event_created?: number
           last_provider_event_id?: string | null
+          last_reconciled_at?: string | null
           plan_id: string
           provider_checkout_session_id?: string | null
           provider_customer_id: string
@@ -709,6 +786,7 @@ export type Database = {
           id?: string
           last_provider_event_created?: number
           last_provider_event_id?: string | null
+          last_reconciled_at?: string | null
           plan_id?: string
           provider_checkout_session_id?: string | null
           provider_customer_id?: string
@@ -1481,6 +1559,156 @@ export type Database = {
           },
         ]
       }
+      ap_checkout_initiations: {
+        Row: {
+          authorization_id: string | null
+          capacity_allocation_id: string
+          command_id: string
+          customer_id: string | null
+          id: string
+          initiated_at: string
+          mode: string
+          payment_attempt_id: string
+          product_kind: string
+          provider_idempotency_key: string
+          provider_session_deadline: string
+          provider_session_expires_at: string | null
+          provider_session_id: string | null
+          reconciled_at: string | null
+          release_sha: string
+          request_key: string
+          request_sha256: string
+          resource_id: string
+          resource_sha256: string | null
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          authorization_id?: string | null
+          capacity_allocation_id: string
+          command_id: string
+          customer_id?: string | null
+          id: string
+          initiated_at?: string
+          mode: string
+          payment_attempt_id: string
+          product_kind: string
+          provider_idempotency_key: string
+          provider_session_deadline: string
+          provider_session_expires_at?: string | null
+          provider_session_id?: string | null
+          reconciled_at?: string | null
+          release_sha: string
+          request_key: string
+          request_sha256: string
+          resource_id: string
+          resource_sha256?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          authorization_id?: string | null
+          capacity_allocation_id?: string
+          command_id?: string
+          customer_id?: string | null
+          id?: string
+          initiated_at?: string
+          mode?: string
+          payment_attempt_id?: string
+          product_kind?: string
+          provider_idempotency_key?: string
+          provider_session_deadline?: string
+          provider_session_expires_at?: string | null
+          provider_session_id?: string | null
+          reconciled_at?: string | null
+          release_sha?: string
+          request_key?: string
+          request_sha256?: string
+          resource_id?: string
+          resource_sha256?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_checkout_initiations_capacity_allocation_id_fkey"
+            columns: ["capacity_allocation_id"]
+            isOneToOne: true
+            referencedRelation: "ap_capacity_allocations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_checkout_initiations_command_id_fkey"
+            columns: ["command_id"]
+            isOneToOne: true
+            referencedRelation: "ap_external_commands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_checkout_initiations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_checkout_initiations_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["corrected_payment_attempt_id"]
+          },
+          {
+            foreignKeyName: "ap_checkout_initiations_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_payment_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_checkout_initiations_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_payment_refund_aggregates"
+            referencedColumns: ["payment_attempt_id"]
+          },
+        ]
+      }
+      ap_checkout_mode_configuration: {
+        Row: {
+          generation: number
+          mode: string
+          release_sha: string | null
+          singleton: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          generation?: number
+          mode?: string
+          release_sha?: string | null
+          singleton?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          generation?: number
+          mode?: string
+          release_sha?: string | null
+          singleton?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_checkout_mode_configuration_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_commerce_configuration: {
         Row: {
           access_callback_url: string | null
@@ -1489,11 +1717,20 @@ export type Database = {
           checkout_enabled: boolean | null
           currency: string
           document_font_family: string | null
+          document_font_manifest_sha256: string | null
           document_font_sha256: string | null
           document_renderer_identity: string | null
           document_safety_policy: string | null
+          document_worker_network_attestation_sha256: string | null
           download_ttl_seconds: number | null
           immediate_payment_methods: string[]
+          launch_activation_id: string | null
+          launch_product_scope: string
+          launch_release_sha: string | null
+          legal_acceptance_copy_sha256: string
+          legal_acceptance_copy_version: string
+          legal_content_canonicalization_version: string
+          legal_receipt_schema_version: string
           malware_scanner_identity: string | null
           material_line_price_cents: number
           material_output_formats: string[]
@@ -1503,11 +1740,14 @@ export type Database = {
           payment_api_version: string | null
           payment_provider: string | null
           pricing_version: string | null
-          privacy_version: string | null
+          privacy_content_sha256: string
+          privacy_version: string
           provider_email_approval_reference: string | null
           provider_idempotent_email_approved: boolean
           reauthentication_window_seconds: number | null
           release_verification_ttl_seconds: number | null
+          sales_activation_approved: boolean
+          sales_activation_reference: string | null
           search_price_cents: number
           singleton: boolean
           tax_approval_reference: string | null
@@ -1515,7 +1755,8 @@ export type Database = {
           tax_inclusive: boolean
           tax_treatment: string
           tax_version: string | null
-          terms_version: string | null
+          terms_content_sha256: string
+          terms_version: string
           updated_at: string
         }
         Insert: {
@@ -1525,11 +1766,20 @@ export type Database = {
           checkout_enabled?: boolean | null
           currency?: string
           document_font_family?: string | null
+          document_font_manifest_sha256?: string | null
           document_font_sha256?: string | null
           document_renderer_identity?: string | null
           document_safety_policy?: string | null
+          document_worker_network_attestation_sha256?: string | null
           download_ttl_seconds?: number | null
           immediate_payment_methods?: string[]
+          launch_activation_id?: string | null
+          launch_product_scope?: string
+          launch_release_sha?: string | null
+          legal_acceptance_copy_sha256: string
+          legal_acceptance_copy_version: string
+          legal_content_canonicalization_version: string
+          legal_receipt_schema_version: string
           malware_scanner_identity?: string | null
           material_line_price_cents?: number
           material_output_formats?: string[]
@@ -1539,11 +1789,14 @@ export type Database = {
           payment_api_version?: string | null
           payment_provider?: string | null
           pricing_version?: string | null
-          privacy_version?: string | null
+          privacy_content_sha256: string
+          privacy_version: string
           provider_email_approval_reference?: string | null
           provider_idempotent_email_approved?: boolean
           reauthentication_window_seconds?: number | null
           release_verification_ttl_seconds?: number | null
+          sales_activation_approved?: boolean
+          sales_activation_reference?: string | null
           search_price_cents?: number
           singleton?: boolean
           tax_approval_reference?: string | null
@@ -1551,7 +1804,8 @@ export type Database = {
           tax_inclusive?: boolean
           tax_treatment?: string
           tax_version?: string | null
-          terms_version?: string | null
+          terms_content_sha256: string
+          terms_version: string
           updated_at?: string
         }
         Update: {
@@ -1561,11 +1815,20 @@ export type Database = {
           checkout_enabled?: boolean | null
           currency?: string
           document_font_family?: string | null
+          document_font_manifest_sha256?: string | null
           document_font_sha256?: string | null
           document_renderer_identity?: string | null
           document_safety_policy?: string | null
+          document_worker_network_attestation_sha256?: string | null
           download_ttl_seconds?: number | null
           immediate_payment_methods?: string[]
+          launch_activation_id?: string | null
+          launch_product_scope?: string
+          launch_release_sha?: string | null
+          legal_acceptance_copy_sha256?: string
+          legal_acceptance_copy_version?: string
+          legal_content_canonicalization_version?: string
+          legal_receipt_schema_version?: string
           malware_scanner_identity?: string | null
           material_line_price_cents?: number
           material_output_formats?: string[]
@@ -1575,11 +1838,14 @@ export type Database = {
           payment_api_version?: string | null
           payment_provider?: string | null
           pricing_version?: string | null
-          privacy_version?: string | null
+          privacy_content_sha256?: string
+          privacy_version?: string
           provider_email_approval_reference?: string | null
           provider_idempotent_email_approved?: boolean
           reauthentication_window_seconds?: number | null
           release_verification_ttl_seconds?: number | null
+          sales_activation_approved?: boolean
+          sales_activation_reference?: string | null
           search_price_cents?: number
           singleton?: boolean
           tax_approval_reference?: string | null
@@ -1587,10 +1853,19 @@ export type Database = {
           tax_inclusive?: boolean
           tax_treatment?: string
           tax_version?: string | null
-          terms_version?: string | null
+          terms_content_sha256?: string
+          terms_version?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ap_commerce_configuration_launch_activation_id_fkey"
+            columns: ["launch_activation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_manual_launch_activations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ap_criteria_amendments: {
         Row: {
@@ -3664,6 +3939,493 @@ export type Database = {
             columns: ["supersedes_job_snapshot_id"]
             isOneToOne: false
             referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_legacy_board_archive_entries: {
+        Row: {
+          admission_id: string
+          archived_at: string
+          capability_connection_codes: Json
+          company: string
+          customer_id: string
+          description: string | null
+          evaluated_at: string
+          id: string
+          last_verified_at: string | null
+          location_text: string | null
+          original_job_id: string
+          posted_at: string | null
+          salary_text: string | null
+          source_name: string | null
+          title: string
+          warning_codes: Json
+        }
+        Insert: {
+          admission_id: string
+          archived_at?: string
+          capability_connection_codes?: Json
+          company: string
+          customer_id: string
+          description?: string | null
+          evaluated_at: string
+          id?: string
+          last_verified_at?: string | null
+          location_text?: string | null
+          original_job_id: string
+          posted_at?: string | null
+          salary_text?: string | null
+          source_name?: string | null
+          title: string
+          warning_codes?: Json
+        }
+        Update: {
+          admission_id?: string
+          archived_at?: string
+          capability_connection_codes?: Json
+          company?: string
+          customer_id?: string
+          description?: string | null
+          evaluated_at?: string
+          id?: string
+          last_verified_at?: string | null
+          location_text?: string | null
+          original_job_id?: string
+          posted_at?: string | null
+          salary_text?: string | null
+          source_name?: string | null
+          title?: string
+          warning_codes?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_legacy_board_archive_entries_admission_id_fkey"
+            columns: ["admission_id"]
+            isOneToOne: true
+            referencedRelation: "ap_board_admissions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_legacy_board_archive_entries_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_legacy_board_archive_entries_original_job_id_fkey"
+            columns: ["original_job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_legal_receipt_acceptance_reconciliations: {
+        Row: {
+          matching_legal_acceptance_id: string
+          original_legal_acceptance_id: string
+          reason: string
+          receipt_id: string
+          reconciled_at: string
+        }
+        Insert: {
+          matching_legal_acceptance_id: string
+          original_legal_acceptance_id: string
+          reason: string
+          receipt_id: string
+          reconciled_at?: string
+        }
+        Update: {
+          matching_legal_acceptance_id?: string
+          original_legal_acceptance_id?: string
+          reason?: string
+          receipt_id?: string
+          reconciled_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_legal_receipt_acceptance_r_matching_legal_acceptance_id_fkey"
+            columns: ["matching_legal_acceptance_id"]
+            isOneToOne: true
+            referencedRelation: "ap_snapshot_legal_acceptances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_legal_receipt_acceptance_r_original_legal_acceptance_id_fkey"
+            columns: ["original_legal_acceptance_id"]
+            isOneToOne: false
+            referencedRelation: "ap_snapshot_legal_acceptances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_legal_receipt_acceptance_reconciliations_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_snapshot_legal_content_receipts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_manual_launch_activations: {
+        Row: {
+          accepted_p2_disposition_reference: string
+          accessibility_evidence_reference: string
+          activation_contract_version: string
+          activation_phase: string
+          approved_by: string
+          backup_restore_evidence_reference: string
+          canary_reconciled_amount_cents: number
+          canary_reconciliation_reference: string | null
+          created_at: string
+          database_evidence_reference: string
+          email_evidence_reference: string
+          evidence_bundle_sha256: string
+          health_evidence_reference: string
+          id: string
+          inventory_evidence_reference: string
+          kms_evidence_reference: string
+          legacy_subscription_retirement_reference: string | null
+          maintenance_evidence_reference: string
+          operations_supervisor_reference: string
+          payment_evidence_reference: string
+          product_supervisor_reference: string
+          release_sha: string
+          sandbox_validation: Json | null
+          sandbox_validation_digest: string | null
+          security_supervisor_reference: string
+          tax_approval_reference: string | null
+          tenth_man_supervisor_reference: string
+          unresolved_p0_count: number
+          unresolved_p1_count: number
+          worker_evidence_reference: string
+          worker_network_attestation_sha256: string
+        }
+        Insert: {
+          accepted_p2_disposition_reference: string
+          accessibility_evidence_reference: string
+          activation_contract_version?: string
+          activation_phase?: string
+          approved_by: string
+          backup_restore_evidence_reference: string
+          canary_reconciled_amount_cents: number
+          canary_reconciliation_reference?: string | null
+          created_at?: string
+          database_evidence_reference: string
+          email_evidence_reference: string
+          evidence_bundle_sha256: string
+          health_evidence_reference: string
+          id?: string
+          inventory_evidence_reference: string
+          kms_evidence_reference: string
+          legacy_subscription_retirement_reference?: string | null
+          maintenance_evidence_reference: string
+          operations_supervisor_reference: string
+          payment_evidence_reference: string
+          product_supervisor_reference: string
+          release_sha: string
+          sandbox_validation?: Json | null
+          sandbox_validation_digest?: string | null
+          security_supervisor_reference: string
+          tax_approval_reference?: string | null
+          tenth_man_supervisor_reference: string
+          unresolved_p0_count: number
+          unresolved_p1_count: number
+          worker_evidence_reference: string
+          worker_network_attestation_sha256: string
+        }
+        Update: {
+          accepted_p2_disposition_reference?: string
+          accessibility_evidence_reference?: string
+          activation_contract_version?: string
+          activation_phase?: string
+          approved_by?: string
+          backup_restore_evidence_reference?: string
+          canary_reconciled_amount_cents?: number
+          canary_reconciliation_reference?: string | null
+          created_at?: string
+          database_evidence_reference?: string
+          email_evidence_reference?: string
+          evidence_bundle_sha256?: string
+          health_evidence_reference?: string
+          id?: string
+          inventory_evidence_reference?: string
+          kms_evidence_reference?: string
+          legacy_subscription_retirement_reference?: string | null
+          maintenance_evidence_reference?: string
+          operations_supervisor_reference?: string
+          payment_evidence_reference?: string
+          product_supervisor_reference?: string
+          release_sha?: string
+          sandbox_validation?: Json | null
+          sandbox_validation_digest?: string | null
+          security_supervisor_reference?: string
+          tax_approval_reference?: string | null
+          tenth_man_supervisor_reference?: string
+          unresolved_p0_count?: number
+          unresolved_p1_count?: number
+          worker_evidence_reference?: string
+          worker_network_attestation_sha256?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_manual_launch_activations_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_manual_launch_canary_authorizations: {
+        Row: {
+          authorized_by: string
+          created_at: string
+          evidence_reference: string
+          expected_customer_id: string
+          expires_at: string
+          id: string
+          product_kind: string
+          release_sha: string
+          revocation_evidence_reference: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          search_draft_id: string | null
+        }
+        Insert: {
+          authorized_by: string
+          created_at?: string
+          evidence_reference: string
+          expected_customer_id: string
+          expires_at: string
+          id?: string
+          product_kind: string
+          release_sha: string
+          revocation_evidence_reference?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          search_draft_id?: string | null
+        }
+        Update: {
+          authorized_by?: string
+          created_at?: string
+          evidence_reference?: string
+          expected_customer_id?: string
+          expires_at?: string
+          id?: string
+          product_kind?: string
+          release_sha?: string
+          revocation_evidence_reference?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          search_draft_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_manual_launch_canary_authorization_expected_customer_id_fkey"
+            columns: ["expected_customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_manual_launch_canary_authorizations_authorized_by_fkey"
+            columns: ["authorized_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_manual_launch_canary_authorizations_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_manual_launch_canary_authorizations_search_draft_id_fkey"
+            columns: ["search_draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_manual_launch_canary_designations: {
+        Row: {
+          authorization_id: string | null
+          designated_at: string
+          designated_by: string
+          evidence_reference: string
+          expected_amount_cents: number
+          expected_customer_id: string
+          id: string
+          payment_attempt_id: string
+          product_kind: string
+          provider_terminal_evidence_reference: string | null
+          provider_terminal_payment_status: string | null
+          provider_terminal_reconciled_at: string | null
+          provider_terminal_reconciled_by: string | null
+          provider_terminal_session_id: string | null
+          provider_terminal_status: string | null
+          release_sha: string
+          superseded_at: string | null
+          superseded_by: string | null
+          supersession_evidence_reference: string | null
+        }
+        Insert: {
+          authorization_id?: string | null
+          designated_at?: string
+          designated_by: string
+          evidence_reference: string
+          expected_amount_cents: number
+          expected_customer_id: string
+          id?: string
+          payment_attempt_id: string
+          product_kind: string
+          provider_terminal_evidence_reference?: string | null
+          provider_terminal_payment_status?: string | null
+          provider_terminal_reconciled_at?: string | null
+          provider_terminal_reconciled_by?: string | null
+          provider_terminal_session_id?: string | null
+          provider_terminal_status?: string | null
+          release_sha: string
+          superseded_at?: string | null
+          superseded_by?: string | null
+          supersession_evidence_reference?: string | null
+        }
+        Update: {
+          authorization_id?: string | null
+          designated_at?: string
+          designated_by?: string
+          evidence_reference?: string
+          expected_amount_cents?: number
+          expected_customer_id?: string
+          id?: string
+          payment_attempt_id?: string
+          product_kind?: string
+          provider_terminal_evidence_reference?: string | null
+          provider_terminal_payment_status?: string | null
+          provider_terminal_reconciled_at?: string | null
+          provider_terminal_reconciled_by?: string | null
+          provider_terminal_session_id?: string | null
+          provider_terminal_status?: string | null
+          release_sha?: string
+          superseded_at?: string | null
+          superseded_by?: string | null
+          supersession_evidence_reference?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_manual_launch_canary_desig_provider_terminal_reconciled_fkey"
+            columns: ["provider_terminal_reconciled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_manual_launch_canary_designations_authorization_id_fkey"
+            columns: ["authorization_id"]
+            isOneToOne: false
+            referencedRelation: "ap_manual_launch_canary_authorizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_manual_launch_canary_designations_designated_by_fkey"
+            columns: ["designated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_manual_launch_canary_designations_expected_customer_id_fkey"
+            columns: ["expected_customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_manual_launch_canary_designations_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["corrected_payment_attempt_id"]
+          },
+          {
+            foreignKeyName: "ap_manual_launch_canary_designations_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_payment_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_manual_launch_canary_designations_payment_attempt_id_fkey"
+            columns: ["payment_attempt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_payment_refund_aggregates"
+            referencedColumns: ["payment_attempt_id"]
+          },
+          {
+            foreignKeyName: "ap_manual_launch_canary_designations_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_manual_launch_canary_receipt_update_tokens: {
+        Row: {
+          created_at: string
+          designation_id: string
+          transaction_id: number
+        }
+        Insert: {
+          created_at?: string
+          designation_id: string
+          transaction_id: number
+        }
+        Update: {
+          created_at?: string
+          designation_id?: string
+          transaction_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_manual_launch_canary_receipt_update_toke_designation_id_fkey"
+            columns: ["designation_id"]
+            isOneToOne: true
+            referencedRelation: "ap_manual_launch_canary_designations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_manual_launch_canary_resource_bindings: {
+        Row: {
+          authorization_id: string
+          created_at: string
+          resource_id: string
+          resource_sha256: string | null
+        }
+        Insert: {
+          authorization_id: string
+          created_at?: string
+          resource_id: string
+          resource_sha256?: string | null
+        }
+        Update: {
+          authorization_id?: string
+          created_at?: string
+          resource_id?: string
+          resource_sha256?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_manual_launch_canary_resource_bindings_authorization_id_fkey"
+            columns: ["authorization_id"]
+            isOneToOne: true
+            referencedRelation: "ap_manual_launch_canary_authorizations"
             referencedColumns: ["id"]
           },
         ]
@@ -6548,6 +7310,87 @@ export type Database = {
         }
         Relationships: []
       }
+      ap_search_checkout_invitations: {
+        Row: {
+          assessment_id: string
+          capacity_allocation_id: string
+          consumed_at: string | null
+          draft_id: string
+          expires_at: string
+          id: string
+          issued_at: string
+          issued_by: string
+          rationale: string
+          revoked_at: string | null
+          secret_hash: string
+          snapshot_id: string
+        }
+        Insert: {
+          assessment_id: string
+          capacity_allocation_id: string
+          consumed_at?: string | null
+          draft_id: string
+          expires_at: string
+          id: string
+          issued_at?: string
+          issued_by: string
+          rationale: string
+          revoked_at?: string | null
+          secret_hash: string
+          snapshot_id: string
+        }
+        Update: {
+          assessment_id?: string
+          capacity_allocation_id?: string
+          consumed_at?: string | null
+          draft_id?: string
+          expires_at?: string
+          id?: string
+          issued_at?: string
+          issued_by?: string
+          rationale?: string
+          revoked_at?: string | null
+          secret_hash?: string
+          snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_search_checkout_invitations_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "ap_feasibility_assessments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_checkout_invitations_capacity_allocation_id_fkey"
+            columns: ["capacity_allocation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_capacity_allocations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_checkout_invitations_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_checkout_invitations_issued_by_fkey"
+            columns: ["issued_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_search_checkout_invitations_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_search_deadline_history: {
         Row: {
           capacity_allocation_id: string
@@ -6957,7 +7800,80 @@ export type Database = {
           {
             foreignKeyName: "ap_snapshot_legal_acceptances_snapshot_id_fkey"
             columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_snapshot_legal_content_receipts: {
+        Row: {
+          acceptance_copy_sha256: string
+          acceptance_copy_version: string
+          acceptance_sha256: string
+          accepted_at: string
+          content_canonicalization_version: string
+          draft_id: string
+          id: string
+          legal_acceptance_id: string
+          privacy_content_sha256: string
+          privacy_version: string
+          receipt_schema_version: string
+          snapshot_id: string
+          terms_content_sha256: string
+          terms_version: string
+        }
+        Insert: {
+          acceptance_copy_sha256: string
+          acceptance_copy_version: string
+          acceptance_sha256: string
+          accepted_at?: string
+          content_canonicalization_version: string
+          draft_id: string
+          id?: string
+          legal_acceptance_id: string
+          privacy_content_sha256: string
+          privacy_version: string
+          receipt_schema_version: string
+          snapshot_id: string
+          terms_content_sha256: string
+          terms_version: string
+        }
+        Update: {
+          acceptance_copy_sha256?: string
+          acceptance_copy_version?: string
+          acceptance_sha256?: string
+          accepted_at?: string
+          content_canonicalization_version?: string
+          draft_id?: string
+          id?: string
+          legal_acceptance_id?: string
+          privacy_content_sha256?: string
+          privacy_version?: string
+          receipt_schema_version?: string
+          snapshot_id?: string
+          terms_content_sha256?: string
+          terms_version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_snapshot_legal_content_receipts_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_snapshot_legal_content_receipts_legal_acceptance_id_fkey"
+            columns: ["legal_acceptance_id"]
             isOneToOne: true
+            referencedRelation: "ap_snapshot_legal_acceptances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_snapshot_legal_content_receipts_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
             referencedRelation: "ap_intake_snapshots"
             referencedColumns: ["id"]
           },
@@ -7403,6 +8319,76 @@ export type Database = {
             columns: ["source_reference_id"]
             isOneToOne: false
             referencedRelation: "job_source_references"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_staging_rehearsal_authorizations: {
+        Row: {
+          authorized_by: string
+          created_at: string
+          customer_id: string
+          evidence_reference: string
+          expires_at: string
+          id: string
+          product_kind: string
+          release_sha: string
+          resource_id: string
+          resource_sha256: string | null
+          revocation_reference: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+        }
+        Insert: {
+          authorized_by: string
+          created_at?: string
+          customer_id: string
+          evidence_reference: string
+          expires_at: string
+          id?: string
+          product_kind: string
+          release_sha: string
+          resource_id: string
+          resource_sha256?: string | null
+          revocation_reference?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+        }
+        Update: {
+          authorized_by?: string
+          created_at?: string
+          customer_id?: string
+          evidence_reference?: string
+          expires_at?: string
+          id?: string
+          product_kind?: string
+          release_sha?: string
+          resource_id?: string
+          resource_sha256?: string | null
+          revocation_reference?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_staging_rehearsal_authorizations_authorized_by_fkey"
+            columns: ["authorized_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_staging_rehearsal_authorizations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_staging_rehearsal_authorizations_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -10142,6 +11128,7 @@ export type Database = {
           id: string
           last_attempt_at: string | null
           last_error: string | null
+          not_before: string
           reason: string
           storage_path: string
         }
@@ -10152,6 +11139,7 @@ export type Database = {
           id?: string
           last_attempt_at?: string | null
           last_error?: string | null
+          not_before?: string
           reason: string
           storage_path: string
         }
@@ -10162,6 +11150,7 @@ export type Database = {
           id?: string
           last_attempt_at?: string | null
           last_error?: string | null
+          not_before?: string
           reason?: string
           storage_path?: string
         }
@@ -10527,6 +11516,21 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_apply_legacy_board_terminal_event: {
+        Args: {
+          p_amount_cents?: number
+          p_event_type: string
+          p_full_amount_cents?: number
+          p_provider_created: number
+          p_provider_dispute_id?: string
+          p_provider_event_id: string
+          p_provider_refund_id?: string
+          p_provider_subscription_id: string
+          p_refund_state?: string
+          p_resulting_state: string
+        }
+        Returns: Json
+      }
       ap_apply_local_scheduled_job: {
         Args: { p_job_id: string; p_owner: string }
         Returns: string
@@ -10592,9 +11596,37 @@ export type Database = {
         Args: { p_adapter_version: string; p_postings: Json; p_run_id: string }
         Returns: undefined
       }
+      ap_assert_checkout_initiation_authorized: {
+        Args: {
+          p_authorization_id: string
+          p_customer_id: string
+          p_mode: string
+          p_product_kind: string
+          p_release_sha: string
+          p_resource_id: string
+          p_resource_sha256: string
+        }
+        Returns: string
+      }
       ap_assert_current_artifact_facts: {
         Args: { p_artifact_id: string }
         Returns: undefined
+      }
+      ap_assert_supported_artifact_facts: {
+        Args: { p_artifact_id: string }
+        Returns: undefined
+      }
+      ap_authorize_manual_launch_canary_checkout: {
+        Args: {
+          p_actor_id: string
+          p_evidence_reference: string
+          p_expected_customer_id: string
+          p_expires_at: string
+          p_product_kind: string
+          p_release_sha: string
+          p_search_draft_id: string
+        }
+        Returns: string
       }
       ap_authorize_material_download: {
         Args: {
@@ -10605,8 +11637,98 @@ export type Database = {
         }
         Returns: Json
       }
+      ap_authorize_scoped_manual_launch_canary_checkout: {
+        Args: {
+          p_actor_id: string
+          p_evidence_reference: string
+          p_expected_customer_id: string
+          p_expires_at: string
+          p_product_kind: string
+          p_release_sha: string
+          p_resource_id: string
+          p_resource_sha256: string
+          p_search_draft_id: string
+        }
+        Returns: string
+      }
+      ap_authorize_staging_rehearsal_checkout: {
+        Args: {
+          p_actor_id: string
+          p_customer_id: string
+          p_evidence_reference: string
+          p_expires_at: string
+          p_product_kind: string
+          p_release_sha: string
+          p_resource_id: string
+          p_resource_sha256: string
+        }
+        Returns: string
+      }
       ap_authorize_unpaid_source_delete: {
         Args: { p_document_id: string; p_lease_token: string }
+        Returns: Json
+      }
+      ap_begin_authorized_material_checkout: {
+        Args: {
+          p_authorization_id?: string
+          p_career_break_choice: string
+          p_career_break_custom_label: string
+          p_contact_payload_id: string
+          p_cover_letter_break_consent: boolean
+          p_customer_id: string
+          p_delivered_order_id: string
+          p_delivered_release_id: string
+          p_document_contact_confirmed: boolean
+          p_document_facts_confirmed: boolean
+          p_mode: string
+          p_release_sha: string
+          p_request_key: string
+          p_selection_sha256: string
+          p_selections: Json
+          p_source_snapshot_id: string
+        }
+        Returns: Json
+      }
+      ap_begin_authorized_search_checkout: {
+        Args: {
+          p_access_payload_id?: string
+          p_assessment_id: string
+          p_authorization_id?: string
+          p_browser_secret_hash: string
+          p_checkout_attempt_id: string
+          p_command_id: string
+          p_customer_id: string
+          p_draft_id: string
+          p_email_secret_hash: string
+          p_invitation_id: string
+          p_invitation_secret_hash: string
+          p_mode: string
+          p_payment_attempt_id: string
+          p_provider_idempotency_key: string
+          p_quote_id: string
+          p_quote_sha256: string
+          p_release_sha: string
+          p_request_key: string
+          p_secret_hash: string
+          p_snapshot_id: string
+        }
+        Returns: {
+          access_email: string
+          allocation_id: string
+          checkout_attempt_id: string
+          command_id: string
+          initiation_state: string
+          lease_expires_at: string
+          payment_attempt_id: string
+          provider_idempotency_key: string
+          provider_session_deadline: string
+          provider_session_id: string
+          quote_id: string
+          reservation_expires_at: string
+        }[]
+      }
+      ap_begin_aws_temporary_cleanup: {
+        Args: { p_deployment_environment: string; p_operation_id: string }
         Returns: Json
       }
       ap_begin_board_material_checkout: {
@@ -10627,6 +11749,37 @@ export type Database = {
           p_submission_rule_id: string
         }
         Returns: Json
+      }
+      ap_begin_invited_search_checkout: {
+        Args: {
+          p_access_payload_id?: string
+          p_assessment_id: string
+          p_browser_secret_hash: string
+          p_checkout_attempt_id: string
+          p_command_id: string
+          p_draft_id: string
+          p_email_secret_hash: string
+          p_invitation_id: string
+          p_invitation_secret_hash: string
+          p_payment_attempt_id: string
+          p_provider_idempotency_key: string
+          p_quote_id: string
+          p_quote_sha256: string
+          p_request_key: string
+          p_secret_hash: string
+          p_snapshot_id: string
+        }
+        Returns: {
+          access_email: string
+          allocation_id: string
+          checkout_attempt_id: string
+          command_id: string
+          lease_expires_at: string
+          payment_attempt_id: string
+          provider_idempotency_key: string
+          quote_id: string
+          reservation_expires_at: string
+        }[]
       }
       ap_begin_material_checkout: {
         Args: {
@@ -10690,9 +11843,21 @@ export type Database = {
           reservation_expires_at: string
         }[]
       }
+      ap_bind_checkout_initiation: {
+        Args: {
+          p_attempt_id: string
+          p_provider_session_expires_at: string
+          p_provider_session_id: string
+        }
+        Returns: Json
+      }
       ap_bind_confirmed_document_facts: {
         Args: { p_snapshot_id: string }
         Returns: undefined
+      }
+      ap_bind_manual_launch_canary_payment: {
+        Args: { p_payment_attempt_id: string; p_release_sha: string }
+        Returns: string
       }
       ap_board_has_access: {
         Args: { p_customer_id: string; p_now?: string }
@@ -10711,6 +11876,39 @@ export type Database = {
         Returns: boolean
       }
       ap_capacity_available: { Args: { p_bucket_id: string }; Returns: number }
+      ap_checkout_context_allows_rehearsal: { Args: never; Returns: boolean }
+      ap_checkout_initiations_requiring_reconciliation: {
+        Args: { p_authorization_id?: string; p_limit?: number }
+        Returns: {
+          authorization_id: string | null
+          capacity_allocation_id: string
+          command_id: string
+          customer_id: string | null
+          id: string
+          initiated_at: string
+          mode: string
+          payment_attempt_id: string
+          product_kind: string
+          provider_idempotency_key: string
+          provider_session_deadline: string
+          provider_session_expires_at: string | null
+          provider_session_id: string | null
+          reconciled_at: string | null
+          release_sha: string
+          request_key: string
+          request_sha256: string
+          resource_id: string
+          resource_sha256: string | null
+          state: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "ap_checkout_initiations"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       ap_chunk3_customer_criterion_node_matches: {
         Args: { p_key: string; p_type: string; p_value: Json }
         Returns: boolean
@@ -11115,6 +12313,17 @@ export type Database = {
         Args: { p_reason: string; p_request_id: string; p_worker_id: string }
         Returns: boolean
       }
+      ap_designate_manual_launch_canary_payment: {
+        Args: {
+          p_actor_id: string
+          p_evidence_reference: string
+          p_expected_customer_id: string
+          p_payment_attempt_id: string
+          p_product_kind: string
+          p_release_sha: string
+        }
+        Returns: string
+      }
       ap_enqueue_board_job_recompute: {
         Args: { p_change_key: string; p_job_id: string; p_reason_code: string }
         Returns: string
@@ -11137,6 +12346,10 @@ export type Database = {
         Args: { p_request_key: string; p_schedule_id: string }
         Returns: string
       }
+      ap_ensure_manual_launch_capacity_rollover: {
+        Args: never
+        Returns: number
+      }
       ap_expire_material_change: {
         Args: { p_proposal_id: string }
         Returns: Json
@@ -11149,6 +12362,7 @@ export type Database = {
         Args: { p_checkout_attempt_id: string; p_reason: string }
         Returns: boolean
       }
+      ap_expire_search_checkout_invitations: { Args: never; Returns: number }
       ap_fail_feasibility_request: {
         Args: {
           p_error_code: string
@@ -11189,6 +12403,93 @@ export type Database = {
         Returns: {
           draft_version: number
           feasibility_request_id: string
+          snapshot_id: string
+        }[]
+      }
+      ap_finalize_four_step_intake_with_legal_acceptance: {
+        Args: {
+          p_acceptance_sha256: string
+          p_content_sha256: string
+          p_draft_id: string
+          p_expected_version: number
+          p_fact_reviews: Json
+          p_privacy_version: string
+          p_secret_hash: string
+          p_sensitive_payload_id: string
+          p_snapshot: Json
+          p_snapshot_id: string
+          p_terms_version: string
+        }
+        Returns: {
+          draft_version: number
+          feasibility_request_id: string
+          legal_acceptance_id: string
+          snapshot_id: string
+        }[]
+      }
+      ap_finalize_four_step_intake_with_legal_acceptance_v2: {
+        Args: {
+          p_acceptance_sha256: string
+          p_content_sha256: string
+          p_draft_id: string
+          p_encryption_context_hash: string
+          p_expected_version: number
+          p_fact_reviews: Json
+          p_kms_key_identity: string
+          p_kms_key_version: string
+          p_privacy_version: string
+          p_secret_hash: string
+          p_sensitive_authentication_tag: string
+          p_sensitive_ciphertext: string
+          p_sensitive_content_sha256: string
+          p_sensitive_encrypted_data_key: string
+          p_sensitive_encryption_algorithm: string
+          p_sensitive_nonce: string
+          p_sensitive_payload_id: string
+          p_snapshot: Json
+          p_snapshot_id: string
+          p_terms_version: string
+        }
+        Returns: {
+          draft_version: number
+          feasibility_request_id: string
+          legal_acceptance_id: string
+          snapshot_id: string
+        }[]
+      }
+      ap_finalize_four_step_intake_with_legal_acceptance_v3: {
+        Args: {
+          p_acceptance_copy_sha256: string
+          p_acceptance_copy_version: string
+          p_acceptance_sha256: string
+          p_content_canonicalization_version: string
+          p_content_sha256: string
+          p_draft_id: string
+          p_encryption_context_hash: string
+          p_expected_version: number
+          p_fact_reviews: Json
+          p_kms_key_identity: string
+          p_kms_key_version: string
+          p_privacy_content_sha256: string
+          p_privacy_version: string
+          p_receipt_schema_version: string
+          p_secret_hash: string
+          p_sensitive_authentication_tag: string
+          p_sensitive_ciphertext: string
+          p_sensitive_content_sha256: string
+          p_sensitive_encrypted_data_key: string
+          p_sensitive_encryption_algorithm: string
+          p_sensitive_nonce: string
+          p_sensitive_payload_id: string
+          p_snapshot: Json
+          p_snapshot_id: string
+          p_terms_content_sha256: string
+          p_terms_version: string
+        }
+        Returns: {
+          draft_version: number
+          feasibility_request_id: string
+          legal_acceptance_id: string
           snapshot_id: string
         }[]
       }
@@ -11234,6 +12535,10 @@ export type Database = {
         }
         Returns: string
       }
+      ap_has_current_content_bound_legal_acceptance: {
+        Args: { p_draft_id: string; p_snapshot_id: string }
+        Returns: boolean
+      }
       ap_increment_intake_event: {
         Args: { p_event: string; p_step: number }
         Returns: boolean
@@ -11267,6 +12572,23 @@ export type Database = {
         }
         Returns: string
       }
+      ap_issue_search_checkout_invitation: {
+        Args: {
+          p_assessment_id: string
+          p_draft_id: string
+          p_expires_at: string
+          p_invitation_id: string
+          p_issued_by: string
+          p_rationale: string
+          p_secret_hash: string
+          p_snapshot_id: string
+        }
+        Returns: string
+      }
+      ap_legacy_board_has_access: {
+        Args: { p_customer_id: string; p_now?: string }
+        Returns: boolean
+      }
       ap_lock_anonymous_draft_to_checkout: {
         Args: {
           p_checkout_attempt_id: string
@@ -11274,6 +12596,21 @@ export type Database = {
           p_secret_hash: string
         }
         Returns: boolean
+      }
+      ap_manual_launch_canary_checkout_authorized: {
+        Args: {
+          p_expected_customer_id?: string
+          p_product_kind: string
+          p_release_sha: string
+          p_search_draft_id?: string
+        }
+        Returns: boolean
+      }
+      ap_manual_launch_capacity_readiness: { Args: never; Returns: Json }
+      ap_manual_launch_schema_readiness: { Args: never; Returns: Json }
+      ap_mark_checkout_initiations_for_expiration: {
+        Args: never
+        Returns: number
       }
       ap_offer_material_substitution: {
         Args: {
@@ -11399,6 +12736,24 @@ export type Database = {
         }
         Returns: string
       }
+      ap_queue_manual_launch_canary_refund:
+        | {
+            Args: {
+              p_actor_id: string
+              p_evidence_reference: string
+              p_payment_attempt_id: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_actor_id: string
+              p_evidence_reference: string
+              p_payment_attempt_id: string
+              p_release_sha: string
+            }
+            Returns: string
+          }
       ap_queue_material_line_refund: {
         Args: {
           p_customer_id: string
@@ -11448,8 +12803,47 @@ export type Database = {
           version: number
         }[]
       }
+      ap_reconcile_checkout_initiation: {
+        Args: {
+          p_attempt_id: string
+          p_payment_status: string
+          p_provider_session_id: string
+          p_provider_status: string
+        }
+        Returns: Json
+      }
+      ap_reconcile_checkout_initiation_absence: {
+        Args: {
+          p_attempt_id: string
+          p_evidence_sha256: string
+          p_observed_at: string
+        }
+        Returns: boolean
+      }
+      ap_reconcile_manual_launch_canary_provider_terminal: {
+        Args: {
+          p_actor_id: string
+          p_designation_id: string
+          p_evidence_reference: string
+          p_provider_payment_status: string
+          p_provider_session_id: string
+          p_provider_session_status: string
+          p_release_sha: string
+        }
+        Returns: boolean
+      }
       ap_reconcile_verified_source_run: {
         Args: { p_actor_id: string; p_run_id: string }
+        Returns: Json
+      }
+      ap_record_applicant_document_format_request: {
+        Args: {
+          p_actor_id: string
+          p_delivery_format: string
+          p_material_line_id: string
+          p_request_id: string
+          p_request_reference_sha256: string
+        }
         Returns: Json
       }
       ap_record_fact_presentation: {
@@ -11479,6 +12873,15 @@ export type Database = {
           p_rationale: string
           p_reviewer_id: string
           p_search_service_id: string
+        }
+        Returns: string
+      }
+      ap_record_manual_launch_activation: {
+        Args: {
+          p_activation_phase: string
+          p_actor_id: string
+          p_evidence: Json
+          p_release_sha: string
         }
         Returns: string
       }
@@ -11539,6 +12942,23 @@ export type Database = {
         }
         Returns: Json
       }
+      ap_record_search_refund_result_verified: {
+        Args: {
+          p_amount_cents: number
+          p_currency: string
+          p_error_code?: string
+          p_event_type?: string
+          p_metadata_refund_id: string
+          p_payload_sha256?: string
+          p_provider_event_id?: string
+          p_provider_payment_id: string
+          p_provider_refund_id: string
+          p_provider_status: string
+          p_refund_id: string
+          p_signature_verified_at?: string
+        }
+        Returns: Json
+      }
       ap_record_snapshot_legal_acceptance: {
         Args: {
           p_acceptance_sha256: string
@@ -11546,6 +12966,24 @@ export type Database = {
           p_privacy_version: string
           p_secret_hash: string
           p_snapshot_id: string
+          p_terms_version: string
+        }
+        Returns: string
+      }
+      ap_record_snapshot_legal_content_receipt: {
+        Args: {
+          p_acceptance_copy_sha256: string
+          p_acceptance_copy_version: string
+          p_acceptance_sha256: string
+          p_content_canonicalization_version: string
+          p_draft_id: string
+          p_legal_acceptance_id: string
+          p_privacy_content_sha256: string
+          p_privacy_version: string
+          p_receipt_schema_version: string
+          p_secret_hash: string
+          p_snapshot_id: string
+          p_terms_content_sha256: string
           p_terms_version: string
         }
         Returns: string
@@ -11569,6 +13007,15 @@ export type Database = {
           document_version: number
           draft_version: number
         }[]
+      }
+      ap_register_intake_draft_document: {
+        Args: {
+          p_customer_id: string
+          p_document: Json
+          p_draft_id: string
+          p_kind: string
+        }
+        Returns: string
       }
       ap_register_material_artifact_version: {
         Args: {
@@ -11735,11 +13182,28 @@ export type Database = {
         Args: { p_draft_id: string; p_secret_hash: string }
         Returns: boolean
       }
+      ap_revoke_manual_launch_canary_checkout: {
+        Args: {
+          p_actor_id: string
+          p_authorization_id: string
+          p_evidence_reference: string
+          p_release_sha: string
+        }
+        Returns: boolean
+      }
       ap_revoke_reference_permission: {
         Args: {
           p_customer_id: string
           p_permission_id: string
           p_reason_code: string
+        }
+        Returns: boolean
+      }
+      ap_revoke_staging_rehearsal_checkout: {
+        Args: {
+          p_actor_id: string
+          p_authorization_id: string
+          p_evidence_reference: string
         }
         Returns: boolean
       }
@@ -11751,6 +13215,11 @@ export type Database = {
           p_new_secret_hash: string
           p_secret_hash: string
         }
+        Returns: boolean
+      }
+      ap_sandbox_activation_schema_installed: { Args: never; Returns: boolean }
+      ap_sandbox_validation_receipt_valid: {
+        Args: { p_at: string; p_receipt: Json; p_release_sha: string }
         Returns: boolean
       }
       ap_save_anonymous_draft: {
@@ -11788,6 +13257,15 @@ export type Database = {
           version: number
         }[]
       }
+      ap_set_checkout_mode: {
+        Args: {
+          p_actor_id: string
+          p_evidence_reference: string
+          p_mode: string
+          p_release_sha: string
+        }
+        Returns: number
+      }
       ap_set_job_source_schedule_state: {
         Args: {
           p_actor_id: string
@@ -11797,6 +13275,15 @@ export type Database = {
           p_schedule_id: string
         }
         Returns: number
+      }
+      ap_set_manual_launch_capacity_state: {
+        Args: {
+          p_actor_id: string
+          p_enabled: boolean
+          p_reason: string
+          p_resource: Database["public"]["Enums"]["ap_capacity_resource"]
+        }
+        Returns: boolean
       }
       ap_set_source_authorization_head: {
         Args: {
@@ -11808,6 +13295,7 @@ export type Database = {
         Returns: number
       }
       ap_source_projection_url: { Args: { value: string }; Returns: string }
+      ap_staging_canary_operations_allowed: { Args: never; Returns: boolean }
       ap_stale_feasibility_request: {
         Args: { p_reason: string; p_request_id: string; p_worker_id: string }
         Returns: boolean
@@ -11829,9 +13317,34 @@ export type Database = {
         }
         Returns: string
       }
+      ap_supersede_manual_launch_canary_designation: {
+        Args: {
+          p_actor_id: string
+          p_designation_id: string
+          p_evidence_reference: string
+          p_release_sha: string
+        }
+        Returns: boolean
+      }
       ap_unpaid_source_retention_eligible: {
         Args: { p_document_id: string }
         Returns: boolean
+      }
+      ap_upgrade_completed_intake_legal_acceptance: {
+        Args: {
+          p_acceptance_copy_sha256: string
+          p_acceptance_copy_version: string
+          p_acceptance_sha256: string
+          p_content_canonicalization_version: string
+          p_draft_id: string
+          p_privacy_content_sha256: string
+          p_privacy_version: string
+          p_receipt_schema_version: string
+          p_secret_hash: string
+          p_terms_content_sha256: string
+          p_terms_version: string
+        }
+        Returns: string
       }
       ap_upsert_employer_submission_rules: {
         Args: {
@@ -12422,12 +13935,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12451,11 +13964,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12476,11 +13989,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12501,11 +14014,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12518,11 +14031,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

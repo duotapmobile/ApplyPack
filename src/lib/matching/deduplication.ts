@@ -4,6 +4,13 @@ import type { NormalizedJob } from "@/lib/jobs/types";
 export const DEDUPLICATION_POLICY_VERSION = "conflict-graph-mis-v1";
 export type DuplicateEdgeReason = "external_job_id" | "canonical_url" | "fingerprint";
 export type DuplicateEdge = { leftId: string; rightId: string; reason: DuplicateEdgeReason };
+export type PersistedOpportunityIdentity = {
+  externalJobId: string | null;
+  canonicalEmployerDomain: string | null;
+  canonicalEmployerListingUrl: string | null;
+  canonicalApplicationUrl: string | null;
+  normalizedFingerprint: string | null;
+};
 
 export function stableNormalizedJobId(job: NormalizedJob) {
   if (job.externalJobIdReliable !== false && job.externalJobId) return `requisition|${job.canonicalEmployerId}|${job.externalJobId}`;
@@ -29,6 +36,33 @@ export function duplicateEdgeReason(a: NormalizedJob, b: NormalizedJob): Duplica
   const leftUrls = canonicalUrls(a), rightUrls = canonicalUrls(b);
   if ([...leftUrls].some((url) => rightUrls.has(url))) return "canonical_url";
   if ((!hasStrongIdentifier(a) || !hasStrongIdentifier(b)) && a.deduplicationKey && a.deduplicationKey === b.deduplicationKey) return "fingerprint";
+  return null;
+}
+
+function persistedCanonicalUrls(job: PersistedOpportunityIdentity) {
+  return new Set([
+    normalizeUrl(job.canonicalEmployerListingUrl),
+    normalizeUrl(job.canonicalApplicationUrl),
+  ].filter((value): value is string => Boolean(value)));
+}
+
+function hasPersistedStrongIdentifier(job: PersistedOpportunityIdentity) {
+  return Boolean(job.externalJobId) || persistedCanonicalUrls(job).size > 0;
+}
+
+export function persistedDuplicateEdgeReason(
+  a: PersistedOpportunityIdentity,
+  b: PersistedOpportunityIdentity,
+): DuplicateEdgeReason | null {
+  if (a.externalJobId && b.externalJobId
+    && a.externalJobId === b.externalJobId
+    && a.canonicalEmployerDomain === b.canonicalEmployerDomain) return "external_job_id";
+  const leftUrls = persistedCanonicalUrls(a);
+  const rightUrls = persistedCanonicalUrls(b);
+  if ([...leftUrls].some((url) => rightUrls.has(url))) return "canonical_url";
+  if ((!hasPersistedStrongIdentifier(a) || !hasPersistedStrongIdentifier(b))
+    && a.normalizedFingerprint
+    && a.normalizedFingerprint === b.normalizedFingerprint) return "fingerprint";
   return null;
 }
 

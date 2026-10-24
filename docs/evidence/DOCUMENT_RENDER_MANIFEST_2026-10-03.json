@@ -1,0 +1,89 @@
+{
+  "schemaVersion": "applypack-document-render-manifest-v1",
+  "sourceCommit": "91469cd8920670aa80f6cbb717ceef21f9322ba7",
+  "standardSha256": "1d85789d434c0252d1797e366cd732931756fd4baa74bc36045fdeb2547786cf",
+  "createdAt": "2026-10-03T23:37:18.260Z",
+  "localEvidenceDirectory": "evidence/applypack-chunk5-render-20261003-193535",
+  "rendererIdentity": "applypack-windows-local-qa-2026-10-03",
+  "scenarioCount": 3,
+  "artifactCount": 7,
+  "pageCount": 8,
+  "toolSha256": {
+    "office": "95016b59e08da1e6cbb02fc8f027593c076bf47df795092578afdd995306ac85",
+    "pdfInfo": "a21d3fb3c695d7aa566745c7b2874315636a9914ef135d890058d589511d1db0",
+    "pdfFonts": "b95b2d3d567b515b55825b19e4efc51fb25138d46504b8f24b27da19db6ec2b6",
+    "pdfText": "e66e7ada660a910918dd2974ce6486170a20c2ac73a78b003e9888b97152a82a",
+    "pdfPpm": "8c1e0b47a78291488bed8c0a03f7401e87292df0b6c25bf643b6ed548916fdf5",
+    "documentFont": "b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a"
+  },
+  "records": [
+    {
+      "scenario": "returning-operations",
+      "artifact": "RESUME",
+      "pages": 1,
+      "docxSha256": "1e0c0fafbae895b1a4c5bae1fb6ffe9f3617d0b69689dbc3d8058c8d4bddd0c6",
+      "pdfSha256": "651a46225058514d4dbcc9762a8415d2537f9bcc14a513fccc0d2a8dd45218ba",
+      "structureTreeSha256": "d5a251617db55f937b351bd015a12661f36115f31e5625ca2fa292bc24cf7219"
+    },
+    {
+      "scenario": "returning-operations",
+      "artifact": "COVER_LETTER",
+      "pages": 1,
+      "docxSha256": "d9132df0b2607c6d990f1702f1e2f1e9774e440b193531b4c6b2de1bf8502877",
+      "pdfSha256": "d7b84c83624e5bdb1ed5fa32e7badccae5e205cea289976f22df9e8084a5bee4",
+      "structureTreeSha256": "dd047ec37f83be3df7d56c5050a8a67e732cf01abef8cf6a73e282ed08f23e39"
+    },
+    {
+      "scenario": "returning-operations",
+      "artifact": "REFERENCE_SHEET",
+      "pages": 1,
+      "docxSha256": "2dbc5a6b1d36ffa9780a2d49ce0e621422c9078ce4cd2362ab1edd0cf9991dab",
+      "pdfSha256": "fa48d0c2fb795166435ee6903b61dde6a02a7d6ec4ed49d9e76e635f45570601",
+      "structureTreeSha256": "88889bc73289fadba3648a319d235d72d90fc85a5699f686d1a598eeb2855057"
+    },
+    {
+      "scenario": "career-change-support",
+      "artifact": "RESUME",
+      "pages": 1,
+      "docxSha256": "0f52820fe88d9cafe656b6f9b9ae9483872a96743b9c27110c7d1b903e118809",
+      "pdfSha256": "576657e162852fd81efbbd934906217dd4a3d1e437d1a5ee61e9f447ff22660b",
+      "structureTreeSha256": "1c0a492ea34f5674ab8407d2bf3c41d264476cbfd933895afd02eee1d1267aeb"
+    },
+    {
+      "scenario": "career-change-support",
+      "artifact": "COVER_LETTER",
+      "pages": 1,
+      "docxSha256": "53b597e893dd700de7fbbab439ca6fc9c9196f5b641bcb71e735eaa2712485ba",
+      "pdfSha256": "b4982df73b89a38c1a5f1155409a345f97072789f29a296086e45c6657c70e39",
+      "structureTreeSha256": "dd047ec37f83be3df7d56c5050a8a67e732cf01abef8cf6a73e282ed08f23e39"
+    },
+    {
+      "scenario": "senior-program",
+      "artifact": "RESUME",
+      "pages": 2,
+      "docxSha256": "de25730a031c621dce2968683e9230496c02df80018a7a8ae7a472901aedb536",
+      "pdfSha256": "6e894384333a058103f6704994ff080a2f9800a156c9054461549d19f6909cd0",
+      "structureTreeSha256": "147163ac6be75c6a564e762b0f11a0318adfa64b9be6fd891144edf98c85dba4"
+    },
+    {
+      "scenario": "senior-program",
+      "artifact": "COVER_LETTER",
+      "pages": 1,
+      "docxSha256": "adaa5ebf62fd58f034a6a840d1ec62b591512311ba9dfb4795af656212ada6b7",
+      "pdfSha256": "ed1ac7f227f4f1b26a7d8fce8ada785973c4d4ee0af750bc67bd167929bcbbe2",
+      "structureTreeSha256": "dd047ec37f83be3df7d56c5050a8a67e732cf01abef8cf6a73e282ed08f23e39"
+    }
+  ],
+  "assertions": {
+    "searchablePdf": true,
+    "taggedPdf": true,
+    "metadataVerified": true,
+    "exactExtractedTextVerified": true,
+    "pageImagesCreated": true
+  },
+  "limitations": [
+    "The binary render evidence is local and ignored by Git; this tracked manifest records its hashes.",
+    "LibreOffice and Poppler local QA do not replace Microsoft Word, commercial parser, or assistive-technology acceptance.",
+    "Production AWS renderer attestation remains a separate launch gate."
+  ]
+}

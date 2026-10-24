@@ -1,5 +1,7 @@
 # ApplyPack Backend Architecture and Data Model
 
+> October 2, 2026 authority: `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` controls new prices, immutable contract versions, invitation checkout, capacity, and launch health. Conflicting values below describe the historical model only.
+
 Last updated: September 1, 2026
 
 ## Architecture rule

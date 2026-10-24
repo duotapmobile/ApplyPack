@@ -1,3 +1,4 @@
+import { newIntakeRecoveryHold } from "@/lib/operations/protected-recovery-readiness";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { z } from "zod";
@@ -16,6 +17,8 @@ export async function POST(request: Request) {
   const settings = draftCookieSettings();
   const admin = createSupabaseAdminClient();
   if (!settings || !admin) return NextResponse.json({ error: "Anonymous draft retention is not configured." }, { status: 503 });
+  const recoveryHold = await newIntakeRecoveryHold(admin);
+  if (recoveryHold) return recoveryHold;
   const rate = await consumeRateLimit({ request, scope: "anonymous_draft_create", limit: 12, windowSeconds: 60 * 60 });
   if (!rate.configured || !rate.allowed) return NextResponse.json({ error: "A draft cannot be created right now." }, { status: rate.configured ? 429 : 503 });
   const capability = createDraftCapability();
@@ -34,7 +37,17 @@ export async function GET() {
   const row = Array.isArray(data) ? data[0] : null;
   const state = row ? await fourStepPrivateState(context.admin, context.capability.draftId).catch(() => null) : null;
   if (row && !state) return NextResponse.json({ error: "The saved intake details are temporarily unavailable." }, { status: 502 });
-  return NextResponse.json({ draft: row ? publicFourStepDraft(row as Record<string, unknown>, state!) : null }, { headers: { "cache-control": "no-store" } });
+  const publicDraft = row ? publicFourStepDraft(row as Record<string, unknown>, state!) : null;
+  let legalContentAccepted = false;
+  if (publicDraft?.finalizedSnapshotId) {
+    const legal = await context.admin.rpc("ap_has_current_content_bound_legal_acceptance", {
+      p_draft_id: context.capability.draftId,
+      p_snapshot_id: publicDraft.finalizedSnapshotId,
+    });
+    if (legal.error) return NextResponse.json({ error: "The saved intake legal status is temporarily unavailable." }, { status: 502 });
+    legalContentAccepted = legal.data === true;
+  }
+  return NextResponse.json({ draft: publicDraft ? { ...publicDraft, legalContentAccepted } : null }, { headers: { "cache-control": "no-store" } });
 }
 
 export async function PUT(request: Request) {
@@ -42,6 +55,8 @@ export async function PUT(request: Request) {
   if (Number(request.headers.get("content-length") || 0) > 64 * 1024) return NextResponse.json({ error: "The intake draft is too large." }, { status: 413 });
   const context = await anonymousDraftContext();
   if (!context) return NextResponse.json({ error: "The saved draft is unavailable." }, { status: 404 });
+  const recoveryHold = await newIntakeRecoveryHold(context.admin);
+  if (recoveryHold) return recoveryHold;
   const parsed = updateSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success || JSON.stringify(parsed.data.answers).length > 60_000) return NextResponse.json({ error: "The intake draft is invalid or too large." }, { status: 400 });
   const { data, error } = await context.admin.rpc("ap_save_four_step_draft", { p_draft_id: context.capability.draftId, p_secret_hash: hashDraftSecret(context.capability.secret), p_expected_version: parsed.data.expectedVersion, p_current_step: parsed.data.currentStep, p_answers: parsed.data.answers });

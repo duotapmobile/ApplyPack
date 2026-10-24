@@ -1,3 +1,4 @@
+import { newIntakeRecoveryHold } from "@/lib/operations/protected-recovery-readiness";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isSameOriginRequest } from "@/lib/security/origin";
@@ -58,6 +59,8 @@ export async function PUT(request: Request) {
   if (contentLength > 64 * 1024) return NextResponse.json({ error: "The intake draft is too large." }, { status: 413 });
   const auth = await clients();
   if (!auth) return NextResponse.json({ error: "Sign in to save intake." }, { status: 401 });
+  const recoveryHold = await newIntakeRecoveryHold(auth.admin);
+  if (recoveryHold) return recoveryHold;
   const parsed = updateSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success || JSON.stringify(parsed.data.answers).length > 60_000) {
     return NextResponse.json({ error: "The intake draft is invalid or too large." }, { status: 400 });

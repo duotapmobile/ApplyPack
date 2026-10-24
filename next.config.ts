@@ -1,7 +1,12 @@
 import type { NextConfig } from "next";
+import { publicIndexingAllowed } from "./src/config/indexing";
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
+  // The development toolbar renders outside the application tree and can
+  // transiently widen WebKit's root scroll area while the dev server compiles.
+  // It is not shipped in production and must not contaminate reflow evidence.
+  ...(process.env.APP_E2E_FIXTURE_MODE === "true" ? { devIndicators: false as const } : {}),
   turbopack: {
     root: process.cwd(),
   },
@@ -17,11 +22,15 @@ const nextConfig: NextConfig = {
     ];
   },
   async headers() {
-    const stagingHeaders = process.env.APP_DEPLOYMENT_ENV === "production"
+    const stagingHeaders = publicIndexingAllowed()
       ? []
       : [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }];
 
     return [
+      {
+        source: "/:path(admin|api|auth|checkout|get-started|my-applypack|sign-in|staging)/:rest*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }],
+      },
       {
         source: "/(.*)",
         headers: [

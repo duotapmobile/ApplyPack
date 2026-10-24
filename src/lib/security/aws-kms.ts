@@ -3,6 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { DecryptCommand, EncryptCommand, KMSClient, type DecryptCommandInput, type DecryptCommandOutput, type EncryptCommandInput, type EncryptCommandOutput } from "@aws-sdk/client-kms";
 import type { KmsEnvelopeAdapter } from "./sensitive-payload";
+import { awsWorkloadCredentials } from "./aws-workload-credentials";
 
 type Environment = Partial<NodeJS.ProcessEnv>;
 export type AwsKmsTransport = {
@@ -27,7 +28,12 @@ export function awsKmsConfiguration(environment: Environment = process.env) {
 
 export function awsKmsAdapter(environment: Environment = process.env, suppliedTransport?: AwsKmsTransport): KmsEnvelopeAdapter {
   const configuration = awsKmsConfiguration(environment);
-  const client = suppliedTransport ? null : new KMSClient({ region: configuration.region, maxAttempts: 2 });
+  if (!suppliedTransport && configuration.keyIdentity.split(":")[4] !== environment.APP_AWS_ACCOUNT_ID) {
+    throw new Error("kms_aws_account_binding_invalid");
+  }
+  const client = suppliedTransport ? null : new KMSClient({ region: configuration.region,
+    endpoint: `https://kms.${configuration.region}.amazonaws.com`,
+    credentials: awsWorkloadCredentials(environment), maxAttempts: 2 });
   const transport = suppliedTransport || {
     encrypt: (input: EncryptCommandInput, signal: AbortSignal) => client!.send(new EncryptCommand(input), { abortSignal: signal }),
     decrypt: (input: DecryptCommandInput, signal: AbortSignal) => client!.send(new DecryptCommand(input), { abortSignal: signal }),

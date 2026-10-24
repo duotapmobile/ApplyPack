@@ -1,0 +1,7 @@
+# Launch temporary-object cleanup
+
+The launch profile also drains the separate `ap_aws_temporary_cleanup` ledger. Each document-worker invocation registers its input, PDF and two possible page-image keys before upload. Immediate deletion never removes the durable receipt. Maintenance deletes again after a ten-minute grace period, with at most twenty keys per invocation and four bounded deletes at a time. Completed receipts remain so a delayed retry cannot renew the original submission lease. Failed keys retry up to twenty times and remain visible after exhaustion.
+
+Parser and renderer health share one five-minute probe cache per process and complete worker/credential identity; approval revocation remains uncached. A single healthy web process contributes at most 48 cleanup rows per hour, against the scheduled drain of 80 rows per hour. Hosted acceptance must verify actual document volume, process/replica count, restart behavior and maintenance duration within the 120-second runner deadline. Do not infer adequate capacity from the cadence alone.
+
+Operations exposes the AWS due count and oldest due age. Any uncompleted key thirty minutes past its deletion deadline (forty minutes after registration), any exhausted retry, or a cleanup-query failure makes maintenance/readiness fail and holds new checkout. Restore deletion and observe a successful drain before resuming; do not delete receipts or raise the threshold to conceal the backlog.

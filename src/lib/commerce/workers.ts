@@ -2,9 +2,10 @@ import "server-only";
 
 import type Stripe from "stripe";
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { assertConfiguredPrice, createStripeOperationalClient, createStripeSearchClient } from "@/lib/stripe/server";
-import { canonicalApplicationOrigin } from "./server";
+import { createStripeOperationalClient } from "@/lib/stripe/server";
 import { processChunk4Outbox } from "./outbox";
+import { APPLY_PACK_CONTRACT_VERSION, SEARCH_CONTRACT_VERSION } from "@/lib/domain/applypack";
+import { reconcileCheckoutInitiations } from "./checkout-initiation";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 type ScheduledJob = {
@@ -71,14 +72,30 @@ async function handleRefund(admin: AdminClient, job: ScheduledJob, owner: string
       amount: refund.amount_cents,
       metadata: {
         refund_operation_id: refund.id,
-        contract_version: refund.scope === "MATERIAL_LINE" ? "chunk5-v1" : "chunk4-v1",
+        contract_version: refund.scope === "MATERIAL_LINE" ? APPLY_PACK_CONTRACT_VERSION : SEARCH_CONTRACT_VERSION,
       },
     }, { idempotencyKey: command.provider_idempotency_key });
   }
-  const recorded = await admin.rpc("ap_record_search_refund_result", {
+  let paymentIntentId = typeof providerRefund.payment_intent === "string"
+    ? providerRefund.payment_intent : providerRefund.payment_intent?.id;
+  if (!paymentIntentId && providerRefund.charge) {
+    const charge = typeof providerRefund.charge === "string"
+      ? await stripe.charges.retrieve(providerRefund.charge) : providerRefund.charge;
+    const paymentIntent = "deleted" in charge && charge.deleted ? null : charge.payment_intent;
+    paymentIntentId = typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;
+  }
+  if (!paymentIntentId || providerRefund.metadata?.refund_operation_id !== refund.id
+    || !Number.isSafeInteger(providerRefund.amount) || providerRefund.amount < 1 || !providerRefund.currency) {
+    throw new Error("refund_provider_semantics_missing");
+  }
+  const recorded = await admin.rpc("ap_record_search_refund_result_verified", {
     p_refund_id: refund.id,
     p_provider_refund_id: providerRefund.id,
     p_provider_status: providerRefund.status || "pending",
+    p_provider_payment_id: paymentIntentId,
+    p_amount_cents: providerRefund.amount,
+    p_currency: providerRefund.currency.toUpperCase(),
+    p_metadata_refund_id: refund.id,
     p_provider_event_id: null,
     p_error_code: providerRefund.failure_reason || null,
     p_payload_sha256: null,
@@ -95,44 +112,26 @@ async function handleRefund(admin: AdminClient, job: ScheduledJob, owner: string
 
 async function handleProvisionalCheckout(admin: AdminClient, job: ScheduledJob, owner: string) {
   await renewExternal(admin, job, owner);
-  const stripe = createStripeSearchClient();
-  const priceId = process.env.STRIPE_JOB_SEARCH_PRICE_ID;
-  if (!stripe || !priceId) throw new Error("checkout_provider_not_configured");
+  const stripe = createStripeOperationalClient();
+  if (!stripe) throw new Error("checkout_provider_not_configured");
   const { data: checkout, error: checkoutError } = await admin.from("ap_checkout_attempts")
     .select("id,draft_id,quote_id,command_id,state,expires_at,provider_checkout_session_id")
     .eq("id", job.reference_id).maybeSingle();
   if (checkoutError || !checkout) throw checkoutError || new Error("provisional_checkout_missing");
   if (checkout.state !== "NONE") return completeExternal(admin, job, owner);
-  const [{ data: quote, error: quoteError }, { data: command, error: commandError }] = await Promise.all([
-    admin.from("ap_quotes").select("snapshot_id,expires_at,invalidated_at").eq("id", checkout.quote_id).maybeSingle(),
-    admin.from("ap_external_commands").select("provider_idempotency_key,provider_object_id,state").eq("id", checkout.command_id).maybeSingle(),
-  ]);
-  if (quoteError || commandError || !quote || !command) throw quoteError || commandError || new Error("provisional_checkout_binding_missing");
-  if (quote.invalidated_at || new Date(quote.expires_at).getTime() <= Date.now()) {
-    const expired = await admin.rpc("ap_expire_search_checkout", { p_checkout_attempt_id: checkout.id, p_reason: "PROVISIONAL_RECONCILIATION_EXPIRED" });
-    if (expired.error) throw expired.error;
+  const initiation = await admin.from("ap_checkout_initiations").select("id,authorization_id").eq("id", checkout.id).maybeSingle();
+  if (initiation.error) throw initiation.error;
+  if (initiation.data) {
+    const result = await reconcileCheckoutInitiations(admin, 20, initiation.data.authorization_id || undefined);
+    if (result.unresolved) throw new Error("checkout_provider_outcome_requires_reconciliation");
     return completeExternal(admin, job, owner);
   }
-  const reopened = await admin.rpc("ap_reopen_provisional_search_checkout", { p_checkout_attempt_id: checkout.id });
-  if (reopened.error || !reopened.data) throw reopened.error || new Error("provisional_checkout_not_reopenable");
-  const { data: snapshot, error: snapshotError } = await admin.from("ap_intake_snapshots")
-    .select("access_email_normalized").eq("id", quote.snapshot_id).maybeSingle();
-  if (snapshotError || !snapshot?.access_email_normalized) throw snapshotError || new Error("provisional_checkout_email_missing");
-  const origin = canonicalApplicationOrigin();
-  await assertConfiguredPrice(stripe, priceId, { unitAmount: 2_000, productName: "Job Match Search" });
-  await renewExternal(admin, job, owner);
-  let session: Stripe.Checkout.Session;
-  if (command.provider_object_id) session = await stripe.checkout.sessions.retrieve(command.provider_object_id);
-  else session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    payment_method_types: ["card"],
-    customer_email: snapshot.access_email_normalized,
-    expires_at: Math.floor(new Date(quote.expires_at).getTime() / 1_000),
-    success_url: `${origin}/checkout/return`,
-    cancel_url: `${origin}/checkout/return?cancelled=1`,
-    line_items: [{ quantity: 1, price: priceId }],
-    metadata: { checkout_attempt_id: checkout.id, quote_id: checkout.quote_id, product_kind: "job_search", contract_version: "chunk4-v1" },
-  }, { idempotencyKey: command.provider_idempotency_key });
+  // Historical commands can be inspected while locked, but never restarted as
+  // a new charge without a current durable, product-specific authorization.
+  const { data: command, error: commandError } = await admin.from("ap_external_commands")
+    .select("provider_object_id").eq("id", checkout.command_id).maybeSingle();
+  if (commandError || !command?.provider_object_id) throw new Error("legacy_checkout_requires_provider_reconciliation");
+  const session = await stripe.checkout.sessions.retrieve(command.provider_object_id);
   if (session.status === "expired") {
     const expired = await admin.rpc("ap_expire_search_checkout", { p_checkout_attempt_id: checkout.id, p_reason: "PROVIDER_SESSION_EXPIRED" });
     if (expired.error) throw expired.error;
@@ -149,7 +148,7 @@ async function handleProvisionalCheckout(admin: AdminClient, job: ScheduledJob, 
 
 async function handleInvalidatedCheckout(admin: AdminClient, job: ScheduledJob, owner: string) {
   await renewExternal(admin, job, owner);
-  const stripe = createStripeSearchClient();
+  const stripe = createStripeOperationalClient();
   if (!stripe) throw new Error("checkout_provider_not_configured");
   const { data: checkout, error } = await admin.from("ap_checkout_attempts")
     .select("id,state,quote_id,provider_checkout_session_id")
@@ -223,8 +222,8 @@ export async function processChunk4Workers(admin: AdminClient, limit = 20) {
     try {
       await handleJob(admin, job, owner);
       completed += 1;
-    } catch (error) {
-      await retryExternal(admin, job, owner, error instanceof Error ? error.message : "chunk4_worker_failed");
+    } catch {
+      await retryExternal(admin, job, owner, "CHUNK4_WORKER_FAILED");
     }
   }
   const monitor = await admin.rpc("ap_chunk4_monitor_snapshot");

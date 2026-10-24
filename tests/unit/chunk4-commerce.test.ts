@@ -27,14 +27,16 @@ const accessResendRoute = source("src/app/api/auth/order-access/resend/route.ts"
 const commerceServer = source("src/lib/commerce/server.ts");
 const outbox = source("src/lib/commerce/outbox.ts");
 const workers = source("src/lib/commerce/workers.ts");
+const initiation = source("src/lib/commerce/checkout-initiation.ts");
 const releaseRoute = source("src/app/api/admin/search-orders/[id]/deliver/route.ts");
 const migration = source("supabase/migrations/202609060030_chunk4_commerce_release.sql");
+const manualLaunchMigration = source("supabase/migrations/202610020052_manual_launch_hardening.sql");
 
 describe("Chunk 4 commerce contract", () => {
   it("uses the exact governed price, clocks, CTA, and display time zone", () => {
-    expect(SEARCH_PRICE_CENTS).toBe(2_000);
-    expect(SEARCH_PRICE_LABEL).toBe("$20");
-    expect(SEARCH_CHECKOUT_CTA).toBe("Pay $20 and Start My Search");
+    expect(SEARCH_PRICE_CENTS).toBe(1_899);
+    expect(SEARCH_PRICE_LABEL).toBe("$18.99");
+    expect(SEARCH_CHECKOUT_CTA).toBe("Use My $18.99 Checkout Invitation");
     expect(CHECKOUT_RESERVATION_MINUTES).toBe(30);
     expect(ACCESS_LINK_MINUTES).toBe(15);
     expect(RELEASE_VERIFICATION_MINUTES).toBe(60);
@@ -128,13 +130,17 @@ describe("Chunk 4 commerce contract", () => {
   it("binds checkout to server-side facts, a card-only provider session, and a durable promotion", () => {
     expect(checkoutRoute).toContain('context.admin.rpc("ap_read_current_feasibility"');
     expect(checkoutRoute).toContain('view.outcome !== "LIKELY"');
-    expect(checkoutRoute).toContain("unitAmount: 2_000");
+    expect(checkoutRoute).toContain("unitAmount: SEARCH_PRICE_CENTS");
     expect(checkoutRoute).toContain('payment_method_types: ["card"]');
     expect(checkoutRoute).toContain('line_items: [{ quantity: 1, price: priceId }]');
     expect(checkoutRoute).not.toContain("price_data");
-    expect(checkoutRoute).toContain('context.admin.rpc("ap_promote_search_checkout"');
-    expect(checkoutRoute).toContain("amountCents: 2_000");
+    expect(checkoutRoute).toContain('context.admin.rpc("ap_begin_authorized_search_checkout"');
+    expect(checkoutRoute).toContain("createOrResumeCheckoutSession");
+    expect(initiation).toContain('admin.rpc("ap_bind_checkout_initiation"');
+    expect(checkoutRoute).toContain("amountCents: SEARCH_PRICE_CENTS");
     expect(migration).toContain("p_amount_cents<>2000 or upper(p_currency)<>'USD'");
+    expect(manualLaunchMigration).toContain("search_price_cents=1899");
+    expect(manualLaunchMigration).toContain("material_line_price_cents=799");
     expect(checkoutEditRoute).toContain('rpc("ap_begin_pre_activation_edit"');
   });
 
@@ -166,7 +172,11 @@ describe("Chunk 4 commerce contract", () => {
     expect(outbox).toContain("message.provider_idempotency_key");
     expect(outbox).toContain('admin.rpc("ap_align_access_capability_to_outbox"');
     expect(outbox).toContain("outboxShouldDeadLetter(message.first_submitted_at)");
-    expect(workers).toContain('payment_method_types: ["card"]');
+    expect(workers).not.toContain("checkout.sessions.create");
+    expect(workers).toContain("reconcileCheckoutInitiations");
+    expect(checkoutRoute).toContain('payment_method_types: ["card"]');
+    expect(checkoutRoute).toContain("manualLaunchFixedTotalIsSafe(commerce)");
+    expect(checkoutRoute).toContain("...STRIPE_NO_ADDED_TAX");
     expect(workers).toContain('admin.rpc("ap_claim_scheduled_jobs"');
     expect(workers).toContain('admin.rpc("ap_complete_external_scheduled_job"');
     expect(workers).toContain("stripe.refunds.retrieve");

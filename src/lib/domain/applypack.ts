@@ -1,5 +1,9 @@
-export const SEARCH_PRICE_CENTS = 2_000;
-export const APPLY_PACK_PRICE_CENTS = 800;
+export const SEARCH_PRICE_CENTS = 1_899;
+export const APPLY_PACK_PRICE_CENTS = 799;
+export const SEARCH_CONTRACT_VERSION = "manual-launch-search-v2";
+export const APPLY_PACK_CONTRACT_VERSION = "manual-launch-pack-v2";
+export const LEGACY_SEARCH_CONTRACT_VERSION = "chunk4-v1";
+export const LEGACY_APPLY_PACK_CONTRACT_VERSION = "chunk5-v1";
 export const TURNAROUND_HOURS = 24;
 
 export const searchOrderStatuses = [

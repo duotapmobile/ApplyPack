@@ -1,5 +1,9 @@
 # ApplyPack Test Plan and Ship Checklist
 
+> October 2, 2026 authority: `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` replaces the historical price assertions and adds invitation, exact-ten, KMS, isolated-worker, maintenance, staging, supervisor, tax, and canary gates.
+>
+> October 19, 2026 authority: `16_OCTOBER_19_TAX_ACTIVATION_AMENDMENT.md` removes the separate tax-approval/reference gate. Tests still require exact $18.99/$7.99 fixed totals, tax-inclusive/no-added-amount configuration, and Stripe automatic tax disabled.
+
 Last updated: September 1, 2026
 
 ## Completion standard
@@ -694,7 +698,7 @@ Every credible finding must be fixed or explicitly accepted by the user before s
 
 ## Product
 
-- Prices are exactly $20 and $8.
+- Prices are exactly $18.99 for ten human-reviewed matches and $7.99 for one tailored resume plus one cover letter per selected job.
 - Search promise is exactly 10 jobs.
 - 24-hour promise has exact start and deadline behavior.
 - Capacity blocks impossible orders.
