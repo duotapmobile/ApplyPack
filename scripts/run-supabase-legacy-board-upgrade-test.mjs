@@ -30,6 +30,19 @@ const preservedBoardRows = `
   select 'subscription'::text as kind,to_jsonb(row) as immutable_record from public.ap_board_subscriptions row
   union all select 'provider_event',to_jsonb(row) from public.ap_board_provider_events row
 `;
+const expectedReplayedBoardRows = `
+  select fixture.kind,case
+    when fixture.kind='subscription' then
+      jsonb_set(fixture.immutable_record,'{updated_at}',to_jsonb(subscription.updated_at))
+    when fixture.kind='provider_event' and fixture.immutable_record->>'provider_event_id'='evt_upgrade_stale_refund' then
+      jsonb_set(fixture.immutable_record,'{resulting_state}','"REFUNDED"'::jsonb)
+    when fixture.kind='provider_event' and fixture.immutable_record->>'provider_event_id'='evt_upgrade_stale_dispute' then
+      jsonb_set(fixture.immutable_record,'{resulting_state}','"DISPUTED"'::jsonb)
+    else fixture.immutable_record end as immutable_record
+  from public.board_retention_upgrade_preservation_fixture fixture
+  left join public.ap_board_subscriptions subscription
+    on fixture.kind='subscription' and subscription.id::text=fixture.immutable_record->>'id'
+`;
 
 let failure;
 let historicalWorkspace;
@@ -48,7 +61,15 @@ try {
   run("supabase", ["migration", "up", "--local"], undefined, false);
   sqlText(`${current087ClosedPhaseSql}
     begin;
-    do $$ begin
+    do $$ declare replay_started_at timestamptz; begin
+      -- The migration itself must preserve every field, including timestamps
+      -- and the still-unreconciled historical receipt state.
+      if exists(
+        (select * from public.board_retention_upgrade_preservation_fixture except all (${preservedBoardRows}))
+        union all
+        ((${preservedBoardRows}) except all select * from public.board_retention_upgrade_preservation_fixture)
+      ) then raise exception 'retention_087_changed_legacy_board_history'; end if;
+      replay_started_at:=clock_timestamp();
       if public.ap_apply_legacy_board_terminal_event(
         'sub_upgrade_refund','evt_upgrade_stale_refund','refund.updated',100,'REFUNDED','FULL',
         're_upgrade_refund',null,4499,4499)->>'replayed' is distinct from 'true'
@@ -56,13 +77,21 @@ try {
         'sub_upgrade_dispute','evt_upgrade_stale_dispute','charge.dispute.created',101,'DISPUTED',null,
         null,'dp_upgrade_dispute',4499,4499)->>'replayed' is distinct from 'true'
       then raise exception 'retention_087_legacy_terminal_replay_not_recognized'; end if;
+      -- The unchanged084 reconciliation routine repairs these two receipt
+      -- states and refreshes updated_at. No other replay change is allowed.
       if exists(
-        (select * from public.board_retention_upgrade_preservation_fixture except all (${preservedBoardRows}))
+        ((${expectedReplayedBoardRows}) except all (${preservedBoardRows}))
         union all
-        ((${preservedBoardRows}) except all select * from public.board_retention_upgrade_preservation_fixture)
+        ((${preservedBoardRows}) except all (${expectedReplayedBoardRows}))
+      ) or exists(
+        select 1 from public.board_retention_upgrade_preservation_fixture fixture
+        join public.ap_board_subscriptions subscription
+          on fixture.kind='subscription' and subscription.id::text=fixture.immutable_record->>'id'
+        where subscription.updated_at<replay_started_at or subscription.updated_at>clock_timestamp()
+          or subscription.updated_at<(fixture.immutable_record->>'updated_at')::timestamptz
       ) or public.ap_legacy_board_has_access('3b000000-0000-4000-8000-000000000001',now())
         or public.ap_legacy_board_has_access('3b000000-0000-4000-8000-000000000002',now())
-      then raise exception 'retention_087_changed_legacy_board_history_or_access'; end if;
+      then raise exception 'retention_087_legacy_replay_changed_unrelated_history_or_access'; end if;
     end $$;
     rollback;
     select 'LEGACY_BOARD_087_PRESERVATION_OK';`);

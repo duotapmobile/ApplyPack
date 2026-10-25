@@ -293,7 +293,7 @@ export function ApplyPackSelector({
   return (
     <section className="portal-section">
       <div className="portal-section__heading"><div><p className="eyebrow">YOUR COMPLETED SEARCH</p><h2>10 Researched Job Matches</h2><p>Choose Tailored Resume + Cover Letter sets for current listings.</p></div><p>Each selected job is a separate $7.99 order with one tailored resume and one tailored cover letter. {availableUnits === null ? "Checking current capacity..." : availableUnits > 0 ? `${availableUnits} can be accepted now; availability is reserved only when checkout opens.` : "No 24-hour production slots are currently available."}</p></div>
-      {actionExpiresAt ? <p className="deadline-note">Buy document sets or report a criteria conflict by <time dateTime={actionExpiresAt}>{new Date(actionExpiresAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET</time>. A replacement does not restart this window.</p> : null}
+      {actionExpiresAt ? <p className="deadline-note">Start checkout for document sets or report a criteria conflict by <time dateTime={actionExpiresAt}>{new Date(actionExpiresAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET</time>. A replacement does not restart this window.</p> : null}
       {accessExpiresAt ? <p>Save your results before private access ends <time dateTime={accessExpiresAt}>{new Date(accessExpiresAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET</time>.</p> : null}
       {actionsEnded ? <p className="match-warning" role="status">{SEARCH_ACTIONS_EXPIRED_MESSAGE}</p> : null}
       <div className="match-grid">
