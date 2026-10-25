@@ -12831,6 +12831,24 @@ export type Database = {
         Args: { p_action?: boolean; p_line_id?: string; p_order_id: string }
         Returns: undefined
       }
+      ap_assert_source_aware_artifact_qa: {
+        Args: { p_artifact_id: string }
+        Returns: undefined
+      }
+      ap_assert_source_aware_document_qa: {
+        Args: {
+          p_artifact_type: Database["public"]["Enums"]["ap_artifact_type"]
+          p_checksum_sha256: string
+          p_extracted_text_sha256: string
+          p_generator: string
+          p_mime_type: string
+          p_package_qa_sha256: string
+          p_preview_sha256: string
+          p_provenance: Json
+          p_structural_checks: Json
+        }
+        Returns: undefined
+      }
       ap_assert_supported_artifact_facts: {
         Args: { p_artifact_id: string }
         Returns: undefined
@@ -14954,6 +14972,11 @@ export type Database = {
           p_source_id: string
         }
         Returns: number
+      }
+      ap_source_aware_document_generator: { Args: never; Returns: string }
+      ap_source_aware_document_schema_installed: {
+        Args: never
+        Returns: boolean
       }
       ap_source_projection_url: { Args: { value: string }; Returns: string }
       ap_staging_canary_operations_allowed: { Args: never; Returns: boolean }

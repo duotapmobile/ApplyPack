@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { DraftOwnerDetail, DraftOwnerQueue, SavedDraftInstructions } from "@/lib/documents/draft-owner-view";
 import { formatEasternDeadline } from "@/lib/commerce/presentation";
 import styles from "./draft-owner-workspace.module.css";
+import { DraftEvidenceRecoveryControls } from "./draft-evidence-recovery";
 
 type Available = Extract<DraftOwnerDetail, { status: "AVAILABLE" }>;
 const checks = {
@@ -31,7 +32,7 @@ export function DraftOwnerWorkspace({ queue, detail, loadedAt }: { queue: DraftO
       {queue.nextCursor ? <a href={`/admin/document-drafts?cursor=${encodeURIComponent(queue.nextCursor)}`}>Older active drafts</a> : null}
       <p><Link href="/admin/document-drafts" prefetch={false}>First page of active drafts</Link></p>
     </nav>
-    <div className={styles.content}>{!detail ? <p>Select a draft to review its saved content and evidence.</p> : detail.status !== "AVAILABLE" ? <section aria-labelledby="draft-status"><h2 id="draft-status">{detail.status === "REFRESH_REQUIRED" ? "Evidence refresh required" : detail.status === "RELEASED" ? "Pair sent" : detail.status === "PENDING" ? "Draft not ready" : "Draft unavailable"}</h2><p role="status">{detail.message}</p>{detail.status === "PENDING" && detail.initialListing ? <InitialListingCheck key={`${detail.jobId}:${detail.initialListing.revisionId}:${detail.initialListing.ruleSha256}:${loadedAt}`} jobId={detail.jobId} listing={detail.initialListing} /> : null}<a href={`/admin/document-drafts?job=${detail.jobId}`}>Reload this draft</a></section>
+    <div className={styles.content}>{!detail ? <p>Select a draft to review its saved content and evidence.</p> : detail.status !== "AVAILABLE" ? <section aria-labelledby="draft-status"><h2 id="draft-status">{detail.status === "REFRESH_REQUIRED" ? "Evidence refresh required" : detail.status === "RELEASED" ? "Pair sent" : detail.status === "PENDING" ? "Draft not ready" : "Draft unavailable"}</h2><p role="status">{detail.message}</p>{detail.recovery ? <DraftEvidenceRecoveryControls key={`${detail.jobId}:${detail.recovery.expectedVersionId}:${detail.recovery.basisIdentity}:${detail.recovery.currentContextSha256}:${loadedAt}`} info={detail.recovery}><SavedInstructions instructions={detail.recovery.instructions} /></DraftEvidenceRecoveryControls> : detail.status === "PENDING" && detail.initialListing ? <InitialListingCheck key={`${detail.jobId}:${detail.initialListing.revisionId}:${detail.initialListing.ruleSha256}:${loadedAt}`} jobId={detail.jobId} listing={detail.initialListing} /> : null}<a href={`/admin/document-drafts?job=${detail.jobId}`}>Reload this draft</a></section>
       : <DraftReview key={`${identity(detail)}:${loadedAt}`} detail={detail} />}</div>
   </div>;
 }

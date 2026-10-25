@@ -4,13 +4,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database } from "@/lib/database.types";
 import { loadDraftingEvidencePacket } from "./drafting-evidence-server";
-import { serializeDraftingEvidencePacket, type DraftingEvidencePacket } from "./drafting-evidence";
+import { draftingEvidenceRecordsSchema, serializeDraftingEvidencePacket, type DraftingEvidencePacket } from "./drafting-evidence";
 import { readEncryptedDraftPayload } from "./draft-packet-worker";
 import { validateDraftOutput, serializeDraftProposal, draftOutputSchema } from "./draft-output";
 import { readStoredDraftRenderSource } from "./draft-render-source-storage";
 import { supportedDocumentFontFamily } from "./requirements";
 import { readConfirmedDraftContact } from "./draft-owner-contact";
 import { materialContactSchema } from "@/lib/materials/server";
+import { createMaterialRuleOwnerServer } from "./material-rule-owner-server";
+import type { materialRuleBasisSchema } from "./material-rule-evidence";
+import { buildEmployerQuestionInsights } from "./employer-question-evidence";
+import { getEmployerSource } from "@/lib/jobs/source-registry";
 
 const uuid = z.uuid(), hash = z.string().regex(/^[a-f0-9]{64}$/), time = z.iso.datetime({ offset: true });
 const states = ["EVIDENCE_PENDING", "PREPARING", "READY", "DRAFTING", "SOURCE_READY", "RENDERING", "REVIEW_READY", "APPROVED", "RELEASED", "RESULT_UNKNOWN", "OWNER_EXCEPTION", "SUPERSEDED", "CANCELED"] as const;
@@ -34,6 +38,11 @@ export type DraftOwnerLine = { text: string; claimId: string | null; bullet: boo
 export type DraftOwnerDocument = { title: string; sections: { heading: string; lines: DraftOwnerLine[] }[] };
 export type DraftOwnerClaim = { id: string; wordingSha256: string; text: string; placement: string; qualification: string; sources: { label: string; value: string }[]; jobEvidence: string[]; questionIds: string[] };
 export type SavedDraftInstructions = { checkedAt: string; resumeRequirement: string; letterRequirement: string; resumeFilename: string | null; letterFilename: string | null; referenceTiming: string; referenceCount: number | null; formats: string[]; resumePageLimit: number | null; letterPageLimit: number | null };
+export type DraftEvidenceRecovery = { jobId: string; expectedVersionId: string | null; expectedPacketSha256: string | null;
+  basis: z.infer<typeof materialRuleBasisSchema>; basisIdentity: string; company: string; title: string; applicationUrl: string | null;
+  instructions: SavedDraftInstructions; originalCheckedAt: string; effectiveCheckedAt: string; ruleCurrent: boolean;
+  currentContextSha256: string | null; latestReceiptId: string | null; canRefresh: boolean;
+  questions: { status: string; verification: string; comparisonAvailable: boolean; items: { id: string; prompt: string; required: boolean | null; wordLimit: number | null; characterLimit: number | null }[] } };
 const savedRuleFields = { checked_at: time, resume_requirement: z.string().min(1).max(100), cover_letter_requirement: z.string().min(1).max(100), resume_filename_instruction: z.string().max(2000).nullable(), cover_letter_filename_instruction: z.string().max(2000).nullable(), reference_timing: z.string().min(1).max(100), reference_count: z.number().int().min(0).max(99).nullable(), allowed_formats: z.array(z.enum(["PDF", "DOCX"])).min(1).max(2), resume_page_limit: z.number().int().positive().nullable(), cover_letter_page_limit: z.number().int().positive().nullable() };
 function savedInstructions(rule: z.infer<z.ZodObject<typeof savedRuleFields>>): SavedDraftInstructions { return { checkedAt: rule.checked_at, resumeRequirement: rule.resume_requirement, letterRequirement: rule.cover_letter_requirement, resumeFilename: rule.resume_filename_instruction, letterFilename: rule.cover_letter_filename_instruction, referenceTiming: rule.reference_timing, referenceCount: rule.reference_count, formats: rule.allowed_formats, resumePageLimit: rule.resume_page_limit, letterPageLimit: rule.cover_letter_page_limit }; }
 export type DraftOwnerDetail = {
@@ -45,7 +54,7 @@ export type DraftOwnerDetail = {
   questions: { status: string; verification: string; issues: string[]; items: { id: string; prompt: string; required: boolean | null; wordLimit: number | null; characterLimit: number | null; sourceUrl: string | null; observedAt: string; eligible: boolean }[] };
   requiredFileTypes: string[]; files: { type: string; filename: string; fileVersionId: string; checksumSha256: string; previewUrl: string | null }[];
   wordingReviewed: boolean; canPromote: boolean; canReviewWording: boolean; canApprove: boolean; canSend: boolean;
-} | { status: "UNAVAILABLE" | "REFRESH_REQUIRED" | "PENDING" | "RELEASED"; jobId: string; message: string; initialListing?: { ruleSha256: string; applicationUrl: string | null; company: string; title: string; revisionId: string; instructions: SavedDraftInstructions } };
+} | { status: "UNAVAILABLE" | "REFRESH_REQUIRED" | "PENDING" | "RELEASED"; jobId: string; message: string; recovery?: DraftEvidenceRecovery; initialListing?: { ruleSha256: string; applicationUrl: string | null; company: string; title: string; revisionId: string; instructions: SavedDraftInstructions } };
 
 class ViewError extends Error { constructor(readonly code: string) { super(code); } }
 function ensure(value: unknown, code = "UNAVAILABLE"): asserts value { if (!value) throw new ViewError(code); }
@@ -93,6 +102,78 @@ export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedRev
       const body = new TextDecoder("utf-8", { fatal: true }).decode(bytes); return { body, value: JSON.parse(body) as unknown };
     } finally { bytes?.fill(0); }
   }
+  async function recovery(jobId: string, signal: AbortSignal): Promise<DraftEvidenceRecovery> {
+    await authorize(signal); const current = await job(jobId, signal);
+    ensure(!["RELEASED", "SUPERSEDED", "CANCELED", "RESULT_UNKNOWN"].includes(current.state));
+    const inspector = createMaterialRuleOwnerServer(admin, reviewerId, { now });
+    const inspected = await inspector.inspectRuleEvidence({ jobId }, signal), basis = inspected.evidence.basis;
+    ensure(inspected.jobId === current.id && inspected.customerId === current.customer_id && inspected.materialLineId === current.material_line_id
+      && inspected.lineRevisionId === current.line_revision_id && inspected.sourceSnapshotId === current.source_snapshot_id
+      && inspected.evidence.activeVersionId === current.active_version_id);
+    const v = current.active_version_id ? await version(current.active_version_id, signal) : null;
+    ensure(!v || v.job_id === current.id && v.customer_id === current.customer_id && v.material_line_id === current.material_line_id && !v.invalidated_at && !v.release_id);
+    const rule = parse(z.object({ id: uuid, job_snapshot_id: uuid, content_sha256: hash, is_current: z.literal(true), superseded_at: z.null(), ...savedRuleFields }).strict(),
+      await data(admin.from("ap_employer_submission_rules").select("id,job_snapshot_id,content_sha256,is_current,superseded_at,checked_at,resume_requirement,cover_letter_requirement,resume_filename_instruction,cover_letter_filename_instruction,reference_timing,reference_count,allowed_formats,resume_page_limit,cover_letter_page_limit").eq("id", basis.ruleId).abortSignal(signal).single(), signal));
+    const target = parse(z.object({ id: uuid, content_sha256: hash, company: z.string().min(1).max(1000), exact_title: z.string().min(1).max(1000), canonical_application_url: z.string().max(4000) }).strict(),
+      await data(admin.from("ap_job_snapshots").select("id,content_sha256,company,exact_title,canonical_application_url").eq("id", basis.jobSnapshotId).abortSignal(signal).single(), signal));
+    ensure(rule.id === basis.ruleId && rule.content_sha256 === basis.ruleSha256 && rule.job_snapshot_id === target.id && target.id === basis.jobSnapshotId
+      && target.content_sha256 === basis.jobContentSha256 && Date.parse(rule.checked_at) === Date.parse(inspected.evidence.originalCheckedAt));
+    // Public source metadata only: expired customer packets are never decrypted
+    // to recover the employer-question baseline.
+    const sourceJob = parse(draftingEvidenceRecordsSchema.shape.job, await data(admin.from("ap_job_snapshots")
+      .select("id,legacy_job_id,content_sha256,company,exact_title,canonical_application_url,source_url,captured_listing,retrieved_at,live_verified_at,discovery_source,external_job_id,source_run_id,source_authorization_id,listing_activity_result,application_path_result,legitimacy_result")
+      .eq("id", target.id).abortSignal(signal).single(), signal));
+    const sourceRule = parse(draftingEvidenceRecordsSchema.shape.rule, await data(admin.from("ap_employer_submission_rules")
+      .select("id,job_snapshot_id,content_sha256,checked_at,human_confirmed_at,human_confirmed_by,is_current,superseded_at,injection_scan_state,hard_block_reason,allowed_formats,resume_page_limit,cover_letter_page_limit,resume_requirement,cover_letter_requirement,resume_filename_instruction,cover_letter_filename_instruction,reference_timing,reference_count,source_evidence_ids,application_questions")
+      .eq("id", rule.id).abortSignal(signal).single(), signal));
+    ensure(sourceJob.id === target.id && sourceJob.content_sha256 === target.content_sha256 && sourceRule.id === rule.id && sourceRule.content_sha256 === rule.content_sha256 && sourceRule.job_snapshot_id === target.id);
+    ensure(Buffer.byteLength(JSON.stringify(sourceJob.captured_listing)) <= 1_000_000 && Buffer.byteLength(JSON.stringify(sourceRule.application_questions)) <= 128_000);
+    const nodes = parse(draftingEvidenceRecordsSchema.shape.questionSourceNodes, await data(admin.from("ap_requirement_nodes")
+      .select("id,job_snapshot_id,source_excerpt").eq("job_snapshot_id", target.id).in("id", sourceRule.source_evidence_ids).limit(101).abortSignal(signal), signal));
+    let captureBinding = null;
+    let verifyAuthority: (() => Promise<void>) | undefined;
+    const source = getEmployerSource(sourceJob.discovery_source);
+    if (source?.adapterKind === "greenhouse" && source.adapterKey && sourceJob.external_job_id && sourceJob.source_run_id && sourceJob.source_authorization_id) {
+      const authority = parse(draftingEvidenceRecordsSchema.shape.questionSourceAuthority, {
+        run: await data(admin.from("job_source_runs").select("id,source_id,adapter_version,source_authorization_id,authorization_head_revision,scope_sha256,status,enumeration_status").eq("id", sourceJob.source_run_id).abortSignal(signal).single(), signal),
+        authorization: await data(admin.from("ap_source_authorizations").select("id,source_id,authorization_version,allowed_actions,state").eq("id", sourceJob.source_authorization_id).abortSignal(signal).single(), signal),
+        head: await data(admin.from("ap_source_authorization_heads").select("source_id,current_authorization_id,revision").eq("source_id", sourceJob.discovery_source).abortSignal(signal).single(), signal),
+      });
+      verifyAuthority = async () => {
+        const afterAuthority = parse(draftingEvidenceRecordsSchema.shape.questionSourceAuthority, {
+          run: await data(admin.from("job_source_runs").select("id,source_id,adapter_version,source_authorization_id,authorization_head_revision,scope_sha256,status,enumeration_status").eq("id", sourceJob.source_run_id!).abortSignal(signal).single(), signal),
+          authorization: await data(admin.from("ap_source_authorizations").select("id,source_id,authorization_version,allowed_actions,state").eq("id", sourceJob.source_authorization_id!).abortSignal(signal).single(), signal),
+          head: await data(admin.from("ap_source_authorization_heads").select("source_id,current_authorization_id,revision").eq("source_id", sourceJob.discovery_source).abortSignal(signal).single(), signal),
+        });
+        ensure(JSON.stringify(afterAuthority) === JSON.stringify(authority));
+      };
+      if (authority && authority.run.id === sourceJob.source_run_id && authority.run.source_id === sourceJob.discovery_source
+        && authority.run.source_authorization_id === sourceJob.source_authorization_id && authority.run.status === "succeeded" && authority.run.enumeration_status === "complete"
+        && authority.run.adapter_version && authority.run.scope_sha256 && authority.authorization.id === sourceJob.source_authorization_id
+        && authority.authorization.source_id === sourceJob.discovery_source && authority.authorization.state === "AUTHORIZED_AUTOMATED"
+        && authority.authorization.allowed_actions.includes("READ_APPLICATION_QUESTIONS") && authority.head.source_id === sourceJob.discovery_source
+        && authority.head.current_authorization_id === authority.authorization.id && authority.head.revision === authority.run.authorization_head_revision) {
+        captureBinding = { sourceId: sourceJob.discovery_source, boardToken: source.adapterKey, externalJobId: sourceJob.external_job_id,
+          sourceRunId: authority.run.id, authorizationId: authority.authorization.id, authorizationVersion: authority.authorization.authorization_version,
+          authorizationHeadRevision: authority.head.revision, scopeSha256: authority.run.scope_sha256, adapterVersion: authority.run.adapter_version };
+      }
+    }
+    const questions = buildEmployerQuestionInsights(sourceRule.application_questions, { jobSnapshotId: target.id, jobSha256: target.content_sha256,
+      ruleId: rule.id, ruleSha256: rule.content_sha256, ruleCheckedAt: sourceRule.checked_at, humanConfirmedAt: sourceRule.human_confirmed_at,
+      ruleSourceEvidenceIds: sourceRule.source_evidence_ids, rawSource: { sourceUrl: sourceJob.source_url, observedAt: sourceJob.retrieved_at, value: sourceJob.captured_listing }, nodes, captureBinding }, now());
+    const after = await inspector.inspectRuleEvidence({ jobId }, signal);
+    await verifyAuthority?.();
+    ensure(JSON.stringify(after) === JSON.stringify(inspected) && JSON.stringify(await job(jobId, signal)) === JSON.stringify(current)
+      && (!v || JSON.stringify(await version(v.id, signal)) === JSON.stringify(v)));
+    return { jobId, expectedVersionId: v?.id ?? null, expectedPacketSha256: v?.packet_sha256 ?? null, basis,
+      basisIdentity: sha(Buffer.from(JSON.stringify(basis))), company: target.company, title: target.exact_title, applicationUrl: safeUrl(target.canonical_application_url),
+      instructions: savedInstructions(rule), originalCheckedAt: inspected.evidence.originalCheckedAt, effectiveCheckedAt: inspected.evidence.effectiveCheckedAt,
+      ruleCurrent: inspected.ruleCurrent, currentContextSha256: inspected.contextSha256, latestReceiptId: inspected.evidence.revalidation?.id ?? null,
+      canRefresh: !!v && inspected.ruleCurrent && inspected.contextSha256 !== null,
+      questions: { status: questions.status, verification: questions.verification,
+        comparisonAvailable: questions.verification === "BOUND_SOURCE_EVIDENCE" && ["OBSERVED", "NONE_OBSERVED"].includes(questions.status),
+        items: questions.questions.map(({ id, prompt, required, wordLimit, characterLimit }) => ({ id, prompt, required, wordLimit, characterLimit })) } };
+  }
   return {
     async list(cursor: string | null, signal: AbortSignal): Promise<DraftOwnerQueue> {
       try { return await run(signal, async (child) => {
@@ -121,18 +202,21 @@ export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedRev
           const rule = parse(z.object({ id: uuid, job_snapshot_id: uuid, content_sha256: hash, is_current: z.literal(true), superseded_at: z.null(), ...savedRuleFields }).strict(), await data(admin.from("ap_employer_submission_rules").select("id,job_snapshot_id,content_sha256,is_current,superseded_at,checked_at,resume_requirement,cover_letter_requirement,resume_filename_instruction,cover_letter_filename_instruction,reference_timing,reference_count,allowed_formats,resume_page_limit,cover_letter_page_limit").eq("id", revision.employer_rule_snapshot_id).abortSignal(child).single(), child));
           const target = parse(z.object({ id: uuid, company: z.string().min(1).max(1000), exact_title: z.string().min(1).max(1000), canonical_application_url: z.string().max(4000) }).strict(), await data(admin.from("ap_job_snapshots").select("id,company,exact_title,canonical_application_url").eq("id", revision.job_snapshot_id).abortSignal(child).single(), child));
           ensure(rule.id === revision.employer_rule_snapshot_id && rule.job_snapshot_id === target.id && target.id === revision.job_snapshot_id && JSON.stringify(await job(jobId, child)) === JSON.stringify(current), "REFRESH_REQUIRED");
+          if (Date.parse(rule.checked_at) <= now().getTime() - 3_600_000) throw new ViewError("REFRESH_REQUIRED");
           return { status: "PENDING", jobId, message: "No document proposal is saved yet. The owner can record the initial listing check; this does not draft, approve, or send anything.", initialListing: { ruleSha256: rule.content_sha256, applicationUrl: safeUrl(target.canonical_application_url), company: target.company, title: target.exact_title, revisionId: revision.id, instructions: savedInstructions(rule) } };
         }
         const v = await version(current.active_version_id, child);
         ensure(v.job_id === current.id && v.customer_id === current.customer_id && v.material_line_id === current.material_line_id && !v.invalidated_at, "REFRESH_REQUIRED");
         const revision = parse(revisionSchema, await data(admin.from("ap_material_line_revisions").select("id,line_id,source_snapshot_id,version,binding_sha256,due_at,superseded_at").eq("id", current.line_revision_id).abortSignal(child).single(), child));
         ensure(revision.id === current.line_revision_id && revision.line_id === current.material_line_id && revision.source_snapshot_id === current.source_snapshot_id && !revision.superseded_at && Date.parse(revision.due_at) > now().getTime(), "REFRESH_REQUIRED");
-        const context = await data(admin.rpc("ap_material_draft_context_sha256", { p_job_id: jobId }).abortSignal(child), child);
+        let context: unknown;
+        try { context = await data(admin.rpc("ap_material_draft_context_sha256", { p_job_id: jobId }).abortSignal(child), child); }
+        catch { throw new ViewError("REFRESH_REQUIRED"); }
         ensure(context === v.context_sha256, "REFRESH_REQUIRED");
-        const savedPacket = await readPayload(current, v.packet_encrypted_payload_id, v.packet_sha256, "MATERIAL_DRAFT_PACKET", child);
         let packet: DraftingEvidencePacket;
         try { packet = await loadDraftingEvidencePacket(admin, { customerId: current.customer_id, materialLineId: current.material_line_id, revisionId: revision.id, revisionVersion: revision.version, bindingSha256: revision.binding_sha256 }, { signal: child, now }); }
         catch { throw new ViewError("REFRESH_REQUIRED"); }
+        const savedPacket = await readPayload(current, v.packet_encrypted_payload_id, v.packet_sha256, "MATERIAL_DRAFT_PACKET", child);
         ensure(packet.packetSha256 === v.packet_sha256 && serializeDraftingEvidencePacket(packet) === savedPacket.body && packet.binding.snapshotId === current.source_snapshot_id && packet.binding.dueAt === revision.due_at, "REFRESH_REQUIRED");
         if (!v.encrypted_payload_id || !v.source_sha256) return { status: "PENDING", jobId, message: "Evidence is saved, but a complete document proposal has not been recorded. No approval is available." };
         const saved = await readPayload(current, v.encrypted_payload_id, v.source_sha256, "MATERIAL_DRAFT_SOURCE", child);
@@ -203,7 +287,12 @@ export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedRev
           canApprove: kind === "RENDER_SOURCE" && current.state === "REVIEW_READY" && complete && !!v.claim_review_sha256 && !!v.claims_reviewed_at,
           canSend: kind === "RENDER_SOURCE" && current.state === "APPROVED" && complete && !!v.approval_sha256 && !!v.approved_at };
       }); } catch (error) { const status = error instanceof ViewError && error.code === "REFRESH_REQUIRED" ? "REFRESH_REQUIRED" : "UNAVAILABLE";
-        return { status, jobId, message: status === "REFRESH_REQUIRED" ? "Evidence or the active version has changed or expired. A verified evidence refresh is required before this draft can be reviewed or sent. Refresh controls are not yet available here." : "This draft could not be verified or loaded. No private content or approval controls are available. Refresh after confirming administrator MFA." }; }
+        if (status === "REFRESH_REQUIRED") {
+          try { const inspected = await run(signal, (child) => recovery(jobId, child));
+            return { status, jobId, recovery: inspected, message: "The saved draft evidence is not current. Review the original employer instructions below before recording any new check. These steps do not generate, approve, or send documents." }; }
+          catch { /* Unverifiable metadata never enables a recovery action. */ }
+        }
+        return { status, jobId, message: status === "REFRESH_REQUIRED" ? "Evidence or the active version has changed or expired. The current source could not be verified, so review and refresh controls are unavailable. Confirm source access and reload." : "This draft could not be verified or loaded. No private content or approval controls are available. Refresh after confirming administrator MFA." }; }
     },
   };
 }

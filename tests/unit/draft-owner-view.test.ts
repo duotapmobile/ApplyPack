@@ -81,9 +81,10 @@ import { serializeDraftingEvidencePacket } from "@/lib/documents/drafting-eviden
 import { serializeDraftProposal } from "@/lib/documents/draft-output";
 import { serializeDraftRenderSource } from "@/lib/documents/draft-render-source";
 import { DOCUMENT_GENERATOR_VERSION } from "@/lib/documents/requirements";
-const dependencies = vi.hoisted(() => ({ read: vi.fn(), load: vi.fn(), decrypt: vi.fn() }));
+const dependencies = vi.hoisted(() => ({ read: vi.fn(), load: vi.fn(), decrypt: vi.fn(), inspect: vi.fn() }));
 vi.mock("@/lib/documents/draft-packet-worker", () => ({ readEncryptedDraftPayload: dependencies.read }));
 vi.mock("@/lib/documents/drafting-evidence-server", () => ({ loadDraftingEvidencePacket: dependencies.load }));
+vi.mock("@/lib/documents/material-rule-owner-server", () => ({ createMaterialRuleOwnerServer: () => ({ inspectRuleEvidence: dependencies.inspect }) }));
 vi.mock("@/lib/security/remote-kms", () => ({ remoteKmsAdapter: () => ({}) }));
 vi.mock("@/lib/security/sensitive-payload", () => ({ decryptSensitivePayload: dependencies.decrypt,
   sensitivePayloadConfiguration: () => ({}), sensitivePayloadEncryptionReady: () => true }));
@@ -101,6 +102,10 @@ function database(mode: "proposal" | "source" = "proposal", withQuestions = fals
   const calls: Call[] = [], buffers: Buffer[] = [];
   const bodies = new Map([[id(93), serializeDraftingEvidencePacket(packet)], [id(94), sourceBody]]);
   const tables: Record<string, Record<string, unknown>[]> = { ap_material_draft_jobs: [job], ap_material_draft_versions: [version], ap_material_line_revisions: [{ ...base.r.revision }], ap_material_draft_members: [], ap_generated_artifacts: [], ap_generated_file_versions: [], ap_artifact_quality_reviews: [], ap_employer_submission_rules: [{ ...base.r.rule }], ap_job_snapshots: [{ ...base.r.job }] };
+  tables.ap_requirement_nodes = base.r.questionSourceNodes.map((row) => ({ ...row }));
+  tables.job_source_runs = base.r.questionSourceAuthority ? [{ ...base.r.questionSourceAuthority.run }] : [];
+  tables.ap_source_authorizations = base.r.questionSourceAuthority ? [{ ...base.r.questionSourceAuthority.authorization }] : [];
+  tables.ap_source_authorization_heads = base.r.questionSourceAuthority ? [{ ...base.r.questionSourceAuthority.head }] : [];
   tables.ap_sensitive_payloads = [{ ...base.r.contact, encryption_context_hash: "f".repeat(64), encryption_algorithm: "AES-256-GCM", ciphertext: "\\x01", encrypted_data_key: "\\x02", nonce: "\\x" + "03".repeat(12), authentication_tag: "\\x" + "04".repeat(16), kms_key_identity: "fixture-key", kms_key_version: "1" }];
   let context = version.context_sha256;
   const overrides = new Map<string, (call: Call) => unknown | Promise<unknown>>();
@@ -137,7 +142,7 @@ function database(mode: "proposal" | "source" = "proposal", withQuestions = fals
 }
 
 describe("private owner draft read model", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => { vi.clearAllMocks(); dependencies.inspect.mockRejectedValue(new Error("source_unavailable")); });
   afterEach(() => vi.useRealTimers());
   it("authorizes before the paginated metadata read and never decrypts the queue", async () => {
     const d = database(); for (let index = 0; index < 20; index++) d.tables.ap_material_draft_jobs.push({ ...d.job, id: id(300 + index) });
@@ -261,6 +266,64 @@ describe("private owner draft read model", () => {
       d.base.r.line.fulfillment = fulfillment; const result = await d.detail(); expect(result.status).toBe("AVAILABLE"); expect(result.status === "AVAILABLE" && result.canSend).toBe(true);
     }
     Object.assign(d.base.r.line, { fulfillment: "DELIVERED" }); expect((await d.detail()).status).toBe("REFRESH_REQUIRED");
+  });
+  function stale(currentRule = false, currentContext: string | null = null, withQuestions = false) {
+    const d = database("source", withQuestions); d.tables.ap_employer_submission_rules[0].checked_at = before;
+    d.overrides.set("ap_material_draft_context_sha256", () => ({ data: null, error: { code: "expired" } }));
+    const basis = { lineRevisionId: id(4), sourceSnapshotId: id(5), jobSnapshotId: id(8), jobContentSha256: d.base.r.job.content_sha256,
+      ruleId: id(9), ruleSha256: d.base.r.rule.content_sha256, ruleRecordSha256: "e".repeat(64), sourceAuthoritySha256: "d".repeat(64) };
+    const inspected = { jobId: d.job.id, customerId: d.job.customer_id, materialLineId: d.job.material_line_id, lineRevisionId: d.job.line_revision_id,
+      sourceSnapshotId: d.job.source_snapshot_id, evidence: { contractVersion: "applypack-material-rule-revalidation-v1", jobId: d.job.id, activeVersionId: d.job.active_version_id,
+        leaseGeneration: 1, basis, originalCheckedAt: before, effectiveCheckedAt: currentRule ? fresh : before, revalidation: currentRule ? { id: id(600) } : null }, ruleCurrent: currentRule, contextSha256: currentContext };
+    dependencies.inspect.mockImplementation(async () => structuredClone(inspected));
+    return { ...d, inspected };
+  }
+  it("offers finite stale-rule recovery without decrypting an expired packet", async () => {
+    const d = stale(), result = await d.detail(); expect(result.status).toBe("REFRESH_REQUIRED");
+    if (result.status !== "REFRESH_REQUIRED") throw new Error("expected recovery");
+    expect(result.recovery).toMatchObject({ expectedVersionId: d.version.id, expectedPacketSha256: d.version.packet_sha256,
+      ruleCurrent: false, currentContextSha256: null, canRefresh: false, instructions: { resumeRequirement: "REQUIRED", letterRequirement: "OPTIONAL" } });
+    expect(result.recovery?.basisIdentity).toMatch(/^[a-f0-9]{64}$/); expect(dependencies.inspect).toHaveBeenCalledTimes(2);
+    expect(dependencies.read).not.toHaveBeenCalled(); expect(dependencies.decrypt).not.toHaveBeenCalled(); expect(dependencies.load).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toMatch(/Casey|casey@|ciphertext|customer_id/);
+  });
+  it("keeps initial expired-rule review available without inventing a packet", async () => {
+    const d = stale(); d.job.active_version_id = null; d.job.state = "EVIDENCE_PENDING"; d.inspected.evidence.activeVersionId = null;
+    const result = await d.detail(); expect(result.status).toBe("REFRESH_REQUIRED");
+    expect(result.status === "REFRESH_REQUIRED" && result.recovery).toMatchObject({ expectedVersionId: null, expectedPacketSha256: null, canRefresh: false });
+    expect(dependencies.read).not.toHaveBeenCalled();
+  });
+  it("shows the exact verified public question baseline without opening the expired private packet", async () => {
+    const d = stale(false, null, true), result = await d.detail();
+    expect(result.status === "REFRESH_REQUIRED" && result.recovery?.questions).toEqual({ status: "OBSERVED", verification: "BOUND_SOURCE_EVIDENCE", comparisonAvailable: true,
+      items: [{ id: expect.any(String), prompt: "Describe how you prioritize competing requests.", required: true, wordLimit: null, characterLimit: null }] });
+    expect(dependencies.read).not.toHaveBeenCalled(); expect(dependencies.decrypt).not.toHaveBeenCalled();
+  });
+  it.each(["missing", "changed-head", "tampered-capture"])("holds a new question comparison when public evidence is %s", async (kind) => {
+    const d = stale(false, null, kind !== "missing");
+    if (kind === "changed-head") d.tables.ap_source_authorization_heads[0].revision = 2;
+    if (kind === "tampered-capture") d.tables.ap_job_snapshots[0].captured_listing = { text: "Changed source", applicationQuestionObservation: {} };
+    const result = await d.detail(); expect(result.status === "REFRESH_REQUIRED" && result.recovery?.questions.comparisonAvailable).toBe(false);
+    expect(result.status === "REFRESH_REQUIRED" && result.recovery?.questions.items).toEqual([]); expect(dependencies.read).not.toHaveBeenCalled();
+  });
+  it("withholds recovery if public source authority changes during the read", async () => {
+    const d = stale(false, null, true); let reads = 0;
+    d.overrides.set("ap_source_authorization_heads", () => ({ data: { ...d.tables.ap_source_authorization_heads[0], revision: ++reads === 1 ? 1 : 2 }, error: null }));
+    const result = await d.detail(); expect(result.status).toBe("REFRESH_REQUIRED"); expect(result).not.toHaveProperty("recovery"); expect(dependencies.read).not.toHaveBeenCalled();
+  });
+  it("does not confuse current rules with complete listing/context readiness", async () => {
+    const d = stale(true); let result = await d.detail(); expect(result.status === "REFRESH_REQUIRED" && result.recovery?.canRefresh).toBe(false);
+    d.inspected.contextSha256 = "1".repeat(64); result = await d.detail(); expect(result.status === "REFRESH_REQUIRED" && result.recovery?.canRefresh).toBe(true);
+    expect(dependencies.read).not.toHaveBeenCalled();
+  });
+  it.each(["customer", "version", "rule", "source", "reread"])("withholds recovery controls for mixed or changing %s evidence", async (kind) => {
+    const d = stale(true, "1".repeat(64));
+    if (kind === "customer") d.inspected.customerId = id(999);
+    if (kind === "version") d.inspected.evidence.activeVersionId = id(998);
+    if (kind === "rule") d.tables.ap_employer_submission_rules[0].content_sha256 = "0".repeat(64);
+    if (kind === "source") d.inspected.evidence.basis.jobContentSha256 = "0".repeat(64);
+    if (kind === "reread") dependencies.inspect.mockImplementationOnce(async () => structuredClone(d.inspected)).mockImplementationOnce(async () => ({ ...d.inspected, contextSha256: "2".repeat(64) }));
+    const result = await d.detail(); expect(result.status).toBe("REFRESH_REQUIRED"); expect(result).not.toHaveProperty("recovery"); expect(dependencies.read).not.toHaveBeenCalled();
   });
   it("bounds hung database waits and rejects cancellation before private reads", async () => {
     vi.useFakeTimers(); const d = database(); d.overrides.set("ap_require_material_reviewer", () => new Promise(() => undefined));
