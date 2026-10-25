@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 
 // Only the disposable local stack is selected. Positive historical activation
-// remains tested at086;087 refuses incomplete cleanup support and090 installs
+// remains tested at086;087 refuses incomplete cleanup support and091 installs
 // the reviewed local schema while preserving the purchasing lock.
 function run(command, args, expected) {
   const result = spawnSync(command, args, { cwd: process.cwd(), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 600_000 });
@@ -24,4 +24,4 @@ finally {
   catch (error) { if (!failure) failure = error; }
 }
 if (failure) throw failure;
-console.log("All 19 historical086 contract fixtures, historical087 missing-executor guard and four current090 fixtures passed; latest disposable local schema restored.");
+console.log("All 19 historical086 contract fixtures, historical087 missing-executor guard and six current091 fixtures passed; latest disposable local schema restored.");

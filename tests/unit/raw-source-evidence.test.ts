@@ -48,7 +48,30 @@ describe("raw provider record evidence", () => {
     expect(result.completion).toBe("complete");
     expect(result.jobs).toHaveLength(1);
     const evidence = result.jobs[0].rawSourceEvidence;
-    expect(evidence?.payload).toEqual(original);
+    if (_name === "greenhouse") {
+      expect(result.adapterVersion).toBe("greenhouse-v4");
+      expect(evidence?.payload).toEqual({
+        listing: original,
+        applicationQuestionObservation: {
+          schemaVersion: "applypack-greenhouse-question-capture-v1",
+          sourceId: "duolingo",
+          boardToken: "duolingo",
+          externalJobId: "1",
+          sourceUrl: "https://boards-api.greenhouse.io/v1/boards/duolingo/jobs/1?questions=true",
+          authority: null,
+          outcome: "NOT_INSPECTED",
+          reasonCode: "ACTION_NOT_AUTHORIZED",
+          rawResponse: null,
+          rawResponseSha256: null,
+          httpStatus: null,
+          capturedAt: expect.any(String),
+        },
+      });
+      // A listing permission must not silently authorize an application-form read.
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } else {
+      expect(evidence?.payload).toEqual(original);
+    }
     expect(validRawSourceEvidence(evidence, result.adapterVersion)).toBe(true);
     const before = JSON.stringify(result.jobs[0]);
     normalizeJob(result.jobs[0]);

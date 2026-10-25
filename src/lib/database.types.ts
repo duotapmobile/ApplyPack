@@ -5358,6 +5358,614 @@ export type Database = {
           },
         ]
       }
+      ap_material_draft_attempts: {
+        Row: {
+          completed_at: string | null
+          customer_id: string
+          dispatched_at: string
+          draft_version_id: string
+          id: string
+          input_token_cap: number
+          job_id: string
+          lease_generation: number
+          material_line_id: string
+          output_token_cap: number
+          policy_id: string
+          reserved_microusd: number
+          state: string
+        }
+        Insert: {
+          completed_at?: string | null
+          customer_id: string
+          dispatched_at?: string
+          draft_version_id: string
+          id: string
+          input_token_cap: number
+          job_id: string
+          lease_generation: number
+          material_line_id: string
+          output_token_cap: number
+          policy_id: string
+          reserved_microusd: number
+          state: string
+        }
+        Update: {
+          completed_at?: string | null
+          customer_id?: string
+          dispatched_at?: string
+          draft_version_id?: string
+          id?: string
+          input_token_cap?: number
+          job_id?: string
+          lease_generation?: number
+          material_line_id?: string
+          output_token_cap?: number
+          policy_id?: string
+          reserved_microusd?: number
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_draft_attempts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_attempts_draft_version_id_fkey"
+            columns: ["draft_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_draft_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_attempts_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_draft_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_attempts_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_attempts_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_draft_policies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_draft_jobs: {
+        Row: {
+          active_version_id: string | null
+          claim_count: number
+          created_at: string
+          customer_id: string
+          error_code: string | null
+          id: string
+          lease_expires_at: string | null
+          lease_generation: number
+          lease_owner: string | null
+          lease_token: string | null
+          line_revision_id: string
+          material_line_id: string
+          source_snapshot_id: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          active_version_id?: string | null
+          claim_count?: number
+          created_at?: string
+          customer_id: string
+          error_code?: string | null
+          id?: string
+          lease_expires_at?: string | null
+          lease_generation?: number
+          lease_owner?: string | null
+          lease_token?: string | null
+          line_revision_id: string
+          material_line_id: string
+          source_snapshot_id: string
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          active_version_id?: string | null
+          claim_count?: number
+          created_at?: string
+          customer_id?: string
+          error_code?: string | null
+          id?: string
+          lease_expires_at?: string | null
+          lease_generation?: number
+          lease_owner?: string | null
+          lease_token?: string | null
+          line_revision_id?: string
+          material_line_id?: string
+          source_snapshot_id?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_draft_jobs_active_version_id_fkey"
+            columns: ["active_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_draft_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_jobs_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_jobs_line_revision_id_fkey"
+            columns: ["line_revision_id"]
+            isOneToOne: true
+            referencedRelation: "ap_material_line_revisions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_jobs_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_jobs_source_snapshot_id_fkey"
+            columns: ["source_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_draft_members: {
+        Row: {
+          artifact_id: string
+          artifact_type: Database["public"]["Enums"]["ap_artifact_type"]
+          customer_id: string
+          draft_version_id: string
+          editable_source_path_sha256: string
+          editable_source_sha256: string
+          file_sha256: string
+          file_version_id: string
+          id: string
+          material_line_id: string
+          preview_sha256: string
+          source_sha256: string
+        }
+        Insert: {
+          artifact_id: string
+          artifact_type: Database["public"]["Enums"]["ap_artifact_type"]
+          customer_id: string
+          draft_version_id: string
+          editable_source_path_sha256: string
+          editable_source_sha256: string
+          file_sha256: string
+          file_version_id: string
+          id?: string
+          material_line_id: string
+          preview_sha256: string
+          source_sha256: string
+        }
+        Update: {
+          artifact_id?: string
+          artifact_type?: Database["public"]["Enums"]["ap_artifact_type"]
+          customer_id?: string
+          draft_version_id?: string
+          editable_source_path_sha256?: string
+          editable_source_sha256?: string
+          file_sha256?: string
+          file_version_id?: string
+          id?: string
+          material_line_id?: string
+          preview_sha256?: string
+          source_sha256?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_draft_members_artifact_id_fkey"
+            columns: ["artifact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_generated_artifacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_members_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_members_draft_version_id_fkey"
+            columns: ["draft_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_draft_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_members_file_version_id_fkey"
+            columns: ["file_version_id"]
+            isOneToOne: true
+            referencedRelation: "ap_generated_file_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_members_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_draft_observations: {
+        Row: {
+          input_tokens: number | null
+          observed_at: string
+          outcome: string
+          output_tokens: number | null
+          provider_response_id: string | null
+          receipt_sha256: string
+          request_id: string
+          response_model: string | null
+          total_tokens: number | null
+        }
+        Insert: {
+          input_tokens?: number | null
+          observed_at?: string
+          outcome: string
+          output_tokens?: number | null
+          provider_response_id?: string | null
+          receipt_sha256: string
+          request_id: string
+          response_model?: string | null
+          total_tokens?: number | null
+        }
+        Update: {
+          input_tokens?: number | null
+          observed_at?: string
+          outcome?: string
+          output_tokens?: number | null
+          provider_response_id?: string | null
+          receipt_sha256?: string
+          request_id?: string
+          response_model?: string | null
+          total_tokens?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_draft_observations_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_draft_attempts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_draft_permits: {
+        Row: {
+          backend_pid: number
+          draft_version_id: string
+          material_line_id: string
+          operation: string
+          transaction_id: unknown
+        }
+        Insert: {
+          backend_pid: number
+          draft_version_id: string
+          material_line_id: string
+          operation: string
+          transaction_id: unknown
+        }
+        Update: {
+          backend_pid?: number
+          draft_version_id?: string
+          material_line_id?: string
+          operation?: string
+          transaction_id?: unknown
+        }
+        Relationships: []
+      }
+      ap_material_draft_policies: {
+        Row: {
+          approved_at: string
+          approved_by: string
+          evaluation_reference_sha256: string
+          id: string
+          input_microusd_per_million: number
+          max_attempt_microusd: number
+          max_attempts: number
+          max_input_tokens: number
+          max_output_tokens: number
+          model: string
+          output_microusd_per_million: number
+          policy_sha256: string
+          privacy_reference_sha256: string
+          provider: string
+          quote_reference_sha256: string
+          rolling_day_microusd: number
+        }
+        Insert: {
+          approved_at?: string
+          approved_by: string
+          evaluation_reference_sha256: string
+          id?: string
+          input_microusd_per_million: number
+          max_attempt_microusd: number
+          max_attempts: number
+          max_input_tokens: number
+          max_output_tokens: number
+          model: string
+          output_microusd_per_million: number
+          policy_sha256: string
+          privacy_reference_sha256: string
+          provider: string
+          quote_reference_sha256: string
+          rolling_day_microusd: number
+        }
+        Update: {
+          approved_at?: string
+          approved_by?: string
+          evaluation_reference_sha256?: string
+          id?: string
+          input_microusd_per_million?: number
+          max_attempt_microusd?: number
+          max_attempts?: number
+          max_input_tokens?: number
+          max_output_tokens?: number
+          model?: string
+          output_microusd_per_million?: number
+          policy_sha256?: string
+          privacy_reference_sha256?: string
+          provider?: string
+          quote_reference_sha256?: string
+          rolling_day_microusd?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_draft_policies_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_draft_reconciliations: {
+        Row: {
+          actual_microusd: number
+          evidence_sha256: string
+          no_result: boolean
+          request_id: string
+          reviewed_at: string
+          reviewed_by: string
+        }
+        Insert: {
+          actual_microusd: number
+          evidence_sha256: string
+          no_result: boolean
+          request_id: string
+          reviewed_at?: string
+          reviewed_by: string
+        }
+        Update: {
+          actual_microusd?: number
+          evidence_sha256?: string
+          no_result?: boolean
+          request_id?: string
+          reviewed_at?: string
+          reviewed_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_draft_reconciliations_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: true
+            referencedRelation: "ap_material_draft_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_reconciliations_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_draft_runtime: {
+        Row: {
+          enabled: boolean
+          policy_id: string | null
+          singleton: boolean
+        }
+        Insert: {
+          enabled?: boolean
+          policy_id?: string | null
+          singleton?: boolean
+        }
+        Update: {
+          enabled?: boolean
+          policy_id?: string | null
+          singleton?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_draft_runtime_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_draft_policies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_material_draft_versions: {
+        Row: {
+          approval_sha256: string | null
+          approved_at: string | null
+          approved_by: string | null
+          claim_review_encrypted_payload_id: string | null
+          claim_review_metadata: Json | null
+          claim_review_sha256: string | null
+          claims_reviewed_at: string | null
+          claims_reviewed_by: string | null
+          context_sha256: string
+          created_at: string
+          customer_id: string
+          encrypted_payload_id: string | null
+          id: string
+          invalidated_at: string | null
+          job_id: string
+          material_line_id: string
+          member_set_sha256: string | null
+          packet_encrypted_payload_id: string
+          packet_sha256: string
+          release_id: string | null
+          review_checklist: Json | null
+          source_sha256: string | null
+          supersedes_id: string | null
+          version: number
+        }
+        Insert: {
+          approval_sha256?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          claim_review_encrypted_payload_id?: string | null
+          claim_review_metadata?: Json | null
+          claim_review_sha256?: string | null
+          claims_reviewed_at?: string | null
+          claims_reviewed_by?: string | null
+          context_sha256: string
+          created_at?: string
+          customer_id: string
+          encrypted_payload_id?: string | null
+          id?: string
+          invalidated_at?: string | null
+          job_id: string
+          material_line_id: string
+          member_set_sha256?: string | null
+          packet_encrypted_payload_id: string
+          packet_sha256: string
+          release_id?: string | null
+          review_checklist?: Json | null
+          source_sha256?: string | null
+          supersedes_id?: string | null
+          version: number
+        }
+        Update: {
+          approval_sha256?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          claim_review_encrypted_payload_id?: string | null
+          claim_review_metadata?: Json | null
+          claim_review_sha256?: string | null
+          claims_reviewed_at?: string | null
+          claims_reviewed_by?: string | null
+          context_sha256?: string
+          created_at?: string
+          customer_id?: string
+          encrypted_payload_id?: string | null
+          id?: string
+          invalidated_at?: string | null
+          job_id?: string
+          material_line_id?: string
+          member_set_sha256?: string | null
+          packet_encrypted_payload_id?: string
+          packet_sha256?: string
+          release_id?: string | null
+          review_checklist?: Json | null
+          source_sha256?: string | null
+          supersedes_id?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_draft_versions_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_versions_claim_review_encrypted_payload__fkey"
+            columns: ["claim_review_encrypted_payload_id"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_versions_claims_reviewed_by_fkey"
+            columns: ["claims_reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_versions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_versions_encrypted_payload_id_fkey"
+            columns: ["encrypted_payload_id"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_versions_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_draft_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_versions_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_versions_packet_encrypted_payload_id_fkey"
+            columns: ["packet_encrypted_payload_id"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_versions_release_id_fkey"
+            columns: ["release_id"]
+            isOneToOne: true
+            referencedRelation: "ap_releases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_versions_supersedes_id_fkey"
+            columns: ["supersedes_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_draft_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_material_entitlement_claims: {
         Row: {
           claimed_at: string
@@ -12065,6 +12673,18 @@ export type Database = {
         }
         Returns: Json
       }
+      ap_approve_material_draft_pair: {
+        Args: {
+          p_attestation: string
+          p_checklist: Json
+          p_member_set_sha256: string
+          p_packet_sha256: string
+          p_reviewer_id: string
+          p_source_sha256: string
+          p_version_id: string
+        }
+        Returns: string
+      }
       ap_archive_source_attempt: {
         Args: { p_adapter_version: string; p_postings: Json; p_run_id: string }
         Returns: undefined
@@ -12095,6 +12715,24 @@ export type Database = {
         Args: { p_artifact_id: string }
         Returns: undefined
       }
+      ap_assert_material_draft_dispatch_current: {
+        Args: {
+          p_job_id: string
+          p_lease_token: string
+          p_policy_id: string
+          p_request_id: string
+          p_version_id: string
+        }
+        Returns: boolean
+      }
+      ap_assert_material_draft_members_current: {
+        Args: { p_version_id: string }
+        Returns: undefined
+      }
+      ap_assert_material_draft_permit: {
+        Args: { p_line_id: string; p_operation: string }
+        Returns: undefined
+      }
       ap_assert_service_retention_access: {
         Args: { p_action?: boolean; p_line_id?: string; p_order_id: string }
         Returns: undefined
@@ -12102,6 +12740,16 @@ export type Database = {
       ap_assert_supported_artifact_facts: {
         Args: { p_artifact_id: string }
         Returns: undefined
+      }
+      ap_attach_material_draft_packet: {
+        Args: {
+          p_context_sha256: string
+          p_job_id: string
+          p_lease_token: string
+          p_packet_sha256: string
+          p_payload_id: string
+        }
+        Returns: string
       }
       ap_authorize_manual_launch_canary_checkout: {
         Args: {
@@ -12287,6 +12935,18 @@ export type Database = {
           p_selection_sha256: string
           p_selections: Json
           p_source_snapshot_id: string
+        }
+        Returns: Json
+      }
+      ap_begin_material_draft_request: {
+        Args: {
+          p_input_token_cap: number
+          p_job_id: string
+          p_lease_token: string
+          p_output_token_cap: number
+          p_policy_id: string
+          p_request_id: string
+          p_version_id: string
         }
         Returns: Json
       }
@@ -12493,6 +13153,10 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      ap_claim_material_draft_jobs: {
+        Args: { p_limit?: number; p_owner: string }
+        Returns: Json
+      }
       ap_claim_material_entitlement: {
         Args: { p_entitlement_history_id: string }
         Returns: boolean
@@ -12598,6 +13262,29 @@ export type Database = {
           p_reviewer_rationale: string
           p_search_service_id: string
           p_selection_run_id: string
+        }
+        Returns: string
+      }
+      ap_commit_material_draft_pair: {
+        Args: {
+          p_job_id: string
+          p_lease_token: string
+          p_packet_sha256: string
+          p_registrations: Json
+          p_source_sha256: string
+          p_version_id: string
+        }
+        Returns: Json
+      }
+      ap_commit_material_release_expected: {
+        Args: {
+          p_expected_binding: Json
+          p_material_line_id: string
+          p_outbox_id: string
+          p_release_id: string
+          p_review_checklist: Json
+          p_reviewer_id: string
+          p_reviewer_rationale: string
         }
         Returns: string
       }
@@ -12904,6 +13591,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_fail_material_draft_job: {
+        Args: { p_error_code: string; p_job_id: string; p_lease_token: string }
+        Returns: string
+      }
       ap_fail_outbox_message: {
         Args: {
           p_dead_letter: boolean
@@ -13162,6 +13853,32 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_lock_material_draft_job: {
+        Args: { p_job_id: string; p_lease_token?: string }
+        Returns: {
+          active_version_id: string | null
+          claim_count: number
+          created_at: string
+          customer_id: string
+          error_code: string | null
+          id: string
+          lease_expires_at: string | null
+          lease_generation: number
+          lease_owner: string | null
+          lease_token: string | null
+          line_revision_id: string
+          material_line_id: string
+          source_snapshot_id: string
+          state: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ap_material_draft_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       ap_manual_launch_canary_checkout_authorized: {
         Args: {
           p_expected_customer_id?: string
@@ -13178,8 +13895,53 @@ export type Database = {
         Returns: number
       }
       ap_matching_evidence_schema_installed: { Args: never; Returns: boolean }
+      ap_material_draft_checkout_contact_matches: {
+        Args: {
+          p_customer_id: string
+          p_fact_id: string
+          p_line_id: string
+          p_source_snapshot_id: string
+        }
+        Returns: boolean
+      }
+      ap_material_draft_context_sha256: {
+        Args: { p_job_id: string }
+        Returns: string
+      }
+      ap_material_draft_enqueue: {
+        Args: { p_line_id: string }
+        Returns: string
+      }
+      ap_material_draft_has_permit: {
+        Args: { p_line_id: string; p_operation: string }
+        Returns: boolean
+      }
+      ap_material_draft_member_identity: {
+        Args: { p_version_id: string }
+        Returns: Json
+      }
+      ap_material_draft_pair_schema_installed: { Args: never; Returns: boolean }
+      ap_material_draft_release_binding: {
+        Args: { p_line_id: string }
+        Returns: Json
+      }
       ap_material_retention_deadline: {
         Args: { p_line_id: string }
+        Returns: string
+      }
+      ap_observe_material_draft_response: {
+        Args: {
+          p_input_tokens: number
+          p_job_id: string
+          p_outcome: string
+          p_output_tokens: number
+          p_policy_id: string
+          p_provider_response_id: string
+          p_request_id: string
+          p_response_model: string
+          p_total_tokens: number
+          p_version_id: string
+        }
         Returns: string
       }
       ap_offer_material_substitution: {
@@ -13418,6 +14180,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_reconcile_material_draft_attempt: {
+        Args: {
+          p_actual_microusd: number
+          p_evidence_sha256: string
+          p_no_result: boolean
+          p_request_id: string
+          p_reviewer_id: string
+        }
+        Returns: undefined
+      }
       ap_reconcile_verified_source_run: {
         Args: { p_actor_id: string; p_run_id: string }
         Returns: Json
@@ -13474,6 +14246,40 @@ export type Database = {
       ap_record_matching_review: {
         Args: { p_correction?: Json; p_review: Json }
         Returns: Json
+      }
+      ap_record_material_draft_claim_review: {
+        Args: {
+          p_claims: Json
+          p_packet_sha256: string
+          p_review_payload_id: string
+          p_review_sha256: string
+          p_reviewer_id: string
+          p_source_sha256: string
+          p_version_id: string
+        }
+        Returns: string
+      }
+      ap_record_material_draft_listing_check: {
+        Args: {
+          p_check_id: string
+          p_evidence_sha256: string
+          p_expected_version_id: string
+          p_job_id: string
+          p_phase: string
+          p_result: string
+          p_reviewer_id: string
+        }
+        Returns: string
+      }
+      ap_record_material_draft_result: {
+        Args: {
+          p_job_id: string
+          p_lease_token: string
+          p_request_id: string
+          p_source_payload_id: string
+          p_source_sha256: string
+        }
+        Returns: string
       }
       ap_record_material_human_approval: {
         Args: {
@@ -13578,6 +14384,17 @@ export type Database = {
         Args: { p_claim_id: string }
         Returns: number
       }
+      ap_refresh_material_draft_packet: {
+        Args: {
+          p_context_sha256: string
+          p_expected_version_id: string
+          p_job_id: string
+          p_packet_sha256: string
+          p_payload_id: string
+          p_reviewer_id: string
+        }
+        Returns: string
+      }
       ap_register_anonymous_document: {
         Args: {
           p_claimed_mime: string
@@ -13644,6 +14461,10 @@ export type Database = {
         }
         Returns: Json
       }
+      ap_register_material_draft_policy: {
+        Args: { p_policy: Json; p_reviewer_id: string }
+        Returns: string
+      }
       ap_release_fully_refunded_entitlement: {
         Args: { p_entitlement_history_id: string }
         Returns: boolean
@@ -13680,6 +14501,10 @@ export type Database = {
       }
       ap_renew_job_source_sync_lease: {
         Args: { p_job_id: string; p_lease_epoch: number; p_owner: string }
+        Returns: string
+      }
+      ap_renew_material_draft_lease: {
+        Args: { p_job_id: string; p_lease_token: string }
         Returns: string
       }
       ap_renew_outbox_lease: {
@@ -13838,6 +14663,16 @@ export type Database = {
         }
         Returns: string
       }
+      ap_revise_material_draft_source: {
+        Args: {
+          p_expected_source_sha256: string
+          p_reviewer_id: string
+          p_source_payload_id: string
+          p_source_sha256: string
+          p_version_id: string
+        }
+        Returns: string
+      }
       ap_revoke_manual_launch_canary_checkout: {
         Args: {
           p_actor_id: string
@@ -13913,6 +14748,20 @@ export type Database = {
           version: number
         }[]
       }
+      ap_send_material_draft_pair: {
+        Args: {
+          p_approval_sha256: string
+          p_member_set_sha256: string
+          p_outbox_id: string
+          p_packet_sha256: string
+          p_rationale: string
+          p_release_id: string
+          p_reviewer_id: string
+          p_source_sha256: string
+          p_version_id: string
+        }
+        Returns: string
+      }
       ap_service_retention_access_allowed: {
         Args: { p_action?: boolean; p_line_id?: string; p_order_id: string }
         Returns: boolean
@@ -13969,6 +14818,10 @@ export type Database = {
           p_resource: Database["public"]["Enums"]["ap_capacity_resource"]
         }
         Returns: boolean
+      }
+      ap_set_material_draft_runtime: {
+        Args: { p_enabled: boolean; p_policy_id: string; p_reviewer_id: string }
+        Returns: undefined
       }
       ap_set_service_retention_hold: {
         Args: {
