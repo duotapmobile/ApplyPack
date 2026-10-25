@@ -6,6 +6,16 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { createPinnedPostgresTools, databaseSnapshotQuery, DATABASE_POSTGRES_PATHS } from "./lib/database-recovery-pg-tools.mjs";
 import { RECOVERY_PROJECT } from "./lib/protected-recovery-protocol.mjs";
+import { DATABASE_RECOVERY_REQUIRED_TABLES } from "./lib/database-recovery-source.mjs";
+
+test("snapshot inspection requires the database-only workflow tables separately from file aliases", () => {
+  const sql = databaseSnapshotQuery("inspect");
+  assert.equal(DATABASE_RECOVERY_REQUIRED_TABLES.length, 10);
+  assert.equal(new Set(DATABASE_RECOVERY_REQUIRED_TABLES).size, 10);
+  for (const table of DATABASE_RECOVERY_REQUIRED_TABLES) assert(sql.includes(`'${table}'`));
+  assert.match(sql, /'missingRequiredTables'/u);
+  assert.match(sql, /n\.nspname='public' and c\.relname=name and c\.relkind in \('r','p'\)/u);
+});
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const certificate = Buffer.from("-----BEGIN CERTIFICATE-----\nU1lOVEhFVElDLVRFU1QtQ0E=\n-----END CERTIFICATE-----\n");

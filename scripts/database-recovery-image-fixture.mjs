@@ -8,6 +8,7 @@ import { runDatabaseRecovery } from "./run-database-recovery.mjs";
 import { createPinnedPostgresTools } from "./lib/database-recovery-pg-tools.mjs";
 import { createDatabaseRecoveryS3Transport } from "./lib/database-recovery-s3.mjs";
 import { RECOVERY_BUCKETS, RECOVERY_TABLES, RECOVERY_PROJECT, recoveryInventoryDigest } from "./lib/protected-recovery-protocol.mjs";
+import { DATABASE_RECOVERY_REQUIRED_TABLES } from "./lib/database-recovery-source.mjs";
 import { recoverySourceColumns } from "./lib/protected-recovery-source.mjs";
 import { canonicalBytes, canonicalSha256, sha256 } from "./lib/protected-recovery-core.mjs";
 import { validateDatabaseManifest } from "./lib/database-recovery-protocol.mjs";
@@ -55,10 +56,12 @@ try {
     "CREATE ROLE applypack_recovery_exporter LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;",
     "GRANT pg_read_all_data TO applypack_recovery_exporter; REVOKE CREATE ON SCHEMA public FROM PUBLIC;",
     "CREATE SCHEMA auth; CREATE SCHEMA storage; CREATE SCHEMA supabase_migrations;",
-    "CREATE TABLE supabase_migrations.schema_migrations(version text PRIMARY KEY); INSERT INTO supabase_migrations.schema_migrations VALUES('202610250091');",
+    "CREATE TABLE supabase_migrations.schema_migrations(version text PRIMARY KEY); INSERT INTO supabase_migrations.schema_migrations VALUES('202610250092');",
     "CREATE TABLE storage.buckets(id text,name text,public boolean); CREATE TABLE storage.objects(id uuid,bucket_id text,name text,version text,metadata jsonb);",
     ...RECOVERY_BUCKETS.map((bucket) => `INSERT INTO storage.buckets VALUES('${bucket}','${bucket}',false);`),
     ...RECOVERY_TABLES.map((table) => `CREATE TABLE public.${table}(${recoverySourceColumns[table].split(",").map((column) => `${column} text`).join(",")});`),
+    ...DATABASE_RECOVERY_REQUIRED_TABLES.map((table) => `CREATE TABLE public.${table}(id uuid PRIMARY KEY,receipt_sha256 text);`),
+    "INSERT INTO public.ap_material_rule_revalidations VALUES('22222222-2222-4222-8222-222222222222',repeat('b',64));",
     "INSERT INTO public.intakes(id,resume_path,cover_letter_path,source_deleted_at,source_retention_due_at) VALUES('11111111-1111-4111-8111-111111111111',null,null,null,null);",
     "CREATE TABLE public.operational_heartbeats(task_name text,last_succeeded_at timestamptz,summary jsonb);",
     `INSERT INTO public.operational_heartbeats VALUES('protected_recovery','${inventory.startedAt}','${JSON.stringify(checkpoint)}');`,
@@ -69,7 +72,7 @@ try {
   ];
   sql(statements.join("\n"));
   const target = { id: "synthetic-image-export", sourceProjectRef: RECOVERY_PROJECT, host: `db.${RECOVERY_PROJECT}.supabase.co`,
-    port: 5432, database: "postgres", user: "applypack_recovery_exporter", caSha256: sha256(ca), schemaVersion: "202610250091",
+    port: 5432, database: "postgres", user: "applypack_recovery_exporter", caSha256: sha256(ca), schemaVersion: "202610250092",
     runtimeManifestSha256: canonicalSha256(runtime) };
   const registry = { version: 1, targets: [target] };
   const environment = { APP_DATABASE_BACKUP_ENABLED: "true", APP_DEPLOYMENT_ENV: "production", APP_EXPECTED_RELEASE_SHA: releaseSha,
@@ -115,9 +118,10 @@ try {
   assert.equal(sql("SELECT count(*) FROM public.synthetic_private;", "recovered"), "1");
   assert.equal(sql("SELECT body FROM public.synthetic_private WHERE id=1;", "recovered"), "fictional private fixture");
   assert.equal(sql("SELECT body FROM auth.synthetic_identity WHERE id=1;", "recovered"), "fictional auth fixture");
+  assert.equal(sql("SELECT receipt_sha256 FROM public.ap_material_rule_revalidations;", "recovered"), "b".repeat(64));
   assert.equal(sql("SELECT count(*) FROM storage.buckets;", "recovered"), String(RECOVERY_BUCKETS.length));
   assert.equal(sql("SELECT count(*) FROM public.intakes WHERE resume_path IS NULL AND cover_letter_path IS NULL;", "recovered"), "1");
-  assert.equal(sql("SELECT max(version) FROM supabase_migrations.schema_migrations;", "recovered"), "202610250091");
+  assert.equal(sql("SELECT max(version) FROM supabase_migrations.schema_migrations;", "recovered"), "202610250092");
   assert.equal(sql("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid='public.synthetic_private'::regclass;", "recovered"), "t");
   assert.equal(sql("SELECT count(*) FROM pg_stat_activity WHERE usename='applypack_recovery_exporter';"), "0");
 } finally {

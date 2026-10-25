@@ -4,6 +4,8 @@ param(
   [switch]$LegacyBackfill,
   [switch]$CapacityPressure,
   [switch]$RetainClusterData,
+  [switch]$RuleRevalidationUpgrade,
+  [switch]$LegalReceiptUpgrade,
   [string[]]$FixtureNames,
   [string]$MaximumMigrationVersion
 )
@@ -74,6 +76,20 @@ if ($FixtureNames) {
   }
   $fixtures = $FixtureNames
 }
+if ($RuleRevalidationUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $MaximumMigrationVersion -cne '202610250092' -or
+      $migrationFiles[-1].Name -cne '202610250092_material_rule_revalidation.sql') {
+    throw 'Rule revalidation upgrade requires the exact isolated 091-to-092 sequence.'
+  }
+  $fixtures += @('material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql')
+}
+if ($LegalReceiptUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $MaximumMigrationVersion -cne '202610250092' -or
+      $migrationFiles[-1].Name -cne '202610250092_material_rule_revalidation.sql') {
+    throw 'Legal receipt upgrade requires the exact isolated historical-to-092 sequence.'
+  }
+  $fixtures += @('legal-receipt-074-fixture.sql','legal-receipt-076-verify.sql','legal-receipt-086-verify.sql','legal-receipt-087-verify.sql')
+}
 $inputs = @([pscustomobject]@{Kind='bootstrap'; Name='bootstrap.sql'; Path=$bootstrapPath})
 foreach ($migration in $migrationFiles) {
   $copy = Join-Path $inputPath $migration.Name
@@ -91,6 +107,75 @@ if ($LegacyBackfill) {
     @($inputs | Where-Object Name -eq 'chunk1-legacy-fixture.sql') +
     @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -gt '202609030021' }) +
     @($inputs | Where-Object Name -eq 'chunk1-legacy-verify.sql')
+}
+if ($RuleRevalidationUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250091' }) +
+    @($inputs | Where-Object Name -eq 'material-rule-revalidation-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250092' }) +
+    @($inputs | Where-Object Name -eq 'material-rule-revalidation-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql') })
+}
+if ($LegalReceiptUpgrade) {
+  $bindingPath = Join-Path $repoRoot 'scripts/launch-legal-contract.mjs'
+  $bindingJson = & node --input-type=module -e 'import {pathToFileURL} from "node:url"; const m=await import(pathToFileURL(process.argv[1])); process.stdout.write(JSON.stringify([m.HISTORICAL_086_LEGAL_BINDING,m.LAUNCH_LEGAL_BINDING]));' $bindingPath
+  if ($LASTEXITCODE -ne 0) { throw 'Public legal binding source could not be read.' }
+  $bindings = $bindingJson | ConvertFrom-Json
+  $generated = @{}
+  for ($index=0; $index -lt 2; $index++) {
+    $binding = $bindings[$index]
+    $settings = foreach ($pair in @(@('privacy_version','privacyVersion'),@('privacy_sha256','privacyContentSha256'),@('terms_version','termsVersion'),@('terms_sha256','termsContentSha256'))) {
+      $value = [string]$binding.($pair[1])
+      if ($value -cnotmatch '^[a-z0-9-]{1,100}$') { throw 'Public legal binding source is invalid.' }
+      "select set_config('applypack_test.$($pair[0])','$value',false);"
+    }
+    $name = if ($index -eq 0) { 'native-legal086-settings.sql' } else { 'native-legal-current-settings.sql' }
+    $path = Join-Path $inputPath $name
+    Set-Content -LiteralPath $path -Value $settings -Encoding utf8
+    $generated[$name] = [pscustomobject]@{Kind='fixture';Name=$name;Path=$path}
+  }
+  $preservation = @{
+    'native-legal076-preserve.sql' = @'
+create table public.legal_upgrade_preservation_fixture as
+ select 'acceptance'::text as kind,to_jsonb(row) as immutable_record from public.ap_snapshot_legal_acceptances row where snapshot_id='f5300000-0000-4000-8000-000000000001'
+ union all select 'receipt',to_jsonb(row) from public.ap_snapshot_legal_content_receipts row where snapshot_id='f5300000-0000-4000-8000-000000000001'
+ union all select 'reconciliation',to_jsonb(row) from public.ap_legal_receipt_acceptance_reconciliations row
+ where receipt_id in(select id from public.ap_snapshot_legal_content_receipts where snapshot_id='f5300000-0000-4000-8000-000000000001');
+'@
+    'native-legal086-preserve.sql' = @'
+create table public.retention_legal_upgrade_preservation_fixture as
+ select 'acceptance'::text as kind,to_jsonb(row) as immutable_record from public.ap_snapshot_legal_acceptances row
+ union all select 'receipt',to_jsonb(row) from public.ap_snapshot_legal_content_receipts row
+ union all select 'reconciliation',to_jsonb(row) from public.ap_legal_receipt_acceptance_reconciliations row;
+'@
+  }
+  foreach ($name in $preservation.Keys) {
+    $path = Join-Path $inputPath $name
+    Set-Content -LiteralPath $path -Value $preservation[$name] -Encoding utf8
+    $generated[$name] = [pscustomobject]@{Kind='fixture';Name=$name;Path=$path}
+  }
+  $historicalNames = @('legal-receipt-074-fixture.sql','legal-receipt-076-verify.sql','legal-receipt-086-verify.sql','legal-receipt-087-verify.sql',
+    'material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql')
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610040074' }) +
+    @($inputs | Where-Object Name -eq 'legal-receipt-074-fixture.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -gt '202610040074' -and $_.Name.Split('_')[0] -le '202610040076' }) +
+    @($inputs | Where-Object Name -eq 'legal-receipt-076-verify.sql') + @($inputs | Where-Object Name -eq 'legal-receipt-076-verify.sql') +
+    @($generated['native-legal076-preserve.sql']) +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -gt '202610040076' -and $_.Name.Split('_')[0] -le '202610230086' }) +
+    @($generated['native-legal086-settings.sql']) +
+    @($inputs | Where-Object Name -eq 'legal-receipt-086-verify.sql') + @($inputs | Where-Object Name -eq 'legal-receipt-086-verify.sql') +
+    @($generated['native-legal086-preserve.sql']) +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -gt '202610230086' -and $_.Name.Split('_')[0] -le '202610240087' }) +
+    @($generated['native-legal-current-settings.sql']) +
+    @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') + @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -gt '202610240087' -and $_.Name.Split('_')[0] -le '202610250091' }) +
+    @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') +
+    @($inputs | Where-Object Name -eq 'material-rule-revalidation-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250092' }) +
+    @($inputs | Where-Object Name -eq 'material-rule-revalidation-upgrade-verify.sql') +
+    @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin $historicalNames })
 }
 $sharedFixture = 'reviewed-source-fixture.sql'
 $sharedFixtureCopy = Join-Path $inputPath $sharedFixture
@@ -113,6 +198,11 @@ provider credentials, production migrations, backup recovery or deployment.
 Isolated cluster: $dataPath
 Listen address: 127.0.0.1:$port
 Inputs copied and hashed before execution. No existing database is accessed.
+Rule revalidation upgrade mode: $RuleRevalidationUpgrade. When true, exact091
+public records and document guard definitions are captured before092 and
+compared afterward; the new provider runtime remains disabled.
+Legal receipt upgrade mode: $LegalReceiptUpgrade. When true, original074 facts
+pass076/086/087 verification and the exact087 verifier is rerun at091 and092.
 Legacy backfill mode: $LegacyBackfill. When true, synthetic paid legacy records
 are inserted after version 202609030021, before all remaining migrations and
 the existing legacy verification fixture. This is not a provider migration

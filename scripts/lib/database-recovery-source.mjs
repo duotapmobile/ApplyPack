@@ -2,8 +2,15 @@ import { createHash } from "node:crypto";
 import { buildRecoveryInventory } from "./protected-recovery-source.mjs";
 import { RECOVERY_BUCKETS, RECOVERY_PROJECT, RECOVERY_LIMITS, recoveryKeySchema, recoveryCanonicalSha256 } from "./protected-recovery-protocol.mjs";
 
+// Database-only workflow records have no storage paths. Check their existence
+// separately from the file-reference graph; pg_dump still covers all tables.
+export const DATABASE_RECOVERY_REQUIRED_TABLES = Object.freeze([
+  "ap_material_draft_jobs", "ap_material_draft_versions", "ap_material_draft_policies", "ap_material_draft_runtime",
+  "ap_material_draft_attempts", "ap_material_draft_members", "ap_material_draft_permits",
+  "ap_material_draft_reconciliations", "ap_material_draft_observations", "ap_material_rule_revalidations",
+]);
 export const DATABASE_RECOVERY_SOURCE = Object.freeze({
-  projectRef: RECOVERY_PROJECT, schemaVersion: "202610250091", user: "applypack_recovery_exporter",
+  projectRef: RECOVERY_PROJECT, schemaVersion: "202610250092", user: "applypack_recovery_exporter",
   schemas: ["public", "auth", "storage", "supabase_migrations"], maximumDumpBytes: 128 * 1024 * 1024,
   maximumRoles: 4096, maximumMemberships: 16384,
 });
@@ -53,7 +60,7 @@ export function validateDatabaseRecoveryConfiguration({ registry, runtime, envir
 function inspectSource(value, configuration, now) {
   requireValue(exact(value, ["currentUser", "sessionUser", "database", "readOnly", "isolation", "serverVersionNum", "startedAt", "snapshotId",
     "schemaVersion", "schemas", "superuser", "createRole", "createDb", "replication", "bypassRls", "unreadableTables", "unreadableSequences",
-    "foreignTables", "overlayReadable", "writableTables", "writableSequences", "writableSchemas", "databaseCreate", "unexpectedRoleMemberships", "unexpectedDefinerFunctions"]), "INSPECTION");
+    "foreignTables", "missingRequiredTables", "overlayReadable", "writableTables", "writableSequences", "writableSchemas", "databaseCreate", "unexpectedRoleMemberships", "unexpectedDefinerFunctions"]), "INSPECTION");
   requireValue(value.currentUser === configuration.user && value.sessionUser === configuration.user && value.database === configuration.database
     && value.readOnly === "on" && value.isolation === "repeatable read" && value.superuser === false && value.createRole === false
     && value.createDb === false && value.replication === false && value.bypassRls === true
@@ -62,7 +69,7 @@ function inspectSource(value, configuration, now) {
   requireValue(Number.isInteger(value.serverVersionNum) && value.serverVersionNum >= 170000 && value.serverVersionNum < 180000
     && value.schemaVersion === configuration.schemaVersion && Array.isArray(value.schemas)
     && [...value.schemas].sort().join("|") === [...DATABASE_RECOVERY_SOURCE.schemas].sort().join("|")
-    && value.unreadableTables === 0 && value.unreadableSequences === 0 && value.foreignTables === 0 && value.overlayReadable === true, "COVERAGE");
+    && value.missingRequiredTables === 0 && value.unreadableTables === 0 && value.unreadableSequences === 0 && value.foreignTables === 0 && value.overlayReadable === true, "COVERAGE");
   requireValue(snapshotId(value.snapshotId) && iso(value.startedAt) && Date.parse(value.startedAt) <= now
     && now - Date.parse(value.startedAt) <= RECOVERY_LIMITS.runMilliseconds, "SNAPSHOT");
   return { sourceProjectRef: RECOVERY_PROJECT, releaseSha: configuration.releaseSha, schemaVersion: configuration.schemaVersion,

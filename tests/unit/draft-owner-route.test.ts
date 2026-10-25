@@ -18,6 +18,7 @@ const review = { action: "REVIEW_WORDING", review: { versionId: version, packetS
   claims: [{ claimId: id(6), wordingSha256: "e".repeat(64), decision: "APPROVED" }] } };
 const promote = { action: "PROMOTE_SOURCE", expectedVersionId: version, expectedSourceSha256: binding.sourceSha256 };
 let versionResult: { data: unknown; error: unknown };
+let jobResult: { data: unknown; error: unknown };
 let rpcResult: { data: unknown; error: unknown };
 const admin = { from: mocks.from, rpc: mocks.rpc };
 function invoke(body: unknown, jobId = job, contentType = "application/json") {
@@ -33,11 +34,12 @@ beforeEach(() => {
   vi.clearAllMocks(); mocks.origin.mockReturnValue(true);
   mocks.auth.mockResolvedValue({ ok: true, admin, user: { id: reviewer } });
   versionResult = { data: { id: version, job_id: job }, error: null };
+  jobResult = { data: { id: job, active_version_id: null, state: "EVIDENCE_PENDING" }, error: null };
   rpcResult = { data: "f".repeat(64), error: null };
-  mocks.from.mockImplementation(() => {
+  mocks.from.mockImplementation((table: string) => {
     const q: Record<string, unknown> = {};
     for (const method of ["select", "eq", "abortSignal"]) q[method] = vi.fn(() => q);
-    q.maybeSingle = () => Promise.resolve(versionResult); return q;
+    q.maybeSingle = () => Promise.resolve(table === "ap_material_draft_jobs" ? jobResult : versionResult); return q;
   });
   mocks.rpc.mockImplementation(() => ({ abortSignal: () => Promise.resolve(rpcResult) }));
   mocks.factory.mockReturnValue({ promoteSource: mocks.promote, recordWordingReview: mocks.review });
@@ -116,6 +118,21 @@ describe("owner document HTTP actions", () => {
     expect(result.status).toBe(200);
     expect(mocks.rpc).toHaveBeenCalledWith("ap_record_material_draft_listing_check", { p_job_id: job, p_expected_version_id: version, p_check_id: id(10),
       p_phase: "BEFORE_RELEASE", p_result: "ACTIVE", p_evidence_sha256: "a".repeat(64), p_reviewer_id: reviewer });
+  });
+  it("records the initial generation inspection with actual NULL while still using the database CAS", async () => {
+    rpcResult.data = id(10);
+    const result = await invoke({ action: "LISTING_CHECK", expectedVersionId: null, checkId: id(10), phase: "BEFORE_GENERATION",
+      result: "ACTIVE", evidenceSha256: "a".repeat(64), listingOpened: true, instructionsCompared: true });
+    expect(result.status).toBe(200);
+    expect(mocks.rpc).toHaveBeenCalledWith("ap_record_material_draft_listing_check", expect.objectContaining({ p_expected_version_id: null, p_job_id: job }));
+  });
+  it.each(["version appeared", "wrong job", "wrong state", "before release"])("rejects initial listing checks when %s", async (variant) => {
+    if (variant === "version appeared") jobResult.data = { id: job, active_version_id: version, state: "PREPARING" };
+    if (variant === "wrong job") jobResult.data = { id: id(99), active_version_id: null, state: "PREPARING" };
+    if (variant === "wrong state") jobResult.data = { id: job, active_version_id: null, state: "APPROVED" };
+    const result = await invoke({ action: "LISTING_CHECK", expectedVersionId: null, checkId: id(10), phase: variant === "before release" ? "BEFORE_RELEASE" : "BEFORE_GENERATION",
+      result: "ACTIVE", evidenceSha256: "a".repeat(64), listingOpened: true, instructionsCompared: true });
+    expect(result.status).toBe(variant === "before release" ? 400 : 409); expect(mocks.rpc).not.toHaveBeenCalled();
   });
   it("approves only the explicit complete review and never sends as part of approval", async () => {
     const result = await invoke(approve); expect(result.status).toBe(200); privateHeaders(result);

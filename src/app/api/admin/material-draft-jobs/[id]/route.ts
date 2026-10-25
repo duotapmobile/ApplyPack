@@ -14,9 +14,10 @@ const checklist = z.object({ contentReviewed: z.literal(true), visualReviewed: z
 const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("PROMOTE_SOURCE"), expectedVersionId: uuid, expectedSourceSha256: hash, careerBreakFactId: uuid.optional() }).strict(),
   z.object({ action: z.literal("REVIEW_WORDING"), review: draftClaimReviewRequestSchema }).strict(),
-  z.object({ action: z.literal("LISTING_CHECK"), expectedVersionId: uuid, checkId: uuid, phase: z.enum(["BEFORE_GENERATION", "BEFORE_RELEASE"]),
+  z.object({ action: z.literal("LISTING_CHECK"), expectedVersionId: uuid.nullable(), checkId: uuid, phase: z.enum(["BEFORE_GENERATION", "BEFORE_RELEASE"]),
     result: z.enum(["ACTIVE", "CLOSED", "INSTRUCTION_BLOCKED"]), evidenceSha256: hash,
-    listingOpened: z.literal(true), instructionsCompared: z.literal(true) }).strict(),
+    listingOpened: z.literal(true), instructionsCompared: z.literal(true) }).strict()
+    .refine((value) => value.expectedVersionId !== null || value.phase === "BEFORE_GENERATION"),
   z.object({ action: z.literal("APPROVE_PAIR"), ...binding, checklist, attestation: z.string().trim().min(20).max(4000) }).strict(),
   z.object({ action: z.literal("SEND_PAIR"), ...binding, approvalSha256: hash, releaseId: uuid, outboxId: uuid,
     rationale: z.string().trim().min(20).max(4000) }).strict(),
@@ -66,9 +67,17 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
     const versionId = value.action === "REVIEW_WORDING" ? value.review.versionId
       : value.action === "PROMOTE_SOURCE" || value.action === "LISTING_CHECK" ? value.expectedVersionId : value.versionId;
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(60_000)]);
-    const version = await admin.from("ap_material_draft_versions").select("id,job_id").eq("id", versionId).eq("job_id", jobId.data).abortSignal(signal).maybeSingle();
-    if (version.error) throw new Error("VERSION_UNCONFIRMED");
-    if (!version.data || version.data.id !== versionId || version.data.job_id !== jobId.data) return response({ error: "This document version is unavailable for the selected job." }, 409);
+    if (versionId === null) {
+      const job = await admin.from("ap_material_draft_jobs").select("id,active_version_id,state").eq("id", jobId.data).abortSignal(signal).maybeSingle();
+      if (job.error) throw new Error("JOB_UNCONFIRMED");
+      if (!job.data || job.data.id !== jobId.data || job.data.active_version_id !== null || !["EVIDENCE_PENDING", "PREPARING", "OWNER_EXCEPTION"].includes(job.data.state)) {
+        return response({ error: "Refresh this job before recording its initial listing check." }, 409);
+      }
+    } else {
+      const version = await admin.from("ap_material_draft_versions").select("id,job_id").eq("id", versionId).eq("job_id", jobId.data).abortSignal(signal).maybeSingle();
+      if (version.error) throw new Error("VERSION_UNCONFIRMED");
+      if (!version.data || version.data.id !== versionId || version.data.job_id !== jobId.data) return response({ error: "This document version is unavailable for the selected job." }, 409);
+    }
     switch (value.action) {
       case "PROMOTE_SOURCE": {
         const result = await createDraftOwnerServer(admin, auth.user.id).promoteSource({ jobId: jobId.data,
@@ -81,7 +90,10 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
         return response({ action: value.action, result });
       }
       case "LISTING_CHECK": {
-        const result = await admin.rpc("ap_record_material_draft_listing_check", { p_job_id: jobId.data, p_expected_version_id: value.expectedVersionId,
+        //092 permits actual NULL only for the first BEFORE_GENERATION check.
+        //The generated CLI argument type omits SQL parameter nullability.
+        const expectedVersionId = value.expectedVersionId as Database["public"]["Functions"]["ap_record_material_draft_listing_check"]["Args"]["p_expected_version_id"];
+        const result = await admin.rpc("ap_record_material_draft_listing_check", { p_job_id: jobId.data, p_expected_version_id: expectedVersionId,
           p_check_id: value.checkId, p_phase: value.phase, p_result: value.result, p_evidence_sha256: value.evidenceSha256, p_reviewer_id: auth.user.id }).abortSignal(signal);
         if (result.error || result.data !== value.checkId) throw new Error("CHECK_UNCONFIRMED");
         return response({ action: value.action, checkId: result.data });

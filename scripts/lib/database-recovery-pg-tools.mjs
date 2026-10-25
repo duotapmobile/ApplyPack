@@ -6,7 +6,7 @@ import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { recoverySourceColumns } from "./protected-recovery-source.mjs";
 import { RECOVERY_BUCKETS, RECOVERY_TABLES, recoveryKeySchema } from "./protected-recovery-protocol.mjs";
-import { DATABASE_RECOVERY_SOURCE, databaseSnapshotIdentifierValid } from "./database-recovery-source.mjs";
+import { DATABASE_RECOVERY_REQUIRED_TABLES, DATABASE_RECOVERY_SOURCE, databaseSnapshotIdentifierValid } from "./database-recovery-source.mjs";
 
 export const DATABASE_POSTGRES_PATHS = Object.freeze({ psql: "/usr/lib/postgresql/17/bin/psql", pgDump: "/usr/lib/postgresql/17/bin/pg_dump" });
 const fail = (code) => { throw new Error(`DATABASE_RECOVERY_PG_${code}`); };
@@ -37,6 +37,9 @@ export function databaseSnapshotQuery(operation, input = {}) {
     'unexpectedDefinerFunctions',(select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
       where p.prosecdef and has_function_privilege(current_user,p.oid,'EXECUTE')
       and p.oid <> 'public.ap_export_service_retention_overlay()'::regprocedure),
+    'missingRequiredTables',(select count(*) from unnest(array[${DATABASE_RECOVERY_REQUIRED_TABLES.map(literal).join(",")}]) name
+      where not exists(select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
+        where n.nspname='public' and c.relname=name and c.relkind in ('r','p'))),
     'foreignTables',(select count(*) ${applicationRelations} and c.relkind='f'),
     'overlayReadable',has_function_privilege(current_user,'public.ap_export_service_retention_overlay()','EXECUTE'))
     from pg_roles r where r.rolname=current_user;`;

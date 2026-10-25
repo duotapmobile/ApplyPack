@@ -10,7 +10,7 @@ const NOW = Date.parse("2026-10-25T16:00:00Z"); const SHA = "a".repeat(40); cons
 const runtime = { schemaVersion: "applypack-database-recovery-runtime-v1", postgresMajor: 17, clientVersion: "17.11",
   baseImageDigest: `sha256:${HASH}`, psqlSha256: HASH, pgDumpSha256: HASH };
 const target = { id: "synthetic-export", sourceProjectRef: RECOVERY_PROJECT, host: `db.${RECOVERY_PROJECT}.supabase.co`, port: 5432,
-  database: "postgres", user: "applypack_recovery_exporter", caSha256: HASH, schemaVersion: "202610250091", runtimeManifestSha256: canonicalSha256(runtime) };
+  database: "postgres", user: "applypack_recovery_exporter", caSha256: HASH, schemaVersion: "202610250092", runtimeManifestSha256: canonicalSha256(runtime) };
 const archive = { bucket: "applypack-production-protected-recovery-838445019912",
   kmsKeyArn: "arn:aws:kms:us-east-1:838445019912:key/11111111-1111-4111-8111-111111111111" };
 function fixture() {
@@ -37,7 +37,7 @@ function fixture() {
   const inspection = { currentUser: target.user, sessionUser: target.user, database: "postgres", readOnly: "on", isolation: "repeatable read",
     serverVersionNum: 170011, startedAt: stamp(-1000), snapshotId: "00000003-0000001B-1", schemaVersion: target.schemaVersion,
     schemas: ["public", "auth", "storage", "supabase_migrations"], superuser: false, createRole: false, createDb: false, replication: false,
-    bypassRls: true, unreadableTables: 0, unreadableSequences: 0, foreignTables: 0, overlayReadable: true, writableTables: 0,
+    bypassRls: true, unreadableTables: 0, unreadableSequences: 0, missingRequiredTables: 0, foreignTables: 0, overlayReadable: true, writableTables: 0,
     writableSequences: 0, writableSchemas: 0, databaseCreate: false, unexpectedRoleMemberships: 0, unexpectedDefinerFunctions: 0 };
   const roles = { roles: [{ oid: 100, name: target.user, superuser: false, inherit: true, createRole: false, createDatabase: false,
     canLogin: true, replication: false, bypassRls: true, connectionLimit: 2, validUntil: null }], memberships: [] };

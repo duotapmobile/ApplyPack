@@ -152,18 +152,24 @@ foreach ($mutation in @(
 # Every current forward boundary preserves its predecessor ledger and applies
 # only the missing, exact ordered suffix. The historical087 cases above remain.
 $current = Copy-Fixture
-$current.postSchemaVersion = '202610250091'
+$current.postSchemaVersion = '202610250092'
 foreach ($extra in @(
     @('202610250088','service_retention_cleanup','SERVICE_RETENTION_CLEANUP','202610240087','ONE_OFF_SERVICE_RETENTION'),
     @('202610250089','confirmed_intake','CONFIRMED_INTAKE','202610250088','SERVICE_RETENTION_CLEANUP'),
     @('202610250090','matching_evidence_completion','MATCHING_EVIDENCE_COMPLETION','202610250089','CONFIRMED_INTAKE'),
-    @('202610250091','material_draft_pair_workflow','MATERIAL_DRAFT_PAIR_WORKFLOW','202610250090','MATCHING_EVIDENCE_COMPLETION')
+    @('202610250091','material_draft_pair_workflow','MATERIAL_DRAFT_PAIR_WORKFLOW','202610250090','MATCHING_EVIDENCE_COMPLETION'),
+    @('202610250092','material_rule_revalidation','MATERIAL_RULE_REVALIDATION','202610250091','MATERIAL_DRAFT_PAIR_WORKFLOW')
 )) {
     $current.migrations += [pscustomobject]@{version=$extra[0];name=$extra[1];checkpoint=$extra[2];relativePath="supabase/migrations/$($extra[0])_$($extra[1]).sql";predecessor=$extra[3];predecessorCheckpoint=$extra[4];sha256=('a' * 64)}
 }
 Assert-ProductionDatabaseManifest -Manifest $current -Registry $registry
 $checks++
-foreach ($boundary in @('202610240087','202610250088','202610250089','202610250090')) {
+$historical091 = $current | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+$historical091.postSchemaVersion = '202610250091'
+$historical091.migrations = @($historical091.migrations | Where-Object version -cle '202610250091')
+Assert-ProductionDatabaseManifest -Manifest $historical091 -Registry $registry
+$checks++
+foreach ($boundary in @('202610240087','202610250088','202610250089','202610250090','202610250091')) {
     $advance = $current | ConvertTo-Json -Depth 10 | ConvertFrom-Json
     $advance.expectedSchemaVersion = $boundary
     $advance.expectedLedger = @($entry) + @($advance.migrations | Where-Object { $_.version -cle $boundary } | ForEach-Object {

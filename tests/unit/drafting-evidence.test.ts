@@ -112,6 +112,52 @@ function uploaded(f: Fixture, entryMode: "CURRENT_RESUME" | "OUTDATED_RESUME" = 
 }
 
 describe("immutable drafting evidence", () => {
+  it("retains the exact evidence packet while its paid line advances through rendering and approval", () => {
+    const f = fixture(), saved = serializeDraftingEvidencePacket(f.build());
+    for (const state of ["GENERATING", "HUMAN_REVIEW", "READY_TO_RELEASE"] as const) {
+      f.r.line.fulfillment = state;
+      expect(serializeDraftingEvidencePacket(f.build())).toBe(saved);
+    }
+    f.r.line.fulfillment = "DELIVERED" as DraftingEvidenceRecords["line"]["fulfillment"];
+    expect(f.build).toThrow("SHAPE_INVALID");
+  });
+  function addRuleRecheck(f: Fixture) {
+    f.r.rule.checked_at = before; f.r.rule.human_confirmed_at = before;
+    const basis = { lineRevisionId: f.r.revision.id, sourceSnapshotId: f.r.snapshot.id, jobSnapshotId: f.r.job.id,
+      jobContentSha256: f.r.job.content_sha256, ruleId: f.r.rule.id, ruleSha256: f.r.rule.content_sha256,
+      ruleRecordSha256: digest("a"), sourceAuthoritySha256: digest("b") };
+    f.r.draftJobId = id(90);
+    f.r.ruleEvidence = { contractVersion: "applypack-material-rule-revalidation-v1", jobId: id(90), basis,
+      originalCheckedAt: before, effectiveCheckedAt: fresh,
+      revalidation: { id: id(91), customer_id: f.expected.customerId, material_line_id: f.r.line.id, job_id: id(90),
+        line_revision_id: f.r.revision.id, reviewed_version_id: id(92), reviewed_lease_generation: 1,
+        review_method: "OWNER_REOPENED_PUBLIC_APPLICATION", basis: { ...basis },
+        review_checklist: { applicationAccessReviewed: true, liveListingOpened: true, submissionInstructionsCompared: true, unchangedRuleConfirmed: true },
+        checked_by: id(17), checked_at: fresh, receipt_sha256: digest("c"), created_at: fresh } };
+  }
+  it("binds an explicit unchanged-rule recheck without changing original instructions or provider facts", () => {
+    const f = fixture(), original = f.build(); addRuleRecheck(f);
+    const packet = f.build();
+    expect(packet.ownerEvidence.employerInstructions.checked_at).toBe(before);
+    expect(packet.ownerEvidence.ruleEvidence?.revalidation?.review_method).toBe("OWNER_REOPENED_PUBLIC_APPLICATION");
+    expect(packet.providerView).toEqual(original.providerView);
+    expect(packet.validUntil).toBe("2026-10-25T12:55:00.000Z");
+    expect(packet.packetSha256).not.toBe(original.packetSha256);
+    const changed = structuredClone(f.r.ruleEvidence!); changed.revalidation!.id = id(93); f.r.ruleEvidence = changed;
+    expect(f.build().packetSha256).not.toBe(packet.packetSha256);
+  });
+  it("requires a new listing check independently of a fresh unchanged-rule recheck", () => {
+    const f = fixture(); addRuleRecheck(f); f.r.listingCheck.checked_at = before;
+    expect(f.build).toThrow("JOB_RULE_STALE");
+  });
+  it.each(["job", "source", "missing receipt", "missing job"])("rejects incomplete or wrong %s rule evidence", (variant) => {
+    const f = fixture(); addRuleRecheck(f);
+    if (variant === "job") f.r.draftJobId = id(99);
+    if (variant === "source") f.r.ruleEvidence!.basis.sourceSnapshotId = id(99);
+    if (variant === "missing receipt") f.r.ruleEvidence = undefined;
+    if (variant === "missing job") f.r.draftJobId = undefined;
+    expect(f.build).toThrow();
+  });
   it("stores exact captured strings and raw hashes through serialization without whitespace or Unicode normalization", () => {
     const f = fixture(), prompt = "Describe  your work with cafe\u0301 customers.";
     apiQuestions(f, prompt); const packet = f.build(), serialized = serializeDraftingEvidencePacket(packet);

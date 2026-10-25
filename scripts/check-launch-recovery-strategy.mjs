@@ -46,7 +46,7 @@ export function collectRecoverySourceIdentity(repoRoot = root, capture = spawnSy
   if (git("status", "--porcelain=v1", "--untracked-files=all")) reject("RECOVERY_CLEAN_CANDIDATE_REQUIRED");
   const schema = readFileSync(resolve(repoRoot, "src/lib/operations/launch-schema.ts"));
   const schemaVersion = schema.toString("utf8").match(/export const REQUIRED_LAUNCH_SCHEMA_VERSION = "([0-9]{12})";/)?.[1];
-  if (schemaVersion !== "202610250091") reject("RECOVERY_SCHEMA_091_REQUIRED");
+  if (schemaVersion !== "202610250092") reject("RECOVERY_SCHEMA_092_REQUIRED");
   const migrationDirectory = resolve(repoRoot, "supabase/migrations");
   const names = readdirSync(migrationDirectory).filter((name) => name.endsWith(".sql")).sort();
   if (!names.length || names.some((name) => !/^[0-9]{12}_[a-z0-9_]+\.sql$/.test(name))
@@ -85,7 +85,7 @@ export function validateRecoverySelection({ env, identity, now = Date.now() }) {
     "acceptedRecoveryTimeMinutes", "acceptedDataLossMinutes", "riskAcceptanceReference", "protectedRecoveryPlan"], "FORWARD_RECOVERY_PLAN_FIELDS_INVALID");
   if (plan.version !== 1 || plan.strategy !== strategy || plan.status !== "REVIEWED"
     || plan.repository !== repository || plan.ref !== env.GITHUB_REF
-    || plan.candidateSha !== identity.candidateSha || plan.schemaVersion !== "202610250091"
+    || plan.candidateSha !== identity.candidateSha || plan.schemaVersion !== "202610250092"
     || plan.schemaVersion !== identity.schemaVersion || !digest.test(plan.launchSchemaSha256)
     || plan.launchSchemaSha256 !== identity.launchSchemaSha256 || !digest.test(plan.migrationSetSha256)
     || plan.migrationSetSha256 !== identity.migrationSetSha256) reject("FORWARD_RECOVERY_CANDIDATE_SCHEMA_BINDING_MISMATCH");

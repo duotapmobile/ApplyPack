@@ -29,7 +29,7 @@ $script:DatabaseName = 'postgres'
 $script:LoginUser = 'postgres.zzzzzzzzzzzzzzzzzzzz'
 $script:CurrentUser = 'postgres'
 $script:PreSchemaVersion = '202610190084'
-$script:PostSchemaVersion = '202610250091'
+$script:PostSchemaVersion = '202610250092'
 $script:CaSha256 = '700723581420DD1AC98FD7E9AC529F0EF210EADCAF87FC868A3AD7D114C2F3B7'
 $script:PostgresImageDigest = 'public.ecr.aws/supabase/postgres@sha256:b3bfedb107413abb3b8cb0d0874b0414a1dceb3d55bc0c778de6ad22d1f7dc86'
 $script:DockerCliReviewedPath = 'C:\Program Files\Docker\Docker\resources\bin\docker.exe'
@@ -141,6 +141,15 @@ $script:MigrationPlan = @(
         predecessor = '202610250090'
         predecessorCheckpoint = 'MATCHING_EVIDENCE_COMPLETION'
         marker = 'PRODUCTION_MIGRATION_202610250091_APPLIED'
+    },
+    [ordered]@{
+        version = '202610250092'
+        name = 'material_rule_revalidation'
+        relativePath = 'supabase/migrations/202610250092_material_rule_revalidation.sql'
+        checkpoint = 'MATERIAL_RULE_REVALIDATION'
+        predecessor = '202610250091'
+        predecessorCheckpoint = 'MATERIAL_DRAFT_PAIR_WORKFLOW'
+        marker = 'PRODUCTION_MIGRATION_202610250092_APPLIED'
     }
 )
 $script:PublishedPredecessorPaths = @(
@@ -1400,7 +1409,8 @@ function Invoke-Apply {
                 migration088Rows = [int]($script:PreSchemaVersion -cge '202610250088')
                 migration089Rows = [int]($script:PreSchemaVersion -cge '202610250089')
                 migration090Rows = [int]($script:PreSchemaVersion -cge '202610250090')
-                migration091Rows = 0
+                migration091Rows = [int]($script:PreSchemaVersion -cge '202610250091')
+                migration092Rows = 0
                 requiredSchemaVersion = $script:PreSchemaVersion
                 ready = ($script:PreSchemaVersion -cne '202610240087')
                 invalidPublicIndexes = 0
@@ -1416,6 +1426,7 @@ function Invoke-Apply {
                 migration089Rows = [int]($script:PostSchemaVersion -cge '202610250089')
                 migration090Rows = [int]($script:PostSchemaVersion -cge '202610250090')
                 migration091Rows = [int]($script:PostSchemaVersion -cge '202610250091')
+                migration092Rows = [int]($script:PostSchemaVersion -cge '202610250092')
                 requiredSchemaVersion = $script:PostSchemaVersion
                 ready = ($script:PostSchemaVersion -cne '202610240087')
                 invalidPublicIndexes = 0

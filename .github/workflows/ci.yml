@@ -99,6 +99,9 @@ jobs:
       - name: Validate091 complete document pair migration controls
         shell: pwsh
         run: node scripts/run-windows-release-self-test.mjs rehearsal-091
+      - name: Validate092 unchanged employer-rule revalidation controls
+        shell: pwsh
+        run: npm run test:rule-revalidation-migration
       - run: npm run test:staging-schema084-backup
       - run: npm run test:production-migration
       - run: npm run test:production-backup

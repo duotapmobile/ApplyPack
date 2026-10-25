@@ -6,6 +6,7 @@ import { buildFourStepSnapshot, fourStepDraftSchema, normalizedFourStepDraft } f
 import { MATCHING_RULES_VERSION } from "@/lib/matching/evaluation-engine";
 import { buildEmployerQuestionInsights } from "./employer-question-evidence";
 import { getEmployerSource } from "@/lib/jobs/source-registry";
+import { materialRulePacketEvidenceSchema, validateMaterialRulePacketEvidence } from "./material-rule-evidence";
 
 export const DRAFTING_EVIDENCE_VERSION = "applypack-drafting-evidence-v1";
 export const DRAFTING_EVIDENCE_LIMITS = { facts: 500, requirements: 200, reviews: 400, sources: 500, bytes: 2_000_000 } as const;
@@ -31,8 +32,10 @@ const factSchema = z.object({ id: uuid, snapshot_id: uuid.nullable(), customer_i
 
 // These are finite persisted projections, not client-supplied authorization evidence.
 export const draftingEvidenceRecordsSchema = z.object({
+  draftJobId: uuid.optional(),
+  ruleEvidence: materialRulePacketEvidenceSchema.optional(),
   line: z.object({ id: uuid, purchase_id: uuid, payment_attempt_id: uuid, delivered_order_id: uuid, delivered_match_id: uuid,
-    active_revision: z.number().int().positive(), allocated_amount_cents: z.literal(799), fulfillment: z.enum(["PAID", "GENERATING", "HUMAN_REVIEW"]),
+    active_revision: z.number().int().positive(), allocated_amount_cents: z.literal(799), fulfillment: z.enum(["PAID", "GENERATING", "HUMAN_REVIEW", "READY_TO_RELEASE"]),
     materials_payment_verified_at: time, materials_started_at: time, materials_due_at: time, selected_reference_sheet: z.boolean() }).strict(),
   purchase: z.object({ id: uuid, customer_id: uuid, checkout_intent_id: uuid, payment_attempt_id: uuid,
     amount_cents: z.number().int().positive(), currency: z.literal("USD"), completed_at: time }).strict(),
@@ -212,8 +215,15 @@ export function buildDraftingEvidencePacket(raw: unknown, expectedRaw: DraftingE
     requireThat(!r.refundIds.length && !r.successorJobIds.length && r.verifiedJobSnapshotIds.length === 1 && r.verifiedJobSnapshotIds[0] === r.job.id, "CURRENT_AUTHORITY_REQUIRED");
     requireThat(same(r.job.id, r.revision.job_snapshot_id, r.rule.job_snapshot_id, r.listingCheck.job_snapshot_id) &&
       same(r.rule.id, r.revision.employer_rule_snapshot_id, r.listingCheck.submission_rule_id) && r.rule.content_sha256 === r.listingCheck.evidence_sha256, "JOB_RULE_MISMATCH");
+    requireThat(Boolean(r.draftJobId) === Boolean(r.ruleEvidence), "RULE_EVIDENCE_INCOMPLETE");
+    const ruleEvidence = r.ruleEvidence ? validateMaterialRulePacketEvidence(r.ruleEvidence, {
+      jobId: r.draftJobId!, customerId: expected.customerId, materialLineId: r.line.id, lineRevisionId: r.revision.id,
+      sourceSnapshotId: r.snapshot.id, jobSnapshotId: r.job.id, jobContentSha256: r.job.content_sha256,
+      ruleId: r.rule.id, ruleSha256: r.rule.content_sha256, originalCheckedAt: r.rule.checked_at,
+    }, now) : undefined;
+    const effectiveRuleCheckedAt = ruleEvidence?.effectiveCheckedAt ?? r.rule.checked_at;
     requireThat([r.job.retrieved_at, r.job.live_verified_at, r.rule.checked_at, r.rule.human_confirmed_at, r.listingCheck.checked_at].every(past) &&
-      [r.rule.checked_at, r.listingCheck.checked_at].every((value) => clock - Date.parse(value) < 3_600_000) &&
+      [effectiveRuleCheckedAt, r.listingCheck.checked_at].every((value) => clock - Date.parse(value) < 3_600_000) &&
       ![r.rule.resume_requirement, r.rule.cover_letter_requirement].includes("PROHIBITED"), "JOB_RULE_STALE");
     for (const rows of [r.facts, r.sourceFacts, r.documents, r.factReviews, r.requirements, r.reviews, r.referencePermissions]) requireThat(unique(rows.map((row) => String(row.id))), "DUPLICATE_EVIDENCE");
     const documents = new Map(r.documents.map((doc) => [doc.id, doc])), sources = new Map(r.sourceFacts.map((fact) => [fact.id, fact]));
@@ -344,16 +354,21 @@ export function buildDraftingEvidencePacket(raw: unknown, expectedRaw: DraftingE
         careerBreakCustomLabel: r.intent.career_break_custom_label, mentionBreakInLetter: r.intent.cover_letter_break_consent },
       outputRules: { formats: r.rule.allowed_formats, resumePageLimit: r.rule.resume_page_limit, letterPageLimit: r.rule.cover_letter_page_limit },
     });
-    const authority = { ...r, facts: sorted(r.facts), sourceFacts: sorted(r.sourceFacts), documents: sorted(r.documents), factReviews: sorted(r.factReviews),
+    // Fulfillment advances when the same reviewed files are rendered/approved.
+    // Validate its permitted live state above, but do not turn that state change
+    // into a new source packet. Revision, payment, deadline and fact guards remain.
+    const lineSource = Object.fromEntries(Object.entries(r.line).filter(([key]) => key !== "fulfillment"));
+    const authority = { ...r, line: lineSource, facts: sorted(r.facts), sourceFacts: sorted(r.sourceFacts), documents: sorted(r.documents), factReviews: sorted(r.factReviews),
       requirements: sorted(r.requirements), reviews: sorted(r.reviews), questionSourceNodes: sorted(r.questionSourceNodes), referencePermissions: sorted(r.referencePermissions), referencePermissionIds: [...r.referencePermissionIds].sort() };
     const packet = { schemaVersion: DRAFTING_EVIDENCE_VERSION, confirmationMode: "CUSTOMER_CONFIRMED_V1" as const, expected,
-      evidenceSha256: canonicalSha256(authority), validUntil: new Date(Math.min(Date.parse(r.revision.due_at), Date.parse(r.rule.checked_at) + 3_600_000, Date.parse(r.listingCheck.checked_at) + 3_600_000)).toISOString(),
+      evidenceSha256: canonicalSha256(authority), validUntil: new Date(Math.min(Date.parse(r.revision.due_at), Date.parse(effectiveRuleCheckedAt) + 3_600_000, Date.parse(r.listingCheck.checked_at) + 3_600_000)).toISOString(),
       binding: { snapshotId: r.snapshot.id, snapshotSha256: r.snapshot.content_sha256, confirmationReceipt: receipt.data,
         confirmationReceiptSha256: canonicalSha256(receipt.data), jobSnapshotId: r.job.id, jobSha256: r.job.content_sha256,
         ruleId: r.rule.id, ruleSha256: r.rule.content_sha256, listingCheckId: r.listingCheck.id, dueAt: r.revision.due_at,
         contactPayloadId: r.contact.id, contactSha256: r.contact.content_sha256, referencePermissions: sorted(r.referencePermissions) },
       employerQuestionInsights,
       ownerEvidence: { contactFact: r.contactFact, facts: sorted(r.facts), sourceFacts: sorted(r.sourceFacts), sourceReviews: sorted(r.factReviews), documents: sorted(r.documents),
+        ...(ruleEvidence ? { ruleEvidence } : {}),
         matchReviews: sorted(r.reviews), requirements: sorted(r.requirements), employerInstructions: r.rule, customerInstructions: r.item,
         targetJob: { id: r.job.id, company: r.job.company, exactTitle: r.job.exact_title, canonicalApplicationUrl: r.job.canonical_application_url,
           retrievedAt: r.job.retrieved_at, contentSha256: r.job.content_sha256 },

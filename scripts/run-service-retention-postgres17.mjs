@@ -8,22 +8,31 @@ import { fileURLToPath } from "node:url";
 // Test-only server image. Never import this image into a deployed worker: its
 // server/tooling packages have a separate vulnerability profile from runtime.
 export const RETENTION_POSTGRES_IMAGE = "postgres:17-trixie@sha256:3518071376d0b6156b02e1db2747a78511b5b9dc3763cc79c506ebe2dc2ee71c";
-const schema = "202610250091";
+const schema = "202610250092";
 const version = "17.11";
 const fixtureLabel = "service-retention-postgres17";
 const bin = "/usr/lib/postgresql/17/bin/";
 const directory = "/tmp/applypack-retention";
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
-const fixtureNames = Object.freeze(["one-off-service-retention.sql", "service-retention-cleanup.sql", "confirmed-intake.sql", "reviewed-commute.sql", "service-retention-races.sql"]);
+const fixtureNames = Object.freeze(["one-off-service-retention.sql", "service-retention-cleanup.sql", "confirmed-intake.sql", "reviewed-commute.sql", "material-draft-pair-workflow.sql", "material-rule-revalidation.sql", "service-retention-races.sql"]);
 const fixtureMarkers = Object.freeze(fixtureNames.map((_, index) => `RETENTION_PG17_FIXTURE_${index + 1}_COMPLETE`));
 
 export function loadRetentionPostgresInputs() {
   const root = new URL("../", import.meta.url);
   const inputs = [];
+  const helpers = [];
   const add = (kind, name, location) => {
     const bytes = readFileSync(new URL(location, root));
     const text = bytes.toString("utf8"); assert(Buffer.from(text, "utf8").equals(bytes), "RETENTION_FIXTURE_INVALID_UTF8");
-    const source = text.replace(/^\uFEFF/u, "");
+    let source = text.replace(/^\uFEFF/u, "");
+    if (kind === "fixture") source = source.replace(/^\\ir reviewed-source-fixture\.sql\r?$/gmu, () => {
+      const helperBytes = readFileSync(new URL("tests/integration/reviewed-source-fixture.sql", root));
+      const helper = helperBytes.toString("utf8").replace(/^\uFEFF/u, "");
+      assert(Buffer.from(helperBytes.toString("utf8"), "utf8").equals(helperBytes)
+        && helper.length > 0 && helper.length < 2 * 1024 * 1024 && !/^\s*\\/mu.test(helper), "RETENTION_FIXTURE_HELPER_INVALID");
+      if (helpers.length === 0) helpers.push({ kind: "helper", name: "reviewed-source-fixture.sql", sha256: sha256(helperBytes), executedSha256: sha256(helper) });
+      return helper;
+    });
     assert(source.length > 0 && source.length < 2 * 1024 * 1024, "RETENTION_FIXTURE_INPUT_BOUND");
     assert(!/^\s*\\/mu.test(source), "RETENTION_FIXTURE_META_COMMAND_FORBIDDEN");
     inputs.push({ kind, name, sha256: sha256(bytes), executedSha256: sha256(source), source });
@@ -47,7 +56,7 @@ export function loadRetentionPostgresInputs() {
       or current_database()<>'postgres' or inet_server_addr()<>'127.0.0.1'::inet then raise exception 'isolated_postgres17_required'; end if;
     end $$;\n${statements.join("\n")}\n`;
   assert(Buffer.byteLength(sql) < 16 * 1024 * 1024, "RETENTION_FIXTURE_BATCH_BOUND");
-  return { sql, hashes: inputs.map(({ kind, name, sha256, executedSha256 }) => ({ kind, name, sha256, executedSha256 })), migrationCount: migrations.length };
+  return { sql, hashes: [...inputs.map(({ kind, name, sha256, executedSha256 }) => ({ kind, name, sha256, executedSha256 })), ...helpers], migrationCount: migrations.length };
 }
 
 function validateImage(metadata) {

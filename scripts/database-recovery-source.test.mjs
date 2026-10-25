@@ -10,7 +10,7 @@ const SHA = "a".repeat(40); const HASH = "b".repeat(64);
 const runtime = { schemaVersion: "applypack-database-recovery-runtime-v1", postgresMajor: 17, clientVersion: "17.11",
   baseImageDigest: `sha256:${HASH}`, psqlSha256: HASH, pgDumpSha256: HASH };
 const target = { id: "production-read-only-export", sourceProjectRef: RECOVERY_PROJECT, host: `db.${RECOVERY_PROJECT}.supabase.co`, port: 5432,
-  database: "postgres", user: "applypack_recovery_exporter", caSha256: HASH, schemaVersion: "202610250091", runtimeManifestSha256: recoveryCanonicalSha256(runtime) };
+  database: "postgres", user: "applypack_recovery_exporter", caSha256: HASH, schemaVersion: "202610250092", runtimeManifestSha256: recoveryCanonicalSha256(runtime) };
 function registration(overrides = {}) {
   const registry = { version: 1, targets: [structuredClone(target)] };
   const environment = { APP_DATABASE_BACKUP_ENABLED: "true", APP_DEPLOYMENT_ENV: "production", APP_EXPECTED_RELEASE_SHA: SHA,
@@ -27,7 +27,7 @@ function fixture() {
   const inspection = { currentUser: target.user, sessionUser: target.user, database: "postgres", readOnly: "on", isolation: "repeatable read",
     serverVersionNum: 170011, startedAt: new Date(NOW - 1000).toISOString(), snapshotId: "00000003-0000001B-1", schemaVersion: target.schemaVersion,
     schemas: [...DATABASE_RECOVERY_SOURCE.schemas], superuser: false, createRole: false, createDb: false, replication: false, bypassRls: true,
-    unreadableTables: 0, unreadableSequences: 0, foreignTables: 0, overlayReadable: true,
+    unreadableTables: 0, unreadableSequences: 0, missingRequiredTables: 0, foreignTables: 0, overlayReadable: true,
     writableTables: 0, writableSequences: 0, writableSchemas: 0, databaseCreate: false, unexpectedRoleMemberships: 0, unexpectedDefinerFunctions: 0 };
   const checkpoint = { task_name: "protected_recovery", last_succeeded_at: new Date(NOW - 2000).toISOString(), summary: {
     schemaVersion: "applypack-protected-recovery-checkpoint-v1", sourceEnvironment: "production", sourceProjectRef: RECOVERY_PROJECT,
@@ -107,7 +107,7 @@ test("same snapshot supplies acknowledged checkpoint, private graph, roles and f
 });
 for (const [field, value] of Object.entries({ currentUser: "postgres", sessionUser: "postgres", readOnly: "off", isolation: "read committed", superuser: true,
   bypassRls: false, writableTables: 1, writableSequences: 1, writableSchemas: 1, databaseCreate: true, unexpectedRoleMemberships: 1, unexpectedDefinerFunctions: 1,
-  unreadableTables: 1, unreadableSequences: 1, foreignTables: 1, overlayReadable: false, schemaVersion: "202610230086", serverVersionNum: 180000 })) {
+  unreadableTables: 1, unreadableSequences: 1, missingRequiredTables: 1, foreignTables: 1, overlayReadable: false, schemaVersion: "202610230086", serverVersionNum: 180000 })) {
   test(`snapshot rejects incomplete or unsafe ${field}`, async () => {
     const f = fixture(); f.inspection[field] = value;
     await assert.rejects(f.open(), /READ_ROLE|COVERAGE/u); assert.equal(f.closes, 1);
