@@ -1,8 +1,0 @@
-{
-  "schemaVersion": "applypack-database-recovery-runtime-v1",
-  "postgresMajor": 17,
-  "clientVersion": "17.11",
-  "baseImageDigest": "sha256:3518071376d0b6156b02e1db2747a78511b5b9dc3763cc79c506ebe2dc2ee71c",
-  "psqlSha256": "292a3063f4712a759ec558e2f7f050b3f8a64d83d04404c9521202c299b5830a",
-  "pgDumpSha256": "4be73b25bca2b6f9a231f2185eab7bdfd2f92810886dddf699fc367c5a471b4c"
-}

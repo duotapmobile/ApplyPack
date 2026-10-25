@@ -189,6 +189,21 @@ jobs:
           if-no-files-found: error
       - name: Corrected-contract database fixtures
         run: npm run test:database
+      - name: Independent PostgreSQL17 retention and hold races
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test scripts/run-service-retention-postgres17.test.mjs
+          docker --host unix:///var/run/docker.sock pull postgres:17-trixie@sha256:3518071376d0b6156b02e1db2747a78511b5b9dc3763cc79c506ebe2dc2ee71c
+          mkdir -p evidence/retention-postgres17
+          git rev-parse HEAD > evidence/retention-postgres17/commit.txt
+          node scripts/run-service-retention-postgres17.mjs > evidence/retention-postgres17/receipt.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: isolated-postgres17-retention-races
+          path: evidence/retention-postgres17
+          if-no-files-found: warn
       - name: Generated database type drift
         run: npm run types:database:check
       - name: Mandatory isolated structural recovery (not hosted approval)

@@ -66,6 +66,7 @@ export type Database = {
           capability_secret_hash: string
           capability_version: number
           checkout_attempt_id: string | null
+          confirmation_receipt: Json | null
           converted_customer_id: string | null
           converted_intake_id: string | null
           created_at: string
@@ -87,6 +88,7 @@ export type Database = {
           capability_secret_hash: string
           capability_version?: number
           checkout_attempt_id?: string | null
+          confirmation_receipt?: Json | null
           converted_customer_id?: string | null
           converted_intake_id?: string | null
           created_at?: string
@@ -108,6 +110,7 @@ export type Database = {
           capability_secret_hash?: string
           capability_version?: number
           checkout_attempt_id?: string | null
+          confirmation_receipt?: Json | null
           converted_customer_id?: string | null
           converted_intake_id?: string | null
           created_at?: string
@@ -3361,6 +3364,7 @@ export type Database = {
           benefits: Json
           blocked_industries: Json
           canonicalization_version: string
+          confirmed_review: Json | null
           confirmed_title_restriction: Json | null
           content_sha256: string
           created_at: string
@@ -3410,6 +3414,7 @@ export type Database = {
           benefits: Json
           blocked_industries: Json
           canonicalization_version: string
+          confirmed_review?: Json | null
           confirmed_title_restriction?: Json | null
           content_sha256: string
           created_at?: string
@@ -3459,6 +3464,7 @@ export type Database = {
           benefits?: Json
           blocked_industries?: Json
           canonicalization_version?: string
+          confirmed_review?: Json | null
           confirmed_title_restriction?: Json | null
           content_sha256?: string
           created_at?: string
@@ -7381,6 +7387,42 @@ export type Database = {
         }
         Relationships: []
       }
+      ap_retention_legacy_object_intents: {
+        Row: {
+          bucket: string
+          claimed_at: string
+          path_sha256: string
+        }
+        Insert: {
+          bucket: string
+          claimed_at?: string
+          path_sha256: string
+        }
+        Update: {
+          bucket?: string
+          claimed_at?: string
+          path_sha256?: string
+        }
+        Relationships: []
+      }
+      ap_retention_private_tables: {
+        Row: {
+          primary_key: unknown
+          redaction_patch: Json
+          table_name: unknown
+        }
+        Insert: {
+          primary_key?: unknown
+          redaction_patch: Json
+          table_name: unknown
+        }
+        Update: {
+          primary_key?: unknown
+          redaction_patch?: Json
+          table_name?: unknown
+        }
+        Relationships: []
+      }
       ap_retention_redaction_permits: {
         Row: {
           after_sha256: string
@@ -7404,6 +7446,152 @@ export type Database = {
           transaction_id?: number
         }
         Relationships: []
+      }
+      ap_retention_restore_lock: {
+        Row: {
+          locked: boolean
+          singleton: boolean
+        }
+        Insert: {
+          locked?: boolean
+          singleton?: boolean
+        }
+        Update: {
+          locked?: boolean
+          singleton?: boolean
+        }
+        Relationships: []
+      }
+      ap_retention_restore_receipts: {
+        Row: {
+          applied_at: string
+          overlay_sha256: string
+          receipt: Json
+          source_watermark: string
+        }
+        Insert: {
+          applied_at?: string
+          overlay_sha256: string
+          receipt: Json
+          source_watermark: string
+        }
+        Update: {
+          applied_at?: string
+          overlay_sha256?: string
+          receipt?: Json
+          source_watermark?: string
+        }
+        Relationships: []
+      }
+      ap_retention_restored_object_policies: {
+        Row: {
+          bucket: string
+          path_sha256: string
+          protected: boolean
+          retention_expires_at: string | null
+        }
+        Insert: {
+          bucket: string
+          path_sha256: string
+          protected: boolean
+          retention_expires_at?: string | null
+        }
+        Update: {
+          bucket?: string
+          path_sha256?: string
+          protected?: boolean
+          retention_expires_at?: string | null
+        }
+        Relationships: []
+      }
+      ap_retention_restored_object_tombstones: {
+        Row: {
+          bucket: string
+          deleted_at: string
+          path_sha256: string
+        }
+        Insert: {
+          bucket: string
+          deleted_at: string
+          path_sha256: string
+        }
+        Update: {
+          bucket?: string
+          deleted_at?: string
+          path_sha256?: string
+        }
+        Relationships: []
+      }
+      ap_retention_restored_order_protection: {
+        Row: {
+          order_id: string
+          protected: boolean
+          source_state: string
+          source_watermark: string
+        }
+        Insert: {
+          order_id: string
+          protected: boolean
+          source_state: string
+          source_watermark: string
+        }
+        Update: {
+          order_id?: string
+          protected?: boolean
+          source_state?: string
+          source_watermark?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_retention_restored_order_protection_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "ap_order_retention_contracts"
+            referencedColumns: ["order_id"]
+          },
+        ]
+      }
+      ap_retention_row_receipts: {
+        Row: {
+          after_sha256: string
+          before_sha256: string
+          claim_id: string
+          redacted_at: string
+          row_id: string
+          table_name: unknown
+        }
+        Insert: {
+          after_sha256: string
+          before_sha256: string
+          claim_id: string
+          redacted_at?: string
+          row_id: string
+          table_name: unknown
+        }
+        Update: {
+          after_sha256?: string
+          before_sha256?: string
+          claim_id?: string
+          redacted_at?: string
+          row_id?: string
+          table_name?: unknown
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_retention_row_receipts_claim_id_fkey"
+            columns: ["claim_id"]
+            isOneToOne: false
+            referencedRelation: "ap_service_retention_claims"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_retention_row_receipts_table_name_fkey"
+            columns: ["table_name"]
+            isOneToOne: false
+            referencedRelation: "ap_retention_private_tables"
+            referencedColumns: ["table_name"]
+          },
+        ]
       }
       ap_scheduled_jobs: {
         Row: {
@@ -9654,7 +9842,7 @@ export type Database = {
           minimum_salary: string | null
           notes: string | null
           priorities: Json
-          resume_path: string
+          resume_path: string | null
           schedule_preference: string
           source_deleted_at: string | null
           source_retention_due_at: string | null
@@ -9679,7 +9867,7 @@ export type Database = {
           minimum_salary?: string | null
           notes?: string | null
           priorities?: Json
-          resume_path: string
+          resume_path?: string | null
           schedule_preference: string
           source_deleted_at?: string | null
           source_retention_due_at?: string | null
@@ -9704,7 +9892,7 @@ export type Database = {
           minimum_salary?: string | null
           notes?: string | null
           priorities?: Json
-          resume_path?: string
+          resume_path?: string | null
           schedule_preference?: string
           source_deleted_at?: string | null
           source_retention_due_at?: string | null
@@ -11816,6 +12004,10 @@ export type Database = {
         Args: { p_job_id: string; p_owner: string }
         Returns: string
       }
+      ap_apply_retention_restore_overlay: {
+        Args: { p_overlay_json: string; p_overlay_sha256: string }
+        Returns: Json
+      }
       ap_apply_search_dispute: {
         Args: {
           p_dispute_state: string
@@ -11889,6 +12081,16 @@ export type Database = {
         }
         Returns: string
       }
+      ap_assert_confirmed_intake: {
+        Args: {
+          p_draft_id: string
+          p_expected_version: number
+          p_reviews: Json
+          p_secret_hash: string
+          p_snapshot: Json
+        }
+        Returns: undefined
+      }
       ap_assert_current_artifact_facts: {
         Args: { p_artifact_id: string }
         Returns: undefined
@@ -11935,6 +12137,10 @@ export type Database = {
           p_search_draft_id: string
         }
         Returns: string
+      }
+      ap_authorize_service_retention_object: {
+        Args: { p_claim_id: string; p_object_id: string }
+        Returns: Json
       }
       ap_authorize_staging_rehearsal_checkout: {
         Args: {
@@ -12140,6 +12346,10 @@ export type Database = {
         Args: { p_snapshot_id: string }
         Returns: undefined
       }
+      ap_bind_confirmed_review_facts: {
+        Args: { p_reviews: Json; p_snapshot_id: string }
+        Returns: undefined
+      }
       ap_bind_manual_launch_canary_payment: {
         Args: { p_payment_attempt_id: string; p_release_sha: string }
         Returns: string
@@ -12244,6 +12454,10 @@ export type Database = {
           storage_path: string
           verified_mime_type: string
         }[]
+      }
+      ap_claim_expired_service_retention: {
+        Args: { p_limit?: number }
+        Returns: Json
       }
       ap_claim_feasibility_request: {
         Args: { p_request_id: string; p_worker_id: string }
@@ -12422,6 +12636,12 @@ export type Database = {
         }
         Returns: string
       }
+      ap_commute_evaluation_current: {
+        Args: {
+          p_evaluation: Database["public"]["Tables"]["ap_match_evaluations"]["Row"]
+        }
+        Returns: boolean
+      }
       ap_compensate_search_checkout: {
         Args: {
           p_checkout_attempt_id: string
@@ -12487,6 +12707,15 @@ export type Database = {
         Args: { p_customer_id: string; p_reference_version_id: string }
         Returns: boolean
       }
+      ap_confirmed_fact_value: {
+        Args: { p_correction: Json; p_value: Json }
+        Returns: Json
+      }
+      ap_confirmed_field_edits_valid: {
+        Args: { p_fields: Json; p_original: Json }
+        Returns: boolean
+      }
+      ap_confirmed_intake_schema_installed: { Args: never; Returns: boolean }
       ap_consume_material_revision_capacity: {
         Args: {
           p_customer_id: string
@@ -12525,6 +12754,12 @@ export type Database = {
           p_payload_sha256: string
         }
         Returns: string
+      }
+      ap_current_commute_evaluation_ids: {
+        Args: { p_ids: string[] }
+        Returns: {
+          id: string
+        }[]
       }
       ap_current_customer_question: {
         Args: { p_customer_id: string; p_question_id: string }
@@ -12812,6 +13047,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_finish_service_retention_claim: {
+        Args: { p_claim_id: string }
+        Returns: boolean
+      }
+      ap_finish_service_retention_object: {
+        Args: { p_claim_id: string; p_object_id: string }
+        Returns: boolean
+      }
       ap_finish_unpaid_source_delete: {
         Args: {
           p_document_id: string
@@ -12840,6 +13083,14 @@ export type Database = {
       ap_increment_intake_event: {
         Args: { p_event: string; p_step: number }
         Returns: boolean
+      }
+      ap_intake_confirmation_source: {
+        Args: {
+          p_draft_id: string
+          p_expected_version: number
+          p_secret_hash: string
+        }
+        Returns: string
       }
       ap_invalidate_pre_activation_snapshot: {
         Args: {
@@ -12891,8 +13142,16 @@ export type Database = {
         Args: { p_customer_id: string; p_item_id: string }
         Returns: boolean
       }
+      ap_legacy_draft_retention_allowed: {
+        Args: { p_draft_id: string }
+        Returns: boolean
+      }
       ap_legacy_intake_retention_allowed: {
         Args: { p_intake_id: string }
+        Returns: boolean
+      }
+      ap_legacy_retention_object_allowed: {
+        Args: { p_bucket: string; p_path: string }
         Returns: boolean
       }
       ap_lock_anonymous_draft_to_checkout: {
@@ -12918,6 +13177,7 @@ export type Database = {
         Args: never
         Returns: number
       }
+      ap_matching_evidence_schema_installed: { Args: never; Returns: boolean }
       ap_material_retention_deadline: {
         Args: { p_line_id: string }
         Returns: string
@@ -12976,6 +13236,17 @@ export type Database = {
           p_stable_normalized_job_id: string
         }
         Returns: string
+      }
+      ap_prepare_intake_confirmation: {
+        Args: {
+          p_answers_sha256: string
+          p_draft_id: string
+          p_expected_version: number
+          p_review_sha256: string
+          p_secret_hash: string
+          p_source_sha256: string
+        }
+        Returns: Json
       }
       ap_project_source_observation: {
         Args: {
@@ -13113,6 +13384,10 @@ export type Database = {
           state: Database["public"]["Enums"]["ap_draft_state"]
           version: number
         }[]
+      }
+      ap_read_intake_confirmation: {
+        Args: { p_draft_id: string; p_secret_hash: string }
+        Returns: Json
       }
       ap_reconcile_checkout_initiation: {
         Args: {
@@ -13299,6 +13574,10 @@ export type Database = {
         }
         Returns: string
       }
+      ap_redact_service_retention_claim: {
+        Args: { p_claim_id: string }
+        Returns: number
+      }
       ap_register_anonymous_document: {
         Args: {
           p_claimed_mime: string
@@ -13367,6 +13646,10 @@ export type Database = {
       }
       ap_release_fully_refunded_entitlement: {
         Args: { p_entitlement_history_id: string }
+        Returns: boolean
+      }
+      ap_release_salary_root_policy_current: {
+        Args: { e: Database["public"]["Tables"]["ap_match_evaluations"]["Row"] }
         Returns: boolean
       }
       ap_release_unconsumed_capacity: {
@@ -13448,9 +13731,26 @@ export type Database = {
         }
         Returns: string
       }
+      ap_retention_cleanup_blocked: {
+        Args: { p_customer: string }
+        Returns: boolean
+      }
       ap_retention_customer_private_access_allowed: {
         Args: { p_customer_id: string }
         Returns: boolean
+      }
+      ap_retention_object_references: {
+        Args: never
+        Returns: {
+          bucket: string
+          customer_ids: string[]
+          path: string
+          prospective: boolean
+        }[]
+      }
+      ap_retention_patch_row: {
+        Args: { p_before: Json; p_patch: Json; p_table: unknown }
+        Returns: Json
       }
       ap_retention_private_row_visible: {
         Args: { p_row: Json; p_table: string }
@@ -13463,6 +13763,21 @@ export type Database = {
       ap_retention_reference_permission_visible: {
         Args: { p_job_snapshot_id: string; p_release_id: string }
         Returns: boolean
+      }
+      ap_retention_row_customers: {
+        Args: { p_row: Json; p_table: string }
+        Returns: string[]
+      }
+      ap_retention_row_object_paths: {
+        Args: { p_row: Json }
+        Returns: {
+          bucket: string
+          path: string
+        }[]
+      }
+      ap_retention_snapshot_customers: {
+        Args: { p_snapshot: string }
+        Returns: string[]
       }
       ap_retention_snapshot_private_access_allowed: {
         Args: { p_snapshot_id: string }
@@ -13512,6 +13827,16 @@ export type Database = {
       ap_return_anonymous_draft_after_checkout: {
         Args: { p_draft_id: string; p_secret_hash: string }
         Returns: boolean
+      }
+      ap_reviewed_commute_result: {
+        Args: {
+          p_decision: Json
+          p_job_id: string
+          p_now: string
+          p_reviewer_id: string
+          p_snapshot_id: string
+        }
+        Returns: string
       }
       ap_revoke_manual_launch_canary_checkout: {
         Args: {
@@ -13590,6 +13915,10 @@ export type Database = {
       }
       ap_service_retention_access_allowed: {
         Args: { p_action?: boolean; p_line_id?: string; p_order_id: string }
+        Returns: boolean
+      }
+      ap_service_retention_cleanup_schema_installed: {
+        Args: never
         Returns: boolean
       }
       ap_service_retention_customer_expiry: {

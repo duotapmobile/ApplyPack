@@ -2,6 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import type { Database } from "@/lib/database.types";
 
 const bucket = z.enum(["customer-source-documents", "customer-deliveries", "operator-drafts", "operator-render-previews"]);
 const safePath = z.string().min(1).max(1024).refine((value) => !/[\\\x00-\x1f\x7f%?#]/u.test(value)
@@ -15,7 +16,7 @@ function createRetentionClient(signal: AbortSignal) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("service_retention_configuration_missing");
-  return createClient(url, key, {
+  return createClient<Database>(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
     global: { fetch: (input, init) => fetch(input, {
       ...init, signal: AbortSignal.any([signal, AbortSignal.timeout(10000), ...(init?.signal ? [init.signal] : [])]),
@@ -39,7 +40,7 @@ async function bounded<T>(signal: AbortSignal, operation: () => PromiseLike<T>):
 
 /** The database commits and rechecks every target; callers cannot supply deletion paths. */
 export async function processServiceRetention(
-  clientFactory: (signal: AbortSignal) => SupabaseClient = createRetentionClient,
+  clientFactory: (signal: AbortSignal) => SupabaseClient<Database> = createRetentionClient,
   { timeoutMs = 45000 }: { timeoutMs?: number } = {},
 ) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 45000) throw new Error("service_retention_deadline_invalid");
@@ -49,7 +50,7 @@ export async function processServiceRetention(
   finally { clearTimeout(timer); controller.abort(); }
 }
 
-async function processClaims(admin: SupabaseClient, signal: AbortSignal) {
+async function processClaims(admin: SupabaseClient<Database>, signal: AbortSignal) {
   const claimed = await bounded(signal, () => admin.rpc("ap_claim_expired_service_retention", { p_limit: 5 }));
   if (claimed.error) throw new Error("service_retention_claim_failed");
   const parsed = claimsSchema.safeParse(claimed.data);

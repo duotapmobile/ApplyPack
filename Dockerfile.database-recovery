@@ -10,22 +10,47 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
-# Official PostgreSQL 17.11 AMD64 image, pinned independently from the web image.
-# Keep package metadata so the entire runtime remains visible to vulnerability scans.
-FROM postgres:17-trixie@sha256:3518071376d0b6156b02e1db2747a78511b5b9dc3763cc79c506ebe2dc2ee71c AS database-recovery
-WORKDIR /app
+# Unmodified checksum-pinned upstream clients. Compilation has no network.
+FROM golang:1.26.10-bookworm@sha256:88750ccdd0f2a77fcc00a14b1a48d6409bd8ddb5d7c2dd6ec0b4a2e916daf9d9 AS postgres-client-build
 COPY --from=dependencies /usr/local/bin/node /usr/local/bin/node
+COPY infra/database-recovery/ /client-build/
+RUN bash /client-build/build-clients.sh prepare
+RUN --network=none bash /client-build/build-clients.sh compile
+
+# Maintained runtime used by the web image, with complete OS package inventory.
+FROM gcr.io/distroless/nodejs22-debian13:nonroot-amd64@sha256:eed5cbf9fcdb7f97de1fb39adde1972efa57df1085c0c76a5ea17c7c27ff8f6c AS recovery-runtime
+WORKDIR /app
+COPY --from=postgres-client-build /out/root/ /
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies /app/package.json /app/package-lock.json ./
 COPY --from=signing-helper-build /out/aws_signing_helper /usr/local/bin/aws_signing_helper
 COPY --from=signing-helper-build /out/provenance /usr/share/applypack/signing-helper/provenance
 COPY --from=signing-helper-build /out/licenses /usr/share/applypack/signing-helper/licenses
 COPY scripts/lib/ ./scripts/lib/
-COPY scripts/run-database-recovery.mjs ./scripts/run-database-recovery.mjs
+COPY scripts/run-database-recovery.mjs scripts/check-database-recovery-runtime.mjs ./scripts/
 COPY docs/launch/database-recovery-targets.json ./docs/launch/database-recovery-targets.json
-COPY infra/database-recovery/runtime-manifest.json /opt/applypack/database-recovery-runtime.json
-RUN node --input-type=module -e "import fs from 'node:fs'; import crypto from 'node:crypto'; const p=JSON.parse(fs.readFileSync('/opt/applypack/database-recovery-runtime.json')); for(const [name,key] of [['psql','psqlSha256'],['pg_dump','pgDumpSha256']]) { const digest=crypto.createHash('sha256').update(fs.readFileSync('/usr/lib/postgresql/17/bin/'+name)).digest('hex'); if(digest!==p[key]) throw new Error('DATABASE_RECOVERY_CLIENT_DIGEST'); }"
+RUN ["/nodejs/bin/node", "scripts/check-database-recovery-runtime.mjs"]
 ENV NODE_ENV=production HOME=/tmp APP_DATABASE_BACKUP_ENABLED=false
 USER 65534:65534
-ENTRYPOINT ["/usr/local/bin/node", "scripts/run-database-recovery.mjs"]
+ENTRYPOINT ["/nodejs/bin/node", "scripts/run-database-recovery.mjs"]
 CMD []
+
+# Test-only server. The harness proves its client bytes equal the shipping image.
+FROM postgres:17-trixie@sha256:3518071376d0b6156b02e1db2747a78511b5b9dc3763cc79c506ebe2dc2ee71c AS database-recovery-fixture
+COPY --from=recovery-runtime /nodejs/bin/node /nodejs/bin/node
+COPY --from=recovery-runtime /app /app
+COPY --from=recovery-runtime /opt/applypack /opt/applypack
+COPY --from=recovery-runtime /usr/lib/postgresql/17/bin/ /usr/lib/postgresql/17/bin/
+COPY --from=recovery-runtime /usr/share/applypack/postgresql /usr/share/applypack/postgresql
+WORKDIR /app
+ENV NODE_ENV=production HOME=/tmp APP_DATABASE_BACKUP_ENABLED=false
+USER 65534:65534
+ENTRYPOINT ["/nodejs/bin/node", "scripts/run-database-recovery.mjs"]
+CMD []
+
+FROM scratch AS database-recovery-build-evidence
+COPY --from=postgres-client-build /out/build-evidence /postgresql/
+COPY --from=signing-helper-build /out/build-evidence /signing-helper/
+
+# Default production output always excludes the fixture server and its tools.
+FROM recovery-runtime AS database-recovery

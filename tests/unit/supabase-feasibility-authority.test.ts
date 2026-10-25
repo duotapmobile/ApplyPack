@@ -19,6 +19,16 @@ function fixture(){
  return {tables,rpc,load:()=>store.load({requestId:"request",snapshotId:"criteria",draftId:"draft",workerId:"worker"})};
 }
 describe("persisted feasibility source connection",()=>{
+ it("rejects an unrecognized persisted coverage disposition",async()=>{const f=fixture();f.tables.ap_feasibility_coverage_plans[0].coverage_disposition="UNKNOWN_OVERRIDE";await expect(f.load()).rejects.toThrow("feasibility_coverage_disposition_invalid");expect(f.rpc).not.toHaveBeenCalled();});
+ it("rejects successful automated coverage with a null source run ID",async()=>{
+  const f=fixture();
+  Object.assign(f.tables.ap_feasibility_coverage_cells[0],{execution_path:"AUTOMATED",authorization_mode:"AUTHORIZED_AUTOMATED",authorization:{state:"AUTHORIZED_AUTOMATED"}});
+  f.tables.ap_manual_research_reviews=[];
+  f.tables.ap_research_cell_reviews=[{cell_id:"cell",source_run_id:null}];
+  f.tables.job_source_runs=[];
+  await expect(f.load()).rejects.toThrow(new Error("feasibility_complete_run_receipt_required"));
+  expect(f.rpc).not.toHaveBeenCalled();
+ });
  it("loads only inventory returned by the current verification RPC",async()=>{const f=fixture();const result=await f.load();expect(result.inventory[0].classification).toBe("PRELIMINARILY_DELIVERABLE");expect(f.rpc).toHaveBeenCalledWith("ap_current_verified_job_snapshots",{p_job_ids:["job"]});});
  it("rejects a revoked source before reading optimistic evaluation counts",async()=>{const f=fixture();f.tables.ap_source_authorization_heads[0].current_authorization_id="revoked";await expect(f.load()).rejects.toThrow("feasibility_current_source_policy_required");expect(f.rpc).not.toHaveBeenCalled();});
  it("rejects outdated receipt revision for a reauthorized source",async()=>{const f=fixture();f.tables.ap_source_authorization_heads[0].revision=4;await expect(f.load()).rejects.toThrow("feasibility_current_source_receipt_required");});

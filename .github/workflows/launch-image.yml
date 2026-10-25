@@ -26,10 +26,19 @@ jobs:
             --label "org.opencontainers.image.revision=$(cat database-recovery-image-tested-commit.txt)" \
             --tag applypack-database-recovery:ci . 2>&1 | tee database-recovery-image-build.log
           docker image inspect applypack-database-recovery:ci > database-recovery-image-identity.json
+      - name: Build isolated database fixture and export client build evidence
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 --target database-recovery-fixture --file Dockerfile.database-recovery \
+            --label "org.opencontainers.image.revision=$(cat database-recovery-image-tested-commit.txt)" \
+            --tag applypack-database-recovery-fixture:ci . 2>&1 | tee database-recovery-fixture-build.log
+          docker image inspect applypack-database-recovery-fixture:ci > database-recovery-fixture-identity.json
+          docker build --platform linux/amd64 --target database-recovery-build-evidence --file Dockerfile.database-recovery \
+            --output type=local,dest=database-recovery-build-evidence . 2>&1 | tee database-recovery-build-evidence.log
       - name: Real snapshot and restore inside a networkless disposable container
         run: |
           set -euo pipefail
-          node scripts/test-database-recovery-image.mjs applypack-database-recovery:ci 2>&1 | tee database-recovery-image-smoke.log
+          node scripts/test-database-recovery-image.mjs applypack-database-recovery:ci applypack-database-recovery-fixture:ci 2>&1 | tee database-recovery-image-smoke.log
       - name: Install checksum-pinned image scanner
         run: |
           set -euo pipefail
@@ -56,6 +65,10 @@ jobs:
             database-recovery-image-tested-commit.txt
             database-recovery-image-build.log
             database-recovery-image-identity.json
+            database-recovery-fixture-build.log
+            database-recovery-fixture-identity.json
+            database-recovery-build-evidence.log
+            database-recovery-build-evidence/
             database-recovery-image-smoke.log
             database-recovery-image-scanner-version.txt
             database-recovery-image-vulnerabilities.json

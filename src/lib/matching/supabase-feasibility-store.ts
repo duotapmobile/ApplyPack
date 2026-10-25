@@ -1,9 +1,10 @@
-import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { runFeasibilityWorker, type FeasibilityWorkerStore } from "@/lib/matching/feasibility-worker";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database.types";
+import { runFeasibilityWorker, type FeasibilityWorkerStore, type PersistedFeasibilityInput } from "@/lib/matching/feasibility-worker";
 import type { FeasibilityReason, PersistedInventoryEvaluation } from "@/lib/matching/feasibility";
 import { assertCurrentCoverageAuthority } from "./coverage-authority";
 
-type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
+type AdminClient = SupabaseClient<Database>;
 
 function first<T>(value: T | T[] | null): T | null {
   return Array.isArray(value) ? value[0] ?? null : value;
@@ -51,12 +52,13 @@ export function createSupabaseFeasibilityStore(admin: AdminClient): FeasibilityW
       if (error || !row) throw error || new Error("feasibility_request_not_claimable");
       return { requestId: row.request_id, snapshotId: row.snapshot_id, draftId: row.draft_id, workerId };
     },
-    async load(claim) {
+    async load(claim): Promise<PersistedFeasibilityInput> {
       const [{ data: snapshot, error: snapshotError }, { data: plan, error: planError }] = await Promise.all([
         admin.from("ap_intake_snapshots").select("id,content_sha256").eq("id", claim.snapshotId).maybeSingle(),
         admin.from("ap_feasibility_coverage_plans").select("id,snapshot_id,inventory_version_id,plan_version,typed_inputs,coverage_disposition,constraint_proof,content_sha256").eq("snapshot_id", claim.snapshotId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
       if (snapshotError || planError || !snapshot || !plan) throw snapshotError || planError || new Error("persisted_feasibility_plan_required");
+      if (plan.coverage_disposition !== "REQUIRED" && plan.coverage_disposition !== "NOT_REQUIRED_CONSTRAINT_COLLISION") throw new Error("feasibility_coverage_disposition_invalid");
       const [{ data: cells, error: cellsError }, { data: inventoryVersion, error: inventoryError }, { data: members, error: membersError }] = await Promise.all([
         admin.from("ap_feasibility_coverage_cells").select("id,source_id,query_family_id,source_authorization_id,configuration_id,authorization_mode,query_fingerprint,pagination_bound,lookback_bound,result_bound,execution_path,terminal_outcome,result_count,configured_bound_satisfied,normalized_and_deduplicated,manual_checklist_complete,parser_result,cursor_or_stop_reason,authorization:ap_source_authorizations(state)").eq("plan_id", plan.id).limit(2001),
         admin.from("ap_inventory_versions").select("source_registry_version,query_version,parser_version,content_sha256,cutoff_at").eq("id", plan.inventory_version_id).maybeSingle(),
@@ -64,18 +66,17 @@ export function createSupabaseFeasibilityStore(admin: AdminClient): FeasibilityW
       ]);
       if (cellsError || inventoryError || membersError || !inventoryVersion) throw cellsError || inventoryError || membersError || new Error("persisted_inventory_required");
       if((cells?.length||0)>2000||(members?.length||0)>5000)throw new Error("feasibility_inventory_bound_exceeded");
-      const from=admin.from.bind(admin) as unknown as (table:string)=>ReturnType<typeof admin.from>;
       const cellIds=(cells||[]).map(c=>c.id);
       const sourceIds=[...new Set((cells||[]).map(c=>c.source_id))];
       const configurationIds=[...new Set((cells||[]).map(c=>c.configuration_id).filter((id):id is string=>Boolean(id)))];
       const [heads,configurations,manualReviews,automatedReviews]=cellIds.length?await Promise.all([
-        from("ap_source_authorization_heads").select("source_id,current_authorization_id,revision").in("source_id",sourceIds).limit(2001),
+        admin.from("ap_source_authorization_heads").select("source_id,current_authorization_id,revision").in("source_id",sourceIds).limit(2001),
         admin.from("ap_feasibility_source_configurations").select("id,source_authorization_id,pagination_bound,lookback_bound,result_bound").in("id",configurationIds).limit(2001),
-        from("ap_manual_research_reviews").select("cell_id,source_authorization_id,authorization_head_revision,reviewed_at").in("cell_id",cellIds).limit(2001),
-        from("ap_research_cell_reviews").select("cell_id,source_run_id").in("cell_id",cellIds).limit(2001),
+        admin.from("ap_manual_research_reviews").select("cell_id,source_authorization_id,authorization_head_revision,reviewed_at").in("cell_id",cellIds).limit(2001),
+        admin.from("ap_research_cell_reviews").select("cell_id,source_run_id").in("cell_id",cellIds).limit(2001),
       ]):[{data:[],error:null},{data:[],error:null},{data:[],error:null},{data:[],error:null}];
       if([heads,configurations,manualReviews,automatedReviews].some(r=>r.error||(r.data?.length||0)>2000))throw new Error("feasibility_source_evidence_unavailable");
-      const runIds=(automatedReviews.data||[]).map(r=>String((r as Record<string,unknown>).source_run_id));
+      const runIds=(automatedReviews.data||[]).map(r=>r.source_run_id).filter((id): id is string => id !== null);
       const runs=runIds.length?await admin.from("job_source_runs").select("id,source_id,source_authorization_id,authorization_head_revision,status,enumeration_status,checkpoint_start,completed_at").in("id",runIds).limit(2001):{data:[],error:null};
       if(runs.error||(runs.data?.length||0)>2000)throw new Error("feasibility_source_runs_unavailable");
       assertCurrentCoverageAuthority({cells:cells||[],heads:(heads.data||[]) as Record<string,unknown>[],configurations:configurations.data||[],manualReviews:(manualReviews.data||[]) as Record<string,unknown>[],automatedReviews:(automatedReviews.data||[]) as Record<string,unknown>[],runs:runs.data||[]});
@@ -84,12 +85,11 @@ export function createSupabaseFeasibilityStore(admin: AdminClient): FeasibilityW
       if (evaluationsError) throw evaluationsError;
       if((evaluations?.length||0)>5000)throw new Error("feasibility_evaluation_bound_exceeded");
       const jobIds=[...new Set((evaluations||[]).map(e=>first(e.job_snapshot)?.legacy_job_id).filter((id):id is string=>Boolean(id)))];
-      const rpc=admin.rpc.bind(admin) as unknown as (name:string,args:Record<string,unknown>)=>Promise<{data:Array<{id:string}>|null;error:unknown}>;
-      const current=jobIds.length?await rpc("ap_current_verified_job_snapshots",{p_job_ids:jobIds}):{data:[],error:null};
+      const current=jobIds.length?await admin.rpc("ap_current_verified_job_snapshots",{p_job_ids:jobIds}):{data:[],error:null};
       if(current.error)throw new Error("feasibility_current_inventory_unavailable");
       const currentIds=new Set((current.data||[]).map(j=>j.id));
       if((evaluations||[]).some(e=>!currentIds.has(e.job_snapshot_id)))throw new Error("feasibility_inventory_verification_stale");
-      const commute = (evaluations || []).length ? await rpc("ap_current_commute_evaluation_ids", { p_ids: evaluations!.map((evaluation) => evaluation.id) }) : { data: [], error: null };
+      const commute = (evaluations || []).length ? await admin.rpc("ap_current_commute_evaluation_ids", { p_ids: evaluations!.map((evaluation) => evaluation.id) }) : { data: [], error: null };
       if (commute.error || !commute.data) throw new Error("feasibility_commute_verification_unavailable");
       const currentCommutes = new Set(commute.data.map((evaluation) => evaluation.id));
       const byMember = new Map((evaluations || []).map((evaluation) => [evaluation.inventory_member_id, { ...evaluation, commuteEvidenceCurrent: currentCommutes.has(evaluation.id) } as unknown as Record<string, unknown>]));
@@ -116,7 +116,9 @@ export function createSupabaseFeasibilityStore(admin: AdminClient): FeasibilityW
           snapshotHash: snapshot.content_sha256,
           breadth: String(typedInputs.breadth || ""),
           requiredFamilyIds: Array.isArray(typedInputs.requiredFamilyIds) ? typedInputs.requiredFamilyIds.map(String) : [],
-          cells: (cells || []).map((cell) => ({
+          cells: (cells || []).map((cell) => {
+            if (cell.execution_path !== "AUTOMATED" && cell.execution_path !== "MANUAL") throw new Error("feasibility_execution_path_invalid");
+            return {
             id: cell.id,
             familyId: cell.query_family_id || "",
             sourceId: cell.source_id,
@@ -134,7 +136,7 @@ export function createSupabaseFeasibilityStore(admin: AdminClient): FeasibilityW
             manualChecklistComplete: cell.manual_checklist_complete,
             parserResult: (first(cell.parser_result as Record<string, unknown> | null) as Record<string, unknown> | null)?.status === "COMPLETE" ? "COMPLETE" : "ERROR",
             stopReason: cell.cursor_or_stop_reason,
-          })),
+          }; }),
           versions: { source: inventoryVersion.source_registry_version, query: inventoryVersion.query_version, inventory: inventoryVersion.content_sha256, parser: inventoryVersion.parser_version, cutoff: inventoryVersion.cutoff_at },
           disposition: plan.coverage_disposition,
           collisionProof: plan.constraint_proof as { kind: "TYPED_CONTRADICTION"; inputHash: string; version: string } | null,
