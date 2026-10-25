@@ -55,7 +55,7 @@ describe("controlling public copy and navigation", () => {
       "Contact",
     ]) expect(sectionTitles).toContain(required);
 
-    const retention = terms.sections.find((section) => section.title === "30-day access and optional purchases")?.body.join(" ");
+    const retention = terms.sections.find((section) => section.title === "30-day access and optional purchases")?.body?.join(" ");
     for (const required of [
       "For orders purchased under this version, search results remain available for 30 days after delivery.",
       "Start any optional Apply Pack checkout within 30 days of the original search delivery and complete payment before that checkout's stated expiry.",
@@ -68,7 +68,7 @@ describe("controlling public copy and navigation", () => {
       "Earlier paid orders retain the terms recorded with their purchase; this version does not retroactively shorten their access.",
     ]) expect(retention, required).toContain(required);
 
-    const corrections = terms.sections.find((section) => section.title === "Job availability, match review, and corrections")?.body.join(" ");
+    const corrections = terms.sections.find((section) => section.title === "Job availability, match review, and corrections")?.body?.join(" ");
     expect(corrections).toContain("One factual-correction round is included for each document set when requested within three calendar days.");
   });
 
