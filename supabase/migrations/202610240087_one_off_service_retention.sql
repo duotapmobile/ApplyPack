@@ -103,7 +103,7 @@ begin
     select r.* into receipt from public.ap_snapshot_legal_content_receipts r
       where r.draft_id=new.draft_id and r.snapshot_id=q.snapshot_id
         and r.terms_version=q.terms_version and r.privacy_version=q.privacy_version
-        and r.terms_content_sha256='b88d7f3bd12b18e64778554d75275863e80c3add6b81b076f9d264c7ad3cacfc'
+        and r.terms_content_sha256='bac56f51e78cd099c8676efcfca5616d2fbdaeb9fc40c8aa0d5053ff968a3428'
         and r.privacy_content_sha256='2d7a8f194c8246775f1bb9803378596bf8bf60fb2a72cb34bf3c009adaa6e311'
         and r.acceptance_copy_version='applypack-legal-acceptance-copy-2026-10-04-v1'
         and r.acceptance_copy_sha256='0d687e93a090a536b90b1508cf61746cb0167d464a951d9ae5cfe0739d7bd283'
@@ -631,7 +631,7 @@ end $$;
 
 -- Forward legal-content binding. The immutable earlier episodes remain intact.
 update public.ap_commerce_configuration set terms_version='manual-launch-terms-2026-10-24-v3',
-  terms_content_sha256='b88d7f3bd12b18e64778554d75275863e80c3add6b81b076f9d264c7ad3cacfc',
+  terms_content_sha256='bac56f51e78cd099c8676efcfca5616d2fbdaeb9fc40c8aa0d5053ff968a3428',
   privacy_version='privacy-2026-10-24-v3',privacy_content_sha256='2d7a8f194c8246775f1bb9803378596bf8bf60fb2a72cb34bf3c009adaa6e311',
   sales_activation_approved=false,sales_activation_reference=null,launch_activation_id=null,launch_release_sha=null,
   updated_at=clock_timestamp() where singleton;

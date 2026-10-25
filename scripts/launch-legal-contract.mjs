@@ -13,7 +13,7 @@ export const HISTORICAL_086_LEGAL_BINDING = Object.freeze({
 export const LAUNCH_LEGAL_BINDING = Object.freeze({
   ...HISTORICAL_086_LEGAL_BINDING,
   termsVersion: "manual-launch-terms-2026-10-24-v3",
-  termsContentSha256: "b88d7f3bd12b18e64778554d75275863e80c3add6b81b076f9d264c7ad3cacfc",
+  termsContentSha256: "bac56f51e78cd099c8676efcfca5616d2fbdaeb9fc40c8aa0d5053ff968a3428",
   privacyVersion: "privacy-2026-10-24-v3",
   privacyContentSha256: "2d7a8f194c8246775f1bb9803378596bf8bf60fb2a72cb34bf3c009adaa6e311",
 });

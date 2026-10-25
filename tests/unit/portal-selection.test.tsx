@@ -47,7 +47,7 @@ describe("Tailored Resume + Cover Letter customer selection", () => {
     expect(screen.getByRole("checkbox", { name: /Select Tailored Resume/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Conflicts with my criteria" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Review and Pay" })).toBeDisabled();
-    expect(screen.getByText(/30-day window to purchase document sets/)).toBeInTheDocument();
+    expect(screen.getByText("The 30-day window to start a document-set purchase or report a criteria conflict for this search has ended. An already-started checkout keeps its original expiry.")).toBeInTheDocument();
   });
 
   it("closes actions and hides private content when each deadline passes in an open portal", async () => {

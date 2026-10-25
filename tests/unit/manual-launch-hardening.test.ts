@@ -36,7 +36,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(currentLegalContentBinding()).toEqual({
       termsVersion: "manual-launch-terms-2026-10-24-v3",
       privacyVersion: "privacy-2026-10-24-v3",
-      termsContentSha256: "b88d7f3bd12b18e64778554d75275863e80c3add6b81b076f9d264c7ad3cacfc",
+      termsContentSha256: "bac56f51e78cd099c8676efcfca5616d2fbdaeb9fc40c8aa0d5053ff968a3428",
       privacyContentSha256: "2d7a8f194c8246775f1bb9803378596bf8bf60fb2a72cb34bf3c009adaa6e311",
       acceptanceCopyVersion: "applypack-legal-acceptance-copy-2026-10-04-v1",
       acceptanceCopySha256: "0d687e93a090a536b90b1508cf61746cb0167d464a951d9ae5cfe0739d7bd283",

@@ -5,7 +5,7 @@ declare configuration public.ap_commerce_configuration; before_acceptances integ
 begin
   select * into strict configuration from public.ap_commerce_configuration where singleton;
   if configuration.terms_version is distinct from 'manual-launch-terms-2026-10-24-v3'
-    or configuration.terms_content_sha256 is distinct from 'b88d7f3bd12b18e64778554d75275863e80c3add6b81b076f9d264c7ad3cacfc'
+    or configuration.terms_content_sha256 is distinct from 'bac56f51e78cd099c8676efcfca5616d2fbdaeb9fc40c8aa0d5053ff968a3428'
     or configuration.privacy_version is distinct from 'privacy-2026-10-24-v3'
     or configuration.privacy_content_sha256 is distinct from '2d7a8f194c8246775f1bb9803378596bf8bf60fb2a72cb34bf3c009adaa6e311'
     or (select max(version) from supabase_migrations.schema_migrations) is distinct from '202610240087'
