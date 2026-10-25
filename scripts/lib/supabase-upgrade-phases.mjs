@@ -1,0 +1,58 @@
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Supabase migration up has no target-version option. Historical positive
+// fixtures need an unchanged source copy ending at086, before retention087
+// deliberately closes readiness while cleanup executors remain unavailable.
+export function prepareHistorical086Workspace() {
+  const temporaryRoot = resolve(tmpdir());
+  const path = mkdtempSync(join(temporaryRoot, "applypack-historical086-upgrade-"));
+  const dispose = () => {
+    const target = resolve(path);
+    if (dirname(target) !== temporaryRoot || !basename(target).startsWith("applypack-historical086-upgrade-")) {
+      throw new Error("UNSAFE_HISTORICAL_UPGRADE_CLEANUP_PATH");
+    }
+    rmSync(target, { recursive: true, force: true });
+  };
+  try {
+    const source = fileURLToPath(new URL("../../supabase/", import.meta.url));
+    const target = join(path, "supabase");
+    mkdirSync(join(target, "migrations"), { recursive: true });
+    mkdirSync(join(target, "templates"));
+    copyFileSync(join(source, "config.toml"), join(target, "config.toml"));
+    copyFileSync(join(source, "templates", "applypack-code.html"), join(target, "templates", "applypack-code.html"));
+    for (const name of readdirSync(join(source, "migrations"))) {
+      const version = /^(\d{12})_.+\.sql$/u.exec(name)?.[1];
+      if (version && version <= "202610230086") copyFileSync(join(source, "migrations", name), join(target, "migrations", name));
+    }
+    return { path, dispose };
+  } catch (error) {
+    dispose();
+    throw error;
+  }
+}
+
+export const historical086PhaseSql = `do $$ begin
+  if (select max(version) from supabase_migrations.schema_migrations) is distinct from '202610230086'
+    or public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610230086'
+    or public.ap_manual_launch_schema_readiness()->>'ready' is distinct from 'true'
+  then raise exception 'historical_086_upgrade_phase_not_ready'; end if;
+end $$;`;
+
+export const current087ClosedPhaseSql = `do $$ begin
+  if (select max(version) from supabase_migrations.schema_migrations) is distinct from '202610240087'
+    or public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610240087'
+    or public.ap_manual_launch_schema_readiness()->>'ready' is distinct from 'false'
+    or public.ap_one_off_retention_schema_installed()
+    or to_regprocedure('public.ap_claim_expired_service_retention(integer)') is not null
+    or to_regprocedure('public.ap_authorize_service_retention_object(uuid,uuid)') is not null
+    or to_regprocedure('public.ap_finish_service_retention_object(uuid,uuid)') is not null
+    or to_regprocedure('public.ap_apply_retention_restore_overlay(text,text)') is not null
+    or not exists(select 1 from public.ap_migration_checkpoints
+      where migration_id='202610240087' and checkpoint='ONE_OFF_SERVICE_RETENTION')
+    or not exists(select 1 from public.ap_checkout_mode_configuration where singleton and mode='LOCKED')
+    or not exists(select 1 from public.ap_commerce_configuration where singleton and not checkout_enabled)
+  then raise exception 'current_087_upgrade_phase_not_safely_closed'; end if;
+end $$;`;

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { current087ClosedPhaseSql, historical086PhaseSql, prepareHistorical086Workspace } from "./lib/supabase-upgrade-phases.mjs";
 
 const fixture = fileURLToPath(new URL("../tests/integration/atomic-inventory-077-fixture.sql", import.meta.url));
 const cutoverBase = fileURLToPath(new URL("../tests/integration/atomic-inventory-cutover-base.sql", import.meta.url));
@@ -89,8 +90,20 @@ select case when
 then 'MIGRATION_080_RACE_ROLLBACK_OK' else 'MIGRATION_080_RACE_ROLLBACK_FAILED' end;
 `;
 
+const preservedInventoryRows = `
+  select 'member'::text as kind,to_jsonb(row) as immutable_record from public.ap_inventory_members row
+  union all select 'assessment',to_jsonb(row) from public.ap_feasibility_assessments row
+  union all select 'request',to_jsonb(row) from public.ap_feasibility_requests row
+  union all select 'quote',to_jsonb(row) from public.ap_quotes row
+  union all select 'invitation',to_jsonb(row) from public.ap_search_checkout_invitations row
+  union all select 'allocation',to_jsonb(row) from public.ap_capacity_allocations row
+  union all select 'audit',to_jsonb(row) from public.ap_capacity_audit row
+`;
+
 let failure;
+let historicalWorkspace;
 try {
+  historicalWorkspace = prepareHistorical086Workspace();
   // A historical conflict must abort migration 077 atomically, including its
   // function rewrites and feasibility invalidations.
   run("supabase", ["db", "reset", "--local", "--no-seed", "--version", "202610040076"], undefined, false);
@@ -160,10 +173,21 @@ commit;
   run("supabase", ["db", "reset", "--local", "--no-seed", "--version", "202610040076"], undefined, false);
   sql(fixture, false);
   sql(cutoverBase, false);
-  run("supabase", ["migration", "up", "--local"], undefined, false);
+  run("supabase", ["migration", "up", "--local", "--workdir", historicalWorkspace.path], undefined, false);
+  sqlText(historical086PhaseSql, false);
   if (!sql(verify).includes("ATOMIC_INVENTORY_080_RECOVERY_OK")) {
     throw new Error("identity-policy recovery verification marker missing");
   }
+  sqlText(`create table public.inventory_retention_upgrade_preservation_fixture as ${preservedInventoryRows};`, false);
+  run("supabase", ["migration", "up", "--local"], undefined, false);
+  sqlText(`${current087ClosedPhaseSql}
+    do $$ begin
+      if exists(
+        (select * from public.inventory_retention_upgrade_preservation_fixture except all (${preservedInventoryRows}))
+        union all
+        ((${preservedInventoryRows}) except all select * from public.inventory_retention_upgrade_preservation_fixture)
+      ) then raise exception 'retention_087_changed_inventory_upgrade_history'; end if;
+    end $$;`, false);
   const persistentGuard = execute(
     "docker",
     psqlArgs,
@@ -174,12 +198,14 @@ commit;
   if (persistentGuard.status === 0 || !persistentGuardOutput.includes("duplicate_inventory_job")) {
     throw new Error(`persistent inventory identity guard accepted a cross-field duplicate: ${persistentGuardOutput}`);
   }
-  console.log("Migration 080 permanently rejects cross-field duplicates after cutover.");
+  console.log("Historical086 inventory recovery passed;087 preserves its exact history and identity guard while launch remains locked.");
 } catch (error) {
   failure = error;
 } finally {
   try { run("supabase", ["db", "reset", "--local", "--no-seed"], undefined, false); }
   catch (restoreError) { if (!failure) failure = restoreError; }
+  try { historicalWorkspace?.dispose(); }
+  catch (cleanupError) { if (!failure) failure = cleanupError; }
 }
 if (failure) throw failure;
 
