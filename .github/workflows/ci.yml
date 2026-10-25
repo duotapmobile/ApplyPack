@@ -38,6 +38,8 @@ jobs:
       - run: node --test scripts/verify-sandbox-launch-evidence.test.mjs
       - name: Protected recovery credentials, copy, bootstrap, source, archive and read-only retention contracts
         run: npm run test:protected-recovery
+      - name: Database recovery identity, snapshot, encrypted archive and executable contracts
+        run: npm run test:database-recovery
       - run: node --test scripts/test-maintenance-runner.test.mjs scripts/test-renderer-runtime.test.mjs scripts/railway-staging-iac-cutover.test.mjs
       - run: npm run build
       - name: Record tested checkout identity (PR runs may be synthetic merge commits)
@@ -85,6 +87,15 @@ jobs:
       - name: Validate087 prospective retention migration controls
         shell: pwsh
         run: node scripts/run-windows-release-self-test.mjs rehearsal-087
+      - name: Validate088 cleanup migration controls
+        shell: pwsh
+        run: node scripts/run-windows-release-self-test.mjs rehearsal-088
+      - name: Validate089 confirmed intake migration controls
+        shell: pwsh
+        run: node scripts/run-windows-release-self-test.mjs rehearsal-089
+      - name: Validate090 matching evidence migration controls
+        shell: pwsh
+        run: node scripts/run-windows-release-self-test.mjs rehearsal-090
       - run: npm run test:staging-schema084-backup
       - run: npm run test:production-migration
       - run: npm run test:production-backup
@@ -162,6 +173,20 @@ jobs:
           version: 2.116.0
       - run: supabase start
       - run: supabase db reset --local --no-seed
+      - name: Export migrated schema types and checkout identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/database-type-generation
+          git rev-parse HEAD > evidence/database-type-generation/database-tested-commit.txt
+          supabase gen types typescript --local > evidence/database-type-generation/generated-database.types.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: migrated-database-types
+          path: |
+            evidence/database-type-generation/database-tested-commit.txt
+            evidence/database-type-generation/generated-database.types.ts
+          if-no-files-found: error
       - name: Corrected-contract database fixtures
         run: npm run test:database
       - name: Generated database type drift

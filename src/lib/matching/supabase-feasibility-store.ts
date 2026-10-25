@@ -19,7 +19,7 @@ function classify(row: Record<string, unknown>): PersistedInventoryEvaluation["c
     && snapshot?.legitimacy_result === "PASS"
     && snapshot?.listing_activity_result === "PASS"
     && snapshot?.application_path_result === "PASS";
-  if (deliverable) return "PRELIMINARILY_DELIVERABLE";
+  if (deliverable && row.commuteEvidenceCurrent !== false) return "PRELIMINARILY_DELIVERABLE";
   const definitiveFailure = ["INELIGIBLE", "INVALID"].includes(String(row.eligibility))
     || row.usefulness_result === "FAIL"
     || row.categorical_evidence_sufficient === false
@@ -89,7 +89,10 @@ export function createSupabaseFeasibilityStore(admin: AdminClient): FeasibilityW
       if(current.error)throw new Error("feasibility_current_inventory_unavailable");
       const currentIds=new Set((current.data||[]).map(j=>j.id));
       if((evaluations||[]).some(e=>!currentIds.has(e.job_snapshot_id)))throw new Error("feasibility_inventory_verification_stale");
-      const byMember = new Map((evaluations || []).map((evaluation) => [evaluation.inventory_member_id, evaluation as unknown as Record<string, unknown>]));
+      const commute = (evaluations || []).length ? await rpc("ap_current_commute_evaluation_ids", { p_ids: evaluations!.map((evaluation) => evaluation.id) }) : { data: [], error: null };
+      if (commute.error || !commute.data) throw new Error("feasibility_commute_verification_unavailable");
+      const currentCommutes = new Set(commute.data.map((evaluation) => evaluation.id));
+      const byMember = new Map((evaluations || []).map((evaluation) => [evaluation.inventory_member_id, { ...evaluation, commuteEvidenceCurrent: currentCommutes.has(evaluation.id) } as unknown as Record<string, unknown>]));
       if (byMember.size !== memberIds.length || (evaluations?.length || 0) !== memberIds.length) throw new Error("persisted_evaluation_coverage_incomplete");
       const inventory = (members || []).map((member) => {
         const evaluation = byMember.get(member.id);

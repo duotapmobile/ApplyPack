@@ -92,6 +92,7 @@ describe("AWS temporary cleanup readiness", () => {
     vi.useFakeTimers(); vi.setSystemTime(now);
     const environment = {
       APP_DEPLOYMENT_ENV: "staging", APP_KMS_PROVIDER: "aws", CRON_SECRET: "test-cron",
+      APP_SERVICE_RETENTION_ENABLED: "true",
       NEXT_PUBLIC_SUPABASE_URL: "https://fixture.supabase.co", NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "test-public", SUPABASE_SECRET_KEY: "test-secret",
       APP_EXPECTED_RELEASE_SHA: "a".repeat(40), APP_RELEASE_SHA: "a".repeat(40), RAILWAY_GIT_COMMIT_SHA: "a".repeat(40),
       RESEND_API_KEY: "test-email", EMAIL_FROM_ADDRESS: "fixture@example.test", APP_EMAIL_DELIVERY_VERIFIED_AT: now.toISOString(),
@@ -110,6 +111,12 @@ describe("AWS temporary cleanup readiness", () => {
     expect(Object.entries(result.checks).filter(([, ready]) => !ready).map(([key]) => key)).toEqual(["maintenance"]);
     db.state.rows = [due(3600, true), due(-60)];
     expect((await evaluateLaunchInfrastructure(db.admin)).ready).toBe(true);
+  });
+  it.each([undefined, "false"])("keeps launch closed until service-retention execution is explicitly enabled (%s)", async (enabled) => {
+    vi.stubEnv("APP_SERVICE_RETENTION_ENABLED", enabled);
+    const result = await evaluateLaunchInfrastructure(database().admin);
+    expect(result.ready).toBe(false);
+    expect(result.checks.serviceRetention).toBe(false);
   });
 
   it("fails launch readiness when overdue-count evidence is unavailable instead of treating it as zero", async () => {

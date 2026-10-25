@@ -88,6 +88,17 @@ test("current authoritative hold preserves paid source beyond older document and
   assert.equal(inventory.objects.length, 1); assert.equal(inventory.references.length, 2);
   assert.equal(inventory.tombstones.length, 0); assert.equal(inventory.objects[0].retentionExpiresAt, null);
 });
+
+test("guided intake without uploaded documents preserves the row count without inventing file references", async () => {
+  const { reader, tables } = fixture();
+  tables.intakes.push({ id, resume_path: null, cover_letter_path: null,
+    source_deleted_at: null, source_retention_due_at: null });
+  const inventory = await build(reader);
+  assert.equal(inventory.counts.tables.intakes, 1);
+  assert.equal(inventory.references.some((reference) => reference.table === "intakes"), false);
+  assert.equal(inventory.objects.length, 1);
+  assert.equal(inventory.references[0].table, "ap_document_versions");
+});
 test("current approved extension replaces old expiry without persisting any source mutation", async () => {
   const { reader, tables } = fixture(); const oldExpiry = new Date(start - 100).toISOString();
   tables.ap_document_versions[0].retention_due_at = oldExpiry;

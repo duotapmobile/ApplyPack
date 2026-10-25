@@ -96,6 +96,9 @@ test("alternate credential chains, transport overrides, and case variants fail c
 });
 
 test("web identity and source-database credentials cannot accompany the writer", () => {
+  for (const name of ["APP_DATABASE_BACKUP_DB_PASSWORD", "APP_DATABASE_BACKUP_AWS_RA_ROLE_ARN", "APP_DATABASE_BACKUP_CA_PEM", "app_database_backup_db_password"]) {
+    assert.throws(() => validateBackupRolesAnywhereConfiguration({ ...configuration, [name]: "synthetic" }), /database_backup_identity_forbidden/u);
+  }
   for (const name of ["APP_AWS_RA_ROLE_ARN", "APP_AWS_RA_CERTIFICATE_PEM_BASE64", "APP_AWS_RA_PRIVATE_KEY_PEM_BASE64", "APP_AWS_RA_PROFILE_ARN",
     "APP_AWS_RA_TRUST_ANCHOR_ARN", "app_aws_ra_private_key_pem_base64"]) {
     assert.throws(() => validateBackupRolesAnywhereConfiguration({ ...configuration, [name]: "synthetic" }), /web_identity_forbidden/u);

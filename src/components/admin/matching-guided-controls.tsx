@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { MatchingReviewForm, evidenceRecord, evidenceRows, evidenceText, researchActions, type PreparedResearchOperation } from "./matching-review-form";
+import { MatchingCommuteForm } from "./matching-commute-form";
 
 export function MatchingGuidedControls({ snapshotId, packet, onPrepare }: {
   snapshotId: string; packet: unknown; onPrepare: (operation: PreparedResearchOperation) => void;
@@ -20,7 +21,7 @@ export function MatchingGuidedControls({ snapshotId, packet, onPrepare }: {
       <option value="">Choose a verified job</option>
       {members.map((item) => { const job = evidenceRecord(item.job_snapshot); return <option key={evidenceText(item.id)} value={evidenceText(item.id)}>{evidenceText(job.company)} — {evidenceText(job.exact_title)}</option>; })}
     </select></label> : null}
-    {action === "BEGIN" || member ? <MatchingReviewForm key={snapshotId + ":" + action + ":" + memberId} snapshotId={snapshotId}
+    {action === "COMMUTE" && member ? <MatchingCommuteForm key={snapshotId + ":commute:" + memberId} snapshotId={snapshotId} packet={data} member={member} onPrepare={onPrepare} /> : action === "BEGIN" || member ? <MatchingReviewForm key={snapshotId + ":" + action + ":" + memberId} snapshotId={snapshotId}
       packet={data} action={action} member={member} onPrepare={onPrepare} /> : <p>Select a job already admitted to this research inventory. Capture and admit an official listing below if needed.</p>}
   </section>;
 }

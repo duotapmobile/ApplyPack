@@ -29,8 +29,9 @@ function Assert-ProductionDatabaseManifest {
         $Manifest.credentialTarget -cne 'ApplyPack/Supabase/Production/Database' -or
         $Manifest.caSha256 -cnotmatch '^[a-f0-9]{64}$' -or $Manifest.releaseSha -cnotmatch '^[a-f0-9]{40}$' -or
         $Manifest.expectedLedgerSha256 -cnotmatch '^[a-f0-9]{64}$' -or
-        $Manifest.expectedSchemaVersion -notin @('202610040080','202610190081','202610190082','202610190083','202610190084','202610220085','202610230086') -or
-        $Manifest.postSchemaVersion -cne '202610240087' -or
+        $Manifest.expectedSchemaVersion -notin @('202610040080','202610190081','202610190082','202610190083','202610190084','202610220085','202610230086','202610240087','202610250088','202610250089') -or
+        $Manifest.postSchemaVersion -notin @('202610240087','202610250088','202610250089','202610250090') -or
+        $Manifest.expectedSchemaVersion -cge $Manifest.postSchemaVersion -or
         $Manifest.recoveryStrategy -notin @('TESTED_COMPATIBLE_SHA','LOCKED_FORWARD_RECOVERY')) {
         throw 'PRODUCTION_MANIFEST_INVALID'
     }
@@ -65,8 +66,11 @@ function Assert-ProductionDatabaseManifest {
         '202610220085' = @('staging_rehearsal_checkout_attempts','STAGING_REHEARSAL_CHECKOUT_ATTEMPTS')
         '202610230086' = @('sandbox_validation_launch_activation','SANDBOX_VALIDATION_LAUNCH_ACTIVATION')
         '202610240087' = @('one_off_service_retention','ONE_OFF_SERVICE_RETENTION')
+        '202610250088' = @('service_retention_cleanup','SERVICE_RETENTION_CLEANUP')
+        '202610250089' = @('confirmed_intake','CONFIRMED_INTAKE')
+        '202610250090' = @('matching_evidence_completion','MATCHING_EVIDENCE_COMPLETION')
     }
-    $expected = @($known.Keys | Where-Object { $_ -cgt $Manifest.expectedSchemaVersion })
+    $expected = @($known.Keys | Where-Object { $_ -cgt $Manifest.expectedSchemaVersion -and $_ -cle $Manifest.postSchemaVersion })
     if (@($Manifest.migrations).Count -ne $expected.Count) { throw 'PRODUCTION_MIGRATION_SCOPE_INVALID' }
     $previousCheckpoint = if ($previous -ceq '202610040080') { 'PERSISTENT_INVENTORY_IDENTITY_GUARD' } else { $known[$previous][1] }
     for ($index = 0; $index -lt $expected.Count; $index++) {
@@ -103,7 +107,7 @@ function Read-ApprovedProductionDatabaseManifest {
     $registry = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'docs/launch/production-database-targets.json') -Raw | ConvertFrom-Json
     Assert-ProductionDatabaseManifest -Manifest $manifest -Registry $registry
     foreach ($flag in @('APP_CHECKOUT_ENABLED','APP_CANARY_CHECKOUT_ENABLED','APP_REHEARSAL_CHECKOUT_ENABLED',
-        'APP_LIVE_PAYMENTS_ENABLED','APP_JOB_BOARD_CHECKOUT_ENABLED','APP_JOB_SOURCE_SYNC_ENABLED')) {
+        'APP_LIVE_PAYMENTS_ENABLED','APP_JOB_BOARD_CHECKOUT_ENABLED','APP_JOB_SOURCE_SYNC_ENABLED','APP_SERVICE_RETENTION_ENABLED')) {
         if ([Environment]::GetEnvironmentVariable($flag, 'Process') -cne 'false') { throw 'PRODUCTION_CHECKOUT_NOT_LOCKED' }
     }
     if ([Environment]::GetEnvironmentVariable('AP_DEPLOYMENT_ENV', 'Process') -cne 'production' -or

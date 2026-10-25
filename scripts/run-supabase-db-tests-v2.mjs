@@ -4,10 +4,11 @@ import { fileURLToPath } from "node:url";
 
 const historical085 = process.argv.length === 3 && process.argv[2] === "--historical-085";
 const historical086 = process.argv.length === 3 && process.argv[2] === "--historical-086";
-if (process.argv.length > 3 || (process.argv.length === 3 && !historical085 && !historical086)) {
+const historical087 = process.argv.length === 3 && process.argv[2] === "--historical-087";
+if (process.argv.length > 3 || (process.argv.length === 3 && !historical085 && !historical086 && !historical087)) {
   throw new Error("DATABASE_FIXTURE_PHASE_INVALID");
 }
-const requiredSchemaVersion = historical085 ? "202610220085" : historical086 ? "202610230086" : "202610240087";
+const requiredSchemaVersion = historical085 ? "202610220085" : historical086 ? "202610230086" : historical087 ? "202610240087" : "202610250090";
 const phaseProbe = spawnSync("docker", ["exec", "-i", "supabase_db_applypack", "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"], {
   encoding: "utf8", input: `do $$ begin
     if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '${requiredSchemaVersion}'
@@ -15,7 +16,10 @@ const phaseProbe = spawnSync("docker", ["exec", "-i", "supabase_db_applypack", "
     end $$;`, stdio: ["pipe", "pipe", "pipe"], timeout: 60_000,
 });
 if (phaseProbe.error || phaseProbe.status !== 0) throw new Error("DATABASE_FIXTURE_SCHEMA_PHASE_MISMATCH");
-const fixtures = !historical085 && !historical086 ? ["../tests/integration/one-off-service-retention.sql"] : [
+const fixtures = !historical085 && !historical086 ? [
+  "../tests/integration/one-off-service-retention.sql",
+  ...(!historical087 ? ["../tests/integration/service-retention-cleanup.sql", "../tests/integration/confirmed-intake.sql", "../tests/integration/reviewed-commute.sql"] : []),
+] : [
   "../tests/integration/unpaid-source-retention.sql",
   "../tests/integration/chunk1-foundation.sql",
   "../tests/integration/chunk2-four-step.sql",

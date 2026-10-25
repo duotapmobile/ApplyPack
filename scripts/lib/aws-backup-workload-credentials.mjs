@@ -36,6 +36,7 @@ export function validateBackupRolesAnywhereConfiguration(environment = process.e
     // The shared image supplies this fixed helper path, but none of its web identity material is reusable.
     if (/^APP_AWS_RA_/iu.test(name) && (name !== "APP_AWS_RA_HELPER_PATH" || value !== helperPath)) denied("web_identity_forbidden");
     if (/^APP_RETENTION_AWS_RA_/iu.test(name)) denied("retention_identity_forbidden");
+    if (/^APP_DATABASE_BACKUP_/iu.test(name)) denied("database_backup_identity_forbidden");
     if (/^(?:NEXT_PUBLIC_)?SUPABASE_.*(?:KEY|TOKEN|PASSWORD|SECRET|CONNECTION|DATABASE)/iu.test(name)
       || /^(DATABASE_URL|DIRECT_URL|PGPASSWORD|PGSERVICE|PGSERVICEFILE|PGPASSFILE)$/iu.test(name)) denied("source_credentials_forbidden");
   }

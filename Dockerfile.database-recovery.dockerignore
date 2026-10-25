@@ -1,0 +1,17 @@
+**
+!Dockerfile.database-recovery
+!package.json
+!package-lock.json
+!scripts/
+!scripts/lib/
+!scripts/lib/**
+!scripts/run-database-recovery.mjs
+!docs/
+!docs/launch/
+!docs/launch/database-recovery-targets.json
+!infra/
+!infra/database-recovery/
+!infra/database-recovery/runtime-manifest.json
+!infra/aws/
+!infra/aws/roles-anywhere-helper/
+!infra/aws/roles-anywhere-helper/**

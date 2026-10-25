@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { HISTORICAL_086_LEGAL_BINDING, LAUNCH_LEGAL_BINDING } from "./launch-legal-contract.mjs";
+import { current090LockedPhaseSql } from "./lib/supabase-upgrade-phases.mjs";
 
 const fixture = fileURLToPath(new URL("../tests/integration/legal-receipt-074-fixture.sql", import.meta.url));
 const verify = fileURLToPath(new URL("../tests/integration/legal-receipt-076-verify.sql", import.meta.url));
@@ -100,9 +101,14 @@ try {
     select 'acceptance'::text as kind,to_jsonb(row) as immutable_record from public.ap_snapshot_legal_acceptances row
     union all select 'receipt',to_jsonb(row) from public.ap_snapshot_legal_content_receipts row
     union all select 'reconciliation',to_jsonb(row) from public.ap_legal_receipt_acceptance_reconciliations row;`);
-  run("supabase", ["migration", "up", "--local"], undefined, false);
+  const retentionWorkspace = prepareHistoricalWorkspace("202610240087");
+  run("supabase", ["migration", "up", "--local", "--workdir", retentionWorkspace], undefined, false);
   verifyBinding(currentVerify, LAUNCH_LEGAL_BINDING, "LEGAL_ACCEPTANCE_087_UPGRADE_OK");
+  run("supabase", ["migration", "up", "--local", "--workdir", retentionWorkspace], undefined, false);
+  verifyBinding(currentVerify, LAUNCH_LEGAL_BINDING, "LEGAL_ACCEPTANCE_087_UPGRADE_OK");
+  // The confirmed-intake controls must preserve prior legal episodes exactly.
   run("supabase", ["migration", "up", "--local"], undefined, false);
+  sqlText(current090LockedPhaseSql);
   verifyBinding(currentVerify, LAUNCH_LEGAL_BINDING, "LEGAL_ACCEPTANCE_087_UPGRADE_OK");
 } catch (error) {
   failure = error;
@@ -121,4 +127,4 @@ try {
 }
 if (failure) throw failure;
 
-console.log("Migration 074 legal receipts reconcile and replay at 076 and 086; 087 preserves all historical rows and accepts the prospective retention contract idempotently.");
+console.log("Migration074 legal receipts reconcile and replay at076/086/087;090 preserves historical rows and the exact prospective retention contract with purchasing locked.");

@@ -7,6 +7,7 @@ import { MATCHING_RULES_VERSION } from "@/lib/matching/evaluation-engine";
 import { parseListingRequirements, requirementPersistenceRows } from "@/lib/matching/listing-parser";
 import { isSameOriginRequest } from "@/lib/security/origin";
 import { customerCriterionEvidenceMatches } from "@/lib/matching/evidence-derived";
+import { bindCommuteEvidence, commuteGateKey, type BoundCommuteEvidence } from "@/lib/matching/commute-evidence";
 
 export async function POST(request: Request) {
   if (!isSameOriginRequest(request)) return NextResponse.json({ error: "This review request was rejected." }, { status: 403 });
@@ -16,8 +17,8 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Complete the typed review, evidence changes, rationale, and source links." }, { status: 400 });
   const review = parsed.data;
   const [{ data: snapshot }, { data: jobSnapshot }, { data: nodes }, { data: inventoryMember }, { data: successor, error: successorError }] = await Promise.all([
-    auth.admin.from("ap_intake_snapshots").select("id,customer_id,draft_id,content_sha256,schema_version").eq("id", review.snapshotId).maybeSingle(),
-    auth.admin.from("ap_job_snapshots").select("id,requirement_completeness,source_authorization:ap_source_authorizations(state)").eq("id", review.jobSnapshotId).maybeSingle(),
+    auth.admin.from("ap_intake_snapshots").select("id,customer_id,draft_id,content_sha256,schema_version,travel").eq("id", review.snapshotId).maybeSingle(),
+    auth.admin.from("ap_job_snapshots").select("id,content_sha256,requirement_completeness,source_authorization:ap_source_authorizations(state)").eq("id", review.jobSnapshotId).maybeSingle(),
     auth.admin.from("ap_requirement_nodes").select("id,job_snapshot_id,node_kind,criterion_type,stable_criterion_id,source_locator,source_excerpt,typed_value").in("id", review.sourceEvidenceNodeIds),
     review.inventoryMemberId
       ? auth.admin.from("ap_inventory_members").select("id,job_snapshot_id,inventory_version_id,stable_normalized_job_id,selected_by_deduplication").eq("id", review.inventoryMemberId).maybeSingle()
@@ -101,7 +102,20 @@ export async function POST(request: Request) {
     };
   }
   const resolvedAt = new Date().toISOString();
-  const decision = buildMatchingReviewDecision(review, auth.user.id, resolvedAt, correction);
+  let commuteEvidence: BoundCommuteEvidence | undefined;
+  if (review.reviewKind === "CUSTOMER_CRITERION" && review.customerCriterionKey?.startsWith("customer:commute")) {
+    if (review.customerCriterionKey !== commuteGateKey(snapshot)) return NextResponse.json({ error: "Use the exact commute limit from the confirmed intake." }, { status: 409 });
+    if (review.commuteObservation) {
+      try {
+        commuteEvidence = bindCommuteEvidence({ observation: review.commuteObservation, snapshot, job: jobSnapshot, nodes: nodes || [], reviewerId: auth.user.id, reviewedAt: resolvedAt });
+        const expected = commuteEvidence.oneWayMiles <= commuteEvidence.maximumMiles ? "RESOLVED_PASS" : "RESOLVED_FAIL";
+        if (review.disposition !== expected) throw new Error("commute_result_conflicts_with_measured_distance");
+      } catch {
+        return NextResponse.json({ error: "The checked route must use this confirmed starting ZIP, exact employer worksite and distance limit, with evidence checked within 24 hours." }, { status: 409 });
+      }
+    }
+  }
+  const decision = buildMatchingReviewDecision(review, auth.user.id, resolvedAt, correction, commuteEvidence);
   const reviewRow = {
     customer_id: snapshot.customer_id,
     draft_id: snapshot.draft_id,

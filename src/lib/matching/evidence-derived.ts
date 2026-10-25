@@ -18,6 +18,7 @@ import {
 } from "@/lib/matching/evaluation-engine";
 import { evaluateRequirementTree, evaluateToolCapability, type EvaluatableRequirementNode, type LeafDecision } from "@/lib/matching/requirements";
 import { activityCatalog, dealbreakerCatalog, industryCatalog } from "@/lib/intake/four-step";
+import { commuteGateKey, reviewedCommuteResult, COMMUTE_EVIDENCE_VERSION } from "@/lib/matching/commute-evidence";
 
 export type PersistedRequirementRow = {
   id: string;
@@ -430,6 +431,7 @@ type CustomerHardGate = {
   unknownTreatment: "BLOCK" | "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING";
   consentVersion?: string;
   warning?: string;
+  policyKey?: string;
 };
 
 function slug(value: string) {
@@ -453,7 +455,7 @@ export function customerCriterionEvidenceMatches(rootKey: string, value: unknown
   const criterion = parsed.data;
   if (rootKey === "customer:work-mode") return criterion.kind === "WORK_MODE";
   if (rootKey === "customer:geography-state") return criterion.kind === "GEOGRAPHY" || criterion.kind === "WORK_MODE";
-  if (rootKey.startsWith("customer:commute")) return criterion.kind === "COMMUTE";
+  if (rootKey.startsWith("customer:commute")) return ["COMMUTE", "WORK_MODE", "GEOGRAPHY"].includes(criterion.kind);
   if (rootKey === "customer:employment-type") return criterion.kind === "EMPLOYMENT_TYPE";
   if (rootKey === "customer:title-restriction") return criterion.kind === "CUSTOMER_TITLE_RESTRICTION";
   const suffix = rootKey.split(":").slice(rootKey.startsWith("customer:work-condition:") ? 2 : rootKey.startsWith("customer:dealbreaker:custom:") ? 3 : 2).join("-");
@@ -496,7 +498,7 @@ function employerOmissionGate(snapshot: PersistedIntakeForMatching, rootKey: str
     result: "UNKNOWN",
     resolutionIssue: "EMPLOYER_OMITTED",
     unknownTreatment: allowed ? "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING" : "BLOCK",
-    ...(allowed ? { consentVersion: `${snapshot.schema_version}:${snapshot.content_sha256}`, warning } : {}),
+    ...(allowed ? { consentVersion: `${snapshot.schema_version}:${snapshot.content_sha256}`, warning, policyKey: policyKey! } : {}),
   };
 }
 
@@ -518,13 +520,13 @@ function applyCustomerReview(snapshot: PersistedIntakeForMatching, criteria: rea
   if (decision.result !== "UNKNOWN" || !["EMPLOYER_OMITTED", "PARSER_UNCERTAIN", "EVIDENCE_CONFLICT"].includes(String(decision.resolutionIssue))) throw new Error("customer_criterion_review_result_invalid");
   const allowed = decision.unknownTreatment === "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING";
   const expectedConsent = `${snapshot.schema_version}:${snapshot.content_sha256}`;
-  if (allowed && (decision.resolutionIssue !== "EMPLOYER_OMITTED" || decision.consentVersion !== expectedConsent || typeof decision.warning !== "string")) throw new Error("customer_criterion_allowed_unknown_invalid");
+  if (allowed && (automatic.unknownTreatment !== "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING" || decision.resolutionIssue !== "EMPLOYER_OMITTED" || decision.consentVersion !== expectedConsent || typeof decision.warning !== "string" || !decision.warning.trim())) throw new Error("customer_criterion_allowed_unknown_invalid");
   return {
     rootKey: automatic.rootKey,
     result: "UNKNOWN",
     resolutionIssue: decision.resolutionIssue as CustomerHardGate["resolutionIssue"],
     unknownTreatment: allowed ? "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING" : "BLOCK",
-    ...(allowed ? { consentVersion: expectedConsent, warning: decision.warning as string } : {}),
+    ...(allowed ? { consentVersion: expectedConsent, warning: decision.warning as string, policyKey: automatic.policyKey } : {}),
   };
 }
 
@@ -541,6 +543,8 @@ export function deriveCustomerHardGates(input: {
   job: PersistedJobForMatching;
   criteria: readonly TypedCriterion[];
   reviews: readonly PersistedReview[];
+  nodes?: readonly PersistedRequirementRow[];
+  now?: number;
 }) {
   const { snapshot, job, criteria, reviews } = input;
   const gates: CustomerHardGate[] = [];
@@ -563,13 +567,17 @@ export function deriveCustomerHardGates(input: {
   add(geographyGate);
 
   if ([...workModes].some((mode) => mode === "HYBRID" || mode === "ONSITE")) {
-    const travel = object(snapshot.travel);
-    const commuteDistance = snapshot.commute_distance_miles ?? (typeof travel.commuteDistanceMiles === "number" ? travel.commuteDistanceMiles : null);
-    const commuteKey = commuteDistance == null ? "customer:commute" : `customer:commute:${commuteDistance}-miles`;
-    const commute = criteria.find((criterion): criterion is Extract<TypedCriterion, { kind: "COMMUTE" }> => criterion.kind === "COMMUTE");
-    add(commute && commuteDistance != null && commute.unit === "MILES"
-      ? commute.maximum <= commuteDistance ? passGate(commuteKey) : failGate(commuteKey)
-      : employerOmissionGate(snapshot, commuteKey, null, "The commute could not be confirmed from the employer listing."));
+    const rootKey = commuteGateKey(snapshot);
+    const review = customerReviewFor(reviews, rootKey);
+    const decision = object(review?.decision);
+    const measuredResult = review && review.snapshot_id === snapshot.id && review.job_snapshot_id === job.id
+      && decision.customerCriterionKey === rootKey && decision.unknownTreatment === "BLOCK"
+      && strings(decision.sourceEvidenceNodeIds).includes(String(object(decision.commuteEvidence).destinationNodeId))
+      ? reviewedCommuteResult({ evidence: decision.commuteEvidence, snapshot, job, nodes: input.nodes ?? [], reviewerId: review.reviewer_id, now: input.now }) : null;
+    // Employer limits and generic customer-criterion reviews are not route measurements.
+    gates.push(measuredResult && decision.result === measuredResult
+      ? measuredResult === "PASS" ? passGate(rootKey) : failGate(rootKey)
+      : { rootKey, result: "UNKNOWN", resolutionIssue: "EVIDENCE_CONFLICT", unknownTreatment: "BLOCK" });
   }
 
   const employmentTypes = new Set(criteria.filter((criterion): criterion is Extract<TypedCriterion, { kind: "EMPLOYMENT_TYPE" }> => criterion.kind === "EMPLOYMENT_TYPE").flatMap((criterion) => criterion.employmentTypes));
@@ -709,8 +717,9 @@ export function deriveEvaluationFromPersistedEvidence(input: {
     unknownTreatment: salaryAllowedUnknown ? "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING" as const : "BLOCK" as const,
     consentVersion: salaryAllowedUnknown ? `${snapshot.schema_version}:${snapshot.content_sha256}` : undefined,
     warning: salaryWarning,
+    ...(salaryAllowedUnknown ? { policyKey: salary.status === "UNPUBLISHED" ? "salary:unpublished" : "salary:noncomparable" } : {}),
   };
-  const customerGates = deriveCustomerHardGates({ snapshot, job, criteria, reviews: customerCriteriaReviews });
+  const customerGates = deriveCustomerHardGates({ snapshot, job, criteria, reviews: customerCriteriaReviews, nodes });
   const universal = [
     { rootKey: "universal:source-authorization", result: "PASS" as const, resolutionIssue: "NONE" as const, unknownTreatment: "BLOCK" as const, unwaivable: true },
     { rootKey: "universal:listing-legitimacy", result: job.legitimacy_result === "PASS" ? "PASS" as const : "FAIL" as const, resolutionIssue: "NONE" as const, unknownTreatment: "BLOCK" as const, unwaivable: true },
@@ -771,7 +780,8 @@ export function deriveEvaluationFromPersistedEvidence(input: {
   });
   const presentationRisk = ["LOW", "MEDIUM", "HIGH", "NOT_ASSESSED"].includes(String(usefulnessDecision.presentationRisk)) ? usefulnessDecision.presentationRisk as "LOW" | "MEDIUM" | "HIGH" | "NOT_ASSESSED" : "NOT_ASSESSED";
   const presentationRiskReasons = strings(usefulnessDecision.presentationRiskReasons);
-  const versionBundle = { matching: MATCHING_RULES_VERSION, parser: job.parser_version, catalog: MATCHING_RULES_VERSION, criteria: snapshot.schema_version, selector: SELECTOR_VERSION, jobSnapshot: job.content_sha256, sourceAuthorization: sourceAuthorization.authorization_version };
+  const commuteReview = customerReviewFor(customerCriteriaReviews, commuteGateKey(snapshot));
+  const versionBundle = { matching: MATCHING_RULES_VERSION, parser: job.parser_version, catalog: MATCHING_RULES_VERSION, criteria: snapshot.schema_version, selector: SELECTOR_VERSION, jobSnapshot: job.content_sha256, sourceAuthorization: sourceAuthorization.authorization_version, commute: COMMUTE_EVIDENCE_VERSION, commuteReviewId: commuteReview?.id ?? null };
   const calculationInput = { snapshotHash: snapshot.content_sha256, jobHash: job.content_sha256, sourceAuthorizationId: sourceAuthorization.id, reviewIds: allReviewRecords.map((review) => review.id).sort(), factIds: candidateFactIds.sort(), rulesVersion: MATCHING_RULES_VERSION };
   return {
     eligibility,

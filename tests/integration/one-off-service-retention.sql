@@ -9,11 +9,22 @@ begin
   raise exception 'expected retention rejection: %',expected;
 end $$;
 
-select pg_temp.assert_retention(not public.ap_one_off_retention_schema_installed(),'unfinished cleanup must not be launch-ready');
-select pg_temp.assert_retention((public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion')='202610240087','schema floor');
-select pg_temp.assert_retention(not (public.ap_manual_launch_schema_readiness()->>'ready')::boolean,'locked readiness');
-select pg_temp.retention_error($q$select public.ap_record_manual_launch_activation('PUBLIC',repeat('a',40),'{}',gen_random_uuid())$q$,
-  'service_retention_cleanup_unavailable');
+do $$ begin
+  if (select max(version) from supabase_migrations.schema_migrations)='202610240087' then
+    perform pg_temp.assert_retention(not public.ap_one_off_retention_schema_installed(),'unfinished historical087 cleanup must not be schema-ready');
+    perform pg_temp.assert_retention((public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion')='202610240087','historical087 schema floor');
+    perform pg_temp.assert_retention(not (public.ap_manual_launch_schema_readiness()->>'ready')::boolean,'historical087 schema not ready');
+    perform pg_temp.retention_error($q$select public.ap_record_manual_launch_activation('PUBLIC',repeat('a',40),'{}',gen_random_uuid())$q$,
+      'service_retention_cleanup_unavailable');
+  else
+    perform pg_temp.assert_retention((select max(version) from supabase_migrations.schema_migrations)='202610250090','exact current schema');
+    perform pg_temp.assert_retention(public.ap_one_off_retention_schema_installed(),'current cleanup installed');
+    perform pg_temp.assert_retention((public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion')='202610250090','current schema floor');
+    perform pg_temp.assert_retention((public.ap_manual_launch_schema_readiness()->>'ready')::boolean,'current schema controls installed');
+    perform pg_temp.assert_retention(exists(select 1 from public.ap_checkout_mode_configuration where singleton and mode='LOCKED'),'checkout stays locked');
+    perform pg_temp.assert_retention(exists(select 1 from public.ap_commerce_configuration where singleton and not checkout_enabled),'purchasing stays disabled');
+  end if;
+end $$;
 select pg_temp.assert_retention(not has_function_privilege('authenticated','public.ap_set_service_retention_hold(uuid,uuid,text,uuid,boolean)','execute'),'hold is service-only');
 select pg_temp.assert_retention(not has_table_privilege('service_role','public.ap_retention_redaction_permits','insert'),'no caller-created immutability permits');
 

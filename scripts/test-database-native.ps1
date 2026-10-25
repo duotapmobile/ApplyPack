@@ -3,7 +3,9 @@ param(
   [string]$EvidenceDirectory = (Join-Path ([IO.Path]::GetTempPath()) ('applypack-native-db-' + [guid]::NewGuid().ToString('N'))),
   [switch]$LegacyBackfill,
   [switch]$CapacityPressure,
-  [switch]$RetainClusterData
+  [switch]$RetainClusterData,
+  [string[]]$FixtureNames,
+  [string]$MaximumMigrationVersion
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
@@ -27,6 +29,8 @@ create role service_role nologin bypassrls;
 create schema auth;
 create schema storage;
 create schema extensions;
+create schema supabase_migrations;
+create table supabase_migrations.schema_migrations(version text primary key,name text not null,statements text[] not null);
 create extension pgcrypto with schema extensions;
 create table auth.users (
  id uuid primary key, instance_id uuid, aud text, role text, email text,
@@ -38,6 +42,9 @@ create function auth.jwt() returns jsonb language sql stable as $$
 $$;
 create function auth.uid() returns uuid language sql stable as $$
  select coalesce(nullif(current_setting('request.jwt.claim.sub', true), ''), auth.jwt()->>'sub')::uuid
+$$;
+create function auth.role() returns text language sql stable as $$
+ select coalesce(nullif(current_setting('request.jwt.claim.role', true), ''), auth.jwt()->>'role',current_user::text)
 $$;
 create table storage.buckets (
  id text primary key, name text not null, public boolean not null default false,
@@ -54,8 +61,19 @@ alter default privileges for role postgres in schema public grant all on functio
 $bootstrapPath = Join-Path $inputPath 'bootstrap.sql'
 Set-Content -LiteralPath $bootstrapPath -Value $bootstrap -Encoding utf8
 $migrationFiles = @(Get-ChildItem (Join-Path $repoRoot 'supabase/migrations') -Filter '*.sql' | Sort-Object Name)
+if ($MaximumMigrationVersion) {
+  if ($MaximumMigrationVersion -notmatch '^\d{12}$') { throw 'MaximumMigrationVersion must be an exact numeric migration identifier.' }
+  $migrationFiles = @($migrationFiles | Where-Object { $_.Name.Split('_')[0] -le $MaximumMigrationVersion })
+}
 $fixtures = @('unpaid-source-retention.sql', 'chunk1-foundation.sql', 'chunk2-four-step.sql', 'chunk3-matching-engine.sql', 'chunk4-commerce-release.sql', 'chunk5-materials-delivery.sql', 'chunk6-final-integration.sql', 'employer-first-aggregation.sql', 'matching-fulfillment.sql', 'manual-launch-hardening.sql', 'sandbox-validation-launch-activation.sql', 'atomic-intake-legal-acceptance.sql', 'document-standard-compatibility.sql', 'source-upload-cleanup.sql', 'material-filename-cleanup-compatibility.sql', 'aws-temporary-cleanup.sql', 'open-font-document-contract.sql', 'legacy-board-read-only-archive.sql', 'legacy-board-terminal-event-ordering.sql')
 if ($LegacyBackfill) { $fixtures = @('chunk1-legacy-fixture.sql', 'chunk1-legacy-verify.sql') }
+if ($FixtureNames) {
+  if ($LegacyBackfill) { throw 'Explicit fixtures cannot replace the legacy backfill sequence.' }
+  foreach ($fixtureName in $FixtureNames) {
+    if ($fixtureName -notmatch '^[a-z0-9][a-z0-9-]*\.sql$') { throw 'Fixture name must be a repository integration SQL filename.' }
+  }
+  $fixtures = $FixtureNames
+}
 $inputs = @([pscustomobject]@{Kind='bootstrap'; Name='bootstrap.sql'; Path=$bootstrapPath})
 foreach ($migration in $migrationFiles) {
   $copy = Join-Path $inputPath $migration.Name
@@ -138,6 +156,13 @@ try {
   $batch = foreach ($input in ($inputs | Where-Object Kind -ne 'helper')) {
     "\echo $($input.Kind): $($input.Name)"
     "\ir '" + $input.Path.Replace('\', '/').Replace("'", "\'") + "'"
+    if ($input.Kind -eq 'migration') {
+      $version, $name = $input.Name.Substring(0,$input.Name.Length-4).Split('_',2)
+      $source = [IO.File]::ReadAllText($input.Path)
+      $tag = '$native_source_' + $version + '$'
+      if ($version -notmatch '^\d{12}$' -or $name -notmatch '^[a-z0-9_]+$' -or $source.Contains($tag)) { throw 'Native migration ledger input invalid.' }
+      "insert into supabase_migrations.schema_migrations(version,name,statements) values('$version','$name',array[$tag$source$tag]);"
+    }
   }
   Set-Content -LiteralPath $batchPath -Value $batch -Encoding utf8
   $step = 'batched migrations and fixtures; see validation.log for exact file'

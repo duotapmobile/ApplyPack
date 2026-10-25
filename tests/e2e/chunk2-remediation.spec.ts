@@ -16,10 +16,11 @@ async function reachReview(page: Page) {
   await page.goto("/get-started");
   await page.getByLabel("Full name required").fill("Review Customer");
   await page.getByLabel("Email address required").fill("review@example.invalid");
-  await page.getByLabel("Current resume required").setInputFiles(resume);
+  await page.getByLabel("Resume required").setInputFiles(resume);
   await page.getByRole("button", { name: /save and continue/i }).click();
   await page.getByRole("checkbox", { name: /Coordinating projects/ }).first().check();
   await page.getByRole("button", { name: /save and continue/i }).click();
+  await page.getByLabel(/I checked for missing or outdated/).check();
   await page.getByRole("button", { name: /save and continue/i }).click();
   await page.getByRole("checkbox", { name: "Remote" }).check();
   await page.getByLabel("U.S. state or District of Columbia required").selectOption("VA");
@@ -36,7 +37,7 @@ test("error summary retains focus and every linked field owns its adjacent error
   await expect(page.getByLabel("Full name required")).toHaveAttribute("aria-describedby", /full-name-error/);
   await page.getByRole("link", { name: "Enter your full name." }).click();
   await expect(page.getByLabel("Full name required")).toBeFocused();
-  await expect(page.getByLabel("Current resume required")).toHaveAttribute("aria-describedby", /resume-error/);
+  await expect(page.getByLabel("Resume required")).toHaveAttribute("aria-describedby", /resume-error/);
 });
 
 test("keyboard-only operation completes all four steps with visible focus", async ({ page }) => {
@@ -51,7 +52,7 @@ test("keyboard-only operation completes all four steps with visible focus", asyn
   const email = page.getByLabel("Email address required");
   await tabTo(page, email);
   await page.keyboard.type("keyboard@example.invalid");
-  const resumeInput = page.getByLabel("Current resume required");
+  const resumeInput = page.getByLabel("Resume required");
   await tabTo(page, resumeInput);
   const chooserPromise = page.waitForEvent("filechooser");
   await page.keyboard.press("Enter");
@@ -69,6 +70,9 @@ test("keyboard-only operation completes all four steps with visible focus", asyn
   await tabTo(page, next);
   await page.keyboard.press("Enter");
   await expect(page.getByText("STEP 3 OF 4")).toBeVisible();
+  const backgroundReviewed = page.getByLabel(/I checked for missing or outdated/);
+  await tabTo(page, backgroundReviewed);
+  await page.keyboard.press("Space");
   next = page.getByRole("button", { name: /save and continue/i });
   await tabTo(page, next);
   await page.keyboard.press("Enter");
@@ -86,8 +90,14 @@ test("keyboard-only operation completes all four steps with visible focus", asyn
   const agreement = page.getByLabel(/I agree to/);
   await tabTo(page, agreement);
   await page.keyboard.press("Space");
-  const finish = page.getByRole("button", { name: "Finish intake" });
+  const finish = page.getByRole("button", { name: "Review my information" });
   await tabTo(page, finish);
+  await page.keyboard.press("Enter");
+  const factualConfirmation = page.getByLabel(/I reviewed the actual information/);
+  await tabTo(page, factualConfirmation);
+  await page.keyboard.press("Space");
+  const submit = page.getByRole("button", { name: "Confirm and submit intake" });
+  await tabTo(page, submit);
   await page.keyboard.press("Enter");
   await expect(page.getByText(/Feasibility review is pending. No payment was started/)).toBeVisible();
 });
@@ -96,9 +106,9 @@ test("review exposes every section and an earlier edit returns directly to revie
   test.setTimeout(120_000);
   await reachReview(page);
   const expectedSections = [
-    "Contact and documents", "Search direction", "Experience and skills", "Work modes and location",
-    "Employment type and schedule", "Benefits", "Work conditions", "Compensation",
-    "Exclusions and unknown details", "Terms and service boundary",
+    "Contact and documents", "Search direction", "Document facts and corrections", "Task capabilities", "Work modes and location",
+    "Employment type and schedule", "Benefits and work conditions", "Compensation",
+    "Exclusions and unknown details",
   ];
   for (const section of expectedSections) {
     await expect(page.getByRole("button", { name: `Edit ${section.toLowerCase()}` })).toBeVisible();
@@ -111,7 +121,7 @@ test("review exposes every section and an earlier edit returns directly to revie
   await expect(page.getByText("STEP 4 OF 4")).toBeVisible();
   await expect(page.getByText(/Edited Review Customer/)).toBeVisible();
   await expect(page.locator(".review-list").getByText(/synthetic-resume\.pdf/)).toBeVisible();
-  await page.getByRole("button", { name: "Edit benefits" }).click();
+  await page.getByRole("button", { name: "Edit benefits and work conditions" }).click();
   await expect(page.locator("#benefits-preferences")).toBeFocused();
 });
 

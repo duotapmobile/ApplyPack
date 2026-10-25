@@ -6,12 +6,15 @@ import { anonymousDraftContext, anonymousDraftError } from "@/lib/drafts/anonymo
 import { canonicalSha256, CANONICALIZATION_VERSION } from "@/lib/domain/foundation";
 import { buildFourStepSnapshot, fourStepDraftSchema, normalizedFourStepDraft, validateFourStep, FOUR_STEP_SCHEMA_VERSION } from "@/lib/intake/four-step";
 import { fourStepPrivateState } from "@/lib/intake/four-step-server";
+import { confirmationReceiptSchema } from "@/lib/intake/confirmed-review";
+import { boundedIntakeJson, validateSubmittedConfirmation } from "@/lib/intake/confirmed-review-server";
 import { currentLegalContentBinding } from "@/lib/legal/content.server";
 import { remoteKmsAdapter } from "@/lib/security/remote-kms";
 import { encryptSensitivePayload, sensitivePayloadConfiguration, sensitivePayloadEncryptionReady } from "@/lib/security/sensitive-payload";
 import { isSameOriginRequest } from "@/lib/security/origin";
 
-const inputSchema = z.object({ expectedVersion: z.number().int().positive(), answers: fourStepDraftSchema }).strict();
+const inputSchema = z.object({ expectedVersion: z.number().int().positive(), answers: fourStepDraftSchema,
+  confirmation: confirmationReceiptSchema, factsConfirmed: z.literal(true) }).strict();
 const bytea = (value: Uint8Array) => `\\x${Buffer.from(value).toString("hex")}`;
 
 export async function POST(request: Request) {
@@ -20,13 +23,16 @@ export async function POST(request: Request) {
   if (!context) return NextResponse.json({ error: "The saved draft is unavailable." }, { status: 404 });
   const recoveryHold = await newIntakeRecoveryHold(context.admin);
   if (recoveryHold) return recoveryHold;
-  const parsed = inputSchema.safeParse(await request.json().catch(() => null));
+  const parsed = inputSchema.safeParse(await boundedIntakeJson(request));
   if (!parsed.success) return NextResponse.json({ error: "The intake is invalid." }, { status: 400 });
   const answers = normalizedFourStepDraft(parsed.data.answers);
+  if (!await validateSubmittedConfirmation(context.admin, context.capability.draftId, context.secretHash, parsed.data.expectedVersion, answers, parsed.data.confirmation)) {
+    return NextResponse.json({ error: "Review the current saved information before confirming it.", code: "INTAKE_REVIEW_STALE" }, { status: 409, headers: { "Cache-Control": "private, no-store" } });
+  }
   const privateState = await fourStepPrivateState(context.admin, context.capability.draftId).catch(() => null);
   if (!privateState) return NextResponse.json({ error: "The intake cannot be reviewed right now." }, { status: 503 });
   const resume = privateState.documents.find((item: import("@/lib/intake/four-step").IntakeDocument) => item.kind === "RESUME") ?? null;
-  if (!resume || !["READY", "REVIEW_READY"].includes(resume.processingState)) return NextResponse.json({ error: "Your resume must finish safe extraction and be ready for factual review before finalizing." }, { status: 409, headers: { "Cache-Control": "private, no-store" } });
+  if (answers.entryMode !== "GUIDED" && (!resume || !["READY", "REVIEW_READY"].includes(resume.processingState))) return NextResponse.json({ error: "Your resume must finish safe extraction and be ready for factual review before finalizing." }, { status: 409, headers: { "Cache-Control": "private, no-store" } });
   const errors = [0, 1, 2, 3].flatMap((step) => validateFourStep(step as 0 | 1 | 2 | 3, answers, {
     resume, facts: privateState.facts, presentedFactIds: new Set(privateState.presentedFactIds),
   }));
@@ -64,6 +70,7 @@ export async function POST(request: Request) {
     draftId: context.capability.draftId,
     expectedVersion: parsed.data.expectedVersion,
     answers,
+    confirmation: parsed.data.confirmation,
     termsVersion: commerce.terms_version,
     privacyVersion: commerce.privacy_version,
     schemaVersion: FOUR_STEP_SCHEMA_VERSION,
@@ -71,7 +78,7 @@ export async function POST(request: Request) {
   const snapshotId = deterministicUuid(`intake-snapshot:${finalizationKey}`);
   const sensitivePayloadId = deterministicUuid(`intake-sensitive:${finalizationKey}`);
   const sensitivePlaintext = Buffer.from(JSON.stringify({
-    schemaVersion: FOUR_STEP_SCHEMA_VERSION, fullName: answers.fullName,
+    schemaVersion: FOUR_STEP_SCHEMA_VERSION, fullName: answers.fullName, phone: answers.phone || null,
     customDealbreaker: answers.customDealbreaker || null,
   }), "utf8");
   let envelope;
@@ -83,7 +90,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Secure intake finalization is temporarily unavailable.", code: "KMS_UNAVAILABLE" }, { status: 503 });
   } finally { sensitivePlaintext.fill(0); }
 
-  const snapshot = buildFourStepSnapshot(answers, envelope.contentSha256, CANONICALIZATION_VERSION);
+  const snapshot = { ...buildFourStepSnapshot(answers, envelope.contentSha256, CANONICALIZATION_VERSION), confirmedReview: parsed.data.confirmation };
   const reviews = Object.fromEntries(Object.entries(answers.factReviews).map(([factId, decision]) => [factId, {
     decision, correction: answers.factCorrections[factId] ?? null,
   }]));

@@ -25,6 +25,19 @@ async function affirm(form: HTMLElement) {
 describe("operator exact-ten release review", () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
+  it("distinguishes guided background from an uploaded file awaiting safety checks", () => {
+    render(<AdminOperations {...props} searchOrders={[{ ...order, intake_id: "intake", source_entry_mode: "GUIDED", source_scan_status: "pending" }]} />);
+    expect(screen.getByText(/Guided background; no resume uploaded/)).toBeInTheDocument();
+    expect(screen.queryByText(/document safety status/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Download source resume" })).not.toBeInTheDocument();
+  });
+
+  it("withholds source links if original intake provenance could not be loaded", () => {
+    render(<AdminOperations {...props} searchOrders={[{ ...order, intake_id: "intake", source_entry_mode: "UNAVAILABLE" }]} />);
+    expect(screen.getByText(/Source details could not be verified/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Download source resume" })).not.toBeInTheDocument();
+  });
+
   it("starts every human check unapproved and never asks the operator to edit JSON or identifiers", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

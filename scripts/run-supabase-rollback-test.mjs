@@ -53,7 +53,7 @@ const rollbackReadiness = capture("git", [
   `${resolvedRollbackTarget}:src/lib/operations/launch-readiness.ts`,
 ]);
 const requiredSchemaBindingSignals = [
-  'REQUIRED_LAUNCH_SCHEMA_VERSION = "202610240087"',
+  'REQUIRED_LAUNCH_SCHEMA_VERSION = "202610250090"',
   '"202610040077"',
   '"202610040078"',
   '"202610040079"',
@@ -64,7 +64,7 @@ const requiredSchemaBindingSignals = [
   '"202610190084"',
   '"202610220085"',
   '"202610230086"',
-  '"202610240087"',
+  '"202610250090"',
   "REQUIRED_LAUNCH_SCHEMA_VERSION",
 ];
 if (
@@ -79,7 +79,7 @@ if (
   if (rollbackSchemaBinding.stderr) process.stderr.write(rollbackSchemaBinding.stderr);
   if (rollbackReadiness.stderr) process.stderr.write(rollbackReadiness.stderr);
   console.error(
-    `Rollback target ${resolvedRollbackTarget} does not bind runtime health and checkout to schema 202610240087.`,
+    `Rollback target ${resolvedRollbackTarget} does not bind runtime health and checkout to schema 202610250090.`,
   );
   process.exit(rollbackSchemaBinding.status || rollbackReadiness.status || 1);
 }

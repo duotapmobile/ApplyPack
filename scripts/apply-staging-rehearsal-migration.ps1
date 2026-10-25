@@ -9,7 +9,10 @@ param(
     [string]$ExpectedMigrationSha256,
     [string]$ExpectedSandboxActivationMigrationSha256,
     [string]$ExpectedRetentionMigrationSha256,
-    [ValidateSet('202610220085', '202610230086', '202610240087')]
+    [string]$ExpectedCleanupMigrationSha256,
+    [string]$ExpectedConfirmedIntakeMigrationSha256,
+    [string]$ExpectedMatchingMigrationSha256,
+    [ValidateSet('202610220085', '202610230086', '202610240087', '202610250088', '202610250089', '202610250090')]
     [string]$TargetSchemaVersion = '202610220085',
     [string]$BackupReceiptPath,
     [string]$RestoreReceiptPath
@@ -106,7 +109,7 @@ if ($TargetSchemaVersion -cge '202610230086') {
         marker = 'STAGING_MIGRATION_202610230086_APPLIED'
     }
 }
-if ($TargetSchemaVersion -ceq '202610240087') {
+if ($TargetSchemaVersion -cge '202610240087') {
     $script:RunnerVersion = 5
     $script:MigrationPlan += [ordered]@{
         version = '202610240087'
@@ -116,6 +119,21 @@ if ($TargetSchemaVersion -ceq '202610240087') {
         predecessor = '202610230086'
         predecessorCheckpoint = 'SANDBOX_VALIDATION_LAUNCH_ACTIVATION'
         marker = 'STAGING_MIGRATION_202610240087_APPLIED'
+    }
+}
+foreach ($forward in @(
+    @('202610250088','service_retention_cleanup','SERVICE_RETENTION_CLEANUP','202610240087','ONE_OFF_SERVICE_RETENTION'),
+    @('202610250089','confirmed_intake','CONFIRMED_INTAKE','202610250088','SERVICE_RETENTION_CLEANUP'),
+    @('202610250090','matching_evidence_completion','MATCHING_EVIDENCE_COMPLETION','202610250089','CONFIRMED_INTAKE')
+)) {
+    if ($TargetSchemaVersion -cge $forward[0]) {
+        $script:RunnerVersion = 6
+        $script:MigrationPlan += [ordered]@{
+            version=$forward[0]; name=$forward[1]; checkpoint=$forward[2]
+            relativePath="supabase/migrations/$($forward[0])_$($forward[1]).sql"
+            predecessor=$forward[3]; predecessorCheckpoint=$forward[4]
+            marker="STAGING_MIGRATION_$($forward[0])_APPLIED"
+        }
     }
 }
 $script:PublishedPredecessorPaths = @(
@@ -462,7 +480,7 @@ function Assert-BindingValues {
             Throw-Controlled 'STAGING_BINDING_INVALID'
         }
     }
-    foreach ($flag in @('APP_CHECKOUT_ENABLED', 'APP_CANARY_CHECKOUT_ENABLED', 'APP_REHEARSAL_CHECKOUT_ENABLED', 'APP_LIVE_PAYMENTS_ENABLED', 'APP_JOB_BOARD_CHECKOUT_ENABLED', 'APP_JOB_SOURCE_SYNC_ENABLED')) {
+    foreach ($flag in @('APP_CHECKOUT_ENABLED', 'APP_CANARY_CHECKOUT_ENABLED', 'APP_REHEARSAL_CHECKOUT_ENABLED', 'APP_LIVE_PAYMENTS_ENABLED', 'APP_JOB_BOARD_CHECKOUT_ENABLED', 'APP_JOB_SOURCE_SYNC_ENABLED', 'APP_SERVICE_RETENTION_ENABLED')) {
         if (-not [string]::Equals([string]$Values[$flag], 'false', [StringComparison]::Ordinal)) {
             Throw-Controlled 'CHECKOUT_FLAG_NOT_FALSE'
         }
@@ -476,7 +494,7 @@ function Assert-StagingBinding {
         'AP_PREMIGRATION_EXPECTED_HOST', 'AP_PREMIGRATION_EXPECTED_PORT',
         'AP_PREMIGRATION_EXPECTED_DATABASE', 'AP_PREMIGRATION_EXPECTED_LOGIN_USER',
         'AP_PREMIGRATION_EXPECTED_CURRENT_USER', 'APP_CHECKOUT_ENABLED',
-        'APP_CANARY_CHECKOUT_ENABLED', 'APP_REHEARSAL_CHECKOUT_ENABLED', 'APP_LIVE_PAYMENTS_ENABLED', 'APP_JOB_BOARD_CHECKOUT_ENABLED', 'APP_JOB_SOURCE_SYNC_ENABLED'
+        'APP_CANARY_CHECKOUT_ENABLED', 'APP_REHEARSAL_CHECKOUT_ENABLED', 'APP_LIVE_PAYMENTS_ENABLED', 'APP_JOB_BOARD_CHECKOUT_ENABLED', 'APP_JOB_SOURCE_SYNC_ENABLED', 'APP_SERVICE_RETENTION_ENABLED'
     )) {
         $values[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
     }
@@ -725,16 +743,24 @@ function Get-PredecessorLedgerChecksSql {
     return $predicates -join "`n    or "
 }
 
+function Get-ExpectedSchemaReadinessSql {
+    param([Parameter(Mandatory)][string]$Version)
+    if ($Version -ceq '202610240087') {
+        return "coalesce((readiness->>'ready')::boolean,false) is distinct from false or public.ap_one_off_retention_schema_installed() is distinct from false"
+    }
+    return "coalesce((readiness->>'ready')::boolean,false) is distinct from true"
+}
+
 function Get-PreMigrationStateSql {
     $sql = @'
 do $applypack_prestate$
-declare readiness jsonb;
+declare readiness jsonb; checkout_unlocked boolean;
 begin
   if (select max(version) from supabase_migrations.schema_migrations) is distinct from '202610190084'
     or __PREDECESSOR_LEDGER_CHECKS__
-    or (select count(*) from supabase_migrations.schema_migrations where version in ('202610220085','202610230086','202610240087'))<>0
+    or (select count(*) from supabase_migrations.schema_migrations where version in ('202610220085','202610230086','202610240087','202610250088','202610250089','202610250090'))<>0
     or (select count(*) from public.ap_migration_checkpoints where migration_id='202610190084' and checkpoint='LEGACY_BOARD_TERMINAL_EVENT_ORDERING')<>1
-    or (select count(*) from public.ap_migration_checkpoints where migration_id in ('202610220085','202610230086','202610240087'))<>0
+    or (select count(*) from public.ap_migration_checkpoints where migration_id in ('202610220085','202610230086','202610240087','202610250088','202610250089','202610250090'))<>0
     or exists (
       select 1
       from pg_catalog.pg_index index_row
@@ -744,6 +770,11 @@ begin
     )
   then
     raise exception 'premigration_schema_invalid';
+  end if;
+  if not exists(select 1 from public.ap_commerce_configuration where singleton and not checkout_enabled) then raise exception 'migration_checkout_not_locked'; end if;
+  if to_regclass('public.ap_checkout_mode_configuration') is not null then
+    execute 'select not exists(select 1 from public.ap_checkout_mode_configuration where singleton and mode=''LOCKED'')' into checkout_unlocked;
+    if checkout_unlocked then raise exception 'migration_checkout_not_locked'; end if;
   end if;
   readiness:=public.ap_manual_launch_schema_readiness();
   if readiness->>'requiredSchemaVersion' is distinct from '202610190084'
@@ -824,7 +855,7 @@ function Get-StepGuardSql {
     return @"
 $(Get-ConnectionAttestationSql)
 do `$applypack_step_guard`$
-declare readiness jsonb;
+declare readiness jsonb; checkout_unlocked boolean;
 begin
   if (select max(version) from supabase_migrations.schema_migrations) is distinct from '$predecessor'
     or $predecessorLedgerChecks
@@ -842,9 +873,14 @@ begin
   then
     raise exception 'migration_step_state_invalid';
   end if;
+  if not exists(select 1 from public.ap_commerce_configuration where singleton and not checkout_enabled) then raise exception 'migration_checkout_not_locked'; end if;
+  if to_regclass('public.ap_checkout_mode_configuration') is not null then
+    execute 'select not exists(select 1 from public.ap_checkout_mode_configuration where singleton and mode=''LOCKED'')' into checkout_unlocked;
+    if checkout_unlocked then raise exception 'migration_checkout_not_locked'; end if;
+  end if;
   readiness:=public.ap_manual_launch_schema_readiness();
   if readiness->>'requiredSchemaVersion' is distinct from '$predecessor'
-    or coalesce((readiness->>'ready')::boolean,false) is distinct from true
+    or $(Get-ExpectedSchemaReadinessSql -Version $predecessor)
   then
     raise exception 'migration_step_readiness_invalid';
   end if;
@@ -953,7 +989,7 @@ function Get-PostMigrationStateSql {
     return @"
 $(Get-ConnectionAttestationSql)
 do `$applypack_poststate`$
-declare readiness jsonb;
+declare readiness jsonb; checkout_unlocked boolean;
 begin
   if (select max(version) from supabase_migrations.schema_migrations) is distinct from '$($script:PostSchemaVersion)'
     or $predecessorLedgerChecks
@@ -969,9 +1005,14 @@ begin
   then
     raise exception 'postmigration_schema_invalid';
   end if;
+  if not exists(select 1 from public.ap_commerce_configuration where singleton and not checkout_enabled) then raise exception 'migration_checkout_not_locked'; end if;
+  if to_regclass('public.ap_checkout_mode_configuration') is not null then
+    execute 'select not exists(select 1 from public.ap_checkout_mode_configuration where singleton and mode=''LOCKED'')' into checkout_unlocked;
+    if checkout_unlocked then raise exception 'migration_checkout_not_locked'; end if;
+  end if;
   readiness:=public.ap_manual_launch_schema_readiness();
   if readiness->>'requiredSchemaVersion' is distinct from '$($script:PostSchemaVersion)'
-    or coalesce((readiness->>'ready')::boolean,false) is distinct from true
+    or $(Get-ExpectedSchemaReadinessSql -Version $script:PostSchemaVersion)
   then
     raise exception 'postmigration_readiness_invalid';
   end if;
@@ -1222,10 +1263,9 @@ function Assert-AllContainersAbsent {
     Assert-NoResidualRunnerContainers
 }
 
-function Assert-RehearsalApprovalAndRecovery {
+function Get-RehearsalExpectedAuthorization {
     param($Release)
     $actual = [string]$Release.hashes[[string]$script:MigrationPlan[0].relativePath]
-    $authorization = [Environment]::GetEnvironmentVariable('AP_REHEARSAL_MIGRATION_AUTHORIZATION', 'Process')
     $expectedAuthorization = "apply085:$($script:ProjectRef):$($Release.releaseSha):$($actual.ToLowerInvariant())"
     if ($script:PostSchemaVersion -cge '202610230086') {
         $activationHash = [string]$Release.hashes[[string]$script:MigrationPlan[1].relativePath]
@@ -1235,7 +1275,7 @@ function Assert-RehearsalApprovalAndRecovery {
         }
         $expectedAuthorization = "apply084to086:$($script:ProjectRef):$($Release.releaseSha):$($actual.ToLowerInvariant()):$($activationHash.ToLowerInvariant())"
     }
-    if ($script:PostSchemaVersion -ceq '202610240087') {
+    if ($script:PostSchemaVersion -cge '202610240087') {
         $retentionHash = [string]$Release.hashes[[string]$script:MigrationPlan[2].relativePath]
         if ($ExpectedRetentionMigrationSha256 -cnotmatch '^[A-Fa-f0-9]{64}$' -or
             $ExpectedRetentionMigrationSha256.ToUpperInvariant() -cne $retentionHash) {
@@ -1243,9 +1283,24 @@ function Assert-RehearsalApprovalAndRecovery {
         }
         $expectedAuthorization = "apply084to087:$($script:ProjectRef):$($Release.releaseSha):$($actual.ToLowerInvariant()):$($activationHash.ToLowerInvariant()):$($retentionHash.ToLowerInvariant())"
     }
-    if ($ExpectedMigrationSha256 -cnotmatch '^[A-Fa-f0-9]{64}$' -or
-        $ExpectedMigrationSha256.ToUpperInvariant() -cne $actual -or
-        $authorization -cne $expectedAuthorization -or
+    if ($script:PostSchemaVersion -cge '202610250088') {
+        $provided = @($ExpectedCleanupMigrationSha256,$ExpectedConfirmedIntakeMigrationSha256,$ExpectedMatchingMigrationSha256)
+        for ($index=3; $index -lt $script:MigrationPlan.Count; $index++) {
+            $expectedHash = [string]$Release.hashes[[string]$script:MigrationPlan[$index].relativePath]
+            if ($provided[$index-3] -cnotmatch '^[A-Fa-f0-9]{64}$' -or $provided[$index-3].ToUpperInvariant() -cne $expectedHash) { Throw-Controlled 'REHEARSAL_APPROVAL_BINDING_INVALID' }
+        }
+        $hashes = @($script:MigrationPlan | ForEach-Object { ([string]$Release.hashes[[string]$_.relativePath]).ToLowerInvariant() }) -join ':'
+        $expectedAuthorization = "apply084to$($script:PostSchemaVersion.Substring(9)):$($script:ProjectRef):$($Release.releaseSha):$hashes"
+    }
+    if ($ExpectedMigrationSha256 -cnotmatch '^[A-Fa-f0-9]{64}$' -or $ExpectedMigrationSha256.ToUpperInvariant() -cne $actual) { Throw-Controlled 'REHEARSAL_APPROVAL_BINDING_INVALID' }
+    return $expectedAuthorization
+}
+
+function Assert-RehearsalApprovalAndRecovery {
+    param($Release)
+    $expectedAuthorization = Get-RehearsalExpectedAuthorization -Release $Release
+    $authorization = [Environment]::GetEnvironmentVariable('AP_REHEARSAL_MIGRATION_AUTHORIZATION', 'Process')
+    if ($authorization -cne $expectedAuthorization -or
         [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('AP_WRITERS_QUIESCED_REFERENCE', 'Process'))) {
         Throw-Controlled 'REHEARSAL_APPROVAL_BINDING_INVALID'
     }
@@ -1331,7 +1386,7 @@ function Invoke-Apply {
         }
         Assert-ReceiptReservation -Reservation $reservation
         $receipt = [ordered]@{
-            operation = if ($script:PostSchemaVersion -ceq '202610220085') { 'staging-single-085-rehearsal-migration' } elseif ($script:PostSchemaVersion -ceq '202610230086') { 'staging-084-through-086-launch-migrations' } else { 'staging-084-through-087-launch-migrations' }
+            operation = if ($script:PostSchemaVersion -ceq '202610220085') { 'staging-single-085-rehearsal-migration' } elseif ($script:PostSchemaVersion -ceq '202610230086') { 'staging-084-through-086-launch-migrations' } else { 'staging-084-through-' + $script:PostSchemaVersion.Substring(9) + '-launch-migrations' }
             runnerVersion = $script:RunnerVersion
             startedAt = $startedAt
             completedAt = [DateTimeOffset]::UtcNow.ToString('O')
@@ -1376,7 +1431,7 @@ function Invoke-Apply {
                 latestSchemaVersion = $script:PostSchemaVersion
                 migration085Rows = 1
                 requiredSchemaVersion = $script:PostSchemaVersion
-                ready = $true
+                ready = ($script:PostSchemaVersion -cne '202610240087')
                 invalidPublicIndexes = 0
             }
             publishedPorts = 0
@@ -1387,9 +1442,14 @@ function Invoke-Apply {
             $receipt.preState.migration086Rows = 0
             $receipt.postState.migration086Rows = 1
         }
-        if ($script:PostSchemaVersion -ceq '202610240087') {
+        if ($script:PostSchemaVersion -cge '202610240087') {
             $receipt.preState.migration087Rows = 0
             $receipt.postState.migration087Rows = 1
+        }
+        foreach ($entry in $script:MigrationPlan | Where-Object { $_.version -cge '202610250088' }) {
+            $name = 'migration' + $entry.version.Substring(9) + 'Rows'
+            $receipt.preState[$name] = 0
+            $receipt.postState[$name] = 1
         }
         Publish-ReceiptReservation -Reservation $reservation -Receipt $receipt
         $receiptPublished = $true
@@ -1483,6 +1543,7 @@ function Invoke-SelfTest {
             APP_LIVE_PAYMENTS_ENABLED = 'false'
             APP_JOB_BOARD_CHECKOUT_ENABLED = 'false'
             APP_JOB_SOURCE_SYNC_ENABLED = 'false'
+            APP_SERVICE_RETENTION_ENABLED = 'false'
         }
         Assert-BindingValues -Values $validBinding
         $productionRejected = $false
@@ -1571,6 +1632,26 @@ function Invoke-SelfTest {
                 $payload -match [Regex]::Escape($secretMarker)) {
                 Throw-Controlled 'SELF_TEST_FAILED'
             }
+        }
+
+        $syntheticHashes = [ordered]@{}
+        foreach ($migration in $script:MigrationPlan) { $syntheticHashes[[string]$migration.relativePath] = $migrationHashes[[string]$migration.version] }
+        $syntheticRelease = [pscustomobject]@{ releaseSha=('a' * 40); hashes=$syntheticHashes }
+        $approvalNames = @('ExpectedMigrationSha256','ExpectedSandboxActivationMigrationSha256','ExpectedRetentionMigrationSha256','ExpectedCleanupMigrationSha256','ExpectedConfirmedIntakeMigrationSha256','ExpectedMatchingMigrationSha256')
+        for ($index=0; $index -lt $script:MigrationPlan.Count; $index++) { Set-Variable -Name $approvalNames[$index] -Value $migrationHashes[[string]$script:MigrationPlan[$index].version] }
+        $boundAuthorization = Get-RehearsalExpectedAuthorization -Release $syntheticRelease
+        foreach ($migration in $script:MigrationPlan) {
+            if (!$boundAuthorization.Contains(([string]$migrationHashes[[string]$migration.version]).ToLowerInvariant())) { Throw-Controlled 'SELF_TEST_FAILED' }
+        }
+        for ($index=0; $index -lt $script:MigrationPlan.Count; $index++) {
+            $priorHash = Get-Variable -Name $approvalNames[$index] -ValueOnly
+            foreach ($wrongHash in @('',('0' * 64))) {
+                Set-Variable -Name $approvalNames[$index] -Value $wrongHash
+                $rejected=$false
+                try { [void](Get-RehearsalExpectedAuthorization -Release $syntheticRelease) } catch { $rejected=(Get-ControlledCode $_) -eq 'REHEARSAL_APPROVAL_BINDING_INVALID' }
+                if (!$rejected) { Throw-Controlled 'SELF_TEST_FAILED' }
+            }
+            Set-Variable -Name $approvalNames[$index] -Value $priorHash
         }
 
         $credential = [ApplyPack.Security.WindowsCredentialStore]::CreateSyntheticForSelfTest($secretChars)

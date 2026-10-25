@@ -8,6 +8,7 @@ import { processPendingFileScans } from "@/lib/files/process-scans";
 import { fileScanConfiguration } from "@/lib/files/scanner";
 import { processPendingDocumentExtractions } from "@/lib/files/isolated-extraction";
 import { processUnpaidSourceRetention } from "@/lib/files/unpaid-retention";
+import { processServiceRetention } from "@/lib/files/service-retention";
 import { processAwsTemporaryCleanup } from "@/lib/files/aws-temporary-cleanup";
 import { processPendingFeasibilityRequests } from "@/lib/matching/supabase-feasibility-store";
 import { processChunk4Workers } from "@/lib/commerce/workers";
@@ -151,6 +152,14 @@ export async function POST(request: Request) {
   if (retentionQueryError) return fail("EXPIRATION_CLEANUP_FAILED", "EXPIRATION_CLEANUP", "Retention maintenance failed.");
   let deletedSources = 0;
   let expirationCleanupFailed = false;
+  async function claimLegacySourcePaths(paths: string[]) {
+    for (const path of [...new Set(paths)].sort()) {
+      const allowed = await admin!.rpc("ap_legacy_retention_object_allowed", { p_bucket: "customer-source-documents", p_path: path });
+      if (allowed.error || typeof allowed.data !== "boolean") { expirationCleanupFailed = true; return false; }
+      if (!allowed.data) return false;
+    }
+    return true;
+  }
   for (const intake of dueIntakes || []) {
     // The old source-only cleanup must never consume a new-policy family's
     // files. Its complete, hold-aware cleanup is a separately gated operation.
@@ -164,6 +173,7 @@ export async function POST(request: Request) {
       continue;
     }
     const paths = (documents || []).map((document) => document.storage_path);
+    if (!await claimLegacySourcePaths(paths)) continue;
     if (paths.length) {
       const { error } = await admin.storage.from("customer-source-documents").remove(paths);
       if (error) {
@@ -188,8 +198,12 @@ export async function POST(request: Request) {
   if (draftQueryError) return fail("EXPIRATION_CLEANUP_FAILED", "EXPIRATION_CLEANUP", "Draft retention maintenance failed.");
   let deletedDrafts = 0;
   for (const draft of expiredDrafts || []) {
+    const allowed = await admin.rpc("ap_legacy_draft_retention_allowed", { p_draft_id: draft.id });
+    if (allowed.error || typeof allowed.data !== "boolean") { expirationCleanupFailed = true; continue; }
+    if (!allowed.data) continue;
     const documents = [draft.resume_document, draft.cover_letter_document] as Array<{ path?: string } | null>;
     const paths = documents.map((document) => document?.path).filter((path): path is string => Boolean(path));
+    if (!await claimLegacySourcePaths(paths)) continue;
     if (paths.length) {
       const removal = await admin.storage.from("customer-source-documents").remove(paths);
       if (removal.error) {
@@ -217,6 +231,9 @@ export async function POST(request: Request) {
   if (cleanupQueryError) return fail("EXPIRATION_CLEANUP_FAILED", "EXPIRATION_CLEANUP", "Storage cleanup queue could not be loaded.");
   let recoveredStorageObjects = 0;
   for (const row of cleanupRows || []) {
+    const allowed = await admin.rpc("ap_legacy_retention_object_allowed", { p_bucket: row.bucket, p_path: row.storage_path });
+    if (allowed.error || typeof allowed.data !== "boolean") { expirationCleanupFailed = true; continue; }
+    if (!allowed.data) continue;
     const removal = await admin.storage.from(row.bucket).remove([row.storage_path]);
     if (!removal.error) {
       const deletion = await admin.from("storage_cleanup_queue").delete().eq("id", row.id);
@@ -321,9 +338,11 @@ export async function POST(request: Request) {
   } else fileScans = { status: "DEFERRED_V2", malwareVerdict: "NOT_SCANNED", processed: 0 };
   const feasibility = await processQueue("feasibility", encryptionReady && sourcesReady, () => processPendingFeasibilityRequests(admin, 5));
   const unpaidSourceRetention = await processQueue("unpaidSourceRetention", true, () => processUnpaidSourceRetention(admin, 10));
+  const serviceRetention = await processQueue("serviceRetention", process.env.APP_SERVICE_RETENTION_ENABLED === "true", () => processServiceRetention());
   const checkoutInitiations = await processQueue("checkoutInitiations", true, () => reconcileCheckoutInitiations(admin, 20));
   if (checkoutInitiations && checkoutInitiations.unresolved > 0) queueStages.checkoutInitiations = "FAILED";
   if (unpaidSourceRetention && unpaidSourceRetention.failed > 0) queueStages.unpaidSourceRetention = "FAILED";
+  if (serviceRetention && serviceRetention.failed > 0) queueStages.serviceRetention = "FAILED";
   const workflow = await processQueue("workflow", encryptionReady && sourcesReady, () => processWorkflowTasks(admin, 2));
   const emailRetries = await processQueue("email", encryptionReady && emailReady, () => retryFailedEmails(admin, 10));
   const chunk4 = await processQueue("commerce", encryptionReady, () => processChunk4Workers(admin, 20));
@@ -387,6 +406,7 @@ export async function POST(request: Request) {
     documentExtractions,
     queueStages,
     unpaidSourceRetention,
+    serviceRetention,
     emailRetries,
     chunk4,
     boardSubscriptionsReconciled,

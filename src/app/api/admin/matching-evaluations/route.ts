@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
-import { MATCHING_RULES_VERSION, SELECTOR_VERSION } from "@/lib/matching/evaluation-engine";
+import { activeUnknownTreatments, MATCHING_RULES_VERSION, SELECTOR_VERSION } from "@/lib/matching/evaluation-engine";
 import { deriveEvaluationFromPersistedEvidence, type PersistedCandidateFact, type PersistedRequirementRow, type PersistedReview } from "@/lib/matching/evidence-derived";
 import { isSameOriginRequest } from "@/lib/security/origin";
 
@@ -131,7 +131,7 @@ export async function POST(request: Request) {
         ...derived.requirement.leafResults.map((leaf) => ({ requirementNodeId: leaf.nodeId, criterionType: (nodes || []).find((node) => node.id === leaf.nodeId)?.criterion_type ?? "UNKNOWN", ...leaf })),
       ],
       resolution_issues: [...new Set(derived.gates.map((gate) => gate.resolutionIssue))],
-      unknown_treatments: [...new Set(derived.gates.map((gate) => gate.unknownTreatment))],
+      unknown_treatments: activeUnknownTreatments(derived.gates),
       satisfaction_paths: derived.requirement.selectedSatisfactionPath ? [{ rootKey: derived.requirement.nodeId, selectedNodeIds: derived.requirement.selectedSatisfactionPath }] : [],
       categorical_evidence_sufficient: derived.usefulness.evidenceSufficient,
       fit_score: derived.fit.score,
@@ -151,7 +151,7 @@ export async function POST(request: Request) {
       version_bundle: derived.versionBundle,
       human_review_id: usefulnessReview.id,
       active_root_keys: derived.gates.map((gate) => gate.rootKey),
-      root_results: derived.gates.map((gate) => ({ rootKey: gate.rootKey, result: gate.result })),
+      root_results: derived.gates.map((gate) => ({ ...gate })),
       calculation_input_sha256: derived.calculationInputSha256,
       calculation_version: MATCHING_RULES_VERSION,
       usefulness_result: derived.usefulness.evidenceSufficient ? "PASS" : derived.usefulness.reason === "HUMAN_REVIEW_REQUIRED" ? "HUMAN_REVIEW" : "FAIL",

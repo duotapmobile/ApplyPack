@@ -23,7 +23,8 @@ export async function boundedRecoveryJson(response, maximumBytes) {
 
 /** Only the separate recovery service uses these two capabilities; no provider key is accepted. */
 function createTransport(environment, fetchImpl, readerOnly) {
-  requireValue(!Object.keys(environment).some((name) => forbidden.has(name.toUpperCase()) && environment[name] !== undefined), "RUNNER_MASTER_CREDENTIAL_FORBIDDEN");
+  requireValue(!Object.keys(environment).some((name) => (forbidden.has(name.toUpperCase()) && environment[name] !== undefined)
+    || (/^APP_DATABASE_BACKUP_/iu.test(name) && environment[name])), "RUNNER_MASTER_CREDENTIAL_FORBIDDEN");
   const releaseSha = environment.APP_EXPECTED_RELEASE_SHA;
   requireValue(environment.APP_DEPLOYMENT_ENV === "production" && environment.APP_BASE_URL === ORIGIN
     && /^[a-f0-9]{40}$/u.test(releaseSha || "")

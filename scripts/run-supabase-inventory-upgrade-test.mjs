@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { current087ClosedPhaseSql, historical086PhaseSql, prepareHistorical086Workspace } from "./lib/supabase-upgrade-phases.mjs";
+import { current090LockedPhaseSql, historical086PhaseSql, prepareHistorical086Workspace } from "./lib/supabase-upgrade-phases.mjs";
 
 const fixture = fileURLToPath(new URL("../tests/integration/atomic-inventory-077-fixture.sql", import.meta.url));
 const cutoverBase = fileURLToPath(new URL("../tests/integration/atomic-inventory-cutover-base.sql", import.meta.url));
@@ -180,7 +180,7 @@ commit;
   }
   sqlText(`create table public.inventory_retention_upgrade_preservation_fixture as ${preservedInventoryRows};`, false);
   run("supabase", ["migration", "up", "--local"], undefined, false);
-  sqlText(`${current087ClosedPhaseSql}
+  sqlText(`${current090LockedPhaseSql}
     do $$ begin
       if exists(
         (select * from public.inventory_retention_upgrade_preservation_fixture except all (${preservedInventoryRows}))
@@ -198,7 +198,7 @@ commit;
   if (persistentGuard.status === 0 || !persistentGuardOutput.includes("duplicate_inventory_job")) {
     throw new Error(`persistent inventory identity guard accepted a cross-field duplicate: ${persistentGuardOutput}`);
   }
-  console.log("Historical086 inventory recovery passed;087 preserves its exact history and identity guard while launch remains locked.");
+  console.log("Historical086 inventory recovery passed;090 preserves its exact history and identity guard while purchasing remains locked.");
 } catch (error) {
   failure = error;
 } finally {

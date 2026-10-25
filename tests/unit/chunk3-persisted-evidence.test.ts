@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { customerCriterionEvidenceMatches, deriveCustomerHardGates, deriveEvaluationFromPersistedEvidence, type PersistedCandidateFact, type PersistedReview } from "@/lib/matching/evidence-derived";
 import { parseListingRequirements, requirementPersistenceRows } from "@/lib/matching/listing-parser";
+import { activeUnknownTreatments } from "@/lib/matching/evaluation-engine";
 
 const jobId = "91000000-0000-4000-8000-000000000001";
 const snapshotId = "91000000-0000-4000-8000-000000000002";
@@ -131,6 +132,28 @@ describe("Chunk 3 persisted-evidence remediation", () => {
     expect(derived.confidence.score).toBeGreaterThanOrEqual(80);
     expect(derived.candidateFactIds).toEqual([factId]);
     expect(derived.explanationEvidence).toHaveProperty("howExperienceConnects");
+    expect(derived.gates.some((gate) => gate.unknownTreatment === "BLOCK")).toBe(true);
+    expect(activeUnknownTreatments(derived.gates)).toEqual([]);
+  });
+
+  it.each([
+    { allowed: false, disposition: "INELIGIBLE", treatments: ["BLOCK"] },
+    { allowed: true, disposition: "ELIGIBLE_WITH_ALLOWED_UNKNOWNS", treatments: ["ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING"] },
+  ])("preserves the actual employer-unknown policy when consent allowed=$allowed", ({ allowed, disposition, treatments }) => {
+    const data = fixture();
+    const derived = deriveEvaluationFromPersistedEvidence({
+      snapshot: matchingSnapshot({
+        benefits: { mustHave: ["health insurance"], wouldPrefer: [], openTo: [] },
+        employer_unknown_policy: allowed ? { "benefit:health insurance": "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING" } : {},
+      }),
+      job: { id: jobId, exact_title: "Operations Specialist", content_sha256: "b".repeat(64), parser_version: data.parsed.parserVersion, requirement_completeness: 100, compensation_completeness: 0, application_host_type: "EMPLOYER_HOSTED", legitimacy_result: "PASS", listing_activity_result: "PASS", application_path_result: "PASS", material_source_qualities: [1] },
+      sourceAuthorization: { id: "91000000-0000-4000-8000-000000000007", state: "AUTHORIZED_MANUAL_ONLY", access_method: "MANUAL", authorization_version: "source-auth-v1" },
+      nodes: data.nodes as never, facts: data.facts, evidenceReviews: data.evidenceReviews,
+      customerCriteriaReviews: [], usefulnessReview: data.usefulnessReview, compensationReview: null,
+    });
+    expect(derived.eligibility.disposition).toBe(disposition);
+    expect(activeUnknownTreatments(derived.gates)).toEqual(treatments);
+    expect(derived.eligibility.warnings.length).toBe(allowed ? 1 : 0);
   });
 
   it("uses the immutable intake salary floor as an eligibility gate", () => {
@@ -228,6 +251,22 @@ describe("Chunk 3 persisted-evidence remediation", () => {
     const health = parsed.criteria.find((criterion) => criterion.kind === "BENEFIT" && criterion.benefit.toLowerCase().includes("health"))!;
     expect(customerCriterionEvidenceMatches("customer:benefit:health-insurance", health)).toBe(true);
     expect(customerCriterionEvidenceMatches("customer:benefit:retirement", health)).toBe(false);
+  });
+
+  it("does not let a generic review invent consent for an excluded employer omission", () => {
+    const parsed = parseListingRequirements({ jobSnapshotId: jobId, listingText: "Health insurance is offered." });
+    const original = parsed.criteria.find((criterion) => criterion.kind === "BENEFIT")!;
+    const partialEvidence = { ...original, kind: "BENEFIT" as const, benefit: "health plan", semanticKey: "health plan" };
+    const snapshot = matchingSnapshot({ benefits: { mustHave: ["health insurance"] }, employer_unknown_policy: {} });
+    const omission = review("91000000-0000-4000-8000-000000000090", "CUSTOMER_CRITERION", {
+      customerCriterionKey: "customer:benefit:health-insurance", sourceEvidenceNodeIds: [original.stableCriterionId],
+      result: "UNKNOWN", resolutionIssue: "EMPLOYER_OMITTED", unknownTreatment: "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING",
+      consentVersion: `${snapshot.schema_version}:${snapshot.content_sha256}`, warning: "Health insurance is not confirmed.",
+    });
+    expect(() => deriveCustomerHardGates({ snapshot, job: { id: jobId } as never, criteria: [partialEvidence], reviews: [omission] })).toThrow("customer_criterion_allowed_unknown_invalid");
+    const allowed = { ...snapshot, employer_unknown_policy: { "benefit:health insurance": "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING" } };
+    expect(deriveCustomerHardGates({ snapshot: allowed, job: { id: jobId } as never, criteria: [partialEvidence], reviews: [omission] }).find((gate) => gate.rootKey === "customer:benefit:health-insurance"))
+      .toMatchObject({ result: "UNKNOWN", unknownTreatment: "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING", policyKey: "benefit:health insurance" });
   });
 
   it("does not expose caller-assigned gates, salary policy, fit factors, or confidence numbers", () => {

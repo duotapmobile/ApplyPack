@@ -10,6 +10,58 @@ permissions:
   contents: read
 
 jobs:
+  database-recovery-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build separate database recovery worker without provider credentials
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD > database-recovery-image-tested-commit.txt
+          docker build --platform linux/amd64 --file Dockerfile.database-recovery \
+            --label "org.opencontainers.image.revision=$(cat database-recovery-image-tested-commit.txt)" \
+            --tag applypack-database-recovery:ci . 2>&1 | tee database-recovery-image-build.log
+          docker image inspect applypack-database-recovery:ci > database-recovery-image-identity.json
+      - name: Real snapshot and restore inside a networkless disposable container
+        run: |
+          set -euo pipefail
+          node scripts/test-database-recovery-image.mjs applypack-database-recovery:ci 2>&1 | tee database-recovery-image-smoke.log
+      - name: Install checksum-pinned image scanner
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/trivy_0.76.1_Linux-64bit.tar.gz"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 2 \
+            https://github.com/aquasecurity/trivy/releases/download/v0.76.1/trivy_0.76.1_Linux-64bit.tar.gz \
+            --output "$archive"
+          printf '%s  %s\n' c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0 "$archive" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/applypack-trivy"
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP/applypack-trivy" trivy
+          "$RUNNER_TEMP/applypack-trivy/trivy" --version > database-recovery-image-scanner-version.txt
+      - name: Reject high and critical findings with OS PostgreSQL Node and helper coverage
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/applypack-trivy/trivy" image --image-src docker --scanners vuln --disable-telemetry --skip-version-check \
+            --list-all-pkgs --severity HIGH,CRITICAL --ignorefile /dev/null --exit-code 1 --timeout 10m \
+            --format json --output database-recovery-image-vulnerabilities.json applypack-database-recovery:ci
+          node scripts/assert-database-recovery-image-scan.mjs database-recovery-image-vulnerabilities.json > database-recovery-image-scan-coverage.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: database-recovery-image-local-contracts
+          path: |
+            database-recovery-image-tested-commit.txt
+            database-recovery-image-build.log
+            database-recovery-image-identity.json
+            database-recovery-image-smoke.log
+            database-recovery-image-scanner-version.txt
+            database-recovery-image-vulnerabilities.json
+            database-recovery-image-scan-coverage.json
+          if-no-files-found: error
+
   image:
     runs-on: ubuntu-latest
     timeout-minutes: 35

@@ -20,7 +20,7 @@ const TABLES = {
   ap_artifact_quality_reviews: row({ file_version_id: z.uuid(), render_preview_bucket: z.literal("operator-render-previews"),
     render_preview_path: recoveryKeySchema, render_preview_sha256: hash, invalidated_at: timestamp.nullable() }),
   source_documents: row({ storage_path: recoveryKeySchema, sha256: hash, size_bytes: z.number().int().positive(), deleted_at: timestamp.nullable() }),
-  intakes: row({ resume_path: recoveryKeySchema, cover_letter_path: nullablePath,
+  intakes: row({ resume_path: nullablePath, cover_letter_path: nullablePath,
     source_deleted_at: timestamp.nullable(), source_retention_due_at: timestamp.nullable() }),
   // JSON is inspected locally and never included in the backup graph or logs.
   intake_drafts: row({ resume_document: z.unknown(), cover_letter_document: z.unknown(), expires_at: timestamp }),

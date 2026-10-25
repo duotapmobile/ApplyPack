@@ -348,29 +348,62 @@ export async function restoreCheckpoint({ manifest, manifestDigest, latestInvent
     requireValue(record(applied) && applied.digest === overlayDigest && applied.customerAccessLocked === true, "RESTORE_TOMBSTONES_UNAPPLIED");
     requireValue(typeof target.sanitizeDatabase === "function", "RESTORE_DATABASE_SANITIZATION_REQUIRED");
     const retentionDigest = canonicalSha256(latestInventory.serviceRetention);
+    const sanitizationStartedAt = now();
+    // The SQL sanitizer is idempotent by overlay digest. A repeated receipt
+    // cannot prove that a family which expired during this run was redacted.
+    const futureFamilyDeadlines = latestInventory.serviceRetention.orders
+      .filter((order) => !order.protected && order.state !== "PURGED" && order.familyExpiresAt !== null
+        && Date.parse(order.familyExpiresAt) > sanitizationStartedAt)
+      .map((order) => Date.parse(order.familyExpiresAt));
+    const assertDatabaseDeadlines = () => requireValue(futureFamilyDeadlines.every((expiresAt) => expiresAt > now()),
+      "RESTORE_DATABASE_EXPIRY_RECONCILIATION_REQUIRED");
+    const assertObjectDeadline = (entry, uploaded = false) => {
+      const current = latestObjects.get(identity(entry));
+      requireValue(current && (current.retentionExpiresAt === null || Date.parse(current.retentionExpiresAt) > now()),
+        uploaded ? "RESTORE_UPLOADED_OBJECT_EXPIRED_RECONCILIATION_REQUIRED" : "RESTORE_OBJECT_EXPIRED_RECONCILIATION_REQUIRED");
+    };
     const sanitized = await clock.wait(target.sanitizeDatabase({ overlay: latestInventory.serviceRetention,
       digest: retentionDigest, sourceInventoryDigest: latestInventory.inventoryDigest, signal: clock.signal }));
     requireValue(verifiedRetentionSanitization(sanitized, retentionDigest),
     "RESTORE_DATABASE_SANITIZATION_UNVERIFIED");
     const blocked = new Set(unique.map(identity));
-    let restored = 0;
+    const restored = [];
+    const assertRestoredDeadlines = () => {
+      for (const entry of restored) assertObjectDeadline(entry, true);
+      assertDatabaseDeadlines();
+    };
+    assertRestoredDeadlines();
     for (const entry of manifest.entries) {
       if (blocked.has(identity(entry))) continue;
+      assertRestoredDeadlines();
+      assertObjectDeadline(entry);
       const opened = await clock.wait(archiveReader.openObject({ bucket: manifest.archive.bucket, key: entry.archiveKey,
         versionId: entry.archiveVersionId, signal: clock.signal }));
       requireValue(record(opened) && opened.versionId === entry.archiveVersionId && opened.size === entry.size, "RESTORE_ARCHIVE_VERSION");
+      assertRestoredDeadlines();
+      assertObjectDeadline(entry);
       const checked = checkedStream(opened.body, entry.size, entry.sha256, clock);
       const stored = await clock.wait(target.putPrivateObject({ bucket: entry.bucket, key: entry.key, body: checked.body,
         expectedSize: entry.size, expectedSha256: entry.sha256, overwrite: false, signal: clock.signal }));
       const content = checked.result();
       requireValue(record(stored) && stored.sha256 === content.sha256 && stored.size === content.size
         && stored.private === true && stored.customerAccessLocked === true, "RESTORE_OBJECT_VERIFICATION");
-      restored++;
+      restored.push(entry);
+      // An upload may have crossed its deadline. The restore identity has no
+      // deletion capability: retain the isolation locks and require reviewed
+      // target reconciliation instead of reporting a sanitized restore.
+      assertRestoredDeadlines();
     }
+    assertRestoredDeadlines();
+    const finalSanitized = await clock.wait(target.sanitizeDatabase({ overlay: latestInventory.serviceRetention,
+      digest: retentionDigest, sourceInventoryDigest: latestInventory.inventoryDigest, signal: clock.signal }));
+    requireValue(verifiedRetentionSanitization(finalSanitized, retentionDigest), "RESTORE_DATABASE_SANITIZATION_UNVERIFIED");
+    assertRestoredDeadlines();
     const finalLocks = await clock.wait(target.assertLocked({ signal: clock.signal }));
     requireValue(record(finalLocks) && finalLocks.projectRef === policy.targetProjectRef
       && finalLocks.credentialIdentity === policy.targetCredentialIdentity && LOCKS.every((name) => finalLocks[name] === true), "RESTORE_TARGET_UNLOCKED");
+    assertRestoredDeadlines();
     return { status: "FILES_RESTORED_ACCESS_LOCKED", manifestDigest, overlayDigest, retentionDigest, databaseSanitized: true,
-      restoredObjects: restored, excludedObjects: manifest.entries.length - restored, customerAccessLocked: true };
+      restoredObjects: restored.length, excludedObjects: manifest.entries.length - restored.length, customerAccessLocked: true };
   } finally { clock.close(); }
 }

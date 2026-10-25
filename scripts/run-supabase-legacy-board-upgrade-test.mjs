@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { current087ClosedPhaseSql, historical086PhaseSql, prepareHistorical086Workspace } from "./lib/supabase-upgrade-phases.mjs";
+import { current090LockedPhaseSql, historical086PhaseSql, prepareHistorical086Workspace } from "./lib/supabase-upgrade-phases.mjs";
 
 const seed = fileURLToPath(new URL("../tests/integration/legacy-board-083-upgrade-seed.sql", import.meta.url));
 const verify = fileURLToPath(new URL("../tests/integration/legacy-board-084-upgrade-verify.sql", import.meta.url));
@@ -59,7 +59,7 @@ try {
   }
   sqlText(`create table public.board_retention_upgrade_preservation_fixture as ${preservedBoardRows};`);
   run("supabase", ["migration", "up", "--local"], undefined, false);
-  sqlText(`${current087ClosedPhaseSql}
+  sqlText(`${current090LockedPhaseSql}
     begin;
     do $$ declare replay_started_at timestamptz; begin
       -- The migration itself must preserve every field, including timestamps
@@ -105,4 +105,4 @@ try {
 }
 if (failure) throw failure;
 
-console.log("Migration 083 legacy board entitlements pass historical086 verification;087 preserves terminal replay integrity with launch locked.");
+console.log("Migration083 legacy board entitlements pass historical086 verification;090 preserves terminal replay integrity with purchasing locked.");

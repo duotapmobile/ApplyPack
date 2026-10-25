@@ -149,6 +149,44 @@ foreach ($mutation in @(
     if (!$rejected) { throw 'GUARD_ACCEPTED_086_HISTORY_REINTERPRETATION' }
     $checks++
 }
+# Every current forward boundary preserves its predecessor ledger and applies
+# only the missing, exact ordered suffix. The historical087 cases above remain.
+$current = Copy-Fixture
+$current.postSchemaVersion = '202610250090'
+foreach ($extra in @(
+    @('202610250088','service_retention_cleanup','SERVICE_RETENTION_CLEANUP','202610240087','ONE_OFF_SERVICE_RETENTION'),
+    @('202610250089','confirmed_intake','CONFIRMED_INTAKE','202610250088','SERVICE_RETENTION_CLEANUP'),
+    @('202610250090','matching_evidence_completion','MATCHING_EVIDENCE_COMPLETION','202610250089','CONFIRMED_INTAKE')
+)) {
+    $current.migrations += [pscustomobject]@{version=$extra[0];name=$extra[1];checkpoint=$extra[2];relativePath="supabase/migrations/$($extra[0])_$($extra[1]).sql";predecessor=$extra[3];predecessorCheckpoint=$extra[4];sha256=('a' * 64)}
+}
+Assert-ProductionDatabaseManifest -Manifest $current -Registry $registry
+$checks++
+foreach ($boundary in @('202610240087','202610250088','202610250089')) {
+    $advance = $current | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+    $advance.expectedSchemaVersion = $boundary
+    $advance.expectedLedger = @($entry) + @($advance.migrations | Where-Object { $_.version -cle $boundary } | ForEach-Object {
+        [pscustomobject]@{version=$_.version;name=$_.name;statementCount=1;statementsDigest=$_.sha256}
+    })
+    $text = @($advance.expectedLedger | ForEach-Object { "$($_.version):$($_.name):$($_.statementCount):$($_.statementsDigest)" }) -join "`n"
+    $advance.expectedLedgerSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($text))).ToLowerInvariant()
+    $advance.migrations = @($advance.migrations | Where-Object { $_.version -cgt $boundary })
+    Assert-ProductionDatabaseManifest -Manifest $advance -Registry $registry
+    $checks++
+    foreach ($mutation in @(
+        { param($x) $x.migrations[0].checkpoint='WRONG_CHECKPOINT' },
+        { param($x) $x.migrations[0].predecessor='202610190084' },
+        { param($x) $x.migrations=@($x.migrations) + @($x.migrations[-1]) },
+        { param($x) $x.expectedLedger[-1].statementsDigest=('9' * 64) }
+    )) {
+        $changed = $advance | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+        & $mutation $changed
+        $rejected=$false
+        try { Assert-ProductionDatabaseManifest -Manifest $changed -Registry $registry } catch { $rejected=$true }
+        if (!$rejected) { throw 'GUARD_ACCEPTED_CURRENT_FORWARD_DRIFT' }
+        $checks++
+    }
+}
 # The production entrypoints always read this committed registry. The fixture
 # registry above is passed only to the pure validator and grants no access.
 $actualRegistry = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../docs/launch/production-database-targets.json') -Raw | ConvertFrom-Json

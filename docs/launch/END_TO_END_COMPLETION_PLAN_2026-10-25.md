@@ -10,7 +10,7 @@ The system finds candidate jobs and prepares complete tailored documents. The ow
 
 Read [amendment19](../applypack/19_OCTOBER_25_CONFIRMED_INTAKE_AND_SERVICE_ERROR_AMENDMENT.md), the [intake and service-error protocol](../runbooks/INTAKE_REVIEW_AND_SERVICE_ERROR_CORRECTIONS.md), [paid-launch execution](../runbooks/PAID_LAUNCH_EXECUTION_2026-10-23.md), and [retention](../runbooks/ONE_OFF_RETENTION.md). Original handoff wording requiring a resume, manual authorship or a generic correction round is superseded prospectively. Historical contracts and evidence remain intact.
 
-Keep Railway, existing prices ($18.99 for exactly ten jobs; $7.99 per selected pack), invitation purchasing, one search/two packs per rolling 24 hours, the actual 24-hour clocks, private delivery, no subscription and no auto-apply. Keep approved formatting, truthful claims and owner approval. Obtain a consolidated quote before new spending. Existing unrelated backup drafts and unresolved cleanup/archive approvals are separate work; this plan does not grant or resolve those approvals.
+Keep Railway, existing prices ($18.99 for exactly ten jobs; $7.99 per selected pack), invitation purchasing, one search/two packs per rolling 24 hours, the actual 24-hour clocks, private delivery, no subscription and no auto-apply. Keep approved formatting, truthful claims and owner approval. Obtain a consolidated quote before new spending. The later consolidated preflight approved local implementation, fictional-data tests and Git publication for cleanup, database recovery and scoped protected-archive pruning; see the October25 approval entry in [implementation decisions](../evidence/IMPLEMENTATION_DECISIONS.md). Preserve existing backup drafts. Hosted deletion, deployment and new spending are not granted by that local approval.
 
 ## Completion scoring
 
@@ -25,6 +25,8 @@ Use an end-to-end agent score, not a percentage of files or tests written:
 | 4 | Production behavior verified and owner can operate the complete workflow |
 
 Overall status remains **1/4 at the audit baseline**. A green CI run does not advance the service past a broken intake-to-delivery step. Score only applicable stages; record partial component evidence without averaging away blockers. Each implementation work item must name its owner, dependencies, exact source revision, acceptance result/evidence, remaining limitation and next action. Proposed work is not a completed evidence row.
+
+Current local work is tracked in [the implementation progress ledger](IMPLEMENTATION_PROGRESS_2026-10-25.md). Its component checks do not replace the connected acceptance or final revision requirements below.
 
 ## Dependency-ordered inventory
 

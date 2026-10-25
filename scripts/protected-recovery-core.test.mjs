@@ -286,7 +286,90 @@ test("restore verifies exact archived versions with independent identity and rem
   assert.equal(result.restoredObjects, 4);
   assert.deepEqual(context.events.slice(0, 4), ["locks", "tombstones", "sanitize-database", "archive-read"]);
   assert.equal(result.databaseSanitized, true);
+  assert.equal(context.events.filter((event) => event === "sanitize-database").length, 2);
   assert.equal(context.events.at(-1), "locks");
+});
+function expiringRestoreObject(context, index = 0) {
+  context.latestInventory.objects[index].retentionExpiresAt = time(100);
+  context.latestInventory.references[index].retentionExpiresAt = time(100);
+  seal(context.latestInventory);
+}
+function expiringRestoreFamily(context, protectedOrder = false) {
+  context.latestInventory.serviceRetention.orders.push({ orderId: "11111111-1111-4111-8111-111111111111",
+    customerId: "22222222-2222-4222-8222-222222222222", legalReceiptId: "33333333-3333-4333-8333-333333333333",
+    actionExpiresAt: time(100), accessExpiresAt: time(100), familyExpiresAt: time(100),
+    protected: protectedOrder, state: "ACTIVE", purgedAt: null });
+  seal(context.latestInventory);
+}
+for (const phase of ["initial sanitization", "archive read"]) {
+  test(`restore refuses an object expiring during ${phase} before uploading it`, async () => {
+    const context = await restoreFixture(); expiringRestoreObject(context);
+    let currentTime = NOW; context.now = () => currentTime;
+    const adapter = phase === "initial sanitization" ? context.target : context.archiveReader;
+    const method = phase === "initial sanitization" ? "sanitizeDatabase" : "openObject";
+    const original = adapter[method];
+    adapter[method] = async (request) => { const result = await original(request); currentTime += 100; return result; };
+    await assert.rejects(restoreCheckpoint(context), /RESTORE_OBJECT_EXPIRED_RECONCILIATION_REQUIRED/u);
+    assert.equal(context.events.includes("restore-object"), false);
+    assert.equal(context.locks.customerAccessLocked, true);
+  });
+}
+for (const uploadNumber of [1, 2]) {
+  test(`restore remains incomplete when an uploaded object expires during upload ${uploadNumber}`, async () => {
+    const context = await restoreFixture(); expiringRestoreObject(context);
+    let currentTime = NOW; let uploads = 0; context.now = () => currentTime;
+    const put = context.target.putPrivateObject;
+    context.target.putPrivateObject = async (request) => {
+      const result = await put(request); if (++uploads === uploadNumber) currentTime += 100; return result;
+    };
+    await assert.rejects(restoreCheckpoint(context), /RESTORE_UPLOADED_OBJECT_EXPIRED_RECONCILIATION_REQUIRED/u);
+    assert.equal(uploads, uploadNumber);
+    assert.equal(context.events.filter((event) => event === "sanitize-database").length, 1);
+    assert.equal(context.locks.customerAccessLocked, true);
+  });
+}
+for (const phase of ["final sanitization", "final lock check"]) {
+  test(`restore rechecks uploaded-object expiry after ${phase}`, async () => {
+    const context = await restoreFixture(); expiringRestoreObject(context);
+    let currentTime = NOW; let calls = 0; context.now = () => currentTime;
+    const method = phase === "final sanitization" ? "sanitizeDatabase" : "assertLocked";
+    const original = context.target[method];
+    context.target[method] = async (request) => {
+      const result = await original(request); if (++calls === 2) currentTime += 100; return result;
+    };
+    await assert.rejects(restoreCheckpoint(context), /RESTORE_UPLOADED_OBJECT_EXPIRED_RECONCILIATION_REQUIRED/u);
+    assert.equal(context.locks.customerAccessLocked, true);
+  });
+}
+for (const phase of ["initial", "final"]) {
+  test(`a family expiring during ${phase} sanitization cannot reuse an earlier digest receipt`, async () => {
+    const context = await restoreFixture(); expiringRestoreFamily(context);
+    let currentTime = NOW; let calls = 0; context.now = () => currentTime;
+    const sanitize = context.target.sanitizeDatabase;
+    context.target.sanitizeDatabase = async (request) => {
+      const result = await sanitize(request); if (++calls === (phase === "initial" ? 1 : 2)) currentTime += 100; return result;
+    };
+    await assert.rejects(restoreCheckpoint(context), /RESTORE_DATABASE_EXPIRY_RECONCILIATION_REQUIRED/u);
+    if (phase === "initial") assert.equal(context.events.includes("archive-read"), false);
+    assert.equal(context.locks.customerAccessLocked, true);
+  });
+}
+test("a protected family does not lose its hold when the nominal deadline crosses during restore", async () => {
+  const context = await restoreFixture(); expiringRestoreFamily(context, true);
+  let currentTime = NOW; context.now = () => currentTime;
+  const put = context.target.putPrivateObject;
+  context.target.putPrivateObject = async (request) => { const result = await put(request); currentTime += 100; return result; };
+  assert.equal((await restoreCheckpoint(context)).status, "FILES_RESTORED_ACCESS_LOCKED");
+});
+test("final sanitization failure cannot produce a completed restore after files were copied", async () => {
+  const context = await restoreFixture(); let calls = 0;
+  const sanitize = context.target.sanitizeDatabase;
+  context.target.sanitizeDatabase = async (request) => {
+    const result = await sanitize(request); return ++calls === 2 ? { ...result, expiredPrivateRecordsRemaining: 1 } : result;
+  };
+  await assert.rejects(restoreCheckpoint(context), /RESTORE_DATABASE_SANITIZATION_UNVERIFIED/u);
+  assert.equal(context.events.filter((event) => event === "restore-object").length, 4);
+  assert.equal(context.locks.customerAccessLocked, true);
 });
 for (const target of [RECOVERY.projectRef, "fmugizadzdnqfckujqlw", "unregisteredtargetxx"]) {
   test(`restore refuses production, staging or unregistered target ${target}`, async () => {

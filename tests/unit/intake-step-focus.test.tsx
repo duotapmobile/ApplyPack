@@ -30,7 +30,7 @@ async function reachSecondStep() {
   await screen.findByRole("heading", { name: "Start with your documents" });
   fireEvent.change(screen.getByLabelText("Full name required"), { target: { value: "Keyboard Customer" } });
   fireEvent.change(screen.getByLabelText(/^Email address required/), { target: { value: "keyboard@example.invalid" } });
-  fireEvent.change(screen.getByLabelText(/^Current resume required/), {
+  fireEvent.change(screen.getByLabelText(/^Resume required/), {
     target: { files: [new File(["%PDF-1.7\n%%EOF"], "synthetic-resume.pdf", { type: "application/pdf" })] },
   });
   fireEvent.click(screen.getByRole("button", { name: /save and continue/i }));
@@ -80,6 +80,7 @@ describe("intake step focus", () => {
     fireEvent.click(screen.getAllByRole("checkbox", { name: /Coordinating projects/ })[0]);
     fireEvent.click(screen.getByRole("button", { name: /save and continue/i }));
     await screen.findByRole("heading", { name: "Confirm experience and skills" });
+    fireEvent.click(screen.getByLabelText(/I checked for missing or outdated/));
     fireEvent.click(screen.getByRole("button", { name: /save and continue/i }));
     await screen.findByRole("heading", { name: "Set requirements and review" });
     fireEvent.click(screen.getByRole("button", { name: "Edit contact and documents" }));

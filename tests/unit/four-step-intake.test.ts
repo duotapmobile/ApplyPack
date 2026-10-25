@@ -29,8 +29,8 @@ describe("four-step intake contract", () => {
   it("requires a presented affirmative outcome for every search-critical fact", () => {
     const fact = { id: "10000000-0000-4000-8000-000000000001", semanticKey: "role", displayLabel: "Role", displayValue: "Coordinator",
       tier: "SEARCH_CRITICAL" as const, verification: "EXTRACTED_UNCONFIRMED" as const, documentVersionId: "20000000-0000-4000-8000-000000000001", sourceLocator: "page 1" };
-    expect(validateFourStep(2, emptyFourStepDraft, { resume: null, facts: [fact], presentedFactIds: new Set() })[0].fieldId).toBe(`fact-${fact.id}`);
-    const reviewed = { ...emptyFourStepDraft, factReviews: { [fact.id]: "CONFIRM" as const } };
+    expect(validateFourStep(2, { ...emptyFourStepDraft, backgroundReviewed: true }, { resume: null, facts: [fact], presentedFactIds: new Set() })[0].fieldId).toBe(`fact-${fact.id}`);
+    const reviewed = { ...emptyFourStepDraft, backgroundReviewed: true, factReviews: { [fact.id]: "CONFIRM" as const } };
     expect(validateFourStep(2, reviewed, { resume: null, facts: [fact], presentedFactIds: new Set([fact.id]) })).toEqual([]);
   });
 
@@ -43,7 +43,7 @@ describe("four-step intake contract", () => {
   });
 
   it("asks task-based tool questions adaptively without inferring advanced capability", () => {
-    expect(relevantToolFamilies({ ...emptyFourStepDraft, desiredActivities: ["PREPARING_REPORTS"] })).toEqual({ excel: true, systems: false });
+    expect(relevantToolFamilies({ ...emptyFourStepDraft, desiredActivities: ["PREPARING_REPORTS"] })).toEqual({ excel: false, systems: false });
     expect(relevantToolFamilies(emptyFourStepDraft, ["used a CRM"])).toEqual({ excel: false, systems: true });
     expect(emptyFourStepDraft.capabilities.SYSTEM_SQL).toBeUndefined();
   });
@@ -107,7 +107,7 @@ describe("four-step intake contract", () => {
     expect(snapshot.preferredEmploymentType).toBe("PART_TIME");
     expect(snapshot.workConditionPreferences).toEqual(draft.workConditionPreferences);
     expect(snapshot.employerUnknownPolicies).toEqual(draft.employerUnknownPolicies);
-    expect(snapshot.schemaVersion).toBe("applypack-intake-v3");
+    expect(snapshot.schemaVersion).toBe("applypack-intake-v4");
   });
 
   it("requires unknown handling for dealbreakers, required benefits, and hard work conditions", () => {
@@ -135,6 +135,7 @@ describe("four-step intake contract", () => {
 
   it("supports every recognizable structured correction category without a generic text collapse", () => {
     const validCorrections = [
+      { category: "FIELD_EDITS", fields: { employer: "Acme", historicalTitle: "Team lead", phone: "555 0100" } },
       { category: "EMPLOYER_OR_ORGANIZATION", employerOrOrganization: "Acme" },
       { category: "ROLE_OR_RELATIONSHIP", roleOrRelationship: "Coordinator" },
       { category: "DATE_RANGE", startsOn: "2024-01-01", endsOn: "2024-12-31", datePrecision: "MONTH" },

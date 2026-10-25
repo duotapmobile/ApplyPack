@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import type { IntakeSourceMode } from "@/lib/intake/admin-source-status";
 
-type SearchOrder = { id: string; delivery_deadline: string | null; intake_id: string | null; source_scan_status: string; source_deleted: boolean; has_cover_letter: boolean; intake_details: Record<string, unknown>; suggested_matches: Record<string, unknown>[] };
+type SearchOrder = { id: string; delivery_deadline: string | null; intake_id: string | null; source_scan_status: string; source_entry_mode?: IntakeSourceMode; source_deleted: boolean; has_cover_letter: boolean; intake_details: Record<string, unknown>; suggested_matches: Record<string, unknown>[] };
 type ApplyItem = { id: string; order_id: string; status: string; company: string; title: string; emphasis_notes: string | null; do_not_mention_notes: string | null; customer_update_notes: string | null; draft_resume_path: string | null; draft_cover_letter_path: string | null; draft_generated_at: string | null; draft_generator_version: string | null };
 type Review = { id: string; explanation?: string; correction_text?: string; company: string; title: string };
 type CapacityLimit = { kind: string; units_per_24h: number; enabled: boolean };
@@ -70,7 +71,10 @@ export function AdminOperations({ searchOrders, applyItems, conflicts, correctio
           <summary>Approved intake and search criteria</summary>
           <pre className="admin-json">{JSON.stringify(order.intake_details, null, 2)}</pre>
         </details>
-        {order.source_deleted ? <p>Source documents were deleted under the retention policy.</p> : order.source_scan_status === "clean" && order.intake_id ? <div className="admin-buttons">
+        {order.source_deleted ? <p>Source documents were deleted under the retention policy.</p>
+          : order.source_entry_mode === "GUIDED" ? <p>Guided background; no resume uploaded. Review the customer-confirmed background and criteria.</p>
+          : order.source_entry_mode === "UNAVAILABLE" ? <p role="status">Source details could not be verified. Refresh before retrieving a source document.</p>
+          : order.source_scan_status === "clean" && order.intake_id ? <div className="admin-buttons">
           <a href={"/api/admin/intakes/" + order.intake_id + "/source?kind=resume"}>Download source resume</a>
           {order.has_cover_letter ? <a href={"/api/admin/intakes/" + order.intake_id + "/source?kind=cover_letter"}>Download source cover letter</a> : null}
         </div> : <p role="status">Source retrieval locked: document safety status is {order.source_scan_status}.</p>}

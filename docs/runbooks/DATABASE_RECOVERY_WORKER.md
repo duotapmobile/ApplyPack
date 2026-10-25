@@ -1,0 +1,49 @@
+# Database recovery worker
+
+Status: local implementation; hosted deployment, registration and full recovery proof remain open. The owner authorized local implementation, fictional-data tests and Git publication. This document does not authorize a provider mutation, customer deletion, new spending or launch activation.
+
+## Scope
+
+The separate `Dockerfile.database-recovery` worker creates an encrypted, versioned database companion for an already acknowledged private-file checkpoint. It holds a PostgreSQL repeatable-read, read-only exported snapshot, checks complete readable coverage, compares the private-file/retention graph against the acknowledged file checkpoint, streams a complete custom-format database dump, and records role definitions and PG17 membership options without role passwords or arbitrary configuration. The final manifest is published only after the dump exits successfully, every exact checksum/version/KMS acknowledgement passes and the held session closes.
+
+This is a database backup component. Its result deliberately says `serviceRecoveryComplete: false` and `readinessUpdated: false`. It does not replace the protected-file worker or prove independent recovery, recovered authentication, account permissions, current retention filtering, Stripe reconciliation or recovery time. Database dumps contain Storage metadata; file bytes remain in the exact companion file manifest.
+
+## Configuration and separation
+
+The source contract fixes production direct host `db.spjaaxndiduhrcleazwb.supabase.co:5432`, database `postgres`, dedicated role `applypack_recovery_exporter`, schema `202610250090` (cleanup088, confirmed-intake089 and reviewed-commute090). Registration is separate from migration approval. `docs/launch/database-recovery-targets.json` is intentionally empty until an operator verifies the source, dedicated read-only grants and CA, then publishes a reviewed target. Do not fill it from inferred provider settings. A later forward schema requires an explicit compatible protocol/registration update and affected checks. Guided intake with no uploaded document remains in the row count and creates no invented file reference; its private database fields are included by the complete dump.
+
+Required environment names are:
+
+- `APP_DATABASE_BACKUP_ENABLED=true`, `APP_DEPLOYMENT_ENV=production`, `APP_EXPECTED_RELEASE_SHA` and identical `RAILWAY_GIT_COMMIT_SHA`.
+- `APP_DATABASE_BACKUP_TARGET_ID` and `APP_DATABASE_BACKUP_REGISTRY_SHA256` (canonical JSON SHA-256 of the checked-in registry).
+- `APP_DATABASE_BACKUP_DB_PASSWORD` and `APP_DATABASE_BACKUP_DB_CA_PEM_BASE64`, supplied through the separate worker's provider secret storage. The password is never a command argument or file; only the pinned PostgreSQL child receives it.
+- `APP_DATABASE_BACKUP_BUCKET`, `APP_DATABASE_BACKUP_KMS_KEY_ARN`, `APP_AWS_ACCOUNT_ID=838445019912`, `AWS_REGION=us-east-1`.
+- `APP_DATABASE_BACKUP_AWS_RA_DEPLOYMENT_ENV`, `ROLE_ARN`, `PROFILE_ARN`, `TRUST_ANCHOR_ARN`, `HELPER_PATH`, `CERTIFICATE_SHA256`, `CA_CERTIFICATE_SHA256`, `CERTIFICATE_PEM_BASE64`, `CA_CERTIFICATE_PEM_BASE64`, `PRIVATE_KEY_PEM_BASE64` (each final name starts with `APP_DATABASE_BACKUP_AWS_RA_`).
+
+The container uses pinned PostgreSQL 17.11 clients, root-owned byte hashes, TLS `verify-full` and the registered CA hash. It rejects ambient libpq connections, Supabase keys, other workload identities and AWS default credential chains. Official image metadata `PG_MAJOR`, `PG_VERSION` and `PGDATA` is permitted but is never copied into client environments. The separate Roles Anywhere identity may write only `database/` and read acknowledged exact `manifests/` versions. It has no database-dump read/delete, file-object write, bucket configuration or application-heartbeat permission.
+
+The role must have readable tables/sequences across the database, `BYPASSRLS`, and access to the finite retention-overlay function, with no superuser, write, schema-create, database-create, other role memberships or unreviewed executable SECURITY DEFINER functions. Verify actual provider-supported grants before registration. This worker never creates the role or broadens grants itself. If provider constraints prevent this shape, keep it disabled and review a bounded alternate source design; do not use the general production owner password.
+
+## Execution and limits
+
+The container's default entrypoint is `node scripts/run-database-recovery.mjs`, with no arguments. It fails before reading credentials when disabled or when the deployed release differs. Run it as a separate scheduled service after its dependency file checkpoint has succeeded. Do not share the web, maintenance or file-writer service environment.
+
+One run is limited to five minutes and a 128 MiB database dump. The exact file checkpoint watermark and unchanged graph must remain fresh through publication. A graph change, retention change, expired checkpoint, unreadable relation, foreign table, unknown schema, invalid role, stream failure, nonzero dump exit or incomplete acknowledgement fails closed. The worker never falls back to a partial/table-filtered backup. Schedule cadence and service memory must be verified under actual load against the agreed fifteen-minute recovery/reconciliation limit; a schedule alone does not establish that target.
+
+No plaintext dump is written to disk. The bounded S3 adapter keeps one in-memory copy and clears its owned buffers after completion/failure. The CA is public material placed in a private temporary directory; child cleanup and scoped directory removal run after every outcome. Only fixed failure codes and content-free manifest/version receipts may enter logs. Retain successful receipts in independently recoverable protected evidence so an operator does not need a mutable newest-object guess.
+
+An uncertain S3 result is not success. Preserve the attempt's receipt/log and reconcile exact objects through a separately authorized recovery operator. A retry may leave another encrypted immutable version; ordinary write identity cannot prune it. Local implementation and fictional-data testing of scoped archive pruning are approved. The approved file-archive pruning scope covers `objects/` and `manifests/`; the existing planner is read-only and its deletion executor remains incomplete. This database writer has no deletion capability. A database recovery-copy lifecycle covering `database/` still needs implementation and validation consistent with retention obligations before recurring production copies are enabled. Hosted deletion remains separately unauthorized by the local approval.
+
+## Verification
+
+`npm run test:database-recovery` covers the connected runner with synthetic source/provider boundaries, exported-snapshot and role validation, graph binding, byte limits, partial/failed dumps, lost/stalled operations, final publication order, exact encrypted version acknowledgements, workload separation and cleanup.
+
+Build `Dockerfile.database-recovery`, then run `npm run test:database-recovery-image -- applypack-database-recovery:<local-tag>`. The smoke test requires an already-built local image. It creates only disposable containers with no external network, published ports, credentials or host mounts, read-only root, private tmpfs, non-root UID, dropped capabilities and bounded memory/processes. It verifies disabled startup and runs the actual runner/source/PostgreSQL/core/S3 composition with a synthetic registry, test-only Unix-socket process adapter and in-memory fake archive. Real pinned clients export a snapshot, concurrent synthetic data changes afterward, and a real restore must retain the snapshot's earlier rows, forced RLS, auth rows, private bucket metadata and migration ledger. This is structural fixture proof; the fake archive, same-cluster roles and local socket do not establish real AWS storage, TLS, independent role/bootstrap recovery or customer authorization. Container teardown is verified.
+
+CI runs the offline suite and separately builds, smoke-tests and scans the image on the tested checkout. The scan must include Debian, PostgreSQL client, application Node dependencies and signing-helper Go inventory and reject all high/critical vulnerabilities without suppression. The exact committed SHA's successful CI/image evidence remains required.
+
+## Full recovery remains separately gated
+
+Keep checkout/intake, outbound email, callbacks and scheduled writers locked. Recover the selected database manifest and every exact referenced version with an independently held authorized identity; verify checksums, KMS context, source, release, schema and paired file graph before restore. Recreate required roles/grants through reviewed provider-aware bootstrap, never execute JSON metadata as arbitrary SQL or blindly recreate provider-owned superusers. Restore only to a named isolated empty recovery target, preserve ownership/RLS/financial/consent state, and reapply the latest durable retention/hold/deletion overlay before customer access. A historical dump cannot reopen expired access or resurrect private content.
+
+Demonstrate loss of the original machine and operator credentials; recover private files, encryption keys, authentication and configuration; verify owner download and wrong-owner denial; reconcile every paid Stripe transaction since the checkpoint; measure at most 240 minutes recovery and fifteen minutes of recent data requiring recovery/reconciliation. Required alerts must report failed/missing combined checkpoints independently of this writer. These acceptance items are not satisfied by a successful archive or local round trip. See [launch database operations](LAUNCH_DATABASE_OPERATIONS.md), [one-off retention](ONE_OFF_RETENTION.md) and [the completion plan](../launch/END_TO_END_COMPLETION_PLAN_2026-10-25.md).

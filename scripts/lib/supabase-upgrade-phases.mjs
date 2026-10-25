@@ -41,18 +41,25 @@ export const historical086PhaseSql = `do $$ begin
   then raise exception 'historical_086_upgrade_phase_not_ready'; end if;
 end $$;`;
 
-export const current087ClosedPhaseSql = `do $$ begin
-  if (select max(version) from supabase_migrations.schema_migrations) is distinct from '202610240087'
-    or public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610240087'
-    or public.ap_manual_launch_schema_readiness()->>'ready' is distinct from 'false'
-    or public.ap_one_off_retention_schema_installed()
-    or to_regprocedure('public.ap_claim_expired_service_retention(integer)') is not null
-    or to_regprocedure('public.ap_authorize_service_retention_object(uuid,uuid)') is not null
-    or to_regprocedure('public.ap_finish_service_retention_object(uuid,uuid)') is not null
-    or to_regprocedure('public.ap_apply_retention_restore_overlay(text,text)') is not null
+// Schema installation readiness is distinct from checkout or hosted launch approval.
+export const current090LockedPhaseSql = `do $$ begin
+  if (select max(version) from supabase_migrations.schema_migrations) is distinct from '202610250090'
+    or public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610250090'
+    or public.ap_manual_launch_schema_readiness()->>'ready' is distinct from 'true'
+    or not public.ap_one_off_retention_schema_installed()
+    or to_regprocedure('public.ap_claim_expired_service_retention(integer)') is null
+    or to_regprocedure('public.ap_authorize_service_retention_object(uuid,uuid)') is null
+    or to_regprocedure('public.ap_finish_service_retention_object(uuid,uuid)') is null
+    or to_regprocedure('public.ap_apply_retention_restore_overlay(text,text)') is null
     or not exists(select 1 from public.ap_migration_checkpoints
       where migration_id='202610240087' and checkpoint='ONE_OFF_SERVICE_RETENTION')
+    or not exists(select 1 from public.ap_migration_checkpoints
+      where migration_id='202610250088' and checkpoint='SERVICE_RETENTION_CLEANUP')
+    or not exists(select 1 from public.ap_migration_checkpoints
+      where migration_id='202610250089' and checkpoint='CONFIRMED_INTAKE')
+    or not exists(select 1 from public.ap_migration_checkpoints
+      where migration_id='202610250090' and checkpoint='MATCHING_EVIDENCE_COMPLETION')
     or not exists(select 1 from public.ap_checkout_mode_configuration where singleton and mode='LOCKED')
     or not exists(select 1 from public.ap_commerce_configuration where singleton and not checkout_enabled)
-  then raise exception 'current_087_upgrade_phase_not_safely_closed'; end if;
+  then raise exception 'current_090_upgrade_phase_not_installed_and_locked'; end if;
 end $$;`;

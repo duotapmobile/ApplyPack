@@ -1,7 +1,8 @@
 import "server-only";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { emptyFourStepDraft, fourStepDraftSchema, type FourStepDraft, type IntakeDocument, type FactSuggestion } from "./four-step";
+import { editableFactValues, emptyFourStepDraft, fourStepDraftSchema, type FourStepDraft, type IntakeDocument, type FactSuggestion } from "./four-step";
+import { readableFact } from "./confirmed-review";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
@@ -18,8 +19,8 @@ export async function fourStepPrivateState(admin: AdminClient, draftId: string) 
       .select("id,version,kind,safe_display_name,size_bytes,verified_mime_type,processing_state,failure_code,structural_review_ready_at,structural_policy,malware_deferred,parse_status")
       .eq("draft_id", draftId).eq("is_current", true),
     admin.from("ap_candidate_facts")
-      .select("id,semantic_key,fact_tier,verification,document_version_id,source_locator,customer_display_label,customer_display_value")
-      .eq("draft_id", draftId).is("superseded_at", null),
+      .select("id,semantic_key,fact_tier,verification,document_version_id,source_locator,customer_display_label,customer_display_value,typed_value")
+      .eq("draft_id", draftId).is("snapshot_id", null),
     admin.from("ap_fact_presentations").select("fact_id").eq("draft_id", draftId),
   ]);
   if (documentsResult.error || factsResult.error || presentationsResult.error) throw new Error("four_step_state_unavailable");
@@ -30,13 +31,15 @@ export async function fourStepPrivateState(admin: AdminClient, draftId: string) 
       ? "REVIEW_READY" : row.processing_state as IntakeDocument["processingState"], failureCode: row.failure_code ? String(row.failure_code) : null,
   }));
   const facts = (factsResult.data || []).flatMap((row: Record<string, unknown>): FactSuggestion[] => {
-    if (!row.customer_display_label || !row.customer_display_value || !row.document_version_id) return [];
+    if (!row.customer_display_label || !row.customer_display_value || !row.document_version_id || !documents.some((document) => document.id === row.document_version_id)) return [];
     const value = row.customer_display_value as Record<string, unknown>;
-    const displayValue = typeof value.summary === "string" ? value.summary : null;
+    const typed = row.typed_value && typeof row.typed_value === "object" && !Array.isArray(row.typed_value)
+      ? Object.fromEntries(Object.entries(row.typed_value).filter(([key]) => !["sourceFactIds", "sourceDocumentFactId", "employmentFactId"].includes(key))) : null;
+    const displayValue = typed && Object.keys(typed).length ? readableFact(typed) : typeof value.summary === "string" ? value.summary : null;
     if (!displayValue) return [];
     return [{ id: String(row.id), semanticKey: String(row.semantic_key), displayLabel: String(row.customer_display_label),
       displayValue, tier: row.fact_tier as FactSuggestion["tier"], verification: row.verification as FactSuggestion["verification"],
-      documentVersionId: String(row.document_version_id), sourceLocator: String(row.source_locator) }];
+      documentVersionId: String(row.document_version_id), sourceLocator: String(row.source_locator), editableValues: editableFactValues(typed) }];
   });
   return { documents, facts, presentedFactIds: (presentationsResult.data || []).map((row: Record<string, unknown>) => String(row.fact_id)) };
 }

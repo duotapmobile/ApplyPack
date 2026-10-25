@@ -11,7 +11,7 @@ import { runStructuralDatabaseRecovery } from "./lib/supabase-structural-recover
 
 const hash = (text) => createHash("sha256").update(text).digest("hex");
 const now = Date.parse("2026-10-23T12:00:00.000Z");
-const identity = { candidateSha: "a".repeat(40), schemaVersion: "202610240087",
+const identity = { candidateSha: "a".repeat(40), schemaVersion: "202610250090",
   launchSchemaSha256: "b".repeat(64), migrationSetSha256: "c".repeat(64) };
 const reference = "https://github.com/duotapmobile/ApplyPack/issues/123#issuecomment-456";
 
@@ -169,8 +169,8 @@ test("actual source identity hashes all migrations and refuses dirty, wrong-root
   try {
     mkdirSync(join(dir, "src/lib/operations"), { recursive: true });
     mkdirSync(join(dir, "supabase/migrations"), { recursive: true });
-    writeFileSync(join(dir, "src/lib/operations/launch-schema.ts"), 'export const REQUIRED_LAUNCH_SCHEMA_VERSION = "202610240087";\n');
-    const migration = join(dir, "supabase/migrations/202610240087_example.sql");
+    writeFileSync(join(dir, "src/lib/operations/launch-schema.ts"), 'export const REQUIRED_LAUNCH_SCHEMA_VERSION = "202610250090";\n');
+    const migration = join(dir, "supabase/migrations/202610250090_example.sql");
     writeFileSync(migration, "select 1;\n");
     const fakeGit = (overrides = {}) => (_command, args) => {
       const command = args.slice(2).join(" ");
@@ -223,7 +223,7 @@ for (const [name, results, expected] of [
     assert.deepEqual(calls[1], { command: "supabase", args: ["db", "reset", "--local"], stdin: undefined });
     if (calls[2]) {
       assert.match(calls[2].stdin, /ap_upgrade_completed_intake_legal_acceptance/);
-      assert.match(calls[2].stdin, /requiredSchemaVersion'='202610240087'/);
+      assert.match(calls[2].stdin, /requiredSchemaVersion'='202610250090'/);
       assert.match(calls[2].stdin, /STAGING_REHEARSAL_CHECKOUT_ATTEMPTS/);
       assert.match(calls[2].stdin, /SANDBOX_VALIDATION_LAUNCH_ACTIVATION/);
       assert.match(calls[2].stdin, /supabase_migrations.schema_migrations/);

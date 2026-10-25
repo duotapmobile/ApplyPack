@@ -98,6 +98,7 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
     releaseSha: false,
     legalContent: false,
     protectedRecovery: false,
+    serviceRetention: process.env.APP_SERVICE_RETENTION_ENABLED === "true",
   };
   const deployedSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.APP_RELEASE_SHA || "";
   let capacityAvailable = false;

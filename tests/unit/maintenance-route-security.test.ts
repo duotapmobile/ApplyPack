@@ -4,7 +4,7 @@ vi.mock("server-only", () => ({}));
 
 const dependencies = vi.hoisted(() => Object.fromEntries([
   "adminClient", "collectOperationsSummary", "recordMaintenanceDiagnosis", "recordMaintenanceFailure", "recordMaintenanceOutcome", "maintenanceActionsSucceeded",
-  "processUnpaidSourceRetention", "processPendingFileScans", "processPendingDocumentExtractions", "processPendingFeasibilityRequests", "processWorkflowTasks",
+  "processUnpaidSourceRetention", "processServiceRetention", "processPendingFileScans", "processPendingDocumentExtractions", "processPendingFeasibilityRequests", "processWorkflowTasks",
   "retryFailedEmails", "processChunk4Workers", "reconcileBoardSubscriptions", "reconcileCheckoutInitiations", "processAwsTemporaryCleanup", "stripeClient", "sendTransactionalEmail",
 ].map(name => [name, vi.fn()])) as Record<string, ReturnType<typeof vi.fn>>);
 vi.mock("@/lib/supabase/admin", () => ({ createSupabaseAdminClient: dependencies.adminClient }));
@@ -18,6 +18,7 @@ vi.mock("@/lib/operations/maintenance-observability", () => ({
   maintenanceActionsSucceeded: dependencies.maintenanceActionsSucceeded,
 }));
 vi.mock("@/lib/files/unpaid-retention", () => ({ processUnpaidSourceRetention: dependencies.processUnpaidSourceRetention }));
+vi.mock("@/lib/files/service-retention", () => ({ processServiceRetention: dependencies.processServiceRetention }));
 vi.mock("@/lib/files/aws-temporary-cleanup", () => ({ processAwsTemporaryCleanup: dependencies.processAwsTemporaryCleanup }));
 vi.mock("@/lib/files/process-scans", () => ({ processPendingFileScans: dependencies.processPendingFileScans }));
 vi.mock("@/lib/files/isolated-extraction", () => ({ processPendingDocumentExtractions: dependencies.processPendingDocumentExtractions }));
@@ -52,6 +53,7 @@ describe("maintenance authorization and independent queues", () => {
     vi.stubEnv("VERCEL_GIT_COMMIT_SHA", "");
     vi.stubEnv("APP_ADMIN_ALERT_EMAIL", "");
     vi.stubEnv("APP_LEGACY_BOARD_MAINTENANCE_ENABLED", "true");
+    vi.stubEnv("APP_SERVICE_RETENTION_ENABLED", "true");
     Object.values(dependencies).forEach(mock => mock.mockReset());
     dependencies.adminClient.mockReturnValue({ from: vi.fn(query), rpc: vi.fn().mockResolvedValue({ data: 0, error: null }),
       storage: { from: vi.fn(() => ({ remove: vi.fn().mockResolvedValue({ error: null }) })) } });
@@ -70,6 +72,7 @@ describe("maintenance authorization and independent queues", () => {
         || (action.status === "SKIPPED" && allowed.has(action.code)));
     });
     dependencies.processUnpaidSourceRetention.mockResolvedValue({ processed: 0, deleted: 0, failed: 0, skipped: 0 });
+    dependencies.processServiceRetention.mockResolvedValue({ claimed: 0, attempted: 0, deleted: 0, completed: 0, failed: 0 });
     dependencies.processPendingDocumentExtractions.mockResolvedValue({ processed: 0, succeeded: 0 });
     dependencies.processPendingFileScans.mockResolvedValue({ processed: 0 });
     dependencies.processPendingFeasibilityRequests.mockResolvedValue({ processed: 0 });
@@ -87,6 +90,7 @@ describe("maintenance authorization and independent queues", () => {
     expect((await POST(new Request("https://example.test/api/cron/maintenance", { method: "POST" }))).status).toBe(401);
     expect(dependencies.adminClient).not.toHaveBeenCalled();
     expect(dependencies.processUnpaidSourceRetention).not.toHaveBeenCalled();
+    expect(dependencies.processServiceRetention).not.toHaveBeenCalled();
     expect(dependencies.processAwsTemporaryCleanup).not.toHaveBeenCalled();
   });
   it.each([
@@ -199,6 +203,7 @@ describe("maintenance authorization and independent queues", () => {
     expect((await POST(request())).status).toBe(503);
     expect(dependencies.processPendingDocumentExtractions).not.toHaveBeenCalled();
     expect(dependencies.processUnpaidSourceRetention).toHaveBeenCalledWith(expect.anything(), 10);
+    expect(dependencies.processServiceRetention).toHaveBeenCalledWith();
     expect(dependencies.processAwsTemporaryCleanup).toHaveBeenCalledWith(expect.anything(), { now: expect.any(Date) });
     expect(dependencies.reconcileBoardSubscriptions).toHaveBeenCalledOnce();
   });
@@ -250,6 +255,21 @@ describe("maintenance authorization and independent queues", () => {
     expect(await response.json()).toMatchObject({ queueStages: { unpaidSourceRetention: "FAILED" } });
     expect(dependencies.processWorkflowTasks).toHaveBeenCalledOnce();
     expect(dependencies.reconcileBoardSubscriptions).toHaveBeenCalledOnce();
+  });
+  it("reports one-off cleanup failure while other paid obligations continue", async () => {
+    dependencies.processServiceRetention.mockResolvedValue({ claimed: 1, attempted: 1, deleted: 0, completed: 0, failed: 1 });
+    const response = await POST(request());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ queueStages: { serviceRetention: "FAILED" } });
+    expect(dependencies.reconcileCheckoutInitiations).toHaveBeenCalledOnce();
+    expect(dependencies.processChunk4Workers).toHaveBeenCalledOnce();
+  });
+  it.each([undefined, "false", "TRUE"])("does not execute service-content deletion without explicit enablement (%s)", async (enabled) => {
+    vi.stubEnv("APP_SERVICE_RETENTION_ENABLED", enabled);
+    const response = await POST(request());
+    expect(await response.json()).toMatchObject({ queueStages: { serviceRetention: "SKIPPED" } });
+    expect(dependencies.processServiceRetention).not.toHaveBeenCalled();
+    expect(dependencies.reconcileCheckoutInitiations).toHaveBeenCalledOnce();
   });
   it("reports unresolved checkout provider outcomes without stopping other paid obligations", async () => {
     dependencies.reconcileCheckoutInitiations.mockResolvedValue({ processed: 1, unresolved: 1 });

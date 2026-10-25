@@ -13,6 +13,7 @@ export const researchActions = [
   ["BEGIN", "Start a research round"], ["QUESTION", "Ask the customer for a missing fact"],
   ["MATCH_EVIDENCE", "Compare an employer requirement with candidate evidence"],
   ["CATEGORICAL_USEFULNESS", "Review whether this job is worth applying to"],
+  ["COMMUTE", "Check the route to an on-site or hybrid job"],
   ["CUSTOMER_CRITERION", "Review a customer requirement"], ["COMPENSATION_COMPARABILITY", "Review compensation comparability"],
   ["ADJACENT_EQUIVALENCE", "Review equivalent experience in another setting"],
   ["PARSER_CORRECTION", "Correct captured listing text"], ["EVALUATE", "Calculate the match from completed reviews"],
@@ -41,7 +42,7 @@ export function MatchingReviewForm({ snapshotId, packet, action, member, onPrepa
   const snapshot = evidenceRows(packet.ap_intake_snapshots).find((item) => item.id === snapshotId);
   const activeKeys = [...new Set(evidenceRows(packet.ap_match_evaluations).filter((item) => item.job_snapshot_id === jobId && !item.invalidated_at)
     .flatMap((evaluation) => Array.isArray(evaluation.active_root_keys) ? evaluation.active_root_keys : [])
-    .filter((key): key is string => typeof key === "string" && key.startsWith("customer:")))];
+    .filter((key): key is string => typeof key === "string" && key.startsWith("customer:") && !key.startsWith("customer:commute")))];
   const criterion = nodes.find((node) => node.id === nodeId);
   const sameCriterionNodes = nodes.filter((node) => criterion && node.stable_criterion_id === criterion.stable_criterion_id);
   const adjacentReviews = reviews.filter((review) => review.review_kind === "ADJACENT_EQUIVALENCE"

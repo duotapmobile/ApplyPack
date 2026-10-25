@@ -18,17 +18,20 @@ async function completeFeasibilityOnce(page: Page, state: string) {
   await gotoStable(page, `/get-started?feasibility=${encodeURIComponent(state)}${invitation}`);
   await page.getByLabel("Full name required").fill("Synthetic Evidence Customer");
   await page.getByLabel("Email address required").fill("chunk4-evidence@example.invalid");
-  await page.getByLabel("Current resume required").setInputFiles(resume);
+  await page.getByLabel("Resume required").setInputFiles(resume);
   await page.getByRole("button", { name: /save and continue/i }).click();
   await page.getByRole("checkbox", { name: /Coordinating projects/ }).first().check();
   await page.getByRole("button", { name: /save and continue/i }).click();
+  await page.getByLabel(/I checked for missing or outdated/).check();
   await page.getByRole("button", { name: /save and continue/i }).click();
   await page.getByRole("checkbox", { name: "Remote" }).check();
   await page.getByLabel("U.S. state or District of Columbia required").selectOption("VA");
   await page.getByRole("checkbox", { name: "Full Time" }).check();
   await page.getByLabel(/I agree to/).check();
   await expect(page.getByText("Review your search")).toBeVisible();
-  await page.getByRole("button", { name: "Finish intake" }).click();
+  await page.getByRole("button", { name: "Review my information" }).click();
+  await page.getByLabel(/I reviewed the actual information/).check();
+  await page.getByRole("button", { name: "Confirm and submit intake" }).click();
   await expect(page.locator(".feasibility-result")).toBeVisible();
 }
 

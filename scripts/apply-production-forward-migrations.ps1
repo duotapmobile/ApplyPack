@@ -29,13 +29,13 @@ $script:DatabaseName = 'postgres'
 $script:LoginUser = 'postgres.zzzzzzzzzzzzzzzzzzzz'
 $script:CurrentUser = 'postgres'
 $script:PreSchemaVersion = '202610190084'
-$script:PostSchemaVersion = '202610240087'
+$script:PostSchemaVersion = '202610250090'
 $script:CaSha256 = '700723581420DD1AC98FD7E9AC529F0EF210EADCAF87FC868A3AD7D114C2F3B7'
 $script:PostgresImageDigest = 'public.ecr.aws/supabase/postgres@sha256:b3bfedb107413abb3b8cb0d0874b0414a1dceb3d55bc0c778de6ad22d1f7dc86'
 $script:DockerCliReviewedPath = 'C:\Program Files\Docker\Docker\resources\bin\docker.exe'
 $script:DockerEndpoint = 'npipe:////./pipe/dockerDesktopLinuxEngine'
 $script:ResolvedDockerCliPath = $null
-$script:RunnerVersion = 4
+$script:RunnerVersion = 5
 $script:PsqlPasswordHandoffShell = 'IFS= read -r PGPASSWORD; export PGPASSWORD; export PGSSLMODE=verify-full; export PGSSLROOTCERT=/certs/root.crt; export PGCONNECT_TIMEOUT=15; exec "$@"'
 $script:ConnectionInfoBegin = 'APPLYPACK_MIGRATION_CONNINFO_BEGIN'
 $script:ConnectionInfoEnd = 'APPLYPACK_MIGRATION_CONNINFO_END'
@@ -105,6 +105,33 @@ $script:MigrationPlan = @(
         predecessor = '202610230086'
         predecessorCheckpoint = 'SANDBOX_VALIDATION_LAUNCH_ACTIVATION'
         marker = 'PRODUCTION_MIGRATION_202610240087_APPLIED'
+    },
+    [ordered]@{
+        version = '202610250088'
+        name = 'service_retention_cleanup'
+        relativePath = 'supabase/migrations/202610250088_service_retention_cleanup.sql'
+        checkpoint = 'SERVICE_RETENTION_CLEANUP'
+        predecessor = '202610240087'
+        predecessorCheckpoint = 'ONE_OFF_SERVICE_RETENTION'
+        marker = 'PRODUCTION_MIGRATION_202610250088_APPLIED'
+    },
+    [ordered]@{
+        version = '202610250089'
+        name = 'confirmed_intake'
+        relativePath = 'supabase/migrations/202610250089_confirmed_intake.sql'
+        checkpoint = 'CONFIRMED_INTAKE'
+        predecessor = '202610250088'
+        predecessorCheckpoint = 'SERVICE_RETENTION_CLEANUP'
+        marker = 'PRODUCTION_MIGRATION_202610250089_APPLIED'
+    },
+    [ordered]@{
+        version = '202610250090'
+        name = 'matching_evidence_completion'
+        relativePath = 'supabase/migrations/202610250090_matching_evidence_completion.sql'
+        checkpoint = 'MATCHING_EVIDENCE_COMPLETION'
+        predecessor = '202610250089'
+        predecessorCheckpoint = 'CONFIRMED_INTAKE'
+        marker = 'PRODUCTION_MIGRATION_202610250090_APPLIED'
     }
 )
 $script:PublishedPredecessorPaths = @(
@@ -453,7 +480,7 @@ function Assert-BindingValues {
             Throw-Controlled 'PRODUCTION_BINDING_INVALID'
         }
     }
-    foreach ($flag in @('APP_CHECKOUT_ENABLED', 'APP_CANARY_CHECKOUT_ENABLED', 'APP_REHEARSAL_CHECKOUT_ENABLED', 'APP_LIVE_PAYMENTS_ENABLED', 'APP_JOB_BOARD_CHECKOUT_ENABLED', 'APP_JOB_SOURCE_SYNC_ENABLED')) {
+    foreach ($flag in @('APP_CHECKOUT_ENABLED', 'APP_CANARY_CHECKOUT_ENABLED', 'APP_REHEARSAL_CHECKOUT_ENABLED', 'APP_LIVE_PAYMENTS_ENABLED', 'APP_JOB_BOARD_CHECKOUT_ENABLED', 'APP_JOB_SOURCE_SYNC_ENABLED', 'APP_SERVICE_RETENTION_ENABLED')) {
         if (-not [string]::Equals([string]$Values[$flag], 'false', [StringComparison]::Ordinal)) {
             Throw-Controlled 'CHECKOUT_FLAG_NOT_FALSE'
         }
@@ -467,7 +494,7 @@ function Assert-ProductionBinding {
         'AP_PREMIGRATION_EXPECTED_HOST', 'AP_PREMIGRATION_EXPECTED_PORT',
         'AP_PREMIGRATION_EXPECTED_DATABASE', 'AP_PREMIGRATION_EXPECTED_LOGIN_USER',
         'AP_PREMIGRATION_EXPECTED_CURRENT_USER', 'APP_CHECKOUT_ENABLED',
-        'APP_CANARY_CHECKOUT_ENABLED', 'APP_REHEARSAL_CHECKOUT_ENABLED', 'APP_LIVE_PAYMENTS_ENABLED', 'APP_JOB_BOARD_CHECKOUT_ENABLED', 'APP_JOB_SOURCE_SYNC_ENABLED'
+        'APP_CANARY_CHECKOUT_ENABLED', 'APP_REHEARSAL_CHECKOUT_ENABLED', 'APP_LIVE_PAYMENTS_ENABLED', 'APP_JOB_BOARD_CHECKOUT_ENABLED', 'APP_JOB_SOURCE_SYNC_ENABLED', 'APP_SERVICE_RETENTION_ENABLED'
     )) {
         $values[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
     }
@@ -716,10 +743,18 @@ function Get-PredecessorLedgerChecksSql {
     return $predicates -join "`n    or "
 }
 
+function Get-ExpectedSchemaReadinessSql {
+    param([Parameter(Mandatory)][string]$Version)
+    if ($Version -ceq '202610240087') {
+        return "coalesce((readiness->>'ready')::boolean,false) is distinct from false or public.ap_one_off_retention_schema_installed() is distinct from false"
+    }
+    return "coalesce((readiness->>'ready')::boolean,false) is distinct from true"
+}
+
 function Get-PreMigrationStateSql {
     $sql = @'
 do $applypack_prestate$
-declare readiness jsonb;
+declare readiness jsonb; checkout_unlocked boolean;
 begin
   if (select max(version) from supabase_migrations.schema_migrations) is distinct from '__PRE_SCHEMA__'
     or (select count(*) from supabase_migrations.schema_migrations)<>__LEDGER_COUNT__
@@ -737,9 +772,14 @@ begin
   then
     raise exception 'premigration_schema_invalid';
   end if;
+  if not exists(select 1 from public.ap_commerce_configuration where singleton and not checkout_enabled) then raise exception 'migration_checkout_not_locked'; end if;
+  if to_regclass('public.ap_checkout_mode_configuration') is not null then
+    execute 'select not exists(select 1 from public.ap_checkout_mode_configuration where singleton and mode=''LOCKED'')' into checkout_unlocked;
+    if checkout_unlocked then raise exception 'migration_checkout_not_locked'; end if;
+  end if;
   readiness:=public.ap_manual_launch_schema_readiness();
   if readiness->>'requiredSchemaVersion' is distinct from '__PRE_SCHEMA__'
-    or coalesce((readiness->>'ready')::boolean,false) is distinct from true
+    or __PRE_READINESS__
   then
     raise exception 'premigration_readiness_invalid';
   end if;
@@ -747,7 +787,7 @@ end
 $applypack_prestate$;
 \echo PRODUCTION_MIGRATION_PRESTATE_VERIFIED
 '@
-    return $sql.Replace('__PREDECESSOR_LEDGER_CHECKS__', (Get-PredecessorLedgerChecksSql)).Replace('__PRE_SCHEMA__', $script:PreSchemaVersion).Replace('__PRE_CHECKPOINT__', [string]$script:MigrationPlan[0].predecessorCheckpoint).Replace('__LEDGER_COUNT__', [string]$script:PredecessorLedgerPlan.Count).Replace('__PENDING_VERSIONS__', ((@($script:MigrationPlan | ForEach-Object { "'$($_.version)'" })) -join ','))
+    return $sql.Replace('__PRE_READINESS__', (Get-ExpectedSchemaReadinessSql -Version $script:PreSchemaVersion)).Replace('__PREDECESSOR_LEDGER_CHECKS__', (Get-PredecessorLedgerChecksSql)).Replace('__PRE_SCHEMA__', $script:PreSchemaVersion).Replace('__PRE_CHECKPOINT__', [string]$script:MigrationPlan[0].predecessorCheckpoint).Replace('__LEDGER_COUNT__', [string]$script:PredecessorLedgerPlan.Count).Replace('__PENDING_VERSIONS__', ((@($script:MigrationPlan | ForEach-Object { "'$($_.version)'" })) -join ','))
 }
 
 function Get-PreflightPayload {
@@ -816,7 +856,7 @@ function Get-StepGuardSql {
     return @"
 $(Get-ConnectionAttestationSql)
 do `$applypack_step_guard`$
-declare readiness jsonb;
+declare readiness jsonb; checkout_unlocked boolean;
 begin
   if (select max(version) from supabase_migrations.schema_migrations) is distinct from '$predecessor'
     or $predecessorLedgerChecks
@@ -834,9 +874,14 @@ begin
   then
     raise exception 'migration_step_state_invalid';
   end if;
+  if not exists(select 1 from public.ap_commerce_configuration where singleton and not checkout_enabled) then raise exception 'migration_checkout_not_locked'; end if;
+  if to_regclass('public.ap_checkout_mode_configuration') is not null then
+    execute 'select not exists(select 1 from public.ap_checkout_mode_configuration where singleton and mode=''LOCKED'')' into checkout_unlocked;
+    if checkout_unlocked then raise exception 'migration_checkout_not_locked'; end if;
+  end if;
   readiness:=public.ap_manual_launch_schema_readiness();
   if readiness->>'requiredSchemaVersion' is distinct from '$predecessor'
-    or coalesce((readiness->>'ready')::boolean,false) is distinct from true
+    or $(Get-ExpectedSchemaReadinessSql -Version $predecessor)
   then
     raise exception 'migration_step_readiness_invalid';
   end if;
@@ -945,7 +990,7 @@ function Get-PostMigrationStateSql {
     return @"
 $(Get-ConnectionAttestationSql)
 do `$applypack_poststate`$
-declare readiness jsonb;
+declare readiness jsonb; checkout_unlocked boolean;
 begin
   if (select max(version) from supabase_migrations.schema_migrations) is distinct from '$($script:PostSchemaVersion)'
     or $predecessorLedgerChecks
@@ -961,9 +1006,14 @@ begin
   then
     raise exception 'postmigration_schema_invalid';
   end if;
+  if not exists(select 1 from public.ap_commerce_configuration where singleton and not checkout_enabled) then raise exception 'migration_checkout_not_locked'; end if;
+  if to_regclass('public.ap_checkout_mode_configuration') is not null then
+    execute 'select not exists(select 1 from public.ap_checkout_mode_configuration where singleton and mode=''LOCKED'')' into checkout_unlocked;
+    if checkout_unlocked then raise exception 'migration_checkout_not_locked'; end if;
+  end if;
   readiness:=public.ap_manual_launch_schema_readiness();
   if readiness->>'requiredSchemaVersion' is distinct from '$($script:PostSchemaVersion)'
-    or coalesce((readiness->>'ready')::boolean,false) is distinct from true
+    or $(Get-ExpectedSchemaReadinessSql -Version $script:PostSchemaVersion)
   then
     raise exception 'postmigration_readiness_invalid';
   end if;
@@ -1337,9 +1387,12 @@ function Invoke-Apply {
                 })
                 migration085Rows = [int]($script:PreSchemaVersion -cge '202610220085')
                 migration086Rows = [int]($script:PreSchemaVersion -cge '202610230086')
-                migration087Rows = 0
+                migration087Rows = [int]($script:PreSchemaVersion -cge '202610240087')
+                migration088Rows = [int]($script:PreSchemaVersion -cge '202610250088')
+                migration089Rows = [int]($script:PreSchemaVersion -cge '202610250089')
+                migration090Rows = 0
                 requiredSchemaVersion = $script:PreSchemaVersion
-                ready = $true
+                ready = ($script:PreSchemaVersion -cne '202610240087')
                 invalidPublicIndexes = 0
             }
             migrations = @($migrationReceipts)
@@ -1349,8 +1402,11 @@ function Invoke-Apply {
                 migration085Rows = 1
                 migration086Rows = 1
                 migration087Rows = 1
+                migration088Rows = [int]($script:PostSchemaVersion -cge '202610250088')
+                migration089Rows = [int]($script:PostSchemaVersion -cge '202610250089')
+                migration090Rows = [int]($script:PostSchemaVersion -cge '202610250090')
                 requiredSchemaVersion = $script:PostSchemaVersion
-                ready = $true
+                ready = ($script:PostSchemaVersion -cne '202610240087')
                 invalidPublicIndexes = 0
             }
             publishedPorts = 0
@@ -1459,6 +1515,7 @@ function Invoke-SelfTest {
             APP_LIVE_PAYMENTS_ENABLED = 'false'
             APP_JOB_BOARD_CHECKOUT_ENABLED = 'false'
             APP_JOB_SOURCE_SYNC_ENABLED = 'false'
+            APP_SERVICE_RETENTION_ENABLED = 'false'
         }
         Assert-BindingValues -Values $validBinding
         $productionRejected = $false

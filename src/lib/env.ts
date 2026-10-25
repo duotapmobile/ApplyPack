@@ -20,6 +20,7 @@ const serverSchema = z.object({
   APP_CANARY_CHECKOUT_ENABLED: z.enum(["true", "false"]).default("false"),
   APP_REHEARSAL_CHECKOUT_ENABLED: z.enum(["true", "false"]).default("false"),
   APP_LIVE_PAYMENTS_ENABLED: z.enum(["true", "false"]).default("false"),
+  APP_SERVICE_RETENTION_ENABLED: z.enum(["true", "false"]).default("false"),
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM_ADDRESS: z.string().email().default("orders@applypack.work"),
   EMAIL_REPLY_TO: z.string().email().default("help@applypack.work"),

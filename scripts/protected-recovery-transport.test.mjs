@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Readable } from "node:stream";
-import { createRecoveryHttpTransport, boundedRecoveryJson } from "./lib/protected-recovery-transport.mjs";
+import { createRecoveryHttpTransport, createRecoveryHttpReader, boundedRecoveryJson } from "./lib/protected-recovery-transport.mjs";
 import { createBootstrapReadOnlyFetch, createOperatorBootstrapSource } from "./lib/protected-recovery-bootstrap.mjs";
 import { RECOVERY_BUCKETS, RECOVERY_TABLES, recoveryInventoryDigest } from "./lib/protected-recovery-protocol.mjs";
 import { recoverySourceColumns } from "./lib/protected-recovery-source.mjs";
@@ -49,6 +49,15 @@ for (const name of ["SUPABASE_SERVICE_ROLE_KEY", "supabase_secret_key", "DATABAS
     assert.throws(() => createRecoveryHttpTransport({ ...environment(), [name]: "synthetic" }), /MASTER_CREDENTIAL_FORBIDDEN/u);
   });
 }
+test("file transport and reader reject every nonempty database exporter namespace before any request", () => {
+  let calls = 0; const fetcher = async () => { calls++; return json({}); };
+  for (const factory of [createRecoveryHttpTransport, createRecoveryHttpReader]) {
+    for (const name of ["APP_DATABASE_BACKUP_DB_PASSWORD", "APP_DATABASE_BACKUP_CA_PEM", "APP_DATABASE_BACKUP_AWS_RA_PRIVATE_KEY_PEM_BASE64",
+      "app_database_backup_db_password"]) assert.throws(() => factory({ ...environment(), [name]: "private" }, fetcher), /MASTER_CREDENTIAL_FORBIDDEN/u);
+    assert.doesNotThrow(() => factory({ ...environment(), APP_DATABASE_BACKUP_DB_PASSWORD: "" }, fetcher));
+  }
+  assert.equal(calls, 0);
+});
 test("object request is fixed and binds returned source version, size and SHA", async () => {
   const object = { bucket: RECOVERY_BUCKETS[0], key: "owner/file.docx", sourceVersion: "c".repeat(64), size: 3,
     expectedSha256: "d".repeat(64), retentionExpiresAt: null };

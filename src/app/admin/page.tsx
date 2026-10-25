@@ -10,6 +10,8 @@ import { PendingIntakes } from "@/components/admin/pending-intakes";
 import { SearchCheckoutInvitations } from "@/components/admin/search-checkout-invitations";
 import { ServiceRetentionControls } from "@/components/admin/service-retention-controls";
 import { loadSearchInvitationQueue } from "@/lib/commerce/search-invitation-queue";
+import { loadFeasibilityQueue } from "@/lib/matching/feasibility-queue";
+import { loadOrderIntakeSourceModes } from "@/lib/intake/admin-source-status";
 import { Chunk4StaffQueue, type StaffQueueRow, type StaffReviewCandidate } from "@/components/admin/chunk4-staff-queue";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { hasFreshAdminMfa, isAdminEmailAllowed } from "@/lib/auth/require-admin";
@@ -21,7 +23,7 @@ import { loadPersistedEvaluationsForOrder, selectPersistedEvaluations } from "@/
 
 export const metadata: Metadata = { title: "ApplyPack Operations", robots: { index: false, follow: false } };
 
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ intakePage?: string | string[] }> }) {
   const supabase = await createSupabaseServerClient();
   const admin = createSupabaseAdminClient();
   if (!supabase || !admin) return <AdminSetup />;
@@ -46,11 +48,8 @@ export default async function AdminPage() {
     admin.from("correction_requests").select("id,correction_text,apply_pack_item:apply_pack_items(job_match:job_matches(job:jobs(company,title)))").eq("status", "submitted").order("created_at"),
     admin.from("ap_capacity_pools").select("resource,enabled").in("resource", ["SEARCH", "MATERIALS"]).order("resource"),
   ]);
-  const { data: pendingRequests } = await admin.from("ap_feasibility_requests").select("id,snapshot_id,state,created_at").eq("state", "PENDING").order("created_at");
-  const pendingSnapshotIds = (pendingRequests || []).map((request) => request.snapshot_id);
-  const { data: pendingSnapshots } = pendingSnapshotIds.length
-    ? await admin.from("ap_intake_snapshots").select("id,access_email_normalized,desired_activities,avoided_activities,search_breadth,guidance_requested,work_modes,preferred_work_mode,us_state_or_dc,employment_types,preferred_employment_type,schedules,benefits,work_condition_preferences,dealbreakers,employer_unknown_policy,salary_hard_minimum_cents,salary_period,finalized_at").in("id", pendingSnapshotIds)
-    : { data: [] };
+  const feasibilityQueue = await loadFeasibilityQueue(admin, (await searchParams).intakePage);
+  const pendingSnapshots = feasibilityQueue.snapshots;
   const { data: staffQueueData } = await admin.from("ap_staff_queue")
     .select("queue_kind,subject_id,order_id,due_at,state,non_sensitive_metadata")
     .order("due_at", { ascending: true, nullsFirst: false });
@@ -215,6 +214,7 @@ export default async function AdminPage() {
         return [order.id, []] as const;
       }
     })));
+  const sourceModes = await loadOrderIntakeSourceModes(admin, (orders || []).filter((order) => order.product_kind === "job_search").map((order) => order.id));
   const searchOrders = (orders || []).filter((order) => order.product_kind === "job_search").map((order) => {
     const intake = Array.isArray(order.intake) ? order.intake[0] : order.intake;
     const answerRow = Array.isArray(intake?.intake_answers) ? intake.intake_answers[0] : intake?.intake_answers;
@@ -223,6 +223,7 @@ export default async function AdminPage() {
       delivery_deadline: order.delivery_deadline,
       intake_id: order.intake_id,
       source_scan_status: intake?.source_scan_status || "pending",
+      source_entry_mode: sourceModes.get(order.id) || "UNAVAILABLE",
       source_deleted: Boolean(intake?.source_deleted_at),
       has_cover_letter: Boolean(intake?.cover_letter_path),
       intake_details: intake ? { email: intake.email, direction: intake.direction, priorities: intake.priorities, dealbreakers: intake.dealbreakers, location_preference: intake.location_preference, schedule_preference: intake.schedule_preference, minimum_salary: intake.minimum_salary, experience_summary: intake.experience_summary, notes: intake.notes, answers: answerRow?.answers } : {},
@@ -247,7 +248,7 @@ export default async function AdminPage() {
           ...searchInvitationQueue.candidates.map((candidate) => [candidate.snapshotId, { id: candidate.snapshotId,
             label: `${candidate.email} · ${candidate.direction}` }] as const),
         ]).values()]} />
-      <PendingIntakes requests={pendingRequests || []} snapshots={pendingSnapshots || []} />
+      <PendingIntakes {...feasibilityQueue} />
       <SearchCheckoutInvitations {...searchInvitationQueue} />
       <ServiceRetentionControls />
         <section className="admin-table-wrap">

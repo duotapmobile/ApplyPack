@@ -7,6 +7,12 @@ export const SELECTOR_VERSION = "bounded-diversity-v2";
 
 export type GateResult = { rootKey: string; result: CriterionResult; resolutionIssue: ResolutionIssue; unknownTreatment: UnknownTreatment; warning?: string; consentVersion?: string; unwaivable?: boolean };
 
+export function activeUnknownTreatments(gates: readonly GateResult[]): UnknownTreatment[] {
+  // Resolved gates retain a conservative fallback policy in their full evidence.
+  // The database summary describes actual unknowns, which checkout/release inspect.
+  return [...new Set(gates.filter((gate) => gate.result === "UNKNOWN").map((gate) => gate.unknownTreatment))];
+}
+
 export function mapEmployerUnknownPolicy(rootKey: string, policy: EmployerUnknownPolicy, input: { consentVersion?: string; warning?: string; unwaivable?: boolean } = {}): GateResult {
   const allowed = policy === "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING" && !input.unwaivable;
   if (allowed && (!input.consentVersion || !input.warning)) throw new Error("allowed_employer_unknown_requires_consent_warning");
