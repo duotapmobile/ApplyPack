@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ auth: vi.fn(), origin: vi.fn(), from: vi.fn(), rpc: vi.fn(), factory: vi.fn(), promote: vi.fn(), review: vi.fn() }));
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), origin: vi.fn(), from: vi.fn(), rpc: vi.fn(), factory: vi.fn(), promote: vi.fn(), review: vi.fn(), ruleFactory: vi.fn(), revalidate: vi.fn(), refresh: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/auth/require-admin", () => ({ requireAdmin: mocks.auth }));
 vi.mock("@/lib/security/origin", () => ({ isSameOriginRequest: mocks.origin }));
 vi.mock("@/lib/documents/draft-owner-server", () => ({ createDraftOwnerServer: mocks.factory }));
+vi.mock("@/lib/documents/material-rule-owner-server", () => ({ createMaterialRuleOwnerServer: mocks.ruleFactory }));
 import { POST } from "@/app/api/admin/material-draft-jobs/[id]/route";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -17,6 +18,11 @@ const send = { action: "SEND_PAIR", ...binding, approvalSha256: "d".repeat(64), 
 const review = { action: "REVIEW_WORDING", review: { versionId: version, packetSha256: binding.packetSha256, sourceSha256: binding.sourceSha256,
   claims: [{ claimId: id(6), wordingSha256: "e".repeat(64), decision: "APPROVED" }] } };
 const promote = { action: "PROMOTE_SOURCE", expectedVersionId: version, expectedSourceSha256: binding.sourceSha256 };
+const ruleBasis = { lineRevisionId: id(11), sourceSnapshotId: id(12), jobSnapshotId: id(13), jobContentSha256: "a".repeat(64),
+  ruleId: id(14), ruleSha256: "b".repeat(64), ruleRecordSha256: "c".repeat(64), sourceAuthoritySha256: "d".repeat(64) };
+const ruleReview = { action: "REVALIDATE_RULE", expectedVersionId: version, receiptId: id(15), expectedBasis: ruleBasis,
+  checklist: { applicationAccessReviewed: true, liveListingOpened: true, submissionInstructionsCompared: true, unchangedRuleConfirmed: true } };
+const refresh = { action: "REFRESH_PACKET", expectedVersionId: version, expectedPacketSha256: binding.packetSha256, expectedContextSha256: "f".repeat(64), requestId: id(16) };
 let versionResult: { data: unknown; error: unknown };
 let jobResult: { data: unknown; error: unknown };
 let rpcResult: { data: unknown; error: unknown };
@@ -45,9 +51,48 @@ beforeEach(() => {
   mocks.factory.mockReturnValue({ promoteSource: mocks.promote, recordWordingReview: mocks.review });
   mocks.promote.mockResolvedValue({ versionId: id(7), deliveryAuthorized: false });
   mocks.review.mockResolvedValue({ versionId: version, reviewSha256: "f".repeat(64), deliveryAuthorized: false });
+  mocks.ruleFactory.mockReturnValue({ revalidate: mocks.revalidate, refreshPacket: mocks.refresh });
+  mocks.revalidate.mockResolvedValue({ jobId: job, receiptId: ruleReview.receiptId, recorded: true, current: true, deliveryAuthorized: false });
+  mocks.refresh.mockResolvedValue({ jobId: job, versionId: id(17), priorVersionId: version, recorded: true, current: true, deliveryAuthorized: false });
 });
 
 describe("owner document HTTP actions", () => {
+  it("delegates exact rule review to the authenticated reviewer without inventing a timestamp or changing its checklist", async () => {
+    const result = await invoke(ruleReview);
+    expect(result.status).toBe(200); privateHeaders(result);
+    expect(mocks.ruleFactory).toHaveBeenCalledWith(admin, reviewer);
+    const input = { expectedVersionId: ruleReview.expectedVersionId, receiptId: ruleReview.receiptId,
+      expectedBasis: ruleReview.expectedBasis, checklist: ruleReview.checklist };
+    expect(mocks.revalidate).toHaveBeenCalledWith({ ...input, jobId: job }, expect.any(AbortSignal));
+    expect(mocks.from).not.toHaveBeenCalled(); expect(mocks.rpc).not.toHaveBeenCalled(); expect(mocks.refresh).not.toHaveBeenCalled();
+  });
+  it("permits exact null-version receipt reconciliation through the adapter after an earlier first review", async () => {
+    jobResult.data = { id: job, active_version_id: id(99), state: "READY" };
+    expect((await invoke({ ...ruleReview, expectedVersionId: null })).status).toBe(200);
+    expect(mocks.revalidate).toHaveBeenCalledWith(expect.objectContaining({ expectedVersionId: null }), expect.any(AbortSignal));
+  });
+  it("requires a separate explicit refresh bound to the displayed old packet and new context", async () => {
+    const result = await invoke(refresh); expect(result.status).toBe(200); privateHeaders(result);
+    const input = { expectedVersionId: refresh.expectedVersionId, expectedPacketSha256: refresh.expectedPacketSha256,
+      expectedContextSha256: refresh.expectedContextSha256, requestId: refresh.requestId };
+    expect(mocks.refresh).toHaveBeenCalledWith({ ...input, jobId: job }, expect.any(AbortSignal));
+    expect(mocks.revalidate).not.toHaveBeenCalled(); expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+  it.each([
+    { ...ruleReview, checkedAt: "2026-10-25T12:00:00Z" }, { ...ruleReview, reviewerId: id(99) },
+    { ...ruleReview, checklist: { ...ruleReview.checklist, unchangedRuleConfirmed: false } },
+    { ...ruleReview, expectedBasis: { ...ruleBasis, ruleRecordSha256: undefined } },
+    { ...refresh, expectedVersionId: null }, { ...refresh, requestId: undefined },
+    { ...refresh, payloadId: id(99) }, { ...refresh, copyApproval: true },
+  ])("rejects incomplete or expanded evidence renewal before service access: %#", async (body) => {
+    expect((await invoke(body)).status).toBe(400);
+    expect(mocks.ruleFactory).not.toHaveBeenCalled(); expect(mocks.from).not.toHaveBeenCalled();
+  });
+  it("does not repeat an ambiguous rule mutation or leak service errors", async () => {
+    mocks.revalidate.mockRejectedValue(new Error("PRIVATE service-key=SECRET"));
+    const result = await invoke(ruleReview); expect(result.status).toBe(409);
+    expect(mocks.revalidate).toHaveBeenCalledOnce(); expect(await result.text()).not.toMatch(/PRIVATE|SECRET/);
+  });
   it("rejects cross-origin calls before authentication or data access", async () => {
     mocks.origin.mockReturnValue(false);
     const result = await invoke(send); expect(result.status).toBe(403); privateHeaders(result);

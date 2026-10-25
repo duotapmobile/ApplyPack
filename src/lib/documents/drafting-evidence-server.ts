@@ -1,6 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
+import { z } from "zod";
+import { materialRuleEvidenceProjectionSchema, materialRuleProjectionForPacket } from "./material-rule-evidence";
 import { buildDraftingEvidencePacket, draftingEvidenceExpectationSchema, DraftingEvidenceError,
   type DraftingEvidenceExpectation, type DraftingEvidencePacket } from "./drafting-evidence";
 
@@ -8,8 +10,11 @@ type Admin = SupabaseClient<Database>;
 type Options = { now?: () => Date; signal?: AbortSignal };
 const FACT_COLUMNS = "id,snapshot_id,customer_id,draft_id,semantic_key,value_kind,typed_value,source_kind,document_version_id,customer_assertion_snapshot_id,assertion_control_id,source_locator,verification,confirmed_or_corrected_at,superseded_at,supersedes_fact_id,schema_version,catalog_version,starts_on,ends_on,calendar_duration_days,intensity_percent,capability_status,customer_display_label" as const;
 function fail(code: string): never { throw new DraftingEvidenceError(code); }
+const managedJobSchema = z.object({ id: z.uuid(), customer_id: z.uuid(), material_line_id: z.uuid(), line_revision_id: z.uuid(),
+  source_snapshot_id: z.uuid(), active_version_id: z.uuid().nullable(), lease_generation: z.number().int().nonnegative() }).strict();
+const contextSchema = z.string().regex(/^[a-f0-9]{64}$/);
 
-async function readRecords(admin: Admin, expected: DraftingEvidenceExpectation, signal: AbortSignal) {
+async function readRecords(admin: Admin, expected: DraftingEvidenceExpectation, signal: AbortSignal, now: () => Date) {
   async function result<T>(query: PromiseLike<{ data: T; error: unknown }>): Promise<NonNullable<T>> {
     if (signal.aborted) fail("READ_ABORTED");
     const answer = await query;
@@ -20,6 +25,20 @@ async function readRecords(admin: Admin, expected: DraftingEvidenceExpectation, 
   const line = await result(admin.from("ap_material_lines")
     .select("id,purchase_id,payment_attempt_id,delivered_order_id,delivered_match_id,active_revision,allocated_amount_cents,fulfillment,materials_payment_verified_at,materials_started_at,materials_due_at,selected_reference_sheet")
     .eq("id", expected.materialLineId).abortSignal(signal).single());
+  const readManagedJob = async () => {
+    const parsed = managedJobSchema.safeParse(await result(admin.from("ap_material_draft_jobs")
+      .select("id,customer_id,material_line_id,line_revision_id,source_snapshot_id,active_version_id,lease_generation")
+      .eq("customer_id", expected.customerId).eq("material_line_id", expected.materialLineId).eq("line_revision_id", expected.revisionId).abortSignal(signal).single()));
+    if (!parsed.success || parsed.data.customer_id !== expected.customerId || parsed.data.material_line_id !== expected.materialLineId
+      || parsed.data.line_revision_id !== expected.revisionId) fail("DRAFT_JOB_BINDING_INVALID");
+    return parsed.data;
+  };
+  const draftJob = await readManagedJob();
+  const readContext = async () => {
+    const parsed = contextSchema.safeParse(await result(admin.rpc("ap_material_draft_context_sha256", { p_job_id: draftJob.id }).abortSignal(signal)));
+    if (!parsed.success) fail("DRAFT_CONTEXT_INVALID"); return parsed.data;
+  };
+  const initialContext = await readContext();
   const [purchase, payment, revision, item, refunds] = await Promise.all([
     result(admin.from("ap_material_purchases").select("id,customer_id,checkout_intent_id,payment_attempt_id,amount_cents,currency,completed_at").eq("id", line.purchase_id).abortSignal(signal).single()),
     result(admin.from("ap_payment_attempts").select("id,customer_id,amount_cents,currency,settlement,payment_verified_at,immediate_charge_verified,dispute,funds_reversed_at").eq("id", line.payment_attempt_id).abortSignal(signal).single()),
@@ -29,6 +48,7 @@ async function readRecords(admin: Admin, expected: DraftingEvidenceExpectation, 
     result(admin.from("ap_refund_operations").select("id").eq("material_line_id", line.id).is("superseded_at", null).limit(1).abortSignal(signal)),
   ]);
   if (!purchase.checkout_intent_id || !revision.source_snapshot_id || !revision.job_snapshot_id || !revision.employer_rule_snapshot_id) fail("SOURCE_BINDING_INVALID");
+  if (draftJob.source_snapshot_id !== revision.source_snapshot_id) fail("DRAFT_JOB_BINDING_INVALID");
   const [snapshot, intent, job, rule, listingCheck, successors, ownsSnapshot] = await Promise.all([
     result(admin.from("ap_intake_snapshots").select("id,customer_id,draft_id,schema_version,canonicalization_version,content_sha256,sensitive_payload_id,finalized_at,confirmed_review").eq("id", revision.source_snapshot_id).abortSignal(signal).single()),
     result(admin.from("ap_material_checkout_intents").select("id,customer_id,purchase_id,payment_attempt_id,delivered_order_id,delivered_release_id,source_snapshot_id,state,line_count,amount_cents,currency,selection_sha256,document_contact_confirmed,document_facts_confirmed,contact_payload_id,career_break_choice,career_break_custom_label,cover_letter_break_consent").eq("id", purchase.checkout_intent_id).abortSignal(signal).single()),
@@ -84,9 +104,21 @@ async function readRecords(admin: Admin, expected: DraftingEvidenceExpectation, 
   const referencePermissions = referencePermissionIds.length ? await result(admin.from("ap_reference_permissions")
     .select("id,customer_id,delivered_release_id,job_snapshot_id,job_snapshot_hash,reference_record_version_id,revoked_at,contact_version_changed_at")
     .in("id", referencePermissionIds).limit(21).abortSignal(signal)) : [];
-  return { line, purchase, payment, revision, snapshot, draft, sourcePayload, intent, contact, contactFact, item, job, rule, listingCheck,
+  // Only the service092 projection can establish rule revalidation. It is read
+  // between current-context checks, never reconstructed from browser evidence.
+  const rawRuleEvidence = await result(admin.rpc("ap_material_draft_rule_evidence", { p_job_id: draftJob.id }).abortSignal(signal));
+  const projection = materialRuleEvidenceProjectionSchema.safeParse(rawRuleEvidence);
+  if (!projection.success || projection.data.activeVersionId !== draftJob.active_version_id || projection.data.leaseGeneration !== draftJob.lease_generation) fail("READ_CHANGED");
+  const ruleEvidence = materialRuleProjectionForPacket(projection.data, {
+    jobId: draftJob.id, customerId: expected.customerId, materialLineId: line.id, lineRevisionId: revision.id,
+    sourceSnapshotId: snapshot.id, jobSnapshotId: job.id, jobContentSha256: job.content_sha256,
+    ruleId: rule.id, ruleSha256: rule.content_sha256, originalCheckedAt: rule.checked_at,
+  }, now());
+  if (await readContext() !== initialContext || JSON.stringify(await readManagedJob()) !== JSON.stringify(draftJob)) fail("READ_CHANGED");
+  return { contextSha256: initialContext, jobFence: draftJob, records: { line, purchase, payment, revision, snapshot, draft, sourcePayload, intent, contact, contactFact, item, job, rule, listingCheck,
+    draftJobId: draftJob.id, ruleEvidence,
     facts, sourceFacts, documents, factReviews, requirements, reviews, questionSourceNodes, questionSourceAuthority, referencePermissions, referencePermissionIds,
-    ownsSnapshot, verifiedJobSnapshotIds: verified.map((row) => row.id), successorJobIds: successors.map((row) => row.id), refundIds: refunds.map((row) => row.id) };
+    ownsSnapshot, verifiedJobSnapshotIds: verified.map((row) => row.id), successorJobIds: successors.map((row) => row.id), refundIds: refunds.map((row) => row.id) } };
 }
 
 /** The caller supplies an authenticated, service-only DB client and identifiers from its
@@ -108,10 +140,13 @@ export async function loadDraftingEvidencePacket(admin: Admin, expected: Draftin
   try {
     return await Promise.race([interrupted, (async () => {
       const now = options.now ?? (() => new Date());
-      const first = buildDraftingEvidencePacket(await readRecords(admin, expectation, controller.signal), expectation, now());
-      const second = buildDraftingEvidencePacket(await readRecords(admin, expectation, controller.signal), expectation, now());
+      const firstRead = await readRecords(admin, expectation, controller.signal, now);
+      const first = buildDraftingEvidencePacket(firstRead.records, expectation, now());
+      const secondRead = await readRecords(admin, expectation, controller.signal, now);
+      const second = buildDraftingEvidencePacket(secondRead.records, expectation, now());
       if (controller.signal.aborted) fail("READ_ABORTED");
-      if (first.packetSha256 !== second.packetSha256) fail("READ_CHANGED");
+      if (first.packetSha256 !== second.packetSha256 || firstRead.contextSha256 !== secondRead.contextSha256
+        || JSON.stringify(firstRead.jobFence) !== JSON.stringify(secondRead.jobFence)) fail("READ_CHANGED");
       return second;
     })()]);
   } catch (error) {

@@ -4,6 +4,7 @@ import sys
 import tempfile
 import types
 import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 # The container includes boto3, but this offline render check never contacts AWS.
@@ -38,10 +39,11 @@ with tempfile.TemporaryDirectory(prefix="applypack-worker-smoke-") as work:
   <manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>
 </manifest:manifest>""", compress_type=zipfile.ZIP_DEFLATED)
         package.writestr("content.xml", """<?xml version="1.0" encoding="UTF-8"?>
-<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.2">
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:xlink="http://www.w3.org/1999/xlink" office:version="1.2">
   <office:body><office:text>
     <text:h text:outline-level="1">Synthetic Candidate</text:h>
     <text:p>Operations coordinator</text:p>
+    <text:p><text:a xlink:href="mailto:candidate@example.invalid">candidate@example.invalid</text:a></text:p>
     <text:h text:outline-level="1">Experience</text:h>
     <text:p>Coordinated accurate records and customer follow-up. This document contains synthetic test data only.</text:p>
     <text:p>ApplyPack synthetic extraction and render probe</text:p>
@@ -90,6 +92,14 @@ with tempfile.TemporaryDirectory(prefix="applypack-worker-smoke-") as work:
         "italic": "e5bae5c4cde31f22142753855f4f8fb86da6ff39955ed3c0a11248b0d16948b0",
         "boldItalic": "698da70fc191cc5f33ad4d6d3fe830fe4624b898ea2e3169955928b7c491f1ee",
     }
+    draft = handler._render_docx(docx, {
+        "bucket": "offline-smoke", "key": "ephemeral/00000000-0000-4000-8000-000000000002",
+        "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "expectedPages": 1, "artifactType": "RESUME", "renderProfile": handler.DRAFT_RENDER_PROFILE,
+    }, {"expanded": 52_428_800, "pages": 2, "milliseconds": 30_000})
+    assert "Synthetic Candidate" in draft["structureText"]
+    links = [("".join(anchor.itertext()), anchor.attrib.get("href")) for anchor in ET.fromstring(draft["linkXml"]).iter("a")]
+    assert links == [("candidate@example.invalid", "mailto:candidate@example.invalid")]
     probe = handler._probe_document(
         docx,
         {"expanded": 2_097_152, "pages": 2, "milliseconds": 30_000},
@@ -101,4 +111,5 @@ with tempfile.TemporaryDirectory(prefix="applypack-worker-smoke-") as work:
         "renderedTextVerified": True,
     }
     print("OFFLINE_RENDER_OK")
+    print("OFFLINE_DRAFT_PROFILE_LINKS_OK")
     print("FONT_SHA256=" + result["documentFontSha256"])

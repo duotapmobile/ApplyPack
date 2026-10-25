@@ -14,6 +14,7 @@ import { pdfStructureIsValid, pdfCatalogLanguageMatches } from "@/lib/documents/
 import { DOCUMENT_FONT_CONTRACT, DOCUMENT_REQUIREMENTS } from "@/lib/documents/requirements";
 import { normalizeRenderedDocumentText } from "@/lib/documents/text-validation";
 import type { ArtifactProvenance, DocumentMetadata } from "@/lib/documents/generate";
+import { assertDraftPdfExpectation, validateDraftPdfEvidence, type DraftPdfExpectation, type DraftPdfReceipt } from "./draft-pdf-validation";
 
 const runFile = promisify(execFile);
 const SHA256 = /^[0-9a-f]{64}$/i;
@@ -36,6 +37,7 @@ export type DocumentRenderResult = {
   structureTreeSha256: string;
   searchablePdf: Buffer;
   searchablePdfSha256: string;
+  draftPdf?: DraftPdfReceipt;
 };
 export type LocalRenderResult = DocumentRenderResult;
 
@@ -45,6 +47,7 @@ export type DocumentRenderInput = {
   expectedExtractedTextSha256: string;
   artifactType: ArtifactProvenance["artifact"];
   expectedMetadata: DocumentMetadata;
+  draftPdf?: DraftPdfExpectation;
 };
 
 export function documentRendererConfiguration(environment: Partial<NodeJS.ProcessEnv> = process.env) {
@@ -95,10 +98,23 @@ export async function renderDocumentForQa(input: DocumentRenderInput): Promise<D
 }
 
 export async function renderDocumentLocallyForQa(input: DocumentRenderInput): Promise<LocalRenderResult> {
+  if (!input.draftPdf) return renderLocally(input);
+  const owned = { ...structuredClone({ ...input, docx: undefined }), docx: Buffer.from(input.docx) };
+  try { return await renderLocally(owned); } finally { owned.docx.fill(0); }
+}
+
+async function renderLocally(input: DocumentRenderInput): Promise<LocalRenderResult> {
+  const draftPdf = input.draftPdf ? structuredClone(input.draftPdf) : undefined;
+  if (draftPdf) assertDraftPdfExpectation(draftPdf, input.docx, input.artifactType);
   const configuration = documentRendererConfiguration();
   if (!configuration.ready) throw new Error("approved_local_document_renderer_not_configured");
   await Promise.all(Object.values(configuration.tools).map(verifyTool));
   await Promise.all(Object.values(configuration.documentFontStyles).map(verifyTool));
+  const pdfHtml = { path: process.env.APP_PDFTOHTML_EXECUTABLE?.trim() || "", sha256: process.env.APP_PDFTOHTML_EXECUTABLE_SHA256?.trim().toLowerCase() || "" };
+  if (draftPdf) {
+    if (!isAbsolute(pdfHtml.path) || !SHA256.test(pdfHtml.sha256)) throw new Error("draft_pdf_link_inspector_not_configured");
+    await verifyTool(pdfHtml);
+  }
   const work = await mkdtemp(join(tmpdir(), "applypack-render-"));
   const resolvedWork = resolve(work);
   const safeRoot = resolve(tmpdir()) + sep;
@@ -108,6 +124,7 @@ export async function renderDocumentLocallyForQa(input: DocumentRenderInput): Pr
   const pdfPath = join(work, `${stem}.pdf`);
   const textPath = join(work, `${stem}.txt`);
   const imageStem = join(work, `${stem}-page`);
+  const privateBuffers: Buffer[] = []; let transferred = false;
   try {
     await writeFile(inputPath, input.docx, { flag: "wx" });
     let conversionError: unknown;
@@ -127,12 +144,14 @@ export async function renderDocumentLocallyForQa(input: DocumentRenderInput): Pr
     if (!/^Tagged:\s+yes\s*$/im.test(pdfInfo)) throw new Error("rendered_pdf_not_tagged");
     assertPdfMetadata(pdfInfo, input.expectedMetadata);
     const pdfMetadata = await execute(configuration.tools.pdfInfo.path, ["-meta", pdfPath], 10_000);
-    if (!new RegExp(`(?:>|\\b)${escapeRegExp(input.expectedMetadata.language)}(?:<|\\b)`, "i").test(pdfMetadata)
-      && !pdfCatalogLanguageMatches(await readFile(pdfPath), input.expectedMetadata.language)) {
-      throw new Error("rendered_pdf_language_metadata_invalid");
+    if (!new RegExp(`(?:>|\\b)${escapeRegExp(input.expectedMetadata.language)}(?:<|\\b)`, "i").test(pdfMetadata)) {
+      const catalogBytes = await readFile(pdfPath);
+      try {
+        if (!pdfCatalogLanguageMatches(catalogBytes, input.expectedMetadata.language)) throw new Error("rendered_pdf_language_metadata_invalid");
+      } finally { if (draftPdf) catalogBytes.fill(0); }
     }
     const structureTree = await execute(configuration.tools.pdfInfo.path, ["-struct", pdfPath], 10_000);
-    if (!pdfStructureIsValid(structureTree, input.artifactType)) throw new Error("rendered_pdf_structure_invalid");
+    if (!draftPdf && !pdfStructureIsValid(structureTree, input.artifactType)) throw new Error("rendered_pdf_structure_invalid");
     const pageMatch = pdfInfo.match(/^Pages:\s+(\d+)\s*$/im);
     const pageCount = Number(pageMatch?.[1]);
     if (pageCount !== input.expectedPages || ![1, 2].includes(pageCount)) throw new Error("rendered_page_count_invalid");
@@ -141,7 +160,10 @@ export async function renderDocumentLocallyForQa(input: DocumentRenderInput): Pr
     const fontInfo = await execute(configuration.tools.pdfFonts.path, [pdfPath], 10_000);
     if (!pdfFontTableUsesApprovedFont(fontInfo)) throw new Error("document_font_not_resolved");
     await execute(configuration.tools.pdfText.path, ["-layout", "-nopgbrk", pdfPath, textPath], 10_000);
-    const extractedText = normalizeRenderedDocumentText((await readFile(textPath)).toString("utf8"));
+    const extractedBytes = await readFile(textPath);
+    let extractedText: string;
+    try { extractedText = normalizeRenderedDocumentText(extractedBytes.toString("utf8")); }
+    finally { if (draftPdf) extractedBytes.fill(0); }
     const extractedTextSha256 = hash(Buffer.from(extractedText, "utf8"));
     if (!extractedText || extractedTextSha256 !== input.expectedExtractedTextSha256) {
       throw new Error("rendered_text_not_equivalent");
@@ -149,13 +171,25 @@ export async function renderDocumentLocallyForQa(input: DocumentRenderInput): Pr
     await execute(configuration.tools.pdfPpm.path, ["-png", "-r", "144", pdfPath, imageStem], 30_000);
     const imageNames = (await readdir(work)).filter((name) => name.startsWith(basename(imageStem)) && name.endsWith(".png")).sort();
     if (imageNames.length !== pageCount) throw new Error("rendered_page_images_incomplete");
-    const pageImages = await Promise.all(imageNames.map(async (name) => {
+    const readPage = async (name: string) => {
       const bytes = await readFile(join(work, name));
+      if (draftPdf) privateBuffers.push(bytes);
       return { bytes, sha256: hash(bytes) };
-    }));
+    };
+    // New-profile failures must not leave an in-flight read that produces bytes
+    // after cleanup. Preserve the legacy path's existing execution unchanged.
+    const pageImages = [] as Array<{ bytes: Buffer; sha256: string }>;
+    if (draftPdf) { for (const name of imageNames) pageImages.push(await readPage(name)); }
+    else pageImages.push(...await Promise.all(imageNames.map(readPage)));
     const searchablePdf = await readFile(pdfPath);
+    if (draftPdf) privateBuffers.push(searchablePdf);
     if (!searchablePdf.subarray(0, 5).equals(Buffer.from("%PDF-"))) throw new Error("rendered_pdf_invalid");
-    return {
+    const draftReceipt = draftPdf ? validateDraftPdfEvidence(draftPdf, {
+      structureText: await execute(configuration.tools.pdfInfo.path, ["-struct-text", "-enc", "UTF-8", pdfPath], 10_000),
+      linkXml: await execute(pdfHtml.path, ["-xml", "-i", "-stdout", "-zoom", "1", "-enc", "UTF-8", pdfPath], 10_000),
+      pdf: searchablePdf, pages: pageCount as 1 | 2,
+    }) : undefined;
+    const rendered: DocumentRenderResult = {
       rendererIdentity: configuration.identity,
       documentFontFamily: DOCUMENT_FONT_CONTRACT.family,
       documentFontVersion: DOCUMENT_FONT_CONTRACT.version,
@@ -171,9 +205,15 @@ export async function renderDocumentLocallyForQa(input: DocumentRenderInput): Pr
       taggedPdf: true,
       metadataVerified: true,
       structureTreeSha256: hash(Buffer.from(structureTree, "utf8")),
+      ...(draftReceipt ? { draftPdf: draftReceipt } : {}),
     };
+    transferred = true;
+    return rendered;
   } finally {
-    if (resolve(work).startsWith(safeRoot)) await rm(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    if (draftPdf && !transferred) privateBuffers.forEach((buffer) => buffer.fill(0));
+    try {
+      if (resolve(work).startsWith(safeRoot)) await rm(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    } catch (error) { if (draftPdf) privateBuffers.forEach((buffer) => buffer.fill(0)); throw error; }
   }
 }
 

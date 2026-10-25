@@ -9,7 +9,9 @@ import { pdfTextBoundsAreValid } from "@/lib/documents/pdf-bounds";
 import { pdfCatalogLanguageMatches, pdfStructureIsValid } from "@/lib/documents/pdf-validation";
 import { normalizeRenderedDocumentText } from "@/lib/documents/text-validation";
 import { DOCUMENT_FONT_CONTRACT } from "@/lib/documents/requirements";
-import type { ArtifactProvenance, DocumentMetadata } from "@/lib/documents/generate";
+import type { DocumentMetadata } from "@/lib/documents/generate";
+import type { DocumentRenderInput } from "@/lib/documents/renderer";
+import { assertDraftPdfExpectation, validateDraftPdfEvidence } from "@/lib/documents/draft-pdf-validation";
 import type { ParserLimits } from "./secure-pipeline";
 import { awsWorkloadCredentials } from "@/lib/security/aws-workload-credentials";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -127,6 +129,8 @@ async function invokeWorker(input: {
   const credentials = awsWorkloadCredentials(environment);
   const s3 = new S3Client({ region: configuration.region!, endpoint: "https://s3.us-east-1.amazonaws.com", credentials, maxAttempts: 2 });
   const lambda = new LambdaClient({ region: configuration.region!, endpoint: "https://lambda.us-east-1.amazonaws.com", credentials, maxAttempts: 2 });
+  const privateBuffers: Buffer[] = [], draftRender = input.operation === "render-docx" && Boolean(input.payload?.renderProfile);
+  let transferred = false;
   try {
     await credentials();
     assertAwsTemporarySubmissionOpen(intent);
@@ -151,12 +155,21 @@ async function invokeWorker(input: {
     if (input.operation === "render-docx") {
       const pageCount = Number(body.pageCount);
       if (pageCount !== 1 && pageCount !== 2) throw new Error("document_worker_response_invalid");
-      body.pdfBytes = await readObject(s3, configuration.bucket!, outputPdfKey);
-      body.pageImages = await Promise.all(outputImageKeys.slice(0, pageCount)
+      body.pdfBytes = await readObject(s3, configuration.bucket!, outputPdfKey, draftRender);
+      if (draftRender) {
+        privateBuffers.push(body.pdfBytes as Buffer);
+        const images: Buffer[] = [];
+        for (const outputKey of outputImageKeys.slice(0, pageCount)) {
+          const bytes = await readObject(s3, configuration.bucket!, outputKey, true); privateBuffers.push(bytes); images.push(bytes);
+        }
+        body.pageImages = images;
+      } else body.pageImages = await Promise.all(outputImageKeys.slice(0, pageCount)
         .map((outputKey) => readObject(s3, configuration.bucket!, outputKey)));
     }
+    transferred = true;
     return body;
   } finally {
+    if (draftRender && !transferred) privateBuffers.forEach((buffer) => buffer.fill(0));
     // Keep every durable intent for a delayed second deletion, including after
     // immediate success: a timed-out remote writer may finish after this process.
     await Promise.allSettled(intent.keys.map((objectKey) =>
@@ -168,13 +181,16 @@ async function invokeWorker(input: {
   }
 }
 
-async function readObject(s3: S3Client, bucket: string, key: string) {
+async function readObject(s3: S3Client, bucket: string, key: string, clearInvalid = false) {
   const result = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }), {
     abortSignal: AbortSignal.timeout(15_000),
   });
   if (!result.Body) throw new Error("document_worker_output_missing");
   const bytes = Buffer.from(await result.Body.transformToByteArray());
-  if (!bytes.length || bytes.length > 10 * 1024 * 1024) throw new Error("document_worker_output_bound");
+  if (!bytes.length || bytes.length > 10 * 1024 * 1024) {
+    if (clearInvalid) bytes.fill(0);
+    throw new Error("document_worker_output_bound");
+  }
   return bytes;
 }
 
@@ -191,21 +207,26 @@ export async function extractWithDocumentWorker(bytes: Buffer, mimeType: string,
   };
 }
 
-export async function renderWithDocumentWorker(input: {
-  docx: Buffer;
-  expectedPages: 1 | 2;
-  expectedExtractedTextSha256: string;
-  artifactType: ArtifactProvenance["artifact"];
-  expectedMetadata: DocumentMetadata;
-}) {
+export async function renderWithDocumentWorker(input: DocumentRenderInput) {
+  if (!input.draftPdf) return renderWorkerDocument(input);
+  const owned = { ...structuredClone({ ...input, docx: undefined }), docx: Buffer.from(input.docx) };
+  try { return await renderWorkerDocument(owned); } finally { owned.docx.fill(0); }
+}
+
+async function renderWorkerDocument(input: DocumentRenderInput) {
+  const draftPdf = input.draftPdf ? structuredClone(input.draftPdf) : undefined;
+  if (draftPdf) assertDraftPdfExpectation(draftPdf, input.docx, input.artifactType);
   const configuration = documentWorkerConfiguration();
   const result = await invokeWorker({
     operation: "render-docx",
     bytes: input.docx,
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     limits: { maxExpandedBytes: 52_428_800, maxPages: 2, maxMilliseconds: 30_000, maxMemoryBytes: 536_870_912 },
-    payload: { expectedPages: input.expectedPages, artifactType: input.artifactType },
+    payload: { expectedPages: input.expectedPages, artifactType: input.artifactType,
+      ...(draftPdf ? { renderProfile: { schemaVersion: draftPdf.schemaVersion, generatorVersion: draftPdf.generatorVersion } } : {}) },
   });
+  let transferred = false;
+  try {
   const pageCount = Number(result.pageCount);
   const pdf = Buffer.isBuffer(result.pdfBytes) ? result.pdfBytes : null;
   const images = Array.isArray(result.pageImages) && result.pageImages.every(Buffer.isBuffer)
@@ -233,7 +254,7 @@ export async function renderWithDocumentWorker(input: {
     || JSON.stringify(fontStyleSha256) !== JSON.stringify(DOCUMENT_FONT_CONTRACT.styles)
     || !pdfFontTableUsesApprovedFont(fontInfo)
     || !pdfTextBoundsAreValid(boundingXml, pageCount)
-    || !pdfStructureIsValid(structureTree, input.artifactType)) {
+    || (!draftPdf && !pdfStructureIsValid(structureTree, input.artifactType))) {
     throw new Error("document_worker_render_validation_failed");
   }
   assertPdfMetadata(pdfInfo, input.expectedMetadata);
@@ -245,7 +266,10 @@ export async function renderWithDocumentWorker(input: {
   if (!extractedText.trim() || extractedTextSha256 !== input.expectedExtractedTextSha256) {
     throw new Error("rendered_text_not_equivalent");
   }
-  return {
+  const draftReceipt = draftPdf ? validateDraftPdfEvidence(draftPdf, {
+    structureText: stringField(result, "structureText"), linkXml: stringField(result, "linkXml"), pdf, pages: pageCount as 1 | 2,
+  }) : undefined;
+  const rendered = {
     rendererIdentity: configuration.identity!,
     documentFontFamily: DOCUMENT_FONT_CONTRACT.family,
     documentFontVersion: DOCUMENT_FONT_CONTRACT.version,
@@ -261,7 +285,16 @@ export async function renderWithDocumentWorker(input: {
     structureTreeSha256: hash(Buffer.from(structureTree, "utf8")),
     searchablePdf: pdf,
     searchablePdfSha256: hash(pdf),
+    ...(draftReceipt ? { draftPdf: draftReceipt } : {}),
   };
+  transferred = true;
+  return rendered;
+  } finally {
+    if (draftPdf && !transferred) {
+      if (Buffer.isBuffer(result.pdfBytes)) result.pdfBytes.fill(0);
+      if (Array.isArray(result.pageImages)) result.pageImages.forEach((bytes) => { if (Buffer.isBuffer(bytes)) bytes.fill(0); });
+    }
+  }
 }
 
 let probeCache: { key: string; expires: number; pending: Promise<boolean> } | null = null;

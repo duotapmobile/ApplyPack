@@ -182,12 +182,25 @@ def _font_attestation():
     }
 
 
+DRAFT_RENDER_PROFILE = {
+    "schemaVersion": "applypack-reviewed-draft-pdf-v1",
+    "generatorVersion": ("applypack-documents|instructions=applypack-universal-document-standard-2026-10-19.1"
+                         "|standardSha256=2133e3e315191bde8b05eba43cba552c7339f29d3ee19bae998dde7ffeda7778"
+                         "|content=applypack-content-2026-10-25.1|template=applypack-template-2026-10-25.1"
+                         "|exporter=libreoffice-tagged-pdf-2026-10-19.1"),
+}
+
+
 def _render_docx(data, event, limits):
     if event.get("mimeType") != "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
         raise ValueError("mime_type")
     expected_pages = int(event.get("expectedPages", 0))
     if expected_pages not in (1, 2) or event.get("artifactType") not in ("RESUME", "COVER_LETTER", "REFERENCE_SHEET"):
         raise ValueError("render_contract")
+    profile = event.get("renderProfile")
+    if profile is not None and (profile != DRAFT_RENDER_PROFILE
+                                or event.get("artifactType") not in ("RESUME", "COVER_LETTER")):
+        raise ValueError("render_profile")
     deadline = time.monotonic() + min(limits["milliseconds"], 28_000) / 1000
 
     def run(arguments):
@@ -223,6 +236,14 @@ def _render_docx(data, event, limits):
         fonts = run(["pdffonts", str(pdf)])
         bounds = run(["pdftotext", "-bbox-layout", str(pdf), "-"])
         extracted = run(["pdftotext", "-layout", "-nopgbrk", str(pdf), "-"])
+        draft_evidence = {}
+        if profile is not None:
+            draft_evidence = {
+                "structureText": run(["pdfinfo", "-struct-text", "-enc", "UTF-8", str(pdf)]).stdout,
+                "linkXml": run(["pdftohtml", "-xml", "-i", "-stdout", "-zoom", "1", "-enc", "UTF-8", str(pdf)]).stdout,
+            }
+            if any(len(value.encode("utf-8")) > 2_097_152 for value in draft_evidence.values()):
+                raise ValueError("render_output_bound")
         if len(bounds.stdout.encode("utf-8")) > 2_097_152 or len(extracted.stdout.encode("utf-8")) > 2_097_152:
             raise ValueError("render_output_bound")
         run(["pdftoppm", "-png", "-r", "144", str(pdf), str(image_prefix)])
@@ -246,6 +267,7 @@ def _render_docx(data, event, limits):
             "fontInfo": fonts.stdout + "\n" + fonts.stderr,
             "boundingXml": bounds.stdout,
             "extractedText": extracted.stdout,
+            **draft_evidence,
         }
 
 

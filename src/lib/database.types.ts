@@ -6471,6 +6471,100 @@ export type Database = {
           },
         ]
       }
+      ap_material_rule_revalidations: {
+        Row: {
+          basis: Json
+          checked_at: string
+          checked_by: string
+          created_at: string
+          customer_id: string
+          id: string
+          job_id: string
+          line_revision_id: string
+          material_line_id: string
+          receipt_sha256: string
+          review_checklist: Json
+          review_method: string
+          reviewed_lease_generation: number
+          reviewed_version_id: string | null
+        }
+        Insert: {
+          basis: Json
+          checked_at: string
+          checked_by: string
+          created_at?: string
+          customer_id: string
+          id: string
+          job_id: string
+          line_revision_id: string
+          material_line_id: string
+          receipt_sha256: string
+          review_checklist: Json
+          review_method?: string
+          reviewed_lease_generation: number
+          reviewed_version_id?: string | null
+        }
+        Update: {
+          basis?: Json
+          checked_at?: string
+          checked_by?: string
+          created_at?: string
+          customer_id?: string
+          id?: string
+          job_id?: string
+          line_revision_id?: string
+          material_line_id?: string
+          receipt_sha256?: string
+          review_checklist?: Json
+          review_method?: string
+          reviewed_lease_generation?: number
+          reviewed_version_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_rule_revalidations_checked_by_fkey"
+            columns: ["checked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_rule_revalidations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_rule_revalidations_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_draft_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_rule_revalidations_line_revision_id_fkey"
+            columns: ["line_revision_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_line_revisions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_rule_revalidations_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_rule_revalidations_reviewed_version_id_fkey"
+            columns: ["reviewed_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_draft_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_material_support_cases: {
         Row: {
           artifact_id: string
@@ -13925,9 +14019,17 @@ export type Database = {
         Args: { p_line_id: string }
         Returns: Json
       }
+      ap_material_draft_rule_evidence: {
+        Args: { p_job_id: string }
+        Returns: Json
+      }
       ap_material_retention_deadline: {
         Args: { p_line_id: string }
         Returns: string
+      }
+      ap_material_rule_revalidation_schema_installed: {
+        Args: never
+        Returns: boolean
       }
       ap_observe_material_draft_response: {
         Args: {
@@ -14652,6 +14754,17 @@ export type Database = {
       ap_return_anonymous_draft_after_checkout: {
         Args: { p_draft_id: string; p_secret_hash: string }
         Returns: boolean
+      }
+      ap_revalidate_material_draft_rule: {
+        Args: {
+          p_expected_basis: Json
+          p_expected_version_id: string
+          p_job_id: string
+          p_receipt_id: string
+          p_review_checklist: Json
+          p_reviewer_id: string
+        }
+        Returns: Json
       }
       ap_reviewed_commute_result: {
         Args: {

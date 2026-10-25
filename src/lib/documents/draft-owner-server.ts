@@ -3,15 +3,14 @@ import { createHash, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database } from "@/lib/database.types";
-import { parsePostgresBytea } from "@/lib/commerce/server";
-import { remoteKmsAdapter } from "@/lib/security/remote-kms";
-import { decryptSensitivePayload, sensitivePayloadConfiguration, sensitivePayloadEncryptionReady } from "@/lib/security/sensitive-payload";
+import { readConfirmedDraftContact, DraftOwnerContactError } from "./draft-owner-contact";
 import { draftClaimReviewRequestSchema, prepareDraftClaimReview } from "./draft-claim-review";
 import { readEncryptedDraftPayload, storeEncryptedDraftPayload } from "./draft-packet-worker";
-import { draftingEvidenceExpectationSchema, serializeDraftingEvidencePacket, type DraftingEvidencePacket } from "./drafting-evidence";
+import { serializeDraftingEvidencePacket, type DraftingEvidencePacket } from "./drafting-evidence";
 import { loadDraftingEvidencePacket } from "./drafting-evidence-server";
 import { draftOutputSchema, serializeDraftProposal, validateDraftOutput } from "./draft-output";
 import { buildDraftRenderSource, serializeDraftRenderSource } from "./draft-render-source";
+import { readStoredDraftRenderSource, renderClaimSchema, DraftRenderSourceStorageError } from "./draft-render-source-storage";
 
 type Admin = SupabaseClient<Database>;
 const uuid = z.uuid(), hash = z.string().regex(/^[a-f0-9]{64}$/), time = z.iso.datetime({ offset: true });
@@ -28,31 +27,8 @@ const revisionSchema = z.object({ id: uuid, line_id: uuid, source_snapshot_id: u
   due_at: time, superseded_at: z.null() }).strict();
 const promoteSchema = z.object({ jobId: uuid, expectedVersionId: uuid, expectedSourceSha256: hash, careerBreakFactId: uuid.optional() }).strict();
 const reviewSchema = z.object({ jobId: uuid, request: draftClaimReviewRequestSchema }).strict();
-const factRefSchema = z.object({ factId: uuid, field: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,59}(\.[0-9]{1,3})?$/), valueSha256: hash, attributionFactId: uuid }).strict();
-const renderClaimSchema = z.object({ claimId: uuid, placement: z.string().min(1).max(180), text: z.string().min(1).max(3000), wordingSha256: hash,
-  kind: z.enum(["CANDIDATE_FACT", "JOB_EVIDENCE", "MIXED", "NARRATIVE"]),
-  origin: z.enum(["MODEL_PROPOSAL", "LOCAL_FACT", "LOCAL_JOB", "LOCAL_CONTACT", "CUSTOMER_PRESENTATION", "FIXED_PRESENTATION"]),
-  qualification: z.enum(["EXACT", "QUALIFIED_TRANSFER", "NONFACTUAL"]), factRefs: z.array(factRefSchema).max(40), jobEvidenceIds: z.array(uuid).max(40), referencePermissionIds: z.array(uuid).max(3),
-  contactBinding: z.object({ payloadId: uuid, contentSha256: hash, fields: z.array(z.string().min(1).max(60)).max(6) }).strict().nullable(),
-  questionInsights: z.array(z.object({ questionId: uuid, observationId: uuid, promptSha256: hash,
-    interpretation: z.literal("POTENTIAL_EMPLOYER_PRIORITY_NOT_A_CANDIDATE_QUALIFICATION") }).strict()).max(8), state: z.literal("OWNER_REVIEW_REQUIRED") }).strict();
-const claims = z.array(renderClaimSchema).max(250);
-const renderSourceSchema = z.object({ schemaVersion: z.literal("applypack-draft-render-source-v1"), expected: draftingEvidenceExpectationSchema,
-  packetSha256: hash, proposalSourceSha256: hash, contactPayloadId: uuid, contactSha256: hash, finalVersionAt: time, validUntil: time, language: z.literal("en-US"),
-  outputRules: z.object({ formats: z.array(z.enum(["PDF", "DOCX"])).min(1).max(2), resumePageLimit: z.number().int().positive().nullable(), letterPageLimit: z.number().int().positive().nullable() }).strict(),
-  resume: z.object({ header: claims, summary: claims, skills: claims,
-    sections: z.array(z.object({ heading: z.string().min(1).max(120), anchorFactId: uuid, header: claims, bullets: claims }).strict()).max(30),
-    education: z.array(z.object({ heading: z.literal("Education and credentials"), anchorFactId: uuid, header: claims }).strict()).max(20),
-    careerBreak: z.object({ choice: z.string().min(1).max(60), sourceFactId: uuid, selection: z.enum(["OWNER_SELECTED", "UNIQUE_CONFIRMED_SOURCE"]), label: renderClaimSchema, dates: renderClaimSchema }).strict().nullable() }).strict(),
-  coverLetter: z.object({ header: claims, date: z.string().min(1).max(80), recipient: renderClaimSchema, subject: renderClaimSchema, salutation: z.literal("Dear Hiring Team,"),
-    introduction: renderClaimSchema, body: z.array(claims).min(1).max(3), closing: renderClaimSchema, signoff: z.literal("Sincerely,"), signature: renderClaimSchema }).strict(),
-  ownerReviewClaims: claims, state: z.literal("OWNER_REVIEW_REQUIRED"), deliveryAuthorized: z.literal(false) }).strict();
 const savedReviewSchema = z.object({ schemaVersion: z.literal("applypack-owner-wording-review-v1"), versionId: uuid, packetSha256: hash, sourceSha256: hash,
   reviewerId: uuid, reviewedAt: time, claims: z.array(renderClaimSchema.extend({ decision: z.literal("APPROVED") }).strict()).min(1).max(250) }).strict();
-const bytea = (max: number) => z.string().regex(/^\\x(?:[a-fA-F0-9]{2})+$/).max(2 + max * 2);
-const contactSchema = z.object({ id: uuid, customer_id: uuid, content_sha256: hash, retention_state: z.literal("ACTIVE"), encryption_context_hash: hash,
-  encryption_algorithm: z.literal("AES-256-GCM"), ciphertext: bytea(8192), encrypted_data_key: bytea(16_384), nonce: bytea(12), authentication_tag: bytea(16),
-  kms_key_identity: z.string().min(1).max(2048), kms_key_version: z.string().min(1).max(100) }).strict();
 type State = { job: z.infer<typeof jobSchema>; version: z.infer<typeof versionSchema>; revision: z.infer<typeof revisionSchema> };
 export class DraftOwnerServerError extends Error {
   constructor(readonly code: string) { super(`DRAFT_OWNER_${code}`); this.name = "DraftOwnerServerError"; }
@@ -138,34 +114,12 @@ export function createDraftOwnerServer(admin: Admin, trustedReviewerId: string, 
     return packet;
   }
   async function contactFor(current: State, packet: DraftingEvidencePacket, signal: AbortSignal) {
-    let bytes: Buffer | undefined, transferred = false;
-    try {
-      const row = parse(contactSchema, await data(admin.from("ap_sensitive_payloads").select("id,customer_id,content_sha256,retention_state,encryption_context_hash,encryption_algorithm,ciphertext,encrypted_data_key,nonce,authentication_tag,kms_key_identity,kms_key_version")
-        .eq("id", packet.binding.contactPayloadId).abortSignal(signal).single(), signal));
-      ensure(row.id === packet.binding.contactPayloadId && row.customer_id === current.job.customer_id && row.content_sha256 === packet.binding.contactSha256, "CONTACT_MISMATCH");
-      const configuration = sensitivePayloadConfiguration(); ensure(sensitivePayloadEncryptionReady(configuration), "ENCRYPTION_UNAVAILABLE");
-      bytes = await decryptSensitivePayload({ configuration, kms: remoteKmsAdapter(),
-        context: { customerId: current.job.customer_id, payloadId: row.id, purpose: "CHUNK5_DOCUMENT_CONTACT" },
-        envelope: { algorithm: row.encryption_algorithm, ciphertext: parsePostgresBytea(row.ciphertext), encryptedDataKey: parsePostgresBytea(row.encrypted_data_key),
-          nonce: parsePostgresBytea(row.nonce), authenticationTag: parsePostgresBytea(row.authentication_tag), contentSha256: row.content_sha256,
-          keyIdentity: row.kms_key_identity, keyVersion: row.kms_key_version, encryptionContextHash: row.encryption_context_hash } });
-      ensure(!signal.aborted && bytes.length > 0 && bytes.length <= 8192 && digest(bytes) === packet.binding.contactSha256, "CONTACT_INVALID");
-      transferred = true; return bytes;
-    } finally { if (!transferred) bytes?.fill(0); }
+    try { return await readConfirmedDraftContact(admin, { customerId: current.job.customer_id, payloadId: packet.binding.contactPayloadId, sha256: packet.binding.contactSha256 }, signal); }
+    catch (error) { throw new DraftOwnerServerError(error instanceof DraftOwnerContactError ? error.code : "CONTACT_INVALID"); }
   }
   function readSource(saved: { body: string; value: unknown }, current: State, packet: DraftingEvidencePacket) {
-    const source = { ...parse(renderSourceSchema, saved.value, "SOURCE_INVALID"), renderSourceSha256: current.version.source_sha256 };
-    ensure(serializeDraftRenderSource(source) === saved.body && exact(source.expected) === exact(packet.expected)
-      && source.packetSha256 === packet.packetSha256 && source.contactPayloadId === packet.binding.contactPayloadId && source.contactSha256 === packet.binding.contactSha256
-      && exact(source.outputRules) === exact(packet.providerView.outputRules) && Date.parse(source.validUntil) === Date.parse(packet.validUntil)
-      && Date.parse(source.validUntil) > now().getTime() && Date.parse(source.finalVersionAt) <= now().getTime(), "SOURCE_STALE");
-    const visibleClaims = [...source.resume.header, ...source.resume.summary, ...source.resume.skills, ...source.resume.sections.flatMap((section) => [...section.header, ...section.bullets]),
-      ...source.resume.education.flatMap((section) => section.header), ...(source.resume.careerBreak ? [source.resume.careerBreak.label, source.resume.careerBreak.dates] : []),
-      ...source.coverLetter.header, source.coverLetter.recipient, source.coverLetter.subject, source.coverLetter.introduction, ...source.coverLetter.body.flat(), source.coverLetter.closing, source.coverLetter.signature];
-    const byId = new Map(source.ownerReviewClaims.map((claim) => [claim.claimId, claim]));
-    ensure(byId.size === source.ownerReviewClaims.length && visibleClaims.length === byId.size && new Set(visibleClaims.map((claim) => claim.claimId)).size === byId.size
-      && visibleClaims.every((claim) => exact(claim) === exact(byId.get(claim.claimId)) && digest(claim.text) === claim.wordingSha256), "CLAIM_SET_INVALID");
-    return source;
+    try { return readStoredDraftRenderSource(saved, current.version.source_sha256, packet, now); }
+    catch (error) { throw new DraftOwnerServerError(error instanceof DraftRenderSourceStorageError ? error.code : "SOURCE_INVALID"); }
   }
   return {
     promoteSource: (raw: unknown, signal: AbortSignal) => bounded(signal, async (child) => {

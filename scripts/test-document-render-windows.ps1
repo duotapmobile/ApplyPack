@@ -15,7 +15,7 @@ function Resolve-ApplicationPath($Command) {
 }
 
 function Resolve-PopplerToolset {
-  $toolNames = @('pdfinfo.exe', 'pdffonts.exe', 'pdftotext.exe', 'pdftoppm.exe')
+  $toolNames = @('pdfinfo.exe', 'pdffonts.exe', 'pdftotext.exe', 'pdftoppm.exe', 'pdftohtml.exe')
   $directories = @()
   if (![string]::IsNullOrWhiteSpace($env:APPLYPACK_POPPLER_BIN)) {
     $directories += (Resolve-Path -LiteralPath $env:APPLYPACK_POPPLER_BIN).Path
@@ -81,6 +81,7 @@ $pins = @{
   APP_PDFFONTS_EXECUTABLE = $poppler['pdffonts.exe']
   APP_PDFTOTEXT_EXECUTABLE = $poppler['pdftotext.exe']
   APP_PDFTOPPM_EXECUTABLE = $poppler['pdftoppm.exe']
+  APP_PDFTOHTML_EXECUTABLE = $poppler['pdftohtml.exe']
 }
 $fontPins.GetEnumerator() | ForEach-Object { $pins[$_.Key] = Join-Path $fontDirectory $_.Value.File }
 foreach ($pin in $pins.GetEnumerator()) {

@@ -1,4 +1,5 @@
 import { MatchingWorkbench } from "@/components/admin/matching-workbench";
+import Link from "next/link";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AdminMfa } from "@/components/admin/admin-mfa";
@@ -239,6 +240,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         <Chunk4StaffQueue rows={staffQueue} candidates={staffReviewCandidates} />
         <StagingBoardMaterialReview initialJobs={stagingBoardReviewJobs} />
         <Chunk5MaterialStaffQueue lines={materialStaffLines} />
+        <p><Link href="/admin/document-drafts">Review document drafts</Link></p>
         <AdminOperations searchOrders={searchOrders} applyItems={applyItems} conflicts={conflicts} corrections={corrections} capacityLimits={capacityLimits} />
         <MatchingWorkbench intakes={[...new Map([
           ...(pendingSnapshots || []).map((snapshot) => [snapshot.id, { id: snapshot.id,

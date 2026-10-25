@@ -5,6 +5,8 @@ import type { Database } from "@/lib/database.types";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { draftClaimReviewRequestSchema } from "@/lib/documents/draft-claim-review";
 import { createDraftOwnerServer } from "@/lib/documents/draft-owner-server";
+import { createMaterialRuleOwnerServer } from "@/lib/documents/material-rule-owner-server";
+import { materialRuleBasisSchema, materialRuleReviewChecklistSchema } from "@/lib/documents/material-rule-evidence";
 import { isSameOriginRequest } from "@/lib/security/origin";
 
 const uuid = z.uuid(), hash = z.string().regex(/^[a-f0-9]{64}$/);
@@ -14,6 +16,10 @@ const checklist = z.object({ contentReviewed: z.literal(true), visualReviewed: z
 const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("PROMOTE_SOURCE"), expectedVersionId: uuid, expectedSourceSha256: hash, careerBreakFactId: uuid.optional() }).strict(),
   z.object({ action: z.literal("REVIEW_WORDING"), review: draftClaimReviewRequestSchema }).strict(),
+  z.object({ action: z.literal("REVALIDATE_RULE"), expectedVersionId: uuid.nullable(), receiptId: uuid,
+    expectedBasis: materialRuleBasisSchema, checklist: materialRuleReviewChecklistSchema }).strict(),
+  z.object({ action: z.literal("REFRESH_PACKET"), expectedVersionId: uuid, expectedPacketSha256: hash,
+    expectedContextSha256: hash, requestId: uuid }).strict(),
   z.object({ action: z.literal("LISTING_CHECK"), expectedVersionId: uuid.nullable(), checkId: uuid, phase: z.enum(["BEFORE_GENERATION", "BEFORE_RELEASE"]),
     result: z.enum(["ACTIVE", "CLOSED", "INSTRUCTION_BLOCKED"]), evidenceSha256: hash,
     listingOpened: z.literal(true), instructionsCompared: z.literal(true) }).strict()
@@ -64,9 +70,22 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
     if (!jobId.success || !input.success) return response({ error: "The document action is incomplete. Review the current version and try again." }, 400);
     const admin: SupabaseClient<Database> = auth.admin;
     const value = input.data;
+    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(60_000)]);
+    // These adapters reconcile exact immutable receipts even when the original
+    // version is no longer current; their own service-only checks own the CAS.
+    if (value.action === "REVALIDATE_RULE") {
+      const result = await createMaterialRuleOwnerServer(admin, auth.user.id).revalidate({ jobId: jobId.data,
+        expectedVersionId: value.expectedVersionId, receiptId: value.receiptId, expectedBasis: value.expectedBasis, checklist: value.checklist }, signal);
+      return response({ action: value.action, result });
+    }
+    if (value.action === "REFRESH_PACKET") {
+      const result = await createMaterialRuleOwnerServer(admin, auth.user.id).refreshPacket({ jobId: jobId.data,
+        expectedVersionId: value.expectedVersionId, expectedPacketSha256: value.expectedPacketSha256,
+        expectedContextSha256: value.expectedContextSha256, requestId: value.requestId }, signal);
+      return response({ action: value.action, result });
+    }
     const versionId = value.action === "REVIEW_WORDING" ? value.review.versionId
       : value.action === "PROMOTE_SOURCE" || value.action === "LISTING_CHECK" ? value.expectedVersionId : value.versionId;
-    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(60_000)]);
     if (versionId === null) {
       const job = await admin.from("ap_material_draft_jobs").select("id,active_version_id,state").eq("id", jobId.data).abortSignal(signal).maybeSingle();
       if (job.error) throw new Error("JOB_UNCONFIRMED");

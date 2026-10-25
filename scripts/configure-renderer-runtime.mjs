@@ -47,6 +47,9 @@ export function configureRendererRuntime(environment = process.env, dependencies
     pins.push([name, actual]);
   }
   for (const [name, path] of Object.entries(executablePaths)) pin(name, path);
+  // The new draft profile opts into a separate link inspector. Legacy discovery
+  // and its renderer identity remain byte-for-byte unchanged when it is absent.
+  if (configured.APP_PDFTOHTML_EXECUTABLE) pin("APP_PDFTOHTML_EXECUTABLE", "/usr/bin/pdftohtml");
   for (const style of Object.values(liberationSansContract.styles)) {
     const match = run("/usr/bin/fc-match", ["--format=%{family}\n%{file}\n", style.query], {
       encoding: "utf8", timeout: 5_000, maxBuffer: 4_096, windowsHide: true,

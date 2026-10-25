@@ -60,6 +60,14 @@ test("explicit mismatched pins fail without partially mutating configuration", (
   assert.throws(() => configureRendererRuntime(environment, dependencies), /pin_mismatch/);
   assert.deepEqual(environment, before);
 });
+test("new draft link inspection is separately pinned and does not change legacy discovery", () => {
+  const old = configureRendererRuntime({ APP_RENDERER_RUNTIME_DISCOVERY: "true" }, dependencies);
+  assert.equal(old.APP_PDFTOHTML_EXECUTABLE, undefined);
+  const current = configureRendererRuntime({ APP_RENDERER_RUNTIME_DISCOVERY: "true", APP_PDFTOHTML_EXECUTABLE: "/usr/bin/pdftohtml" }, dependencies);
+  assert.equal(current.APP_PDFTOHTML_EXECUTABLE_SHA256, digest);
+  assert.notEqual(current.APP_DOCUMENT_RENDERER_IDENTITY, old.APP_DOCUMENT_RENDERER_IDENTITY);
+  assert.throws(() => configureRendererRuntime({ APP_RENDERER_RUNTIME_DISCOVERY: "true", APP_PDFTOHTML_EXECUTABLE: "/usr/bin/pdftohtml", APP_PDFTOHTML_EXECUTABLE_SHA256: "0".repeat(64) }, dependencies), /pin_mismatch/);
+});
 test("font fallback and command timeout both fail closed", () => {
   const environment = { APP_RENDERER_RUNTIME_DISCOVERY: "true" };
   assert.throws(() => configureRendererRuntime(environment, { ...dependencies,

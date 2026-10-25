@@ -136,7 +136,7 @@ function database(base = fixture()) {
       const key = call.filters.find(([name]) => name === "id")?.[1];
       const row = call.name === "ap_material_draft_jobs" ? job : call.name === "ap_material_draft_versions" ? versions.get(String(key))
         : call.name === "ap_material_line_revisions" ? revision : call.name === "ap_sensitive_payloads" ? contact : null;
-      return { data: structuredClone(row), error: null };
+      return { data: row && call.columns ? structuredClone(Object.fromEntries(call.columns.split(",").map((column) => [column, (row as Record<string, unknown>)[column]]))) : structuredClone(row), error: null };
     };
     const query = { select: (columns: string) => { call.columns = columns; return query; }, eq: (key: string, value: unknown) => { call.filters.push([key, value]); return query; },
       abortSignal: (value: AbortSignal) => { call.signal = value; return query; }, single: run,

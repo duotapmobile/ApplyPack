@@ -8,15 +8,10 @@ import { serializeDraftRenderSource, type DraftRenderSource, type DraftRenderTex
 import { serializeDraftingEvidencePacket, type DraftingEvidencePacket } from "./drafting-evidence";
 import { documentWith, majorHeading, packCleanDocument, paragraph } from "./docx-layout";
 import { inspectDocxPackage, type ArtifactProvenance, type ClaimProvenanceEntry, type DocumentMetadata, type RequirementMapping } from "./generate";
-import { DOCUMENT_REQUIREMENTS, DOCUMENT_STANDARD_SHA256, DOCUMENT_VERSIONS } from "./requirements";
+import { DOCUMENT_REQUIREMENTS } from "./requirements";
+import { DRAFT_DOCX_GENERATOR_VERSION, DRAFT_DOCX_VERSIONS } from "./draft-format";
+export { DRAFT_DOCX_GENERATOR_VERSION, DRAFT_DOCX_VERSIONS } from "./draft-format";
 
-// This format is intentionally not accepted by the old production generator
-// allowlist. Its forward database/renderer contract must be approved separately.
-export const DRAFT_DOCX_VERSIONS = Object.freeze({ ...DOCUMENT_VERSIONS,
-  content: "applypack-content-2026-10-25.1", template: "applypack-template-2026-10-25.1" });
-export const DRAFT_DOCX_GENERATOR_VERSION = ["applypack-documents", `instructions=${DRAFT_DOCX_VERSIONS.instructions}`,
-  `standardSha256=${DOCUMENT_STANDARD_SHA256}`, `content=${DRAFT_DOCX_VERSIONS.content}`,
-  `template=${DRAFT_DOCX_VERSIONS.template}`, `exporter=${DRAFT_DOCX_VERSIONS.exporter}`].join("|");
 const MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document" as const;
 type ArtifactType = "RESUME" | "COVER_LETTER";
 type Input = { source: DraftRenderSource; packet: DraftingEvidencePacket };

@@ -329,7 +329,16 @@ describe("immutable drafting evidence", () => {
 
 function fakeAdmin(f: Fixture, onRead?: (table: string, count: number) => void) {
   const r = f.r;
+  r.draftJobId ??= id(85);
+  r.ruleEvidence ??= { contractVersion: "applypack-material-rule-revalidation-v1", jobId: r.draftJobId,
+    basis: { lineRevisionId: r.revision.id, sourceSnapshotId: r.snapshot.id, jobSnapshotId: r.job.id, jobContentSha256: r.job.content_sha256,
+      ruleId: r.rule.id, ruleSha256: r.rule.content_sha256, ruleRecordSha256: digest("d"), sourceAuthoritySha256: digest("e") },
+    originalCheckedAt: r.rule.checked_at, effectiveCheckedAt: r.rule.checked_at, revalidation: null };
+  const authority = { contextSha256: digest("f") };
+  const managedJob = { id: r.draftJobId, customer_id: f.expected.customerId, material_line_id: r.line.id, line_revision_id: r.revision.id,
+    source_snapshot_id: r.snapshot.id, active_version_id: null as string | null, lease_generation: 1 };
   const tables: Record<string, unknown[]> = {
+    ap_material_draft_jobs: [managedJob],
     ap_material_lines: [r.line], ap_material_purchases: [r.purchase], ap_payment_attempts: [r.payment], ap_material_line_revisions: [r.revision],
     ap_intake_snapshots: [r.snapshot], ap_anonymous_drafts: [r.draft], ap_sensitive_payloads: [r.sourcePayload, r.contact], ap_material_checkout_intents: [r.intent],
     ap_material_checkout_items: [r.item], ap_job_snapshots: [r.job], ap_employer_submission_rules: [r.rule], ap_material_listing_checks: [r.listingCheck],
@@ -363,13 +372,58 @@ function fakeAdmin(f: Fixture, onRead?: (table: string, count: number) => void) 
       },
     }; return query;
   });
-  const rpc = vi.fn((name: string) => {
-    const data = name === "ap_customer_owns_snapshot" ? r.ownsSnapshot : r.verifiedJobSnapshotIds.map((value) => ({ id: value }));
+  const rpc = vi.fn((name: string): { abortSignal(): Promise<{ data: unknown; error: unknown }> } => {
+    counts[name] = (counts[name] ?? 0) + 1; onRead?.(name, counts[name]);
+    const data = name === "ap_customer_owns_snapshot" ? r.ownsSnapshot
+      : name === "ap_material_draft_context_sha256" ? authority.contextSha256
+      : name === "ap_material_draft_rule_evidence" ? { ...r.ruleEvidence, activeVersionId: managedJob.active_version_id, leaseGeneration: managedJob.lease_generation }
+      : name === "ap_current_verified_job_snapshots" ? r.verifiedJobSnapshotIds.map((value) => ({ id: value })) : null;
     return { abortSignal: () => Promise.resolve({ data, error: null }) };
   });
-  return { admin: { from, rpc } as unknown as Parameters<typeof loadDraftingEvidencePacket>[0], from, rpc, counts, selections, tables };
+  return { admin: { from, rpc } as unknown as Parameters<typeof loadDraftingEvidencePacket>[0], from, rpc, counts, selections, tables, managedJob, authority };
 }
 describe("connected drafting evidence loader", () => {
+  it("uses service092 rule evidence between current-context checks and keeps mutable job fences outside the packet", async () => {
+    const f = fixture(), db = fakeAdmin(f);
+    const packet = await loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now });
+    expect(db.rpc).toHaveBeenCalledWith("ap_material_draft_rule_evidence", { p_job_id: db.managedJob.id });
+    expect(db.counts.ap_material_draft_context_sha256).toBe(4);
+    expect(db.counts.ap_material_draft_jobs).toBe(4);
+    expect(packet.ownerEvidence.ruleEvidence).toEqual(f.r.ruleEvidence);
+    expect(packet.ownerEvidence.ruleEvidence).not.toHaveProperty("activeVersionId");
+    expect(packet.ownerEvidence.ruleEvidence).not.toHaveProperty("leaseGeneration");
+    expect(packet.providerView).not.toHaveProperty("ruleEvidence");
+  });
+  it("rejects a context change around the service receipt read", async () => {
+    const f = fixture();
+    const db = fakeAdmin(f, (name, count) => { if (name === "ap_material_draft_context_sha256" && count === 2) db.authority.contextSha256 = digest("e"); });
+    await expect(loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now })).rejects.toThrow("DRAFTING_EVIDENCE_READ_CHANGED");
+  });
+  it("rejects a context change between two individually consistent read passes", async () => {
+    const f = fixture();
+    const db = fakeAdmin(f, (name, count) => { if (name === "ap_material_draft_context_sha256" && count === 3) db.authority.contextSha256 = digest("e"); });
+    await expect(loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now })).rejects.toThrow("DRAFTING_EVIDENCE_READ_CHANGED");
+  });
+  it.each(["version", "lease"])("rejects a changing %s fence during a read without changing immutable packet evidence", async (change) => {
+    const f = fixture();
+    const db = fakeAdmin(f, (name, count) => { if (name === "ap_material_draft_rule_evidence" && count === 1) {
+      if (change === "version") db.managedJob.active_version_id = id(86); else db.managedJob.lease_generation++;
+    } });
+    await expect(loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now })).rejects.toThrow("DRAFTING_EVIDENCE_READ_CHANGED");
+  });
+  it("rejects a managed job for a different source snapshot", async () => {
+    const f = fixture(), db = fakeAdmin(f); db.managedJob.source_snapshot_id = id(99);
+    await expect(loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now })).rejects.toThrow("DRAFTING_EVIDENCE_DRAFT_JOB_BINDING_INVALID");
+  });
+  it("rejects an otherwise well-shaped rule projection for a different job", async () => {
+    const f = fixture(), db = fakeAdmin(f); f.r.ruleEvidence!.jobId = id(99);
+    await expect(loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now })).rejects.toThrow("DRAFTING_EVIDENCE_SOURCE_UNAVAILABLE");
+  });
+  it("does not silently fall back to original rule timestamps when service092 evidence is unavailable", async () => {
+    const f = fixture(), db = fakeAdmin(f); const original = db.rpc.getMockImplementation()!;
+    db.rpc.mockImplementation((name) => name === "ap_material_draft_rule_evidence" ? { abortSignal: () => Promise.resolve({ data: null, error: { code: "missing" } }) } : original(name));
+    await expect(loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now })).rejects.toThrow("DRAFTING_EVIDENCE_SOURCE_UNAVAILABLE");
+  });
   it("binds the selected checkout contact fact separately and excludes other protected contacts from provider facts", async () => {
     const f = fixture(), db = fakeAdmin(f);
     db.tables.ap_candidate_facts.push({ ...f.r.contactFact, id: id(95), typed_value: { protectedPayloadId: id(95), contentSha256: digest("e") } });

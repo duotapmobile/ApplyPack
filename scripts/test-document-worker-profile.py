@@ -75,6 +75,16 @@ class DocumentWorkerProfileTests(unittest.TestCase):
     def test_probe_timeout_cleans_unique_profiles(self):
         self.check_failed_conversion("probe", subprocess.TimeoutExpired("synthetic-libreoffice", 30))
 
+    def test_unknown_draft_profile_fails_before_conversion_or_storage(self):
+        event = {"mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                 "expectedPages": 1, "artifactType": "RESUME"}
+        for profile in (True, {}, {"schemaVersion": "applypack-reviewed-draft-pdf-v1", "generatorVersion": "legacy"}):
+            with patch.object(handler.subprocess, "run") as run, patch.object(handler, "s3", Mock()) as storage:
+                with self.assertRaisesRegex(ValueError, "render_profile"):
+                    handler._render_docx(b"synthetic", {**event, "renderProfile": profile}, {"milliseconds": 30_000})
+                run.assert_not_called()
+                storage.put_object.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
