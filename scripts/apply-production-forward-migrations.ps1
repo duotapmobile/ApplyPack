@@ -29,7 +29,7 @@ $script:DatabaseName = 'postgres'
 $script:LoginUser = 'postgres.zzzzzzzzzzzzzzzzzzzz'
 $script:CurrentUser = 'postgres'
 $script:PreSchemaVersion = '202610190084'
-$script:PostSchemaVersion = '202610250093'
+$script:PostSchemaVersion = '202610250094'
 $script:CaSha256 = '700723581420DD1AC98FD7E9AC529F0EF210EADCAF87FC868A3AD7D114C2F3B7'
 $script:PostgresImageDigest = 'public.ecr.aws/supabase/postgres@sha256:b3bfedb107413abb3b8cb0d0874b0414a1dceb3d55bc0c778de6ad22d1f7dc86'
 $script:DockerCliReviewedPath = 'C:\Program Files\Docker\Docker\resources\bin\docker.exe'
@@ -159,6 +159,15 @@ $script:MigrationPlan = @(
         predecessor = '202610250092'
         predecessorCheckpoint = 'MATERIAL_RULE_REVALIDATION'
         marker = 'PRODUCTION_MIGRATION_202610250093_APPLIED'
+    },
+    [ordered]@{
+        version = '202610250094'
+        name = 'material_draft_stage_claiming'
+        relativePath = 'supabase/migrations/202610250094_material_draft_stage_claiming.sql'
+        checkpoint = 'MATERIAL_DRAFT_STAGE_CLAIMING'
+        predecessor = '202610250093'
+        predecessorCheckpoint = 'SOURCE_AWARE_DOCUMENT_ACCEPTANCE'
+        marker = 'PRODUCTION_MIGRATION_202610250094_APPLIED'
     }
 )
 $script:PublishedPredecessorPaths = @(
@@ -1438,6 +1447,7 @@ function Invoke-Apply {
                 migration091Rows = [int]($script:PostSchemaVersion -cge '202610250091')
                 migration092Rows = [int]($script:PostSchemaVersion -cge '202610250092')
                 migration093Rows = [int]($script:PostSchemaVersion -cge '202610250093')
+                migration094Rows = [int]($script:PostSchemaVersion -cge '202610250094')
                 requiredSchemaVersion = $script:PostSchemaVersion
                 ready = ($script:PostSchemaVersion -cne '202610240087')
                 invalidPublicIndexes = 0

@@ -3,20 +3,22 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import test from "node:test";
+import { materialDraftStageContractFixture } from "./lib/material-draft-stage-fixture.mjs";
 import { current091LockedPhaseSql, current092LockedPhaseSql, current093LockedPhaseSql } from "./lib/supabase-upgrade-phases.mjs";
 
 for (const [flag, version, count, containsRule, containsSource] of [
   ["--historical-091", "202610250091", 6, false, false],
   ["--historical-092", "202610250092", 7, true, false],
-  [null, "202610250093", 8, true, true],
+  ["--historical-093", "202610250093", 8, true, true],
+  [null, "202610250094", 9, true, true],
 ]) {
   test(`the real fixture selector executes only its exact ${version} phase`, () => {
     const source = readFileSync(new URL("./run-supabase-db-tests-v2.mjs", import.meta.url), "utf8")
       .replace(/^import .*;\r?\n/gmu, "").replaceAll("import.meta.url", JSON.stringify(import.meta.url));
     const inputs = [], logs = [];
     runInNewContext(source, {
-      URL, fileURLToPath,
-      readFileSync: (path) => `-- fictional fixture ${path}`,
+      URL, fileURLToPath, materialDraftStageContractFixture,
+      readFileSync: (path) => String(path).endsWith("material-draft-stage-claiming.sql") ? readFileSync(path, "utf8") : `-- fictional fixture ${path}`,
       spawnSync: (command, args, options) => {
         assert.equal(command, "docker"); assert(args.includes("supabase_db_applypack"));
         inputs.push(options.input); return { status: 0, stdout: "", stderr: "" };

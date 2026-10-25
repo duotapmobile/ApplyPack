@@ -29,8 +29,8 @@ function Assert-ProductionDatabaseManifest {
         $Manifest.credentialTarget -cne 'ApplyPack/Supabase/Production/Database' -or
         $Manifest.caSha256 -cnotmatch '^[a-f0-9]{64}$' -or $Manifest.releaseSha -cnotmatch '^[a-f0-9]{40}$' -or
         $Manifest.expectedLedgerSha256 -cnotmatch '^[a-f0-9]{64}$' -or
-        $Manifest.expectedSchemaVersion -notin @('202610040080','202610190081','202610190082','202610190083','202610190084','202610220085','202610230086','202610240087','202610250088','202610250089','202610250090','202610250091','202610250092') -or
-        $Manifest.postSchemaVersion -notin @('202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093') -or
+        $Manifest.expectedSchemaVersion -notin @('202610040080','202610190081','202610190082','202610190083','202610190084','202610220085','202610230086','202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093') -or
+        $Manifest.postSchemaVersion -notin @('202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094') -or
         $Manifest.expectedSchemaVersion -cge $Manifest.postSchemaVersion -or
         $Manifest.recoveryStrategy -notin @('TESTED_COMPATIBLE_SHA','LOCKED_FORWARD_RECOVERY')) {
         throw 'PRODUCTION_MANIFEST_INVALID'
@@ -72,6 +72,7 @@ function Assert-ProductionDatabaseManifest {
         '202610250091' = @('material_draft_pair_workflow','MATERIAL_DRAFT_PAIR_WORKFLOW')
         '202610250092' = @('material_rule_revalidation','MATERIAL_RULE_REVALIDATION')
         '202610250093' = @('source_aware_document_acceptance','SOURCE_AWARE_DOCUMENT_ACCEPTANCE')
+        '202610250094' = @('material_draft_stage_claiming','MATERIAL_DRAFT_STAGE_CLAIMING')
     }
     $expected = @($known.Keys | Where-Object { $_ -cgt $Manifest.expectedSchemaVersion -and $_ -cle $Manifest.postSchemaVersion })
     if (@($Manifest.migrations).Count -ne $expected.Count) { throw 'PRODUCTION_MIGRATION_SCOPE_INVALID' }

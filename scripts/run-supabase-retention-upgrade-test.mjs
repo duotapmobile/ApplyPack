@@ -17,11 +17,11 @@ try {
   run("supabase", ["db", "reset", "--local", "--no-seed", "--version", "202610240087"]);
   run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs", "--historical-087"], "Database contract fixtures passed: 1. Schema phase: 202610240087.");
   run("supabase", ["migration", "up", "--local"]);
-  run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs"], "Database contract fixtures passed: 8. Schema phase: 202610250093.");
+  run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs"], "Database contract fixtures passed: 9. Schema phase: 202610250094.");
 } catch (error) { failure = error; }
 finally {
   try { run("supabase", ["db", "reset", "--local", "--no-seed"]); }
   catch (error) { if (!failure) failure = error; }
 }
 if (failure) throw failure;
-console.log("All 19 historical086 contract fixtures, historical087 missing-executor guard and eight current093 fixtures passed; latest disposable local schema restored.");
+console.log("All 19 historical086 contract fixtures, historical087 missing-executor guard and nine current094 fixtures passed; latest disposable local schema restored.");

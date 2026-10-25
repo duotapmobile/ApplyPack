@@ -7,7 +7,7 @@ export const DATABASE_RECOVERY_LIMITS = Object.freeze({
   runMilliseconds: 5 * 60 * 1000, roles: 4096, memberships: 16384,
 });
 export const DATABASE_RECOVERY = Object.freeze({
-  projectRef: RECOVERY_PROJECT, schemaVersion: "202610250093", postgresMajor: 17,
+  projectRef: RECOVERY_PROJECT, schemaVersion: "202610250094", postgresMajor: 17,
   archiveBucket: "applypack-production-protected-recovery-838445019912",
   manifestSchema: "applypack-database-recovery-manifest-v1",
   snapshotAuthority: "postgres-exported-snapshot-v1",

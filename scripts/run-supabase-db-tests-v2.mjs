@@ -1,16 +1,18 @@
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { materialDraftStageContractFixture } from "./lib/material-draft-stage-fixture.mjs";
 
 const historical085 = process.argv.length === 3 && process.argv[2] === "--historical-085";
 const historical086 = process.argv.length === 3 && process.argv[2] === "--historical-086";
 const historical087 = process.argv.length === 3 && process.argv[2] === "--historical-087";
 const historical091 = process.argv.length === 3 && process.argv[2] === "--historical-091";
 const historical092 = process.argv.length === 3 && process.argv[2] === "--historical-092";
-if (process.argv.length > 3 || (process.argv.length === 3 && !historical085 && !historical086 && !historical087 && !historical091 && !historical092)) {
+const historical093 = process.argv.length === 3 && process.argv[2] === "--historical-093";
+if (process.argv.length > 3 || (process.argv.length === 3 && !historical085 && !historical086 && !historical087 && !historical091 && !historical092 && !historical093)) {
   throw new Error("DATABASE_FIXTURE_PHASE_INVALID");
 }
-const requiredSchemaVersion = historical085 ? "202610220085" : historical086 ? "202610230086" : historical087 ? "202610240087" : historical091 ? "202610250091" : historical092 ? "202610250092" : "202610250093";
+const requiredSchemaVersion = historical085 ? "202610220085" : historical086 ? "202610230086" : historical087 ? "202610240087" : historical091 ? "202610250091" : historical092 ? "202610250092" : historical093 ? "202610250093" : "202610250094";
 const phaseProbe = spawnSync("docker", ["exec", "-i", "supabase_db_applypack", "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"], {
   encoding: "utf8", input: `do $$ begin
     if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '${requiredSchemaVersion}'
@@ -20,7 +22,7 @@ const phaseProbe = spawnSync("docker", ["exec", "-i", "supabase_db_applypack", "
 if (phaseProbe.error || phaseProbe.status !== 0) throw new Error("DATABASE_FIXTURE_SCHEMA_PHASE_MISMATCH");
 const fixtures = !historical085 && !historical086 ? [
   "../tests/integration/one-off-service-retention.sql",
-  ...(!historical087 ? ["../tests/integration/service-retention-cleanup.sql", "../tests/integration/confirmed-intake.sql", "../tests/integration/reviewed-commute.sql", "../tests/integration/material-draft-pair-workflow.sql", "../tests/integration/chunk5-materials-delivery.sql", ...(!historical091 ? ["../tests/integration/material-rule-revalidation.sql", ...(!historical092 ? ["../tests/integration/source-aware-document-acceptance.sql"] : [])] : [])] : []),
+  ...(!historical087 ? ["../tests/integration/service-retention-cleanup.sql", "../tests/integration/confirmed-intake.sql", "../tests/integration/reviewed-commute.sql", "../tests/integration/material-draft-pair-workflow.sql", "../tests/integration/chunk5-materials-delivery.sql", ...(!historical091 ? ["../tests/integration/material-rule-revalidation.sql", ...(!historical092 ? ["../tests/integration/source-aware-document-acceptance.sql", ...(!historical093 ? ["../tests/integration/material-draft-stage-claiming.sql"] : [])] : [])] : [])] : []),
 ] : [
   "../tests/integration/unpaid-source-retention.sql",
   "../tests/integration/chunk1-foundation.sql",
@@ -46,8 +48,9 @@ for (const fixture of fixtures) {
   const sqlPath = fileURLToPath(new URL(fixture, import.meta.url));
   // stdin-fed psql cannot resolve repository-relative includes inside Docker.
   // Expand this single reviewed, local helper; no arbitrary include paths.
-  const sql = readFileSync(sqlPath, "utf8").replace(/^\\ir (reviewed-source-fixture|rehearsal-checkout-attempts|rehearsal-material-checkout)\.sql\r?$/gm,
+  let sql = readFileSync(sqlPath, "utf8").replace(/^\\ir (reviewed-source-fixture|rehearsal-checkout-attempts|rehearsal-material-checkout)\.sql\r?$/gm,
     (_line, helper) => readFileSync(fileURLToPath(new URL(`../tests/integration/${helper}.sql`, import.meta.url)), "utf8"));
+  if (fixture.endsWith("/material-draft-stage-claiming.sql")) sql = materialDraftStageContractFixture(sql);
   const result = spawnSync("docker", ["exec", "-i", "supabase_db_applypack", "psql", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"], {
     encoding: "utf8", input: sql, stdio: ["pipe", "pipe", "pipe"], timeout: 60_000,
   });
