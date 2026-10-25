@@ -2,6 +2,8 @@
 
 Status: historical preparation inputs for the [rejected infrastructure quote](PAID_LAUNCH_INFRASTRUCTURE_QUOTE_2026-10-23.md). The owner rejected its $160.78/month forecast, $165 planning budget and up-to-$10 recovery-drill allowance as unaffordable. No paid resources have been created. Stay on Railway and distinguish launch necessities, first-paying-customer needs, and scaling additions in the replacement consolidated quote. Amendment 18's new-order retention policy bounds private-content growth but does not automatically reduce fixed service charges. The four-hour recovery and fifteen-minute reconciliation targets remain unchanged. Provider/drill evidence is separate from the cost forecast.
 
+Current follow-up: [October 25 phased cost and recovery review](PAID_LAUNCH_PHASED_COST_REVIEW_2026-10-25.md). It separates pre-payment requirements from scaling choices and records current provider gaps; it is not a replacement spending quote. The dated observations below remain historical.
+
 ## Verified reuse and gaps
 
 Railway project Apply Pack is already on Hobby. Its existing production web and stopped staging web/maintenance are retained. One separate production maintenance service is proposed. Existing domain and provider credentials are retained. Both Supabase projects belong to organization xpextbpofycakdyocbhu (DuoTap); the official read-only Management API verified its current plan is Free at 21:02 UTC. Production remains inactive. The proposed Pro organization plan is an incremental charge, not an existing paid allowance; production recovery arrangements and database access remain unresolved.

@@ -10,7 +10,7 @@ Amendment 17 replaces mandatory live test payments/refunds with sandbox validati
 
 The canonical checkout is applypack-production-v2, origin https://github.com/duotapmobile/ApplyPack.git, branch codex/manual-launch-hardening-2026-10-02. Initial HEAD was a3de4a447d499fb7d416e1a1d167e281372903b2. The 688 pre-existing changed/untracked files were copied and hashed before implementation into ignored evidence/paid-launch-2026-10-23/before with baseline.json. The initial HEAD is not the new candidate SHA.
 
-## Provider observations and holds
+## Provider observations and holds — October 23
 
 - Railway project Apply Pack: fb5a58c4-8ccb-4205-82f9-8b8738c84e56, Hobby subscription.
 - Staging environment 6633e585-5bcd-4729-b167-2a99628daf86: web and maintenance have no active deployments. Both unchecked GitHub triggers were captured, deleted and verified absent before any publication. Exact restoration inputs are in ignored staging-trigger-hold.json. This did not apply the user's staged Stripe candidate or deploy code.
@@ -21,6 +21,14 @@ The canonical checkout is applypack-production-v2, origin https://github.com/duo
 - Authenticated read-only inventory at 20:42 UTC verified the existing applypack-staging-foundation stack, staging sensitive-payload KMS key/alias, isolated VPC, two private subnets without public-IP assignment, and two route tables containing only their local route. Retain these staging resources for reuse. Matching worker functions, temporary buckets, image repositories, roles, Roles Anywhere anchors/profiles and worker log groups were absent within the inspected naming/tag scope. IAM ListPolicies returned AccessDenied on one attempt, so policy existence is unknown. Unrelated resources and production provisioning permissions remain unverified; this inventory does not authorize provisioning. Detailed resource metadata remains in ignored aws-resource-inventory-runtime.json.
 - The connected Stripe account is the verified Apply Pack sandbox acct_1UTeOMJBHv2xRTvu only. Live onboarding, catalog and webhook remain to verify through authorized live access.
 - A read-only Resend domain-list request using the current production credential returned HTTP 401. This does not establish email delivery or domain readiness; diagnose credential validity/scope through authorized provider access before sending acceptance email. No email was sent.
+
+### October 25 read-only refresh
+
+At 14:51:56–14:53:30 UTC, Railway remained on Hobby, both deployment-trigger holds remained in place, staging web and maintenance had no active deployment, and production still served deployment `bf2d101f-6d4a-4427-90f4-46e2470c56cb`. Supabase production remained INACTIVE and staging ACTIVE_HEALTHY. The current organization response did not verify the billing plan, compute tiers or recovery add-ons; the October 23 Free-plan finding above remains historical.
+
+The Windows credential entry `ApplyPack/Supabase/Production/Database` is now present by name-only inspection. This supersedes the prior absent-entry finding, without establishing credential validity, connectivity or a verified production target. No secret value or username was retrieved. The existing AWS profile could not authenticate, so its resource inventory was not refreshed. No login, credential replacement, paid provisioning, migration, deployment or deletion followed. Sanitized receipts are retained outside the checkout in the October 25 resource inventory bundle.
+
+Use the [phased cost and recovery review](../launch/PAID_LAUNCH_PHASED_COST_REVIEW_2026-10-25.md) when preparing the replacement quote. It records current reuse evidence and a cheaper recovery candidate's unresolved requirements; it is not a spending quote or recovery proof.
 
 ## Source implementation and checks
 
@@ -75,6 +83,12 @@ New local checks include 121 focused readiness/intake/maintenance/legal tests, f
 
 This candidate is not a fully passing release. The test-launcher repair, production foundation work, worker-image remediation and subsequent source changes create a new candidate requiring committed-SHA CI again. The final main revision, staging deployment, full sandbox journey, human/device checks and protected hosted recovery evidence remain required. Isolated structural recovery is not the agreed measured 240-minute/15-minute hosted recovery proof.
 
+## Latest verified preparation candidate
+
+Candidate `1501d313f4a85484bb17302ab63bc5101553b2f5` passed the complete [push CI run](https://github.com/duotapmobile/ApplyPack/actions/runs/40157220473) and both web and document-worker jobs in the [Launch image run](https://github.com/duotapmobile/ApplyPack/actions/runs/40157220601). The matching [pull-request CI](https://github.com/duotapmobile/ApplyPack/actions/runs/40157223710) and [pull-request image checks](https://github.com/duotapmobile/ApplyPack/actions/runs/40157223692) also passed. This supersedes the earlier candidates' source-verification status, while preserving their failed and repaired evidence above.
+
+These are preparation results for that exact branch revision, not a final-main release, deployment, hosted migration or go-live approval. Amendment 18 and current schema `202610240087` preserve prior paid contracts and deliberately keep readiness closed while the required cleanup/redaction and restore-sanitization implementation remains unavailable. The separate archive-pruning boundary, replacement cost quote, hosted recovery, sandbox journey and human acceptance gates below remain unresolved. Any subsequent source change requires its own affected validation; no provider action or purchasing activation follows automatically from passing CI.
+
 ## Read-only sandbox proof
 
 After final main SHA, deployment, approved sandbox journey, document review and refunds:
@@ -87,13 +101,15 @@ After final main SHA, deployment, approved sandbox journey, document review and 
 
 ## Remaining controlled execution
 
-Review and commit the candidate, obtain actual committed-SHA CI/image results, verify production's recorded trigger hold remains in effect, then merge and validate final main. Align staging to that exact revision. Keep all later provider evidence outside the frozen source. A code fix starts a new candidate and requires affected validation.
+Review and commit any subsequent candidate and obtain its actual committed-SHA CI/image results. Verify production's recorded trigger hold remains in effect before merging and validating final main. Align staging to that exact revision. Keep all later provider evidence outside the frozen source. A code fix starts a new candidate and requires affected validation; the preparation results above do not satisfy outstanding implementation or hosted acceptance gates.
 
-The [single consolidated quote](../launch/PAID_LAUNCH_INFRASTRUCTURE_QUOTE_2026-10-23.md) is ready and independently reviewed: $160.78/month forecast, $165 planning budget, plus up to$10 for one drill, under the document's assumptions. Approval is pending; no paid provisioning has occurred. Retain old Stripe credentials and endpoint records before switching. The empty staging obligations permit that future switch without resolving unmatched historical provider-only test objects, after a fresh obligations check.
+The owner rejected the [October 23 quote](../launch/PAID_LAUNCH_INFRASTRUCTURE_QUOTE_2026-10-23.md), including its $160.78/month forecast, $165 planning budget and up-to-$10 drill allowance, as unaffordable. It is historical cost evidence, not a pending approval request or spending authority; no paid provisioning has occurred. Prepare a replacement consolidated incremental quote that stays on Railway and distinguishes launch necessities, first-paying-customer needs and scaling additions. The agreed 240-minute recovery and 15-minute recovery/reconciliation targets remain unchanged. Retain old Stripe credentials and endpoint records before switching, and refresh the staging obligations check before relying on its earlier empty result.
+
+The [new-order cleanup/redaction and restore-sanitization implementation gate](ONE_OFF_RETENTION.md) and the separate [protected-archive pruning authorization](PROTECTED_RECOVERY_RETENTION_APPROVAL.md) remain unresolved. Repeating the launch goal supplies no new authorization for either blocked mechanism. Current 087 readiness remains closed; green CI, a quote, or this runbook cannot unlock purchasing.
 
 Before hosted migration, prove protected/off-machine and operator-credential-loss recovery for records, private objects, keys, authentication and configuration. Require RTO at most 240 minutes and RPO/reconciliation at most 15 minutes. Database structural tests and a same-machine DPAPI backup are insufficient. Use locked forward repair, preserve obligations and reconcile every Stripe payment.
 
-Then apply verified missing forward migrations, deploy locked staging web and matching maintenance, complete the genuine sandbox journey and negative checks, prepare locked production live configuration, and complete delivered alerts/email plus one manual and two actual scheduled maintenance cycles.
+Then use [Launch database operations](LAUNCH_DATABASE_OPERATIONS.md) and the reviewed current tools to apply only verified missing forward migrations through `202610240087`, deploy locked staging web and matching maintenance, complete the genuine sandbox journey and negative checks, prepare locked production live configuration, and complete delivered alerts/email plus one manual and two actual scheduled maintenance cycles. Preserve historical migration and receipt contracts; never substitute an old 085/086 command or approval for the current operation.
 
 Use the maintenance runner with APP_DEPLOYMENT_ENV and APP_EXPECTED_RELEASE_SHA bound to the intended environment and full revision. Direct administrator calls additionally require x-applypack-expected-environment and x-applypack-expected-release-sha request headers alongside the existing bearer credential. The route rejects a mismatch before maintenance writes and the runner verifies the same response identity. Historical bearer-only curl examples and hourly maintenance instructions are superseded.
 

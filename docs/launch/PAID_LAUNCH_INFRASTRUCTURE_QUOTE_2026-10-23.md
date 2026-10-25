@@ -2,6 +2,8 @@
 
 Prepared October 23, 2026. **Rejected by the owner as unaffordable; retained as historical cost evidence. No paid resources provisioned.** This is not a current approval request or spending authority. The owner chose to stay on Railway and requested separate launch, first-paying-customer, and scale needs. Prepare a replacement consolidated incremental quote before provisioning anything new. Amendment 18 shortens prospective private-content retention; it does not itself prove lower fixed infrastructure charges or change the agreed recovery targets.
 
+Current follow-up: [October 25 phased cost and recovery review](PAID_LAUNCH_PHASED_COST_REVIEW_2026-10-25.md). No replacement quote has been approved.
+
 The rejected proposal requested a **$165/month planning budget**, plus **up to $10 once for the recovery drill**. Its itemized forecast was **$160.78/month additional to the existing production hosting/domain/email baseline**, before tax. The figures below preserve that proposal's assumptions; they are not an approved budget or current quote. Shared AWS/Railway credits and actual usage were not guaranteed.
 
 The database recovery add-on accounts for $100.01 of the estimate. Daily database backups alone do not meet the agreed maximum of fifteen minutes of application data requiring recovery or reconciliation. The target remains restoration within four hours, with every paid transaction reconciled against Stripe.
