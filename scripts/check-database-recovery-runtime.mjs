@@ -35,8 +35,12 @@ export function checkDatabaseRecoveryRuntime({ read = readFileSync, stat = lstat
     for (const file of ["/usr/local/bin/gosu", "/bin/sh", "/usr/bin/perl"]) assert(!exists(file), "general-purpose runtime tool forbidden");
     for (const name of ["postgresql-client-17", "libpq5"]) {
       const record = read("/var/lib/dpkg/status.d/" + name, "utf8");
-      assert(record.includes("Package: " + name + "\n") && record.includes("Source: postgresql-17\n"));
-      assert(record.includes("Version: 17.11-0applypack1\n") && record.includes("Status: install ok installed\n"));
+      for (const [field, value] of Object.entries({ Package: name,
+        Source: "postgresql-17 (17.11-0+deb13u1)", Version: "17.11-0+deb13u1+applypack1",
+        Status: "install ok installed" })) {
+        const entries = record.split(/\r?\n/u).filter((line) => line.startsWith(field + ":"));
+        assert.deepEqual(entries, [field + ": " + value], "incorrect or ambiguous package provenance: " + field);
+      }
     }
   }
   return { status: "PASS", runtime, clients, libpqSha256: sha256(read("/opt/applypack/postgresql/lib/libpq.so.5")), sharedLibraries: needed, features, clientOnly: !fixture };

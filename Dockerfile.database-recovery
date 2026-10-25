@@ -10,7 +10,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
-# Unmodified checksum-pinned upstream clients. Compilation has no network.
+# Checksum/signature-pinned Debian security source. Compilation has no network.
 FROM golang:1.26.10-bookworm@sha256:88750ccdd0f2a77fcc00a14b1a48d6409bd8ddb5d7c2dd6ec0b4a2e916daf9d9 AS postgres-client-build
 COPY --from=dependencies /usr/local/bin/node /usr/local/bin/node
 COPY infra/database-recovery/ /client-build/

@@ -16,7 +16,7 @@ function fixture() {
   files["/usr/share/applypack/postgresql/elf-needed.txt"] = "libpq.so.5\nlibssl.so.3\nlibcrypto.so.3\nlibz.so.1\nlibc.so.6\n";
   files["/usr/share/applypack/postgresql/features.json"] = JSON.stringify({ openssl: true, zlib: true, readline: false, icu: false });
   for (const name of ["postgresql-client-17", "libpq5"]) files["/var/lib/dpkg/status.d/" + name]
-    = "Package: " + name + "\nSource: postgresql-17\nVersion: 17.11-0applypack1\nStatus: install ok installed\n";
+    = "Package: " + name + "\nSource: postgresql-17 (17.11-0+deb13u1)\nVersion: 17.11-0+deb13u1+applypack1\nStatus: install ok installed\n";
   const calls = [];
   const dependencies = { read: (path) => { assert(path in files, path); return files[path]; },
     stat: () => ({ isFile: () => true, isSymbolicLink: () => false, uid: 0, mode: 0o755 }), exists: (path) => path in files,
@@ -26,6 +26,17 @@ function fixture() {
 test("verifies hashes, actual client startup and TLS/compression with package coverage", () => {
   const f = fixture(); assert.equal(f.run().clientOnly, true); assert.equal(f.calls.length, 3);
   assert(f.calls.every(({ args, options }) => args[0] === "--version" && !("PGPASSWORD" in options.env)));
+});
+for (const name of ["postgresql-client-17", "libpq5"]) test("rejects unpatched or ambiguous source inventory for " + name, () => {
+  const path = "/var/lib/dpkg/status.d/" + name;
+  for (const change of [
+    (record) => record.replace("Source: postgresql-17 (17.11-0+deb13u1)", "Source: postgresql-17"),
+    (record) => record.replace("17.11-0+deb13u1+applypack1", "17.11-0applypack1"),
+    (record) => record + "Source: postgresql-17 (17.10-1)\n",
+    (record) => record + "Version: 17.10-1\n",
+  ]) {
+    const f = fixture(); f.files[path] = change(f.files[path]); assert.throws(() => f.run(), /package provenance/u);
+  }
 });
 for (const client of ["psql", "pg_dump"]) test("rejects changed " + client + " bytes", () => {
   const f = fixture(); f.files["/usr/lib/postgresql/17/bin/" + client] = Buffer.from("changed"); assert.throws(() => f.run());
@@ -72,7 +83,9 @@ function builderToolCheck(unavailable = []) {
   const inventory = unavailable.length ? `case "$2" in ${unavailable.join("|")}) return 1;; esac;` : "";
   return spawnSync(process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "bash",
     ["--noprofile", "--norc", "-c", helper + `\ncommand() { ${inventory} return 0; }\ncheck_postgres_build_tools`],
-    { encoding: "utf8", timeout: 5_000, windowsHide: true });
+    // Git Bash startup on Windows can exceed five seconds under local database
+    // tests. This bounds host process startup; Linux CI keeps its tighter limit.
+    { encoding: "utf8", timeout: process.platform === "win32" ? 30_000 : 5_000, windowsHide: true });
 }
 
 test("builder rejects missing bzip2 before extracting the verified archive", () => {
@@ -87,11 +100,11 @@ test("builder rejects missing bzip2 before extracting the verified archive", () 
 });
 
 test("builder reports all missing compiler, parser, packaging and inspection tools together", () => {
-  const result = builderToolCheck(["bison", "dpkg-deb", "flex", "gcc", "perl", "readelf"]);
-  assert.equal(result.status, 1);
-  assert.equal(result.stderr.trim(), "postgres_client_build_tools_missing:bison dpkg-deb flex gcc perl readelf");
+  const result = builderToolCheck(["bison", "dpkg-deb", "dpkg-source", "flex", "gcc", "gpgv", "patch", "perl", "readelf"]);
+  assert.equal(result.error, undefined); assert.equal(result.status, 1);
+  assert.equal(result.stderr.trim(), "postgres_client_build_tools_missing:bison dpkg-deb dpkg-source flex gcc gpgv patch perl readelf");
 });
 
 test("complete tool inventory passes without an install or network fallback", () => {
-  const result = builderToolCheck(); assert.equal(result.status, 0); assert.equal(result.stdout, ""); assert.equal(result.stderr, "");
+  const result = builderToolCheck(); assert.equal(result.error, undefined); assert.equal(result.status, 0); assert.equal(result.stdout, ""); assert.equal(result.stderr, "");
 });

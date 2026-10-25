@@ -4,9 +4,9 @@ check_postgres_build_tools() {
   local tool
   local -a missing=()
   local -a required=(
-    ar as awk basename bash bison bzip2 cat chmod cmp cp curl cut date diff dirname dpkg-deb dpkg-query
-    expr find flex gcc grep gzip head id install ld ln make md5sum mkdir
-    mv node perl pkg-config ranlib readelf rm sed sha256sum sort strip tail tar touch
+    ar as awk basename bash bison bzip2 cat chmod cmp cp curl cut date diff dirname dpkg-deb dpkg-query dpkg-source
+    expr find flex gcc gpgv grep gzip head id install ld ln make md5sum mkdir
+    mv node patch perl pkg-config ranlib readelf rm sed sha256sum sort strip tail tar touch
     tr uname wc xargs xz
   )
   for tool in "${required[@]}"; do
