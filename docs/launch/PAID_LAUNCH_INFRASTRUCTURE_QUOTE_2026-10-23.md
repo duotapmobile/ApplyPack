@@ -80,3 +80,7 @@ Provider inventory on October 23 verified Supabase Free, Railway Hobby and the r
 - [S3 pricing and free DELETE requests](https://aws.amazon.com/s3/pricing/), [AWS Standard storage/request comparison](https://aws.amazon.com/blogs/storage/run-spark-31-faster-and-optimize-compute-costs-with-amazon-s3-express-one-zone-on-amazon-emr/), [CloudWatch log pricing](https://aws.amazon.com/cloudwatch/pricing/).
 
 This quote supersedes the draft component table in PAID_LAUNCH_COST_REVIEW_2026-10-23.md. Approval must be recorded against this document's digest before a paid provider action. Approval is not launch acceptance or authorization to delete backup versions.
+
+## October 25 email finding correction
+
+The historical assertion above that the email credential "must be repaired" is superseded by current evidence: the existing configured ApplyPack credential successfully sent three direct test messages through Resend. All three arrived through the existing aliases in the verified owner business Gmail account with SPF, aligned DKIM and DMARC passing; the admin test landed in Spam. The earlier domain-list HTTP 401 alone did not establish that replacement or broader permissions were required. See the [scoped email receipt evidence](../runbooks/PAID_LAUNCH_EXECUTION_2026-10-23.md#october-25-email-sending-and-alias-receipt-evidence). Actual application sign-in, transactional reliability, alerts and consistent inbox placement remain unverified. This correction does not approve the rejected quote, add resources or change any credential.

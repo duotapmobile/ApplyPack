@@ -190,3 +190,15 @@ For new contracts, ApplyPack repairs errors it introduced relative to the confir
 The audit baseline is full SHA `25df9c54fa1bcdc2233f33933ad84e5ac870e597`. The current implementation still requires a resume, displays a count-only fact review, derives skill prompts inadequately from prior duties, and lacks the complete automatic research/drafting/owner workflow and post-delivery repair path. Green component checks do not disprove these integration gaps. Required improvements are documented, not claimed complete. The overall connected service score remains 1/4 and launch remains NOT READY.
 
 This turn authorizes local documentation and GitHub publication. It does not change runtime source, legal constants, migrations, providers, deployment or purchasing; it does not resolve previous backup/cleanup/archive permission boundaries. Existing uncommitted backup work is preserved outside the documentation commit. Original handoff bodies, locked formatting standards, historical amendments and accepted receipts remain intact, with forward authority notices linking the current policy.
+
+## 2026-10-25: consolidated local-work and independent inbox-check approvals
+
+In the subsequent consolidated preflight, the owner selected **Approve all local work** in response to the request to implement locally, test with fictional data, and publish to GitHub all three previously blocked components:
+
+1. Policy-controlled customer-file deletion, private-data redaction and restore filtering.
+2. Database backup and recovery.
+3. Exact expired-version deletion in the documented ApplyPack protected AWS backup bucket, within the scope in [Protected recovery retention approval](../runbooks/PROTECTED_RECOVERY_RETENTION_APPROVAL.md).
+
+This direct owner approval supersedes the earlier pending local implementation, fictional-data testing and GitHub-publication gates for those three components. The historical automatic-review denials and earlier unanswered requests above remain preserved as the record of their time. Approval does not establish implementation or test completion, and does not authorize hosted deletion, deployment or new spending. Hosted execution and final launch acceptance remain separate gates; existing uncommitted recovery work and payment history must be preserved.
+
+The owner authorized independently checking the founder-authorized inbox for arrival of the discussed test messages and said they need not remain present. This records inbox-check authorization only. It does not establish authorization to send additional messages or prove provider acceptance, inbox arrival, email authentication, application sign-in, transactional reliability, support-reply capability or hosted readiness. Record observed results separately; no credentials or private forwarding destination belong in this decision log.
