@@ -34,10 +34,10 @@ const source = (path: string) => readFileSync(resolve(process.cwd(), path), "utf
 describe("October 2 manual-launch hardening", () => {
   it("binds legal acceptance to the exact displayed Terms, Privacy Policy, and acknowledgement copy", () => {
     expect(currentLegalContentBinding()).toEqual({
-      termsVersion: "manual-launch-terms-2026-10-02-v2",
-      privacyVersion: "privacy-2026-10-23-v2",
-      termsContentSha256: "eeec6398df29e6bd831aa1130453762927a467ee1b7a8d98b3659e07b8069d8c",
-      privacyContentSha256: "9fa809f25bf55a03fab529f991b1d5870849fcc2294c08b324f1d2cf0187ea16",
+      termsVersion: "manual-launch-terms-2026-10-24-v3",
+      privacyVersion: "privacy-2026-10-24-v3",
+      termsContentSha256: "b88d7f3bd12b18e64778554d75275863e80c3add6b81b076f9d264c7ad3cacfc",
+      privacyContentSha256: "2d7a8f194c8246775f1bb9803378596bf8bf60fb2a72cb34bf3c009adaa6e311",
       acceptanceCopyVersion: "applypack-legal-acceptance-copy-2026-10-04-v1",
       acceptanceCopySha256: "0d687e93a090a536b90b1508cf61746cb0167d464a951d9ae5cfe0739d7bd283",
       contentCanonicalizationVersion: "applypack-c14n-v1",
@@ -50,7 +50,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(LAUNCH_LEGAL_BINDING).toEqual(binding);
     expect(APPROVED_ROLLBACK_LEGAL_CONTRACT.privacyVersion).toBe("privacy-v1");
     expect(APPROVED_ROLLBACK_LEGAL_CONTRACT.privacyContentSha256).not.toBe(binding.privacyContentSha256);
-    const forward = source("supabase/migrations/202610230086_sandbox_validation_launch_activation.sql");
+    const forward = source("supabase/migrations/202610240087_one_off_service_retention.sql");
     expect(forward).toContain(`privacy_version='${binding.privacyVersion}'`);
     expect(forward).toContain(`privacy_content_sha256='${binding.privacyContentSha256}'`);
     const legalPages = source("src/content/public-pages.ts");
@@ -860,7 +860,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(rollbackCheck).toContain("intentIndex >= uploadIndex");
     expect(rollbackCheck).toContain("exact approved legal content");
     expect(rollbackCheck).toContain("ap_upgrade_completed_intake_legal_acceptance");
-    expect(rollbackCheck).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610230086"');
+    expect(rollbackCheck).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610240087"');
     expect(rollbackCheck).toContain('admin.rpc("ap_manual_launch_schema_readiness")');
     expect(rollbackCheck).toContain("launchSchemaReadinessIsCurrent(schemaReadiness)");
     expect(rollbackRunbook).toContain("minimum compatible application rollback commit is `aeae1dee597e153602febd6adfea5644e4628d20`");

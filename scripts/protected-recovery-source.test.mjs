@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { RECOVERY_BUCKETS, RECOVERY_TABLES, recoveryInventoryDigest } from "./lib/protected-recovery-protocol.mjs";
+import { RECOVERY_BUCKETS, RECOVERY_TABLES, recoveryInventoryDigest, recoverySha256, validateServiceRetentionOverlay } from "./lib/protected-recovery-protocol.mjs";
 import { authorizeRecoveryRequest, boundedRecoveryOperation, buildRecoveryInventory, createSupabaseRecoveryReader, normalizeRecoveryObjectInfo,
   persistRecoveryCompletion, readRecoveryObject, recoverySourceConfiguration, recoverySourceColumns,
   signRecoveryReceipt, validateRecoveryCompletion, validateRecoveryRetentionCompletion, verifyRecoveryReceipt } from "./lib/protected-recovery-source.mjs";
@@ -19,6 +19,8 @@ function fixture() {
   tables.ap_document_versions.push({ id, storage_bucket: RECOVERY_BUCKETS[0], storage_path: "resume.docx", sha256: hash,
     size_bytes: 4, retention_due_at: null, retention_state: "ACTIVE", updated_at: new Date(start - 1000).toISOString() });
   const reader = {
+    retentionOverlay: async () => okay({ schemaVersion: "applypack-service-retention-overlay-v1", policyVersion: "one_off_30d_v1",
+      sourceWatermark: "1970-01-01T00:00:00.000Z", orders: [], holds: [], objectTombstones: [], objectPolicies: [] }),
     listBuckets: async () => okay(RECOVERY_BUCKETS.map((name) => ({ id: name, name, public: false }))),
     tablePage: async (name) => okay(tables[name]),
     listObjects: async (bucket) => okay(bucket === RECOVERY_BUCKETS[0] ? [{ name: "resume.docx", id, metadata: { size: 4 } }] : []),
@@ -27,6 +29,104 @@ function fixture() {
   return { tables, reader };
 }
 const build = (reader, now = () => start) => buildRecoveryInventory({ reader, releaseSha: sha, now, signReceipt: (value) => signRecoveryReceipt(value, secret) });
+
+const retentionOverlay = () => ({ schemaVersion: "applypack-service-retention-overlay-v1", policyVersion: "one_off_30d_v1",
+  sourceWatermark: new Date(start - 1000).toISOString(),
+  orders: [{ orderId: id, customerId: id, legalReceiptId: id, actionExpiresAt: null, accessExpiresAt: null,
+    familyExpiresAt: null, protected: true, state: "ACTIVE", purgedAt: null }],
+  holds: [{ id, orderId: id, reasonCode: "UNFULFILLED_WORK", createdAt: new Date(start - 2000).toISOString(), releasedAt: null }],
+  objectTombstones: [], objectPolicies: [] });
+test("current retention overlay permits a durable active hold with no access extension", () => {
+  const overlay = retentionOverlay();
+  overlay.orders[0].accessExpiresAt = new Date(start - 3000).toISOString();
+  assert.equal(validateServiceRetentionOverlay(overlay, start), overlay);
+});
+for (const [label, mutate] of [
+  ["unexpected customer content", (v) => { v.orders[0].resume = "private"; }],
+  ["future watermark", (v) => { v.sourceWatermark = new Date(start + 1).toISOString(); }],
+  ["duplicate order", (v) => { v.orders.push({ ...v.orders[0] }); }],
+  ["unknown hold family", (v) => { v.holds[0].orderId = "11111111-1111-4111-8111-111111111111"; }],
+  ["reversed hold release", (v) => { v.holds[0].releasedAt = new Date(start - 3000).toISOString(); }],
+  ["missing purge timestamp", (v) => { v.orders[0].state = "PURGED"; }],
+  ["future purge", (v) => { v.orders[0].state = "PURGED"; v.orders[0].purgedAt = new Date(start).toISOString(); }],
+  ["untracked mutation", (v) => { v.holds[0].createdAt = new Date(start).toISOString(); }],
+]) test(`current retention evidence rejects ${label}`, () => {
+  const overlay = retentionOverlay(); mutate(overlay);
+  assert.throws(() => validateServiceRetentionOverlay(overlay, start), /RETENTION_OVERLAY_INVALID/u);
+});
+test("current source refuses missing retention evidence before reading private metadata", async () => {
+  const { reader } = fixture(); delete reader.retentionOverlay;
+  reader.tablePage = () => { throw new Error("PRIVATE_METADATA_MUST_NOT_BE_READ"); };
+  await assert.rejects(build(reader), (error) => !error.message.includes("PRIVATE_METADATA_MUST_NOT_BE_READ"));
+});
+test("policy change during source scan invalidates the complete inventory", async () => {
+  const { reader } = fixture(); let reads = 0; let receipts = 0;
+  reader.retentionOverlay = async () => { const value = retentionOverlay(); if (reads++) value.orders[0].protected = false; return okay(value); };
+  await assert.rejects(buildRecoveryInventory({ reader, releaseSha: sha, now: () => start,
+    signReceipt: () => { receipts++; return "x".repeat(64); } }), /RETENTION_OVERLAY_CHANGED/u);
+  assert.equal(receipts, 0);
+});
+test("current policy evidence is authenticated by the inventory digest", async () => {
+  const { reader } = fixture(); reader.retentionOverlay = async () => okay(retentionOverlay());
+  const inventory = await build(reader); const changed = structuredClone(inventory);
+  changed.serviceRetention.orders[0].protected = false;
+  assert.notEqual(recoveryInventoryDigest(changed), verifyRecoveryReceipt(inventory.receipt, secret).inventoryDigest);
+});
+function withObjectPolicy(reader, policy) {
+  const overlay = retentionOverlay();
+  overlay.objectPolicies.push({ bucket: RECOVERY_BUCKETS[0], pathSha256: recoverySha256("resume.docx"), ...policy });
+  reader.retentionOverlay = async () => okay(overlay);
+  return overlay;
+}
+test("current authoritative hold preserves paid source beyond older document and intake expiry", async () => {
+  const { reader, tables } = fixture();
+  tables.ap_document_versions[0].retention_due_at = new Date(start - 100).toISOString();
+  tables.intakes.push({ id, resume_path: "resume.docx", cover_letter_path: null,
+    source_deleted_at: null, source_retention_due_at: new Date(start - 100).toISOString() });
+  withObjectPolicy(reader, { protected: true, retentionExpiresAt: null });
+  const inventory = await build(reader);
+  assert.equal(inventory.objects.length, 1); assert.equal(inventory.references.length, 2);
+  assert.equal(inventory.tombstones.length, 0); assert.equal(inventory.objects[0].retentionExpiresAt, null);
+});
+test("current approved extension replaces old expiry without persisting any source mutation", async () => {
+  const { reader, tables } = fixture(); const oldExpiry = new Date(start - 100).toISOString();
+  tables.ap_document_versions[0].retention_due_at = oldExpiry;
+  withObjectPolicy(reader, { protected: false, retentionExpiresAt: "2026-10-24T12:00:00+00:00" });
+  const inventory = await build(reader);
+  assert.equal(inventory.objects[0].retentionExpiresAt, "2026-10-24T12:00:00.000Z");
+  assert.equal(tables.ap_document_versions[0].retention_due_at, oldExpiry);
+});
+test("expired prospective policy covers every shared alias even if legacy metadata has no expiry", async () => {
+  const { reader, tables } = fixture();
+  tables.source_documents.push({ id, storage_path: "resume.docx", sha256: hash, size_bytes: 4, deleted_at: null });
+  withObjectPolicy(reader, { protected: false, retentionExpiresAt: new Date(start - 100).toISOString() });
+  reader.objectInfo = () => { throw new Error("EXPIRED_BYTES_MUST_NOT_BE_OPENED"); };
+  const inventory = await build(reader);
+  assert.equal(inventory.objects.length, 0); assert.equal(inventory.references.length, 0); assert.equal(inventory.tombstones.length, 2);
+});
+test("expired policy also excludes a retained storage object with no remaining reference", async () => {
+  const { reader, tables } = fixture(); tables.ap_document_versions = [];
+  withObjectPolicy(reader, { protected: false, retentionExpiresAt: new Date(start - 100).toISOString() });
+  reader.objectInfo = () => { throw new Error("EXPIRED_BYTES_MUST_NOT_BE_OPENED"); };
+  assert.equal((await build(reader)).objects.length, 0);
+});
+test("terminal tombstone remains stronger than current hold metadata", async () => {
+  const { reader } = fixture();
+  const overlay = withObjectPolicy(reader, { protected: true, retentionExpiresAt: null });
+  overlay.objectTombstones.push({ bucket: RECOVERY_BUCKETS[0], pathSha256: recoverySha256("resume.docx"), deletedAt: new Date(start - 1000).toISOString() });
+  reader.objectInfo = () => { throw new Error("DELETED_BYTES_MUST_NOT_BE_OPENED"); };
+  const inventory = await build(reader); assert.equal(inventory.objects.length, 0); assert.equal(inventory.tombstones[0].kind, "DELETED");
+});
+test("conflicting effective policy cannot silently shorten an explicit existing legal hold", async () => {
+  const { reader, tables } = fixture(); tables.ap_document_versions[0].retention_state = "LEGAL_HOLD";
+  withObjectPolicy(reader, { protected: false, retentionExpiresAt: new Date(start - 100).toISOString() });
+  await assert.rejects(build(reader), /RETENTION_POLICY_HOLD_CONFLICT/u);
+});
+test("duplicate hashed object policy is rejected", () => {
+  const { reader } = fixture(); const overlay = withObjectPolicy(reader, { protected: true, retentionExpiresAt: null });
+  overlay.objectPolicies.push({ ...overlay.objectPolicies[0] });
+  assert.throws(() => validateServiceRetentionOverlay(overlay, start), /RETENTION_OVERLAY_INVALID/u);
+});
 
 test("complete inventory includes empty buckets, historical reference counts, exact version and no selected customer fields", async () => {
   const { reader, tables } = fixture();
@@ -38,6 +138,8 @@ test("complete inventory includes empty buckets, historical reference counts, ex
   assert.equal(inventory.objects[0].sourceVersion, normalizeRecoveryObjectInfo(info(), RECOVERY_BUCKETS[0], "resume.docx").sourceVersion);
   assert.equal(inventory.inventoryDigest, recoveryInventoryDigest(inventory));
   assert.equal(verifyRecoveryReceipt(inventory.receipt, secret).inventoryDigest, inventory.inventoryDigest);
+  assert.equal(inventory.schemaVersion, "applypack-protected-recovery-inventory-v2");
+  assert.equal(inventory.serviceRetention.policyVersion, "one_off_30d_v1");
   assert.doesNotMatch(Object.values(recoverySourceColumns).join(","), /email|answers|customer_id|claim_provenance|review_note|private_key/);
 });
 for (const [name, change] of [

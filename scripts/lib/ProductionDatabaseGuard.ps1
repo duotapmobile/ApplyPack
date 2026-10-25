@@ -29,8 +29,8 @@ function Assert-ProductionDatabaseManifest {
         $Manifest.credentialTarget -cne 'ApplyPack/Supabase/Production/Database' -or
         $Manifest.caSha256 -cnotmatch '^[a-f0-9]{64}$' -or $Manifest.releaseSha -cnotmatch '^[a-f0-9]{40}$' -or
         $Manifest.expectedLedgerSha256 -cnotmatch '^[a-f0-9]{64}$' -or
-        $Manifest.expectedSchemaVersion -notin @('202610040080','202610190081','202610190082','202610190083','202610190084','202610220085') -or
-        $Manifest.postSchemaVersion -cne '202610230086' -or
+        $Manifest.expectedSchemaVersion -notin @('202610040080','202610190081','202610190082','202610190083','202610190084','202610220085','202610230086') -or
+        $Manifest.postSchemaVersion -cne '202610240087' -or
         $Manifest.recoveryStrategy -notin @('TESTED_COMPATIBLE_SHA','LOCKED_FORWARD_RECOVERY')) {
         throw 'PRODUCTION_MANIFEST_INVALID'
     }
@@ -64,6 +64,7 @@ function Assert-ProductionDatabaseManifest {
         '202610190084' = @('legacy_board_terminal_event_ordering','LEGACY_BOARD_TERMINAL_EVENT_ORDERING')
         '202610220085' = @('staging_rehearsal_checkout_attempts','STAGING_REHEARSAL_CHECKOUT_ATTEMPTS')
         '202610230086' = @('sandbox_validation_launch_activation','SANDBOX_VALIDATION_LAUNCH_ACTIVATION')
+        '202610240087' = @('one_off_service_retention','ONE_OFF_SERVICE_RETENTION')
     }
     $expected = @($known.Keys | Where-Object { $_ -cgt $Manifest.expectedSchemaVersion })
     if (@($Manifest.migrations).Count -ne $expected.Count) { throw 'PRODUCTION_MIGRATION_SCOPE_INVALID' }

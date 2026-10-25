@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight, Check, ShoppingBag } from "lucide-react";
 import { careerBreakOptions, type CareerBreakChoice } from "@/lib/materials/contract";
+import { PRIVATE_ACCESS_EXPIRED_MESSAGE, SEARCH_ACTIONS_EXPIRED_MESSAGE } from "@/lib/materials/retention-access";
+import { useAccessExpiry } from "./use-access-expiry";
 
 export type MatchForSelection = {
   id: string;
@@ -83,6 +85,9 @@ export function ApplyPackSelector({
   sourceSnapshotId,
   initialEmail,
   fixtureAvailableUnits,
+  accessExpiresAt,
+  actionExpiresAt,
+  actionsExpired = false,
 }: {
   matches: MatchForSelection[];
   evaluatedAt: string;
@@ -91,7 +96,12 @@ export function ApplyPackSelector({
   sourceSnapshotId: string;
   initialEmail: string;
   fixtureAvailableUnits?: number;
+  accessExpiresAt?: string | null;
+  actionExpiresAt?: string | null;
+  actionsExpired?: boolean;
 }) {
+  const accessEnded = useAccessExpiry(accessExpiresAt);
+  const actionsEnded = useAccessExpiry(actionExpiresAt, actionsExpired);
   const safeFixtureAvailableUnits = process.env.NODE_ENV === "production"
     ? undefined
     : fixtureAvailableUnits;
@@ -148,6 +158,7 @@ export function ApplyPackSelector({
   }, [safeFixtureAvailableUnits]);
 
   function toggle(id: string) {
+    if (actionsEnded) return setMessage(SEARCH_ACTIONS_EXPIRED_MESSAGE);
     setMessage("");
     setSelected((current) => current.includes(id)
       ? current.filter((item) => item !== id)
@@ -179,6 +190,7 @@ export function ApplyPackSelector({
   }
 
   async function saveDecision(id: string, decision: "not_for_me" | "undecided") {
+    if (actionsEnded) return setMessage(SEARCH_ACTIONS_EXPIRED_MESSAGE);
     setMessage("");
     const response = await fetch("/api/customer/job-matches/" + id + "/decision", {
       method: "POST",
@@ -190,6 +202,7 @@ export function ApplyPackSelector({
   }
 
   async function submitConflict(id: string) {
+    if (actionsEnded) return setMessage(SEARCH_ACTIONS_EXPIRED_MESSAGE);
     setBusy(true);
     setMessage("");
     try {
@@ -211,6 +224,7 @@ export function ApplyPackSelector({
   }
 
   async function checkout() {
+    if (actionsEnded) return setMessage(SEARCH_ACTIONS_EXPIRED_MESSAGE);
     if (!selected.length) return setMessage("Select at least one available job first.");
     if (availableUnits === null || selected.length > availableUnits) return setMessage("Current capacity changed. Refresh availability before checkout.");
     if (!contact.displayName.trim() || !contact.email.trim() || !contact.phone.trim() || !contact.cityState.trim()) {
@@ -275,15 +289,19 @@ export function ApplyPackSelector({
     }
   }
 
+  if (accessEnded) return <section className="portal-section"><h2>Private search access ended</h2><p>{PRIVATE_ACCESS_EXPIRED_MESSAGE}</p></section>;
   return (
     <section className="portal-section">
       <div className="portal-section__heading"><div><p className="eyebrow">YOUR COMPLETED SEARCH</p><h2>10 Researched Job Matches</h2><p>Choose Tailored Resume + Cover Letter sets for current listings.</p></div><p>Each selected job is a separate $7.99 order with one tailored resume and one tailored cover letter. {availableUnits === null ? "Checking current capacity..." : availableUnits > 0 ? `${availableUnits} can be accepted now; availability is reserved only when checkout opens.` : "No 24-hour production slots are currently available."}</p></div>
+      {actionExpiresAt ? <p className="deadline-note">Buy document sets or report a criteria conflict by <time dateTime={actionExpiresAt}>{new Date(actionExpiresAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET</time>. A replacement does not restart this window.</p> : null}
+      {accessExpiresAt ? <p>Save your results before private access ends <time dateTime={accessExpiresAt}>{new Date(accessExpiresAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET</time>.</p> : null}
+      {actionsEnded ? <p className="match-warning" role="status">{SEARCH_ACTIONS_EXPIRED_MESSAGE}</p> : null}
       <div className="match-grid">
         {matches.map((match) => {
           const checked = selected.includes(match.id);
           const lastCheckedAt = match.last_checked_at || match.job.checked_at;
           const fresh = new Date(evaluatedAt).getTime() - new Date(lastCheckedAt).getTime() <= 24 * 60 * 60 * 1000;
-          const available = match.job.listing_status === "open" && match.job.is_active !== false
+          const available = !actionsEnded && match.job.listing_status === "open" && match.job.is_active !== false
             && match.job.review_status === "approved" && !match.job.rejection_reason
             && Boolean(match.submission_rule_id) && fresh;
            const maxSelection = Math.min(10, availableUnits ?? 0);
@@ -373,10 +391,10 @@ export function ApplyPackSelector({
                 )}
               </div> : null}
               <div className="match-actions">
-                <button aria-label={`Mark ${match.job.title} at ${match.job.company} as not for me`} type="button" onClick={() => saveDecision(match.id, "not_for_me")}>Not for me</button>
-                <button aria-expanded={conflictFor === match.id} aria-controls={"conflict-" + match.id} type="button" onClick={() => setConflictFor(conflictFor === match.id ? "" : match.id)}>Conflicts with my criteria</button>
+                <button disabled={actionsEnded} aria-label={`Mark ${match.job.title} at ${match.job.company} as not for me`} type="button" onClick={() => saveDecision(match.id, "not_for_me")}>Not for me</button>
+                <button disabled={actionsEnded} aria-expanded={conflictFor === match.id} aria-controls={"conflict-" + match.id} type="button" onClick={() => setConflictFor(conflictFor === match.id ? "" : match.id)}>Conflicts with my criteria</button>
               </div>
-              {conflictFor === match.id ? <div className="conflict-form" id={"conflict-" + match.id}>
+              {!actionsEnded && conflictFor === match.id ? <div className="conflict-form" id={"conflict-" + match.id}>
                 <label>Which Dealbreaker does this conflict with?<textarea value={explanation} onChange={(event) => setExplanation(event.target.value)} minLength={10} /></label>
                 <button className="wizard-next" disabled={busy || explanation.trim().length < 10} onClick={() => submitConflict(match.id)}>Submit for Review</button>
               </div> : null}
@@ -385,7 +403,7 @@ export function ApplyPackSelector({
         })}
       </div>
 
-      {selected.length ? <div className="cart-review">
+      {!actionsEnded && selected.length ? <div className="cart-review">
         <div><p className="eyebrow">REVIEW SELECTED JOBS</p><h3>{selected.length} document set{selected.length === 1 ? "" : "s"} × $7.99 each · {"$" + (selected.length * 7.99).toFixed(2)} total</h3><p>The displayed total is fixed. ApplyPack does not add tax at checkout.</p></div>
         <fieldset className="document-contact"><legend>Contact details printed on every selected document</legend>
           <label>Professional name <input required maxLength={120} autoComplete="name" value={contact.displayName} onChange={(event) => updateContact("displayName", event.target.value)} /></label>
@@ -400,13 +418,14 @@ export function ApplyPackSelector({
           <label className="confirm"><input type="checkbox" checked={coverLetterBreakConsent} onChange={(event) => { setCoverLetterBreakConsent(event.target.checked); setDocumentFactsConfirmed(false); }} />Mention this in a cover letter only if strategically useful and factually supported.</label>
         </fieldset>
         <div className="deadline-note"><strong>Contractual deadline:</strong> each selected job receives an exact 24-hour deadline after successful payment is verified. The confirmed Eastern timestamp appears in My ApplyPack.</div>
+        {accessExpiresAt ? <p>Each document set remains privately available for 30 days after its final approved delivery. Request the included factual-correction round within three calendar days after delivery. Save your files before access ends.</p> : null}
         <label className="confirm"><input type="checkbox" checked={documentContactConfirmed} onChange={(event) => setDocumentContactConfirmed(event.target.checked)} />I confirm the contact details above are exactly what I want printed on these documents.</label>
         <label className="confirm"><input type="checkbox" checked={documentFactsConfirmed} onChange={(event) => setDocumentFactsConfirmed(event.target.checked)} />I confirm the selected presentation and all facts supplied for these documents are accurate.</label>
         <label className="confirm"><input type="checkbox" checked={noAutoApplyAcknowledged} onChange={(event) => setNoAutoApplyAcknowledged(event.target.checked)} />I understand ApplyPack prepares documents but does not submit applications for me.</label>
         <label className="confirm"><input type="checkbox" checked={outcomesAcknowledged} onChange={(event) => setOutcomesAcknowledged(event.target.checked)} />I understand ApplyPack cannot guarantee employer review, interviews, offers, or employment.</label>
       </div> : null}
 
-      <div className="selection-bar"><div><ShoppingBag aria-hidden="true" /><span><strong>{selected.length}</strong> selected</span><b>{"$" + (selected.length * 7.99).toFixed(2)}</b></div><button className="wizard-next" disabled={busy || selected.length === 0} onClick={checkout}>{busy ? "Preparing..." : "Review and Pay"}</button></div>
+      <div className="selection-bar"><div><ShoppingBag aria-hidden="true" /><span><strong>{selected.length}</strong> selected</span><b>{"$" + (selected.length * 7.99).toFixed(2)}</b></div><button className="wizard-next" disabled={actionsEnded || busy || selected.length === 0} onClick={checkout}>{busy ? "Preparing..." : "Review and Pay"}</button></div>
       <p className={message ? "form-message" : "sr-only"} role="status" aria-live="polite">{message || "Choose only currently available jobs."}</p>
     </section>
   );

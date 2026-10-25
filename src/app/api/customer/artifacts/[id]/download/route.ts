@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isSupportedDocumentGeneratorVersion } from "@/lib/documents/requirements";
 import { MATERIAL_DOWNLOAD_SECONDS } from "@/lib/materials/contract";
+import { PRIVATE_ACCESS_EXPIRED_MESSAGE, privateDownloadSeconds, retentionErrorMessage } from "@/lib/materials/retention-access";
+import { signedDownloadWithinDeadline } from "@/lib/materials/signed-download";
 import { verifiedAuthenticationAt, isFreshAuthentication } from "@/lib/materials/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -42,10 +44,17 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const file = authorization && typeof authorization === "object" && !Array.isArray(authorization)
     ? authorization as Record<string, unknown> : null;
   if (authorizationError || !file?.bucket || !file.path || !file.filename) {
+    const retentionError = retentionErrorMessage(authorizationError);
+    if (retentionError) return NextResponse.json({ error: retentionError }, { status: 410, headers: { "Cache-Control": "no-store, private" } });
     return NextResponse.json({ error: "File not found." }, { status: 404 });
   }
   const { data: artifact } = await admin.from("ap_generated_artifacts")
     .select("generator_version").eq("id", artifactId.data).maybeSingle();
+  if (typeof file.expiresAt !== "string") return NextResponse.json({ error: "Private access could not be verified." }, { status: 503 });
+  const downloadSeconds = privateDownloadSeconds(file.expiresAt, MATERIAL_DOWNLOAD_SECONDS);
+  if (downloadSeconds < 1) {
+    return NextResponse.json({ error: PRIVATE_ACCESS_EXPIRED_MESSAGE }, { status: 410, headers: { "Cache-Control": "no-store, private" } });
+  }
   if (!artifact || !isSupportedDocumentGeneratorVersion(artifact.generator_version)) {
     return NextResponse.json({
       error: "This file was created under an unsupported document standard and is unavailable.",
@@ -53,10 +62,13 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   }
   const signed = await admin.storage.from(String(file.bucket)).createSignedUrl(
     String(file.path),
-    MATERIAL_DOWNLOAD_SECONDS,
+    downloadSeconds,
     { download: String(file.filename) },
   );
-  if (signed.error || !signed.data.signedUrl) {
+  if (signed.error || !signed.data.signedUrl || !signedDownloadWithinDeadline({
+    signedUrl: signed.data.signedUrl, supabaseOrigin: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    bucket: String(file.bucket), path: String(file.path), expiresAt: file.expiresAt,
+  })) {
     return NextResponse.json({ error: "A secure download could not be created." }, { status: 502 });
   }
   const response = NextResponse.redirect(signed.data.signedUrl, { status: 303 });

@@ -7,9 +7,9 @@ import { ExperienceConnector, FaqAccordion, JobMatchExample, PricingCards, Proce
 const fullFaq = [
   { group: "Getting started", items: [["What if I do not know what kind of job I want?", "You do not need a job title to begin. Tell us what kind of work fits your life, what you want to avoid, and what experience you bring. We use that information to identify credible directions."], ["What if my resume is old or incomplete?", "Upload the best version you have. The intake lets you confirm experience, responsibilities, tools, training, and other information that may be missing or outdated."]] },
   { group: "Job matching", items: [["How do you decide whether a job fits?", "We compare your actual experience with the work in the listing, then check pay, schedule, location, travel, benefits, and each approved dealbreaker."], ["Does ApplyPack apply to jobs for me?", "No. ApplyPack researches opportunities and prepares application materials. You choose where to apply and submit each application yourself."]] },
-  { group: "Pricing and timing", items: [["When does the 24-hour period begin?", "The 24-clock-hour period begins after successful payment and receipt of complete required inputs."], ["Do I have to buy documents for all 10 jobs?", "No. Choose one job, several jobs, all 10, or none. Each selected resume and cover letter set costs $7.99."]] },
+  { group: "Pricing and timing", items: [["When does the 24-hour period begin?", "The 24-clock-hour period begins after successful payment and receipt of complete required inputs."], ["Do I have to buy documents for all 10 jobs?", "No. Choose one job, several jobs, all 10, or none. Each selected resume and cover letter set costs $7.99. Start optional checkout within 30 days of the original search delivery, subject to eligibility and capacity, and complete payment before that checkout expires."]] },
   { group: "Resumes and cover letters", items: [["Will you add experience I do not have?", "No. ApplyPack does not invent experience, titles, dates, credentials, achievements, metrics, or qualifications."], ["What does tailoring change?", "Tailoring changes emphasis, order, and language so the most relevant verified experience is clear for the selected job."]] },
-  { group: "Privacy and account access", items: [["How do I access my documents?", "Use My ApplyPack and the email connected to your purchase to request a secure six-digit sign-in code."], ["Is my information sold?", "No. ApplyPack does not sell resumes or personal information."]] },
+  { group: "Privacy and account access", items: [["How do I access my documents?", "Use My ApplyPack and the email connected to your purchase to request a secure six-digit sign-in code. For new orders under the October 24, 2026 Terms, save your search results and documents within 30 days of their latest approved delivery. Earlier orders keep their recorded access terms."], ["Do you keep my resume forever?", "No. For new orders, related uploads, intake answers, work-history content, and delivered copies are scheduled for removal after the access windows and paid work are complete. Active corrections, disputes, required holds, or another entitled order can delay removal. Limited transaction records and restricted backups follow separate rules in the Privacy Policy."], ["Is my information sold?", "No. ApplyPack does not sell resumes or personal information."]] },
 ];
 
 export function ContentPage({ page }: { page: PublicPage }) {
@@ -64,12 +64,13 @@ export function ContentPage({ page }: { page: PublicPage }) {
               <article>
                 <p className="brief-demo-kicker">ONLY FOR JOBS YOU CHOOSE</p>
                 <h3>Application materials are optional</h3>
-                <p>Choose an eligible job from your delivered Top 10.</p>
+                <p>Choose an eligible job from your delivered Top 10 within 30 days of the original search delivery.</p>
                 <ul>
                   <li>Choose one, several, all 10, or none from a delivered Top 10</li>
                   <li>Pay $7.99 per selected job</li>
                   <li>Receive one tailored resume and cover letter per selected job</li>
                   <li>Review and submit every application yourself</li>
+                  <li>Download each paid pack within 30 days of its latest approved delivery</li>
                 </ul>
               </article>
             </div>

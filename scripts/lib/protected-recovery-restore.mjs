@@ -4,6 +4,7 @@ import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import { createClient } from "@supabase/supabase-js";
 import { RECOVERY, RECOVERY_BUCKETS, canonicalBytes, canonicalSha256, sha256 } from "./protected-recovery-core.mjs";
+import { validateServiceRetentionOverlay, verifiedRetentionSanitization } from "./protected-recovery-protocol.mjs";
 
 const ROLE = "arn:aws:iam::838445019912:role/applypack/production/applypack-production-recovery-reader";
 const PROFILE = "applypack-production-recovery";
@@ -117,6 +118,7 @@ export function createRegisteredRestoreTarget({ registration, supabaseKey, fetch
   const admin = createClient(registration.targetOrigin, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }, global: { fetch: safeFetch } });
   const credentialIdentity = `supabase:${registration.targetProjectRef}:${sha256(supabaseKey)}`;
   let checkedEmpty = false;
+  let databaseSanitized = false;
   const assertLocked = async () => {
     validateRecoveryRegistration(registration, canonicalSha256(registration), now());
     const [mode, commerce, buckets] = await Promise.all([
@@ -153,7 +155,23 @@ export function createRegisteredRestoreTarget({ registration, supabaseKey, fetch
       finally { bytes.fill(0); }
       return { digest, customerAccessLocked: true };
     },
+    async sanitizeDatabase({ overlay, digest, sourceInventoryDigest, signal }) {
+      requireValue(checkedEmpty, "TARGET_PREFLIGHT_REQUIRED");
+      validateServiceRetentionOverlay(overlay, now());
+      requireValue(canonicalSha256(overlay) === digest && /^[a-f0-9]{64}$/u.test(sourceInventoryDigest), "RETENTION_OVERLAY_BINDING");
+      const bytes = canonicalBytes(overlay);
+      try {
+        requireValue(bytes.byteLength <= RECOVERY.maximumInventoryBytes, "RETENTION_OVERLAY_LIMIT");
+        const result = await admin.rpc("ap_apply_retention_restore_overlay", {
+          p_overlay_json: bytes.toString("utf8"), p_overlay_sha256: digest,
+        }).abortSignal(signal);
+        requireValue(!result.error && verifiedRetentionSanitization(result.data, digest), "DATABASE_SANITIZATION_FAILED");
+        databaseSanitized = true;
+        return result.data;
+      } finally { bytes.fill(0); }
+    },
     async putPrivateObject({ bucket, key, body, expectedSize, expectedSha256, overwrite, signal }) {
+      requireValue(databaseSanitized, "DATABASE_SANITIZATION_REQUIRED");
       requireValue(RECOVERY_BUCKETS.includes(bucket) && overwrite === false && !key.startsWith("recovery-control/"), "TARGET_OBJECT");
       const bytes = await collect(body, expectedSize, RECOVERY.maximumObjectBytes);
       try {

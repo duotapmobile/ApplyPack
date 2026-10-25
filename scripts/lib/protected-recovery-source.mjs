@@ -2,7 +2,7 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { RECOVERY_PROJECT, RECOVERY_BUCKETS, RECOVERY_TABLES, RECOVERY_LIMITS, recoveryKeySchema, recoveryObjectSchema,
   recoveryReferenceSchema, recoveryTombstoneSchema, recoveryInventorySchema, recoveryInventoryDigest, recoveryCanonicalSha256,
-  recoveryCompletionSchema, recoveryRetentionCompletionSchema, recoverySha256 } from "./protected-recovery-protocol.mjs";
+  recoveryCompletionSchema, recoveryRetentionCompletionSchema, recoverySha256, validateServiceRetentionOverlay } from "./protected-recovery-protocol.mjs";
 
 const denied = (code) => { throw new Error(`PROTECTED_RECOVERY_${code}`); };
 const requireValue = (value, code) => { if (!value) denied(code); };
@@ -36,6 +36,7 @@ const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 /** No caller-controlled tables, selected columns, SQL, URLs, or mutation operations. */
 export function createSupabaseRecoveryReader(admin) {
   return {
+    retentionOverlay: () => admin.rpc("ap_export_service_retention_overlay", {}, { get: true }),
     listBuckets: () => admin.storage.listBuckets(),
     listObjects: (bucket, prefix, offset) => admin.storage.from(bucket).list(prefix, { limit: 100, offset, sortBy: { column: "name", order: "asc" } }),
     objectInfo: (bucket, key) => admin.storage.from(bucket).info(key),
@@ -75,7 +76,7 @@ export function normalizeRecoveryObjectInfo(info, bucket, key) {
 }
 
 /** Complete bounded metadata enumeration. A second identical scan is required before publication. */
-export async function buildRecoveryInventory({ reader, releaseSha, signReceipt, now = Date.now }) {
+export async function buildRecoveryInventory({ reader, releaseSha, signReceipt, now = Date.now, historicalBootstrap = false }) {
   const startedAt = new Date(now()).toISOString();
   requireValue(/^[a-f0-9]{40}$/u.test(releaseSha), "RELEASE_INVALID");
   const deadline = Date.parse(startedAt) + RECOVERY_LIMITS.runMilliseconds;
@@ -85,6 +86,17 @@ export async function buildRecoveryInventory({ reader, releaseSha, signReceipt, 
     const result = await boundedRecoveryOperation(operation, Math.min(30000, deadline - now()));
     requireValue(now() < deadline, "ENUMERATION_TIMEOUT");
     return dataOf(result);
+  };
+  // The explicit pre-migration operator bootstrap preserves old archives only;
+  // it cannot acknowledge an application checkpoint or authorize restoration.
+  const serviceRetention = historicalBootstrap ? null
+    : validateServiceRetentionOverlay(await call(() => reader.retentionOverlay()), now());
+  const policyIdentity = (bucket, key) => `${bucket}\u0000${recoverySha256(key)}`;
+  const policies = new Map(serviceRetention?.objectPolicies.map((value) => [`${value.bucket}\u0000${value.pathSha256}`, value]) || []);
+  const terminal = new Map(serviceRetention?.objectTombstones.map((value) => [`${value.bucket}\u0000${value.pathSha256}`, new Date(value.deletedAt).toISOString()]) || []);
+  const effectiveExpiry = (bucket, key, previous) => {
+    const policy = policies.get(policyIdentity(bucket, key));
+    return policy ? policy.protected || policy.retentionExpiresAt === null ? null : new Date(policy.retentionExpiresAt).toISOString() : previous;
   };
   const buckets = await call(() => reader.listBuckets());
   requireValue(Array.isArray(buckets) && buckets.length === RECOVERY_BUCKETS.length, "BUCKETS_INVALID");
@@ -111,9 +123,13 @@ export async function buildRecoveryInventory({ reader, releaseSha, signReceipt, 
     tables[table] = records;
   }
   const references = []; const tombstones = [];
-  function add(table, record, field, bucket, key, checksum = null, expires = null, deletion = null, revoked = null) {
+  function add(table, record, field, bucket, key, checksum = null, expires = null, deletion = null, revoked = null, held = false) {
     if (key === null || key === undefined) return;
     const identity = { table, id: record.id, field, bucket, key };
+    const policy = policies.get(policyIdentity(bucket, key));
+    requireValue(!held || !policy || policy.protected || policy.retentionExpiresAt === null, "RETENTION_POLICY_HOLD_CONFLICT");
+    expires = effectiveExpiry(bucket, key, expires);
+    deletion ||= terminal.get(policyIdentity(bucket, key)) ?? null;
     if (deletion || (expires && Date.parse(expires) <= Date.parse(startedAt))) {
       tombstones.push(recoveryTombstoneSchema.parse({ ...identity, kind: "DELETED", effectiveAt: deletion || expires }));
       return;
@@ -125,7 +141,7 @@ export async function buildRecoveryInventory({ reader, releaseSha, signReceipt, 
   for (const value of tables.ap_document_versions) {
     const deleted = ["DELETED", "CRYPTO_SHREDDED"].includes(value.retention_state) ? value.updated_at : cleanup.get(value.id)?.deleted_at;
     add("ap_document_versions", value, "storage_path", value.storage_bucket, value.storage_path, value.sha256,
-      value.retention_state === "LEGAL_HOLD" ? null : value.retention_due_at, deleted);
+      value.retention_state === "LEGAL_HOLD" ? null : value.retention_due_at, deleted, null, value.retention_state === "LEGAL_HOLD");
   }
   const artifacts = new Map(tables.ap_generated_artifacts.map((value) => [value.id, value]));
   for (const value of tables.ap_generated_file_versions) {
@@ -134,7 +150,7 @@ export async function buildRecoveryInventory({ reader, releaseSha, signReceipt, 
     requireValue(!deleted || artifact.retention_due_at && Date.parse(artifact.retention_due_at) <= Date.parse(startedAt), "ARTIFACT_DELETION_TIME_UNVERIFIED");
     add("ap_generated_file_versions", value, "storage_path", value.storage_bucket, value.storage_path, value.checksum_sha256,
       artifact.retention_state === "LEGAL_HOLD" ? null : artifact.retention_due_at,
-      deleted ? artifact.retention_due_at : null, value.downloads_revoked_at);
+      deleted ? artifact.retention_due_at : null, value.downloads_revoked_at, artifact.retention_state === "LEGAL_HOLD");
   }
   const fileVersions = new Map(tables.ap_generated_file_versions.map((value) => [value.id, value]));
   for (const value of tables.ap_artifact_quality_reviews) {
@@ -144,7 +160,7 @@ export async function buildRecoveryInventory({ reader, releaseSha, signReceipt, 
     requireValue(!deleted || artifact.retention_due_at && Date.parse(artifact.retention_due_at) <= Date.parse(startedAt), "ARTIFACT_DELETION_TIME_UNVERIFIED");
     add("ap_artifact_quality_reviews", value, "render_preview_path", value.render_preview_bucket, value.render_preview_path, value.render_preview_sha256,
       artifact.retention_state === "LEGAL_HOLD" ? null : artifact.retention_due_at,
-      deleted ? artifact.retention_due_at : null, value.invalidated_at || version.downloads_revoked_at);
+      deleted ? artifact.retention_due_at : null, value.invalidated_at || version.downloads_revoked_at, artifact.retention_state === "LEGAL_HOLD");
   }
   for (const value of tables.source_documents) add("source_documents", value, "storage_path", RECOVERY_BUCKETS[0], value.storage_path, value.sha256, null, value.deleted_at);
   for (const value of tables.intakes) for (const field of ["resume_path", "cover_letter_path"])
@@ -191,9 +207,12 @@ export async function buildRecoveryInventory({ reader, releaseSha, signReceipt, 
           }
           requireValue(typeof item.id === "string" && item.id.length > 0 && item.metadata && typeof item.metadata === "object", "OBJECT_LIST_INVALID");
           const id = objectId({ bucket, key }); requireValue(!seenPaths.has(id), "OBJECT_DUPLICATE"); seenPaths.add(id);
-          if (deletedPaths.has(id)) continue;
+          const policyExpiry = effectiveExpiry(bucket, key, null);
+          if (deletedPaths.has(id) || terminal.has(policyIdentity(bucket, key))
+            || (policyExpiry !== null && Date.parse(policyExpiry) <= Date.parse(startedAt))) continue;
           const object = normalizeRecoveryObjectInfo(await call(() => reader.objectInfo(bucket, key)), bucket, key);
           Object.assign(object, referencesByPath.get(id) || {});
+          object.retentionExpiresAt = effectiveExpiry(bucket, key, object.retentionExpiresAt);
           objects.push(recoveryObjectSchema.parse(object));
           requireValue(objects.length <= RECOVERY_LIMITS.objects, "OBJECT_LIMIT");
         }
@@ -212,7 +231,12 @@ export async function buildRecoveryInventory({ reader, releaseSha, signReceipt, 
   const referenceSort = (value) => `${value.table}\u0000${value.id}\u0000${value.field}`;
   retainedReferences.sort((a, b) => compare(referenceSort(a), referenceSort(b)));
   tombstones.sort((a, b) => compare(`${referenceSort(a)}\u0000${a.kind}`, `${referenceSort(b)}\u0000${b.kind}`));
-  const inventory = { schemaVersion: "applypack-protected-recovery-inventory-v1", sourceEnvironment: "production", sourceProjectRef: RECOVERY_PROJECT,
+  if (!historicalBootstrap) {
+    const after = validateServiceRetentionOverlay(await call(() => reader.retentionOverlay()), now());
+    requireValue(recoveryCanonicalSha256(after) === recoveryCanonicalSha256(serviceRetention), "RETENTION_OVERLAY_CHANGED");
+  }
+  const inventory = { schemaVersion: historicalBootstrap ? "applypack-protected-recovery-inventory-v1" : "applypack-protected-recovery-inventory-v2",
+    ...(serviceRetention ? { serviceRetention } : {}), sourceEnvironment: "production", sourceProjectRef: RECOVERY_PROJECT,
     releaseSha, startedAt, completedAt: new Date(now()).toISOString(), buckets: [...RECOVERY_BUCKETS], objects, references: retainedReferences, tombstones,
     counts: { objects: objects.length, references: retainedReferences.length, tombstones: tombstones.length,
       tables: Object.fromEntries(RECOVERY_TABLES.map((table) => [table, tables[table].length])) } };

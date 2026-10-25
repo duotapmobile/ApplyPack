@@ -10,6 +10,8 @@ import { ReferenceManager } from "@/components/portal/reference-manager";
 import { SearchOrderProgress, type SearchOrderProgressView } from "@/components/portal/search-order-progress";
 import { customerSearchState } from "@/lib/commerce/customer-search-state";
 import { loadDeliveredMatchGroups, loadMaterialDeliveries } from "@/lib/materials/portal";
+import { loadCustomerRetentionAccess } from "@/lib/materials/retention-access-server";
+import { PRIVATE_ACCESS_EXPIRED_MESSAGE, privateAccessExpired } from "@/lib/materials/retention-access";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "My ApplyPack", robots: { index: false, follow: false } };
@@ -19,6 +21,8 @@ export default async function PortalPage() {
   if (!supabase) return <SetupState />;
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) return <EmailCodeSignIn />;
+  const retention = await loadCustomerRetentionAccess(supabase, authData.user.id).catch(() => null);
+  const accessByOrder = new Map(retention?.orders.map((order) => [order.order_id, order]) || []);
 
   const { data: orders } = await supabase.from("orders")
     .select("id,product_kind,amount_cents,status,delivery_deadline,delivered_at,created_at")
@@ -65,13 +69,16 @@ export default async function PortalPage() {
     const refundState = fullRefundState(service.winning_payment_attempt_id ? refundsByPayment.get(service.winning_payment_attempt_id) || [] : []);
     const amendment = amendmentsByService.get(service.id);
     const state = customerSearchState(service, refundState, releaseOrderIds.has(service.legacy_order_id));
+    const access = accessByOrder.get(service.legacy_order_id);
+    const expired = privateAccessExpired(access);
     return {
       orderId: service.legacy_order_id,
       stateLabel: state.label,
-      stateMessage: state.message,
+      stateMessage: expired ? PRIVATE_ACCESS_EXPIRED_MESSAGE : state.message,
+      accessExpiresAt: access?.access_expires_at ?? null,
       dueAt: service.delivery_due_at,
       refundState,
-      adjustment: amendment ? {
+      adjustment: retention && !expired && amendment ? {
         id: amendment.id,
         state: amendment.state,
         currentValidCount: amendment.current_valid_count,
@@ -90,11 +97,12 @@ export default async function PortalPage() {
 
   let releasePortal = { groups: [], jobs: [] } as Awaited<ReturnType<typeof loadDeliveredMatchGroups>>;
   let materialDeliveries: Awaited<ReturnType<typeof loadMaterialDeliveries>> = [];
-  let portalDataUnavailable = false;
+  let portalDataUnavailable = !retention;
   try {
+    if (!retention) throw new Error("customer_retention_access_unavailable");
     [releasePortal, materialDeliveries] = await Promise.all([
-      loadDeliveredMatchGroups({ supabase, releases: releases || [], services: services || [] }),
-      loadMaterialDeliveries({ supabase, customerId: authData.user.id }),
+      loadDeliveredMatchGroups({ supabase, releases: releases || [], services: services || [], retention }),
+      loadMaterialDeliveries({ supabase, customerId: authData.user.id, retention }),
     ]);
   } catch {
     portalDataUnavailable = true;
@@ -127,6 +135,9 @@ export default async function PortalPage() {
           key={group.deliveredReleaseId}
           matches={group.matches}
           evaluatedAt={group.evaluatedAt}
+          accessExpiresAt={group.accessExpiresAt}
+          actionExpiresAt={group.actionExpiresAt}
+          actionsExpired={group.actionsExpired}
           deliveredOrderId={group.deliveredOrderId}
           deliveredReleaseId={group.deliveredReleaseId}
           sourceSnapshotId={group.sourceSnapshotId}

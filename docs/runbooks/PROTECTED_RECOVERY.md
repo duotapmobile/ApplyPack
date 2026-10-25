@@ -1,5 +1,7 @@
 # Production protected recovery
 
+Current retention overlay: [amendment18](../applypack/18_OCTOBER_24_ONE_OFF_RETENTION_AMENDMENT.md) and [One-off retention](ONE_OFF_RETENTION.md) govern prospective 30-day access, obligation/hold protection, and mandatory private-row sanitization before restoring access. Historical deliveries keep their recorded terms. Read-only planning and restore exclusion do not establish physical archive erasure; the separate executor approval and hosted verification below remain required.
+
 Status: prepared source and local verification only. No archive, keys, roles, credentials, schedules, backup, retention deletion, or recovery drill have been provisioned or executed. Production remains locked. The production Supabase project is verified as `spjaaxndiduhrcleazwb`; its current inactive state and missing verified database target still block hosted execution.
 
 ## Scope and recovery promise

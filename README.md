@@ -8,6 +8,7 @@ ApplyPack is DuoTap LLC's manual-first job-search and application-document servi
 - Apply Pack: $7.99 per selected job for one tailored resume and one tailored cover letter.
 - Turnaround: search delivery within 24 clock hours after successful payment; Apply Pack delivery within 24 clock hours after payment and receipt of complete required inputs.
 - Capacity defaults: one search and two Application Packs per rolling 24-hour window.
+- New-order private access: 30 days after the service's latest approved delivery; starting an optional pack checkout and submitting a new covered match-conflict request close 30 days after the original search delivery. A valid checkout already started may finish before its original expiry. Historical orders retain their recorded terms. See `docs/applypack/18_OCTOBER_24_ONE_OFF_RETENTION_AMENDMENT.md`.
 
 The application includes the public site, guided intake, passwordless customer portal, Stripe Checkout, transactional email, private file delivery, an MFA-protected operator console, corrections and conflict review, capacity controls, refund operations, retention maintenance, accessibility checks, and Railway deployment configuration.
 
@@ -95,7 +96,7 @@ npm run test:aws-roles-anywhere
 
 `npm run check` runs lint, typecheck, unit tests and build only. The remaining commands above are separate required gates. Database replay/reset/rollback jobs must run serially against the disposable local stack. Windows document rendering uses `scripts/test-document-render-windows.ps1` to bind the approved tools and all four font faces. Optional ClamAV integration is separate from the approved structural-validation launch contract and is never reported as a passed scan when absent.
 
-Rollback verification requires `AP_ROLLBACK_TARGET_SHA` to name a reviewed, committed, schema-compatible alternative to the candidate. CI reads the explicit workflow input or repository variable; an absent target fails the gate. No such target has been established for schema 085. Until one is proven, recovery remains a checkout hold followed by a reviewed forward fix and protected data recovery.
+Rollback verification requires `AP_ROLLBACK_TARGET_SHA` to name a reviewed, committed, schema-compatible alternative to the candidate. CI reads the explicit workflow input or repository variable; an absent target fails the gate. No such target has been established for the current forward schema. Until one is proven, recovery remains a checkout hold followed by a reviewed forward fix and protected data recovery. Restored private information must pass the current expiry/deletion checks before customer access opens.
 
 The launch image workflow builds `Dockerfile.launch`, runs `npm run test:launch-image -- applypack-launch-web:<local-tag>` against the complete package without networking or provider credentials, and rejects high or critical image findings. Roles Anywhere contracts and isolated startup checks do not establish hosted AWS identity, credential revocation, or production readiness. The separate database-operation self-tests and restore drill are documented in `docs/runbooks/LAUNCH_DATABASE_OPERATIONS.md`.
 
@@ -112,6 +113,7 @@ The launch image workflow builds `Dockerfile.launch`, runs `npm run test:launch-
 - Current database preparation and recovery: `docs/runbooks/LAUNCH_DATABASE_OPERATIONS.md`
 - Historical Railway platform setup: `docs/runbooks/DEPLOYMENT.md` (preserved history; use the current launch runbooks for execution)
 - Security, retention, backups, and key rotation: `docs/runbooks/SECURITY_AND_PRIVACY.md`
+- Prospective one-off retention, historical access, and cleanup: `docs/runbooks/ONE_OFF_RETENTION.md`
 - Incident response: `docs/runbooks/INCIDENT_RESPONSE.md`
 - Evidence required to launch: `docs/runbooks/SHIP_CHECKLIST.md`
 - Job-source registry, classification, and API contract: `docs/job-search/SOURCE_EXPANSION.md`
@@ -124,7 +126,7 @@ POST /api/cron/maintenance
 Authorization: Bearer <CRON_SECRET>
 ```
 
-It reconciles payment attempts and reservations, deletes source documents whose retention date has passed, and alerts the operator about approaching or missed deadlines. The current launch profile schedules it every 15 minutes with a 45-minute maximum heartbeat age; the historical hourly configuration cannot prove that profile. Automated employer-source schedules stay disabled.
+It reconciles payment attempts and reservations, processes due private-content retention, and alerts the operator about approaching or missed deadlines. New-policy cleanup respects unfinished paid work, timely corrections/replacements, disputes, required holds, and shared historical/active entitlements. The current launch profile schedules it every 15 minutes with a 45-minute maximum heartbeat age; the historical hourly configuration cannot prove that profile. Automated employer-source schedules stay disabled.
 
 ## Health
 

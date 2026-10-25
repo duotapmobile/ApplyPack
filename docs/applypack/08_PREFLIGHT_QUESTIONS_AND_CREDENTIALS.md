@@ -1,5 +1,7 @@
 # ApplyPack Consolidated Preflight Questions and Credentials
 
+> Current retention authority: [October 24 amendment18](18_OCTOBER_24_ONE_OFF_RETENTION_AMENDMENT.md) governs new-order 30-day access, private-content minimization, holds, and restore safeguards. Earlier paid orders retain their recorded terms. Read repository AGENTS.md for the full current amendment order; conflicting original handoff text below is historical.
+
 > October 2, 2026 authority: `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` controls current prices, product scope, and launch approvals. Conflicting questions below are retained as historical preflight evidence.
 
 The executing agent must ask this information in one organized message before implementation. It must not ask for passwords, secret keys, API keys, recovery codes, or payment information in ordinary chat.

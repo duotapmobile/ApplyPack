@@ -25,6 +25,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!item || !order || order.customer_id !== authData.user.id || order.status !== "delivered" || !item.delivered_at) {
     return NextResponse.json({ error: "Delivered Tailored Resume + Cover Letter set not found." }, { status: 404 });
   }
+  const legacyAccess = await admin.rpc("ap_legacy_delivery_access_allowed", { p_item_id: id, p_customer_id: authData.user.id });
+  if (legacyAccess.error) return NextResponse.json({ error: "The delivery policy could not be verified." }, { status: 503 });
+  if (legacyAccess.data !== true) return NextResponse.json({ error: "Use the included correction control on the current document delivery in My ApplyPack." }, { status: 409 });
   if (Date.now() - new Date(item.delivered_at).getTime() > 3 * 24 * 60 * 60 * 1000) {
     return NextResponse.json({ error: "The included three-day correction window has closed." }, { status: 409 });
   }

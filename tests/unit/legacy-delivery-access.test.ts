@@ -3,7 +3,7 @@ import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 const mocks = vi.hoisted(() => ({
-  getUser: vi.fn(), getClaims: vi.fn(), from: vi.fn(), download: vi.fn(), createSignedUrl: vi.fn(), extract: vi.fn(),
+  getUser: vi.fn(), getClaims: vi.fn(), from: vi.fn(), rpc: vi.fn(), download: vi.fn(), createSignedUrl: vi.fn(), extract: vi.fn(),
 }));
 vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () => ({ auth: {
   getUser: mocks.getUser,
@@ -11,7 +11,7 @@ vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () =
   getClaims: mocks.getClaims,
 } }) }));
 vi.mock("@/lib/supabase/admin", () => ({ createSupabaseAdminClient: () => ({
-  from: mocks.from, storage: { from: () => ({ download: mocks.download, createSignedUrl: mocks.createSignedUrl }) },
+  from: mocks.from, rpc: mocks.rpc, storage: { from: () => ({ download: mocks.download, createSignedUrl: mocks.createSignedUrl }) },
 }) }));
 vi.mock("@/lib/files/isolated-extraction", () => ({ extractIsolatedDocument: mocks.extract }));
 import { GET } from "@/app/api/customer/deliveries/[id]/route";
@@ -37,6 +37,7 @@ afterEach(() => vi.unstubAllEnvs());
 
 beforeEach(async () => {
   vi.clearAllMocks(); queryCalls.length = 0;
+  mocks.rpc.mockResolvedValue({ data: true, error: null });
   item = { id: itemId, order_id: orderId, status: "delivered", delivered_at: deliveredAt,
     orders: { customer_id: customerId, product_kind: "apply_pack" } };
   revisions = [{ ...initialRevision }];
@@ -65,6 +66,13 @@ beforeEach(async () => {
 });
 
 describe("historical customer document access", () => {
+  it("does not allow a new-policy projection to bypass the current delivery access window", async () => {
+    mocks.rpc.mockResolvedValue({ data: false, error: null });
+    expect((await request()).status).toBe(404);
+    expect(mocks.rpc).toHaveBeenCalledWith("ap_legacy_delivery_access_allowed", { p_item_id: itemId, p_customer_id: customerId });
+    expect(mocks.download).not.toHaveBeenCalled();
+    expect(mocks.createSignedUrl).not.toHaveBeenCalled();
+  });
   it("opens the reviewed owned revision only after isolated safety inspection", async () => {
     const response = await request();
     expect(response.status).toBe(303);

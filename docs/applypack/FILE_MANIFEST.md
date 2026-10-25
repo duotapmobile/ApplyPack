@@ -1,5 +1,9 @@
 # ApplyPack Codex Handoff File Manifest
 
+## Current forward amendments
+
+Read repository `AGENTS.md` for the controlling order. Amendment18 (`18_OCTOBER_24_ONE_OFF_RETENTION_AMENDMENT.md`) adds prospective one-off retention and access; amendment17 governs sandbox launch proof and recovery; amendments16,14 and12 retain their respective tax, document and manual-launch rules. The package manifest and `SHA256SUMS.txt` below describe the original handoff distribution, not the current repository tree or release integrity. Git history preserves the original content and subsequent authority banners.
+
 This package is designed to be extracted directly into:
 
 ```text

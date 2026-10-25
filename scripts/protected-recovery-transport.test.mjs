@@ -17,10 +17,12 @@ const environment = () => ({ APP_DEPLOYMENT_ENV: "production", APP_BASE_URL: "ht
 const signal = () => new AbortController().signal;
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const emptyInventory = () => {
-  const value = { schemaVersion: "applypack-protected-recovery-inventory-v1", sourceEnvironment: "production",
+  const value = { schemaVersion: "applypack-protected-recovery-inventory-v2", sourceEnvironment: "production",
     sourceProjectRef: "spjaaxndiduhrcleazwb", releaseSha: RELEASE, startedAt: "2026-10-23T22:00:00.000Z",
     completedAt: "2026-10-23T22:00:00.001Z", buckets: [...RECOVERY_BUCKETS], objects: [], references: [], tombstones: [],
     counts: { objects: 0, references: 0, tombstones: 0, tables: Object.fromEntries(RECOVERY_TABLES.map((table) => [table, 0])) },
+    serviceRetention: { schemaVersion: "applypack-service-retention-overlay-v1", policyVersion: "one_off_30d_v1",
+      sourceWatermark: "1970-01-01T00:00:00.000Z", orders: [], holds: [], objectTombstones: [], objectPolicies: [] },
     receipt: "r".repeat(128) };
   value.inventoryDigest = recoveryInventoryDigest(value); return value;
 };

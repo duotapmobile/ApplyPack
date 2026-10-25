@@ -10,7 +10,7 @@ $fixture = [ordered]@{
     version=1; environment='production'; projectRef=('z' * 20); host='aws-0-us-east-1.pooler.supabase.com'; port=5432
     database='postgres'; currentUser='postgres'; loginUser=('postgres.' + ('z' * 20))
     credentialTarget='ApplyPack/Supabase/Production/Database'; caSha256=('c' * 64); releaseSha=('a' * 40)
-    expectedSchemaVersion='202610190084'; postSchemaVersion='202610230086'; expectedLedger=@($entry)
+    expectedSchemaVersion='202610190084'; postSchemaVersion='202610240087'; expectedLedger=@($entry)
     expectedLedgerSha256=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($ledgerText))).ToLowerInvariant()
     recoveryStrategy='LOCKED_FORWARD_RECOVERY'; quiescenceReference='fixture:no-writers'; protectedRecoveryReference='fixture:recovery'
     offMachineRecoveryReference='fixture:independent-recovery'; privateObjectsBackupReference='fixture:objects'
@@ -23,6 +23,10 @@ $fixture = [ordered]@{
         version='202610230086'; name='sandbox_validation_launch_activation'; checkpoint='SANDBOX_VALIDATION_LAUNCH_ACTIVATION'
         relativePath='supabase/migrations/202610230086_sandbox_validation_launch_activation.sql'
         predecessor='202610220085'; predecessorCheckpoint='STAGING_REHEARSAL_CHECKOUT_ATTEMPTS'; sha256=('e' * 64)
+    }, [ordered]@{
+        version='202610240087'; name='one_off_service_retention'; checkpoint='ONE_OFF_SERVICE_RETENTION'
+        relativePath='supabase/migrations/202610240087_one_off_service_retention.sql'
+        predecessor='202610230086'; predecessorCheckpoint='SANDBOX_VALIDATION_LAUNCH_ACTIVATION'; sha256=('f' * 64)
     })
 }
 $registry = [ordered]@{ version=1; targets=@([ordered]@{
@@ -97,7 +101,7 @@ foreach ($mutation in @(
     if (!$rejected) { throw 'GUARD_ACCEPTED_DRIFT' }
     $checks++
 }
-# A verified085 ledger advances only086; the already-published085 bytes are
+# A verified085 ledger advances through087; the already-published085 bytes are
 # retained as the predecessor digest and cannot be silently reapplied.
 $from085 = Copy-Fixture
 $from085.expectedSchemaVersion = '202610220085'
@@ -106,7 +110,7 @@ $from085.expectedLedger = @($from085.expectedLedger) + @([pscustomobject]@{
 })
 $ledgerText085 = @($from085.expectedLedger | ForEach-Object { "$($_.version):$($_.name):$($_.statementCount):$($_.statementsDigest)" }) -join "`n"
 $from085.expectedLedgerSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($ledgerText085))).ToLowerInvariant()
-$from085.migrations = @($from085.migrations[1])
+$from085.migrations = @($from085.migrations[1], $from085.migrations[2])
 Assert-ProductionDatabaseManifest -Manifest $from085 -Registry $registry
 $checks++
 foreach ($mutation in @(
@@ -119,6 +123,30 @@ foreach ($mutation in @(
     $rejected = $false
     try { Assert-ProductionDatabaseManifest -Manifest $changed -Registry $registry } catch { $rejected = $true }
     if (!$rejected) { throw 'GUARD_ACCEPTED_085_HISTORY_REINTERPRETATION' }
+    $checks++
+}
+# A verified086 ledger adds only087. Neither an old target nor a replayed
+# historical migration can be substituted for the new approved policy change.
+$from086 = $from085 | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+$from086.expectedSchemaVersion = '202610230086'
+$from086.expectedLedger = @($from086.expectedLedger) + @([pscustomobject]@{
+    version='202610230086'; name='sandbox_validation_launch_activation'; statementCount=1; statementsDigest=('e' * 64)
+})
+$ledgerText086 = @($from086.expectedLedger | ForEach-Object { "$($_.version):$($_.name):$($_.statementCount):$($_.statementsDigest)" }) -join "`n"
+$from086.expectedLedgerSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($ledgerText086))).ToLowerInvariant()
+$from086.migrations = @($from086.migrations[1])
+Assert-ProductionDatabaseManifest -Manifest $from086 -Registry $registry
+$checks++
+foreach ($mutation in @(
+    { param($x) $x.migrations = @($fixture.migrations) },
+    { param($x) $x.migrations[0].predecessor = '202610220085' },
+    { param($x) $x.postSchemaVersion = '202610230086' }
+)) {
+    $changed = $from086 | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+    & $mutation $changed
+    $rejected = $false
+    try { Assert-ProductionDatabaseManifest -Manifest $changed -Registry $registry } catch { $rejected = $true }
+    if (!$rejected) { throw 'GUARD_ACCEPTED_086_HISTORY_REINTERPRETATION' }
     $checks++
 }
 # The production entrypoints always read this committed registry. The fixture

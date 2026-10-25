@@ -1,5 +1,7 @@
 # ApplyPack Backend Architecture and Data Model
 
+> Current retention authority: [October 24 amendment18](18_OCTOBER_24_ONE_OFF_RETENTION_AMENDMENT.md) governs new-order 30-day access, private-content minimization, holds, and restore safeguards. Earlier paid orders retain their recorded terms. Read repository AGENTS.md for the full current amendment order; conflicting original handoff text below is historical.
+
 > October 2, 2026 authority: `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` controls new prices, immutable contract versions, invitation checkout, capacity, and launch health. Conflicting values below describe the historical model only.
 
 Last updated: September 1, 2026

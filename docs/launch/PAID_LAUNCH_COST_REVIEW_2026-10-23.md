@@ -1,6 +1,6 @@
 # Paid-launch cost review — October 23, 2026
 
-Status: historical preparation inputs, superseded by the [single consolidated infrastructure quote](PAID_LAUNCH_INFRASTRUCTURE_QUOTE_2026-10-23.md). That quote forecasts $160.78/month under its stated assumptions, with a $165 planning budget and up to $10 for one recovery drill. Approval is pending; no paid resources have been created. The provider/drill evidence remains separate from this cost forecast.
+Status: historical preparation inputs for the [rejected infrastructure quote](PAID_LAUNCH_INFRASTRUCTURE_QUOTE_2026-10-23.md). The owner rejected its $160.78/month forecast, $165 planning budget and up-to-$10 recovery-drill allowance as unaffordable. No paid resources have been created. Stay on Railway and distinguish launch necessities, first-paying-customer needs, and scaling additions in the replacement consolidated quote. Amendment 18's new-order retention policy bounds private-content growth but does not automatically reduce fixed service charges. The four-hour recovery and fifteen-minute reconciliation targets remain unchanged. Provider/drill evidence is separate from the cost forecast.
 
 ## Verified reuse and gaps
 

@@ -1,5 +1,7 @@
 # ApplyPack Test Plan and Ship Checklist
 
+> Current retention authority: [October 24 amendment18](18_OCTOBER_24_ONE_OFF_RETENTION_AMENDMENT.md) governs new-order 30-day access, private-content minimization, holds, and restore safeguards. Earlier paid orders retain their recorded terms. Read repository AGENTS.md for the full current amendment order; conflicting original handoff text below is historical.
+
 > October 2, 2026 authority: `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` replaces the historical price assertions and adds invitation, exact-ten, KMS, isolated-worker, maintenance, staging, supervisor, tax, and canary gates.
 >
 > October 19, 2026 authority: `16_OCTOBER_19_TAX_ACTIVATION_AMENDMENT.md` removes the separate tax-approval/reference gate. Tests still require exact $18.99/$7.99 fixed totals, tax-inclusive/no-added-amount configuration, and Stripe automatic tax disabled.

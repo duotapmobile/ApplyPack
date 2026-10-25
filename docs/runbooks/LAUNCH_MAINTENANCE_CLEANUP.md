@@ -1,5 +1,7 @@
 # Launch temporary-object cleanup
 
+This runbook covers worker temporary objects. Prospective customer-service content follows the distinct [One-off retention](ONE_OFF_RETENTION.md) contract, with access deadlines, paid-work and shared-reference protection, and separately verified removal. Do not reuse temporary-object expiry to erase customer deliverables or treat a temporary cleanup success as proof of service-content deletion.
+
 The launch profile also drains the separate `ap_aws_temporary_cleanup` ledger. Each document-worker invocation registers its input, PDF and two possible page-image keys before upload. Immediate deletion never removes the durable receipt. Maintenance deletes again after a ten-minute grace period, with at most twenty keys per invocation and four bounded deletes at a time. Completed receipts remain so a delayed retry cannot renew the original submission lease. Failed keys retry up to twenty times and remain visible after exhaustion.
 
 Parser and renderer health share one five-minute probe cache per process and complete worker/credential identity; approval revocation remains uncached. A single healthy web process contributes at most 48 cleanup rows per hour, against the scheduled drain of 80 rows per hour. Hosted acceptance must verify actual document volume, process/replica count, restart behavior and maintenance duration within the 120-second runner deadline. Do not infer adequate capacity from the cadence alone.

@@ -1,5 +1,7 @@
 # Protected recovery copy, bootstrap and isolated restore
 
+For new-policy orders, apply [One-off retention](ONE_OFF_RETENTION.md) before enabling a restored service. The latest trusted expiry/deletion overlay and database sanitization are required alongside file-version verification. A current hold protects recovery bytes without reopening expired customer access. Preserve historical entitlements; do not treat this requirement as permission to prune the protected archive.
+
 Status: implemented source with offline tests; not provisioned, deployed, provider-verified or drilled. Purchasing remains locked. The current tools archive private files and their reference graph. They do not establish database PITR health, independently recoverable authentication/configuration, retained KMS access, or the 240-minute/15-minute recovery result by themselves.
 
 ## Continuous file checkpoint

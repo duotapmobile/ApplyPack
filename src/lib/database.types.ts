@@ -6072,6 +6072,95 @@ export type Database = {
           },
         ]
       }
+      ap_order_retention_contracts: {
+        Row: {
+          checkout_attempt_id: string
+          created_at: string
+          customer_id: string
+          legal_receipt_id: string
+          order_id: string
+          policy_version: string
+          purged_at: string | null
+          search_service_id: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          checkout_attempt_id: string
+          created_at?: string
+          customer_id: string
+          legal_receipt_id: string
+          order_id: string
+          policy_version: string
+          purged_at?: string | null
+          search_service_id: string
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          checkout_attempt_id?: string
+          created_at?: string
+          customer_id?: string
+          legal_receipt_id?: string
+          order_id?: string
+          policy_version?: string
+          purged_at?: string | null
+          search_service_id?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_order_retention_contracts_checkout_attempt_id_fkey"
+            columns: ["checkout_attempt_id"]
+            isOneToOne: false
+            referencedRelation: "ap_retention_checkout_contracts"
+            referencedColumns: ["checkout_attempt_id"]
+          },
+          {
+            foreignKeyName: "ap_order_retention_contracts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_order_retention_contracts_legal_receipt_id_fkey"
+            columns: ["legal_receipt_id"]
+            isOneToOne: false
+            referencedRelation: "ap_snapshot_legal_content_receipts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_order_retention_contracts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_order_retention_contracts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_order_retention_contracts_search_service_id_fkey"
+            columns: ["search_service_id"]
+            isOneToOne: true
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["corrected_search_service_id"]
+          },
+          {
+            foreignKeyName: "ap_order_retention_contracts_search_service_id_fkey"
+            columns: ["search_service_id"]
+            isOneToOne: true
+            referencedRelation: "ap_search_services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_outbox_messages: {
         Row: {
           attempts: number
@@ -7226,6 +7315,42 @@ export type Database = {
           },
         ]
       }
+      ap_retention_checkout_contracts: {
+        Row: {
+          checkout_attempt_id: string
+          created_at: string
+          legal_receipt_id: string
+          policy_version: string
+        }
+        Insert: {
+          checkout_attempt_id: string
+          created_at?: string
+          legal_receipt_id: string
+          policy_version: string
+        }
+        Update: {
+          checkout_attempt_id?: string
+          created_at?: string
+          legal_receipt_id?: string
+          policy_version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_retention_checkout_contracts_checkout_attempt_id_fkey"
+            columns: ["checkout_attempt_id"]
+            isOneToOne: true
+            referencedRelation: "ap_checkout_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_retention_checkout_contracts_legal_receipt_id_fkey"
+            columns: ["legal_receipt_id"]
+            isOneToOne: false
+            referencedRelation: "ap_snapshot_legal_content_receipts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_retention_configuration: {
         Row: {
           approved: boolean
@@ -7253,6 +7378,30 @@ export type Database = {
           unpaid_draft_seconds?: number | null
           unpaid_file_seconds?: number | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      ap_retention_redaction_permits: {
+        Row: {
+          after_sha256: string
+          backend_pid: number
+          before_sha256: string
+          relation_id: unknown
+          transaction_id: number
+        }
+        Insert: {
+          after_sha256: string
+          backend_pid: number
+          before_sha256: string
+          relation_id: unknown
+          transaction_id: number
+        }
+        Update: {
+          after_sha256?: string
+          backend_pid?: number
+          before_sha256?: string
+          relation_id?: unknown
+          transaction_id?: number
         }
         Relationships: []
       }
@@ -7757,6 +7906,134 @@ export type Database = {
             columns: ["draft_id"]
             isOneToOne: false
             referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_service_retention_claims: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          customer_id: string
+          id: string
+          order_ids: string[]
+          redacted_rows: number
+          redaction_sha256: string | null
+          state: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          customer_id: string
+          id?: string
+          order_ids: string[]
+          redacted_rows?: number
+          redaction_sha256?: string | null
+          state?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          customer_id?: string
+          id?: string
+          order_ids?: string[]
+          redacted_rows?: number
+          redaction_sha256?: string | null
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_service_retention_claims_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_service_retention_holds: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          order_id: string
+          reason_code: string
+          released_at: string | null
+          released_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          order_id: string
+          reason_code: string
+          released_at?: string | null
+          released_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          order_id?: string
+          reason_code?: string
+          released_at?: string | null
+          released_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_service_retention_holds_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_retention_holds_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_order_retention_contracts"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "ap_service_retention_holds_released_by_fkey"
+            columns: ["released_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_service_retention_objects: {
+        Row: {
+          bucket: string
+          claim_id: string
+          deleted_at: string | null
+          id: string
+          path: string | null
+          path_sha256: string
+        }
+        Insert: {
+          bucket: string
+          claim_id: string
+          deleted_at?: string | null
+          id?: string
+          path?: string | null
+          path_sha256: string
+        }
+        Update: {
+          bucket?: string
+          claim_id?: string
+          deleted_at?: string | null
+          id?: string
+          path?: string | null
+          path_sha256?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_service_retention_objects_claim_id_fkey"
+            columns: ["claim_id"]
+            isOneToOne: false
+            referencedRelation: "ap_service_retention_claims"
             referencedColumns: ["id"]
           },
         ]
@@ -11437,6 +11714,10 @@ export type Database = {
         Args: { p_line_id: string; p_new_revision_id: string }
         Returns: boolean
       }
+      ap_admin_service_retention_status: {
+        Args: { p_limit?: number }
+        Returns: Json
+      }
       ap_admit_verified_inventory_snapshot: {
         Args: {
           p_inventory_version_id: string
@@ -11610,6 +11891,10 @@ export type Database = {
       }
       ap_assert_current_artifact_facts: {
         Args: { p_artifact_id: string }
+        Returns: undefined
+      }
+      ap_assert_service_retention_access: {
+        Args: { p_action?: boolean; p_line_id?: string; p_order_id: string }
         Returns: undefined
       }
       ap_assert_supported_artifact_facts: {
@@ -12292,6 +12577,18 @@ export type Database = {
         Args: { p_customer_id: string; p_snapshot_id: string }
         Returns: boolean
       }
+      ap_customer_private_retention_access: {
+        Args: { p_customer_id: string }
+        Returns: boolean
+      }
+      ap_customer_retention_access: {
+        Args: { p_customer_id: string }
+        Returns: Json
+      }
+      ap_customer_visible_reference_permissions: {
+        Args: { p_customer_id: string }
+        Returns: string[]
+      }
       ap_decline_material_change: {
         Args: {
           p_customer_id: string
@@ -12363,6 +12660,7 @@ export type Database = {
         Returns: boolean
       }
       ap_expire_search_checkout_invitations: { Args: never; Returns: number }
+      ap_export_service_retention_overlay: { Args: never; Returns: Json }
       ap_fail_feasibility_request: {
         Args: {
           p_error_code: string
@@ -12589,6 +12887,14 @@ export type Database = {
         Args: { p_customer_id: string; p_now?: string }
         Returns: boolean
       }
+      ap_legacy_delivery_access_allowed: {
+        Args: { p_customer_id: string; p_item_id: string }
+        Returns: boolean
+      }
+      ap_legacy_intake_retention_allowed: {
+        Args: { p_intake_id: string }
+        Returns: boolean
+      }
       ap_lock_anonymous_draft_to_checkout: {
         Args: {
           p_checkout_attempt_id: string
@@ -12612,6 +12918,10 @@ export type Database = {
         Args: never
         Returns: number
       }
+      ap_material_retention_deadline: {
+        Args: { p_line_id: string }
+        Returns: string
+      }
       ap_offer_material_substitution: {
         Args: {
           p_estimate_seconds: number
@@ -12625,6 +12935,7 @@ export type Database = {
         }
         Returns: string
       }
+      ap_one_off_retention_schema_installed: { Args: never; Returns: boolean }
       ap_open_postdelivery_false_claim_case: {
         Args: {
           p_artifact_id: string
@@ -13137,6 +13448,26 @@ export type Database = {
         }
         Returns: string
       }
+      ap_retention_customer_private_access_allowed: {
+        Args: { p_customer_id: string }
+        Returns: boolean
+      }
+      ap_retention_private_row_visible: {
+        Args: { p_row: Json; p_table: string }
+        Returns: boolean
+      }
+      ap_retention_redaction_permitted: {
+        Args: { p_after: Json; p_before: Json; p_relation: unknown }
+        Returns: boolean
+      }
+      ap_retention_reference_permission_visible: {
+        Args: { p_job_snapshot_id: string; p_release_id: string }
+        Returns: boolean
+      }
+      ap_retention_snapshot_private_access_allowed: {
+        Args: { p_snapshot_id: string }
+        Returns: boolean
+      }
       ap_retry_anonymous_document: {
         Args: {
           p_draft_id: string
@@ -13257,6 +13588,31 @@ export type Database = {
           version: number
         }[]
       }
+      ap_service_retention_access_allowed: {
+        Args: { p_action?: boolean; p_line_id?: string; p_order_id: string }
+        Returns: boolean
+      }
+      ap_service_retention_customer_expiry: {
+        Args: { p_customer_id: string }
+        Returns: string
+      }
+      ap_service_retention_customer_protected: {
+        Args: { p_customer_id: string }
+        Returns: boolean
+      }
+      ap_service_retention_deadlines: {
+        Args: { p_order_id: string }
+        Returns: {
+          access_expires_at: string
+          action_expires_at: string
+          family_expires_at: string
+        }[]
+      }
+      ap_service_retention_object_policies: { Args: never; Returns: Json }
+      ap_service_retention_order_protected: {
+        Args: { p_order_id: string }
+        Returns: boolean
+      }
       ap_set_checkout_mode: {
         Args: {
           p_actor_id: string
@@ -13284,6 +13640,16 @@ export type Database = {
           p_resource: Database["public"]["Enums"]["ap_capacity_resource"]
         }
         Returns: boolean
+      }
+      ap_set_service_retention_hold: {
+        Args: {
+          p_actor_id: string
+          p_hold_id?: string
+          p_order_id: string
+          p_reason_code: string
+          p_release?: boolean
+        }
+        Returns: string
       }
       ap_set_source_authorization_head: {
         Args: {

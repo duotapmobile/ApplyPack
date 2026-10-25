@@ -1,11 +1,28 @@
-import { readFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { proveRehearsalCheckoutConcurrency } from "./rehearsal-checkout-concurrency.mjs";
 
 // Destructive operations are pinned to the project's disposable local stack.
 // No database URL, linked project or remote credentials are accepted.
-const predecessors = ["202610040080", "202610190081", "202610190082", "202610190083", "202610190084", "202610220085"];
+const predecessors = ["202610040080", "202610190081", "202610190082", "202610190083", "202610190084", "202610220085", "202610230086"];
 const container = "supabase_db_applypack";
+const temporaryRoot = resolve(tmpdir());
+let historicalWorkspace;
+function prepareHistoricalWorkspace() {
+  historicalWorkspace = mkdtempSync(join(temporaryRoot, "applypack-rehearsal-upgrade-"));
+  const source = fileURLToPath(new URL("../supabase/", import.meta.url));
+  const target = join(historicalWorkspace, "supabase");
+  mkdirSync(join(target, "migrations"), { recursive: true }); mkdirSync(join(target, "templates"));
+  copyFileSync(join(source, "config.toml"), join(target, "config.toml"));
+  copyFileSync(join(source, "templates", "applypack-code.html"), join(target, "templates", "applypack-code.html"));
+  for (const name of readdirSync(join(source, "migrations"))) {
+    const version = /^(\d{12})_.+\.sql$/u.exec(name)?.[1];
+    if (version && version <= "202610230086") copyFileSync(join(source, "migrations", name), join(target, "migrations", name));
+  }
+}
 function run(command, args, input) {
   const result = spawnSync(command, args, {
     cwd: process.cwd(), encoding: "utf8", input, stdio: ["pipe", "pipe", "pipe"], timeout: 600_000,
@@ -22,8 +39,9 @@ function sql(input) {
 }
 let failure;
 try {
+  prepareHistoricalWorkspace();
   for (const predecessor of predecessors) {
-    console.log(`Running isolated local upgrade ${predecessor} to 202610230086.`);
+    console.log(`Running isolated local upgrade ${predecessor} to 202610240087.`);
     run("supabase", ["db", "reset", "--local", "--no-seed", "--version", predecessor]);
     sql(`
       do $$ begin
@@ -67,14 +85,20 @@ try {
       const preservation = sql(`begin;\n${seed}\n${migration.replace(/^begin;\r?\n/i, "").replace(/\r?\ncommit;\r?\n?$/i, "")}\n${verify}\nrollback;`);
       if (!preservation.includes("SANDBOX_ACTIVATION_086_UPGRADE_VERIFY_OK")) throw new Error("Activation086 historical preservation marker missing");
     }
+    run("supabase", ["migration", "up", "--local", "--workdir", historicalWorkspace]);
+    const historical = run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs", "--historical-086"]);
+    if (!historical.includes("Database contract fixtures passed: 19. Schema phase: 202610230086.")) {
+      throw new Error("Historical086 lifecycle proof missing");
+    }
     run("supabase", ["migration", "up", "--local"]);
     const result = sql(`
       do $$ begin
-        if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610230086'
-          or public.ap_manual_launch_schema_readiness()->>'ready' is distinct from 'true'
+        if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610240087'
+          or public.ap_manual_launch_schema_readiness()->>'ready' is distinct from 'false'
+          or public.ap_one_off_retention_schema_installed()
           or public.ap_manual_launch_schema_readiness()->'requiredMigrations' is distinct from jsonb_build_array(
             '202610040077','202610040078','202610040079','202610040080','202610190081',
-            '202610190082','202610190083','202610190084','202610220085','202610230086')
+            '202610190082','202610190083','202610190084','202610220085','202610230086','202610240087')
           or not exists(select 1 from public.ap_checkout_mode_configuration where singleton and mode='LOCKED')
           or exists(select 1 from public.ap_checkout_initiations)
           or exists(select 1 from public.ap_staging_rehearsal_authorizations)
@@ -93,21 +117,30 @@ try {
           or has_table_privilege('service_role','public.ap_aws_temporary_cleanup','DELETE')
           then raise exception 'rehearsal_upgrade_contract_failed'; end if;
       end $$;
-      select 'REHEARSAL_UPGRADE_${predecessor}_TO_086_OK';
+      select 'REHEARSAL_UPGRADE_${predecessor}_TO_087_OK';
     `);
-    if (!result.includes(`REHEARSAL_UPGRADE_${predecessor}_TO_086_OK`)) throw new Error("Upgrade proof marker missing");
+    if (!result.includes(`REHEARSAL_UPGRADE_${predecessor}_TO_087_OK`)) throw new Error("Upgrade proof marker missing");
     const lifecycle = run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs"]);
-    if (!lifecycle.includes("Database contract fixtures passed: 19.")) throw new Error("Upgraded lifecycle fixture proof missing");
-    console.log(`PASS: isolated local upgrade ${predecessor} to 202610230086; paid history preserved, mode locked, service-only ledger; all 19 lifecycle fixtures passed.`);
+    if (!lifecycle.includes("ONE_OFF_SERVICE_RETENTION_OK")
+      || !lifecycle.includes("Database contract fixtures passed: 1. Schema phase: 202610240087.")) throw new Error("Upgraded retention fixture proof missing");
+    console.log(`PASS: isolated local upgrade ${predecessor} to 202610240087; paid history preserved; 19 historical086 fixtures and current087 retention guard passed; activation remains blocked.`);
   }
-  // Start from a clean final schema before the independent-connection proof.
-  run("supabase", ["db", "reset", "--local", "--no-seed"]);
+  // Positive checkout concurrency belongs to the unchanged historical contract.
+  // The current087 fixture independently proves missing executors block checkout.
+  run("supabase", ["db", "reset", "--local", "--no-seed", "--version", "202610230086"]);
   await proveRehearsalCheckoutConcurrency();
 } catch (error) {
   failure = error;
 } finally {
   try { run("supabase", ["db", "reset", "--local", "--no-seed"]); }
   catch (error) { if (!failure) failure = error; }
+  try {
+    if (historicalWorkspace) {
+      const target = resolve(historicalWorkspace);
+      if (dirname(target) !== temporaryRoot || !basename(target).startsWith("applypack-rehearsal-upgrade-")) throw new Error("UNSAFE_UPGRADE_CLEANUP_PATH");
+      rmSync(target, { recursive: true, force: true });
+    }
+  } catch (error) { if (!failure) failure = error; }
 }
 if (failure) throw failure;
-console.log("All six launch upgrade predecessors passed; latest disposable local schema restored.");
+console.log("All seven launch upgrade predecessors passed; latest disposable local schema restored.");

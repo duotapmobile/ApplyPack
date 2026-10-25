@@ -1,5 +1,7 @@
 # ApplyPack Site Copy and Page Map
 
+> Current retention authority: [October 24 amendment18](18_OCTOBER_24_ONE_OFF_RETENTION_AMENDMENT.md) governs new-order 30-day access, private-content minimization, holds, and restore safeguards. Earlier paid orders retain their recorded terms. Read repository AGENTS.md for the full current amendment order; conflicting original handoff text below is historical.
+
 > October 2, 2026 authority: `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` replaces conflicting prices and removes the subscription board from launch navigation, sitemap, pricing, and public calls to action.
 
 Last updated: September 1, 2026

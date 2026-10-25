@@ -69,7 +69,14 @@ test("archive exactVersion read binds owner/key/encryption and validates manifes
   assert.equal(request.VersionId, value.manifestVersionId); assert.equal(request.ExpectedBucketOwner, "838445019912");
   assert.equal(request.Key, `manifests/${value.manifestSha256}.json`);
 });
-function targetFixture({ unlocked = false, existing = false } = {}) {
+const serviceOverlay = () => ({ schemaVersion: "applypack-service-retention-overlay-v1", policyVersion: "one_off_30d_v1",
+  sourceWatermark: "1970-01-01T00:00:00.000Z", orders: [], holds: [], objectTombstones: [], objectPolicies: [] });
+async function sanitizeTarget(target) {
+  const overlay = serviceOverlay();
+  return target.sanitizeDatabase({ overlay, digest: canonicalSha256(overlay), sourceInventoryDigest: "c".repeat(64),
+    signal: new AbortController().signal });
+}
+function targetFixture({ unlocked = false, existing = false, sanitizer = (value) => value } = {}) {
   const calls = []; const stored = new Map(); const value = registration();
   const target = createRegisteredRestoreTarget({ registration: value, supabaseKey: SYNTHETIC_TARGET_KEY, now: () => NOW,
     fetchImpl: async (url, options = {}) => {
@@ -77,6 +84,14 @@ function targetFixture({ unlocked = false, existing = false } = {}) {
       const json = (body) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
       if (parsed.pathname === "/rest/v1/ap_checkout_mode_configuration") return json({ mode: unlocked ? "PUBLIC" : "LOCKED" });
       if (parsed.pathname === "/rest/v1/ap_commerce_configuration") return json({ checkout_enabled: false });
+      if (parsed.pathname === "/rest/v1/rpc/ap_apply_retention_restore_overlay") {
+        assert.equal(options.method, "POST");
+        const input = JSON.parse(options.body);
+        assert.deepEqual(JSON.parse(input.p_overlay_json), serviceOverlay());
+        assert.equal(sha256(input.p_overlay_json), input.p_overlay_sha256);
+        return json(sanitizer({ policyVersion: "one_off_30d_v1", overlayDigest: input.p_overlay_sha256,
+          ordersExamined: 0, ordersSanitized: 0, objectsRevoked: 0, expiredPrivateRecordsRemaining: 0, accessLocked: true }));
+      }
       if (parsed.pathname === "/storage/v1/bucket") return json(RECOVERY_BUCKETS.map((name) => ({ id: name, name, public: false })));
       if (parsed.pathname.startsWith("/storage/v1/object/list/")) return json(existing ? [{ name: "private-existing" }] : []);
       if (parsed.pathname.startsWith("/storage/v1/object/authenticated/")) {
@@ -102,6 +117,7 @@ test("target persists private exclusion overlay first then verifies restored byt
   const controller = new AbortController(); const tombstones = [];
   const overlay = await target.applyTombstones({ tombstones, digest: canonicalSha256(tombstones), signal: controller.signal });
   assert.equal(overlay.customerAccessLocked, true); assert.equal(stored.size, 1);
+  assert.equal((await sanitizeTarget(target)).accessLocked, true);
   const bytes = Buffer.from("synthetic private document");
   const result = await target.putPrivateObject({ bucket: "customer-deliveries", key: "owner/reviewed.docx", body: Readable.from([bytes]),
     expectedSize: bytes.length, expectedSha256: sha256(bytes), overwrite: false, signal: controller.signal });
@@ -110,9 +126,36 @@ test("target persists private exclusion overlay first then verifies restored byt
 });
 test("target never uploads corrupt archive content or permits overwrite", async () => {
   const { target, stored } = targetFixture(); await target.assertLocked();
+  await sanitizeTarget(target);
   const input = { bucket: "customer-deliveries", key: "owner/file", body: Readable.from([Buffer.from("abc")]), expectedSize: 3,
     expectedSha256: "f".repeat(64), overwrite: false, signal: new AbortController().signal };
   await assert.rejects(target.putPrivateObject(input), /TARGET_SOURCE_HASH/u);
   await assert.rejects(target.putPrivateObject({ ...input, overwrite: true }), /TARGET_OBJECT/u);
   assert.equal(stored.size, 0);
+});
+
+test("target refuses private uploads before database sanitization", async () => {
+  const { target, stored } = targetFixture(); await target.assertLocked();
+  await assert.rejects(target.putPrivateObject({}), /DATABASE_SANITIZATION_REQUIRED/u);
+  assert.equal(stored.size, 0);
+});
+for (const [label, sanitizer] of [
+  ["missing RPC receipt", () => null],
+  ["wrong digest", (v) => ({ ...v, overlayDigest: "f".repeat(64) })],
+  ["unverified records", (v) => ({ ...v, expiredPrivateRecordsRemaining: 1 })],
+  ["unlocked access", (v) => ({ ...v, accessLocked: false })],
+  ["impossible counts", (v) => ({ ...v, ordersSanitized: 1 })],
+  ["unknown receipt claim", (v) => ({ ...v, readyForProduction: true })],
+]) test(`target refuses ${label} without enabling uploads`, async () => {
+  const { target, stored } = targetFixture({ sanitizer }); await target.assertLocked();
+  await assert.rejects(sanitizeTarget(target), /DATABASE_SANITIZATION_FAILED/u);
+  await assert.rejects(target.putPrivateObject({}), /DATABASE_SANITIZATION_REQUIRED/u);
+  assert.equal(stored.size, 0);
+});
+
+test("overlay tampering fails before the target RPC", async () => {
+  const { target, calls } = targetFixture(); await target.assertLocked();
+  await assert.rejects(target.sanitizeDatabase({ overlay: serviceOverlay(), digest: "f".repeat(64),
+    sourceInventoryDigest: "c".repeat(64), signal: new AbortController().signal }), /RETENTION_OVERLAY_BINDING/u);
+  assert.equal(calls.some(([path]) => path.startsWith("/rest/v1/rpc/")), false);
 });

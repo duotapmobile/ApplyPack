@@ -53,6 +53,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const order = Array.isArray(item?.orders) ? item.orders[0] : item?.orders;
     if (itemError || !item || !order || order.customer_id !== customerId || order.product_kind !== "apply_pack"
       || item.status !== "delivered" || !item.delivered_at) return fail("Delivery not found.", 404);
+    const legacyAccess = await admin.rpc("ap_legacy_delivery_access_allowed", { p_item_id: itemId.data, p_customer_id: customerId });
+    if (legacyAccess.error) return fail("Historical access could not be verified.", 503);
+    if (legacyAccess.data !== true) return fail("Use the current document delivery in My ApplyPack.", 404);
 
     let revisionQuery = admin.from("apply_pack_delivery_revisions")
       .select("id,apply_pack_item_id,version,correction_request_id,resume_path,cover_letter_path,delivered_at,reviewed_by")

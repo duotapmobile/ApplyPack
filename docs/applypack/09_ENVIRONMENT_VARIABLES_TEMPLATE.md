@@ -19,6 +19,8 @@ APP_CANONICAL_HOST=applypack.work
 APP_DISPLAY_TIMEZONE=America/New_York
 APP_TURNAROUND_HOURS=24
 APP_SOURCE_DOCUMENT_RETENTION_DAYS=30
+# This setting governs legacy/unpaid sources. New paid one_off_30d_v1 access
+# uses the fixed accepted contract in amendment18 and migration087.
 APP_CORRECTION_WINDOW_DAYS=3
 APP_CAPACITY_RESERVATION_MINUTES=20
 APP_SUPPORT_EMAIL=support@applypack.work

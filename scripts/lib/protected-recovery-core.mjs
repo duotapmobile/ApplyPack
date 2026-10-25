@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
-import { RECOVERY_BUCKETS, RECOVERY_LIMITS, RECOVERY_PROJECT, recoveryInventorySchema, recoveryInventoryDigest, recoveryCompletionSchema } from "./protected-recovery-protocol.mjs";
+import { RECOVERY_BUCKETS, RECOVERY_LIMITS, RECOVERY_PROJECT, recoveryInventorySchema, recoveryInventoryDigest, recoveryCompletionSchema,
+  validateServiceRetentionOverlay, verifiedRetentionSanitization } from "./protected-recovery-protocol.mjs";
 export { RECOVERY_BUCKETS } from "./protected-recovery-protocol.mjs";
 
 export const RECOVERY = Object.freeze({
   projectRef: RECOVERY_PROJECT,
   sourceOrigin: "https://applypack.work",
-  inventorySchema: "applypack-protected-recovery-inventory-v1",
+  inventorySchema: "applypack-protected-recovery-inventory-v2",
   manifestSchema: "applypack-protected-recovery-manifest-v1",
   maximumInventoryBytes: RECOVERY_LIMITS.inventoryBytes,
   maximumObjects: RECOVERY_LIMITS.objects,
@@ -35,8 +36,10 @@ const validLocation = (value) => RECOVERY_BUCKETS.includes(value.bucket) && vali
 
 export const inventoryDigest = recoveryInventoryDigest;
 
-export function validateInventory(inventory, { releaseSha, now = Date.now(), requireFresh = true } = {}) {
+export function validateInventory(inventory, { releaseSha, now = Date.now(), requireFresh = true, requireRetention = false } = {}) {
   requireValue(recoveryInventorySchema.safeParse(inventory).success, "INVENTORY_SHAPE");
+  requireValue(!requireRetention || inventory.schemaVersion === RECOVERY.inventorySchema, "CURRENT_RETENTION_OVERLAY_REQUIRED");
+  if (inventory.schemaVersion === RECOVERY.inventorySchema) validateServiceRetentionOverlay(inventory.serviceRetention, Date.parse(inventory.completedAt));
   requireValue(canonicalBytes(inventory).byteLength <= RECOVERY.maximumInventoryBytes, "INVENTORY_LIMIT");
   requireValue(!releaseSha || inventory.releaseSha === releaseSha, "RELEASE_IDENTITY");
   requireValue(inventory.buckets.join("|") === RECOVERY_BUCKETS.join("|"), "BUCKET_COVERAGE");
@@ -48,6 +51,8 @@ export function validateInventory(inventory, { releaseSha, now = Date.now(), req
     && inventory.counts.tombstones === inventory.tombstones.length
     && Object.values(inventory.counts.tables).every((count) => count <= RECOVERY_LIMITS.references), "INVENTORY_COUNTS");
   const objects = new Map();
+  const effectivePolicies = new Map(inventory.schemaVersion === RECOVERY.inventorySchema
+    ? inventory.serviceRetention.objectPolicies.map((value) => [`${value.bucket}\u0000${value.pathSha256}`, value]) : []);
   let totalBytes = 0;
   let previousIdentity = "";
   for (const object of inventory.objects) {
@@ -57,6 +62,9 @@ export function validateInventory(inventory, { releaseSha, now = Date.now(), req
       && (object.expectedSha256 === null || hex(object.expectedSha256))
       && (object.retentionExpiresAt === null || timestamp(object.retentionExpiresAt)), "OBJECT_INVALID");
     const id = identity(object);
+    const policy = effectivePolicies.get(`${object.bucket}\u0000${sha256(object.key)}`);
+    if (policy) requireValue(object.retentionExpiresAt === (policy.protected || policy.retentionExpiresAt === null
+      ? null : new Date(policy.retentionExpiresAt).toISOString()), "OBJECT_RETENTION_POLICY_MISMATCH");
     requireValue(id > previousIdentity && !objects.has(id), "OBJECT_ORDER_OR_DUPLICATE");
     previousIdentity = id;
     totalBytes += object.size;
@@ -188,7 +196,7 @@ async function writeCheckpoint({ source, destination, completion, archive, relea
   const clock = deadline(now, maximumRunMilliseconds);
   try {
     const first = await clock.wait(source.readInventory({ signal: clock.signal }));
-    validateInventory(first, { releaseSha, now: now() });
+    validateInventory(first, { releaseSha, now: now(), requireRetention: completion !== null });
     const deletedObjects = new Set(first.tombstones.filter((item) => item.kind === "DELETED").map(identity));
     const reused = new Map();
     if (previous !== null) {
@@ -222,7 +230,7 @@ async function writeCheckpoint({ source, destination, completion, archive, relea
         sha256: content.sha256, archiveKey, archiveVersionId: stored.versionId });
     }
     const second = await clock.wait(source.readInventory({ signal: clock.signal }));
-    validateInventory(second, { releaseSha, now: now() });
+    validateInventory(second, { releaseSha, now: now(), requireRetention: completion !== null });
     requireValue(second.inventoryDigest === first.inventoryDigest && Date.parse(second.startedAt) >= Date.parse(first.completedAt), "INVENTORY_CHANGED");
     requireValue(now() - Date.parse(first.startedAt) <= RECOVERY.maximumCheckpointAgeMilliseconds, "CHECKPOINT_EXPIRED");
     requireValue(first.objects.every((object) => object.retentionExpiresAt === null || Date.parse(object.retentionExpiresAt) > now()), "SOURCE_VERSION_EXPIRED");
@@ -290,7 +298,7 @@ export async function restoreCheckpoint({ manifest, manifestDigest, latestInvent
   now = Date.now, maximumRunMilliseconds = RECOVERY.maximumRunMilliseconds }) {
   validateManifest(manifest, manifestDigest);
   validateRestorePolicy(policy, manifestDigest);
-  validateInventory(latestInventory, { now: now() });
+  validateInventory(latestInventory, { now: now(), requireRetention: true });
   requireValue(Date.parse(latestInventory.startedAt) >= Date.parse(manifest.watermark), "RESTORE_OVERLAY_OLDER");
   const clock = deadline(now, maximumRunMilliseconds);
   try {
@@ -301,6 +309,13 @@ export async function restoreCheckpoint({ manifest, manifestDigest, latestInvent
     requireValue(record(reader) && reader.credentialIdentity === policy.archiveCredentialIdentity
       && reader.independentRecovery === true, "RESTORE_CREDENTIAL");
     const overlay = [...manifest.inventory.tombstones, ...latestInventory.tombstones];
+    const terminalPaths = new Map(latestInventory.serviceRetention.objectTombstones
+      .map((value) => [`${value.bucket}\u0000${value.pathSha256}`, value.deletedAt]));
+    for (const object of manifest.inventory.objects) {
+      const deletedAt = terminalPaths.get(`${object.bucket}\u0000${sha256(object.key)}`);
+      if (deletedAt) overlay.push({ table: "recovery_service_retention", id: sha256(identity(object)), bucket: object.bucket,
+        key: object.key, kind: "DELETED", effectiveAt: deletedAt });
+    }
     const latestObjects = new Map(latestInventory.objects.map((object) => [identity(object), object]));
     const latestReferences = new Set(latestInventory.references.map((reference) => `${reference.table}\u0000${reference.id}\u0000${reference.field}\u0000${identity(reference)}`));
     const priorReferencedObjects = new Set(manifest.inventory.references.map(identity));
@@ -317,7 +332,10 @@ export async function restoreCheckpoint({ manifest, manifestDigest, latestInvent
           key: object.key, kind: "DELETED", effectiveAt: latestInventory.completedAt });
       }
     }
-    for (const object of [...manifest.inventory.objects, ...latestInventory.objects]) {
+    // Current policy is authoritative for an unchanged, still-referenced version.
+    // A newer hold or support extension must not be defeated by an older expiry.
+    // Explicit deletion/revocation tombstones above remain irreversible exclusions.
+    for (const object of latestInventory.objects) {
       if (object.retentionExpiresAt !== null && Date.parse(object.retentionExpiresAt) <= now()) {
         overlay.push({ table: "recovery_retention", id: sha256(identity(object)), bucket: object.bucket,
           key: object.key, kind: "DELETED", effectiveAt: object.retentionExpiresAt });
@@ -328,6 +346,12 @@ export async function restoreCheckpoint({ manifest, manifestDigest, latestInvent
     const overlayDigest = canonicalSha256(unique);
     const applied = await clock.wait(target.applyTombstones({ tombstones: unique, digest: overlayDigest, signal: clock.signal }));
     requireValue(record(applied) && applied.digest === overlayDigest && applied.customerAccessLocked === true, "RESTORE_TOMBSTONES_UNAPPLIED");
+    requireValue(typeof target.sanitizeDatabase === "function", "RESTORE_DATABASE_SANITIZATION_REQUIRED");
+    const retentionDigest = canonicalSha256(latestInventory.serviceRetention);
+    const sanitized = await clock.wait(target.sanitizeDatabase({ overlay: latestInventory.serviceRetention,
+      digest: retentionDigest, sourceInventoryDigest: latestInventory.inventoryDigest, signal: clock.signal }));
+    requireValue(verifiedRetentionSanitization(sanitized, retentionDigest),
+    "RESTORE_DATABASE_SANITIZATION_UNVERIFIED");
     const blocked = new Set(unique.map(identity));
     let restored = 0;
     for (const entry of manifest.entries) {
@@ -346,7 +370,7 @@ export async function restoreCheckpoint({ manifest, manifestDigest, latestInvent
     const finalLocks = await clock.wait(target.assertLocked({ signal: clock.signal }));
     requireValue(record(finalLocks) && finalLocks.projectRef === policy.targetProjectRef
       && finalLocks.credentialIdentity === policy.targetCredentialIdentity && LOCKS.every((name) => finalLocks[name] === true), "RESTORE_TARGET_UNLOCKED");
-    return { status: "FILES_RESTORED_ACCESS_LOCKED", manifestDigest, overlayDigest, restoredObjects: restored,
-      excludedObjects: manifest.entries.length - restored, customerAccessLocked: true };
+    return { status: "FILES_RESTORED_ACCESS_LOCKED", manifestDigest, overlayDigest, retentionDigest, databaseSanitized: true,
+      restoredObjects: restored, excludedObjects: manifest.entries.length - restored, customerAccessLocked: true };
   } finally { clock.close(); }
 }

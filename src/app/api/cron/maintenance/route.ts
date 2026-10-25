@@ -152,6 +152,11 @@ export async function POST(request: Request) {
   let deletedSources = 0;
   let expirationCleanupFailed = false;
   for (const intake of dueIntakes || []) {
+    // The old source-only cleanup must never consume a new-policy family's
+    // files. Its complete, hold-aware cleanup is a separately gated operation.
+    const legacyAllowed = await admin.rpc("ap_legacy_intake_retention_allowed", { p_intake_id: intake.id });
+    if (legacyAllowed.error || typeof legacyAllowed.data !== "boolean") { expirationCleanupFailed = true; continue; }
+    if (!legacyAllowed.data) continue;
     const { data: documents, error: documentQueryError } = await admin.from("source_documents")
       .select("id,storage_path").eq("intake_id", intake.id).is("deleted_at", null);
     if (documentQueryError) {

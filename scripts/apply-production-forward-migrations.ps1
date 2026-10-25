@@ -29,13 +29,13 @@ $script:DatabaseName = 'postgres'
 $script:LoginUser = 'postgres.zzzzzzzzzzzzzzzzzzzz'
 $script:CurrentUser = 'postgres'
 $script:PreSchemaVersion = '202610190084'
-$script:PostSchemaVersion = '202610230086'
+$script:PostSchemaVersion = '202610240087'
 $script:CaSha256 = '700723581420DD1AC98FD7E9AC529F0EF210EADCAF87FC868A3AD7D114C2F3B7'
 $script:PostgresImageDigest = 'public.ecr.aws/supabase/postgres@sha256:b3bfedb107413abb3b8cb0d0874b0414a1dceb3d55bc0c778de6ad22d1f7dc86'
 $script:DockerCliReviewedPath = 'C:\Program Files\Docker\Docker\resources\bin\docker.exe'
 $script:DockerEndpoint = 'npipe:////./pipe/dockerDesktopLinuxEngine'
 $script:ResolvedDockerCliPath = $null
-$script:RunnerVersion = 3
+$script:RunnerVersion = 4
 $script:PsqlPasswordHandoffShell = 'IFS= read -r PGPASSWORD; export PGPASSWORD; export PGSSLMODE=verify-full; export PGSSLROOTCERT=/certs/root.crt; export PGCONNECT_TIMEOUT=15; exec "$@"'
 $script:ConnectionInfoBegin = 'APPLYPACK_MIGRATION_CONNINFO_BEGIN'
 $script:ConnectionInfoEnd = 'APPLYPACK_MIGRATION_CONNINFO_END'
@@ -96,6 +96,15 @@ $script:MigrationPlan = @(
         predecessor = '202610220085'
         predecessorCheckpoint = 'STAGING_REHEARSAL_CHECKOUT_ATTEMPTS'
         marker = 'PRODUCTION_MIGRATION_202610230086_APPLIED'
+    },
+    [ordered]@{
+        version = '202610240087'
+        name = 'one_off_service_retention'
+        relativePath = 'supabase/migrations/202610240087_one_off_service_retention.sql'
+        checkpoint = 'ONE_OFF_SERVICE_RETENTION'
+        predecessor = '202610230086'
+        predecessorCheckpoint = 'SANDBOX_VALIDATION_LAUNCH_ACTIVATION'
+        marker = 'PRODUCTION_MIGRATION_202610240087_APPLIED'
     }
 )
 $script:PublishedPredecessorPaths = @(
@@ -1327,7 +1336,8 @@ function Invoke-Apply {
                     }
                 })
                 migration085Rows = [int]($script:PreSchemaVersion -cge '202610220085')
-                migration086Rows = 0
+                migration086Rows = [int]($script:PreSchemaVersion -cge '202610230086')
+                migration087Rows = 0
                 requiredSchemaVersion = $script:PreSchemaVersion
                 ready = $true
                 invalidPublicIndexes = 0
@@ -1338,6 +1348,7 @@ function Invoke-Apply {
                 latestSchemaVersion = $script:PostSchemaVersion
                 migration085Rows = 1
                 migration086Rows = 1
+                migration087Rows = 1
                 requiredSchemaVersion = $script:PostSchemaVersion
                 ready = $true
                 invalidPublicIndexes = 0

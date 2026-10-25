@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApplyPackSelector, type MatchForSelection } from "@/components/portal/apply-pack-selector-v2";
@@ -35,6 +35,35 @@ describe("Tailored Resume + Cover Letter customer selection", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("keeps a late replacement visible without reopening purchase or conflict requests", () => {
+    render(<ApplyPackSelector matches={[match]} evaluatedAt={new Date().toISOString()}
+      deliveredOrderId="44444444-4444-4444-8444-444444444444" deliveredReleaseId="55555555-5555-4555-8555-555555555555"
+      sourceSnapshotId="66666666-6666-4666-8666-666666666666" initialEmail="synthetic@example.invalid" fixtureAvailableUnits={2}
+      actionExpiresAt={new Date(Date.now() - 1_000).toISOString()} accessExpiresAt={new Date(Date.now() + 86_400_000).toISOString()} actionsExpired />);
+    expect(screen.getByRole("heading", { name: "Operations Assistant" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /Select Tailored Resume/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Conflicts with my criteria" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Review and Pay" })).toBeDisabled();
+    expect(screen.getByText(/30-day window to purchase document sets/)).toBeInTheDocument();
+  });
+
+  it("closes actions and hides private content when each deadline passes in an open portal", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-24T12:00:00Z"));
+    render(<ApplyPackSelector matches={[{ ...match, job: { ...match.job, checked_at: new Date().toISOString() } }]} evaluatedAt={new Date().toISOString()}
+      deliveredOrderId="44444444-4444-4444-8444-444444444444" deliveredReleaseId="55555555-5555-4555-8555-555555555555"
+      sourceSnapshotId="66666666-6666-4666-8666-666666666666" initialEmail="synthetic@example.invalid" fixtureAvailableUnits={2}
+      actionExpiresAt={new Date(Date.now() + 500).toISOString()} accessExpiresAt={new Date(Date.now() + 1_000).toISOString()} />);
+    expect(screen.getByRole("checkbox", { name: /Select Tailored Resume/ })).toBeEnabled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(501); });
+    expect(screen.getByRole("button", { name: "Review and Pay" })).toBeDisabled();
+    expect(screen.getByRole("heading", { name: "Operations Assistant" })).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    expect(screen.queryByRole("heading", { name: "Operations Assistant" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Private search access ended" })).toBeInTheDocument();
   });
 
   it("lets a customer select a fresh reviewed job after capacity loads", async () => {

@@ -63,7 +63,7 @@ export function createOperatorBootstrapSource({ supabaseKey, releaseSha, fetchIm
   return {
     async readInventory({ signal }) {
       runSignal = signal;
-      return buildRecoveryInventory({ reader, releaseSha, now,
+      return buildRecoveryInventory({ reader, releaseSha, now, historicalBootstrap: true,
         signReceipt: (inventory) => `operator-bootstrap-not-server-attested:${canonicalSha256(inventory)}` });
     },
     async openObject(object) {

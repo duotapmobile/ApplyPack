@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { referencePayloadSchema, storeReferencePayload } from "@/lib/materials/references";
+import { customerPrivateRetentionAccess } from "@/lib/materials/retention-access-server";
+import { PRIVATE_ACCESS_EXPIRED_MESSAGE } from "@/lib/materials/retention-access";
 import { isSameOriginRequest } from "@/lib/security/origin";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -48,6 +50,9 @@ async function contextFor(request: Request, opaqueId: string) {
 export async function PATCH(request: Request, route: { params: Promise<{ opaqueId: string }> }) {
   const resolved = await contextFor(request, (await route.params).opaqueId);
   if ("response" in resolved) return resolved.response;
+  const allowed = await customerPrivateRetentionAccess(resolved.admin, resolved.user.id).catch(() => null);
+  if (allowed === null) return noStoreJson({ error: "Private service access could not be verified." }, 503);
+  if (!allowed) return noStoreJson({ error: PRIVATE_ACCESS_EXPIRED_MESSAGE }, 410);
   const parsed = updateSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return noStoreJson({ error: "Complete every reference field and confirm current permission." }, 400);
   const payloadId = randomUUID();

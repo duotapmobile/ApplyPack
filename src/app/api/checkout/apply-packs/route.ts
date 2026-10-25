@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { loadCustomerRetentionAccess, mayResumeMaterialCheckoutAfterActionExpiry } from "@/lib/materials/retention-access-server";
+import { SEARCH_ACTIONS_EXPIRED_MESSAGE, searchActionsExpired, retentionErrorMessage } from "@/lib/materials/retention-access";
 import { z } from "zod";
 import { canonicalApplicationOrigin, deterministicUuid, postgresBytea } from "@/lib/commerce/server";
 import { documentRendererConfiguration } from "@/lib/documents/renderer";
@@ -129,6 +131,9 @@ export async function POST(request: Request) {
   });
   if (!rate.configured) return NextResponse.json({ error: "Secure checkout controls are unavailable." }, { status: 503 });
   if (!rate.allowed) return NextResponse.json({ error: "Too many checkout attempts. Try again later." }, { status: 429 });
+  const retention = await loadCustomerRetentionAccess(admin, authData.user.id).catch(() => null);
+  if (!retention) return NextResponse.json({ error: "The service window could not be verified. No charge was made." }, { status: 503 });
+  const orderRetention = retention.orders.find((order) => order.order_id === input.deliveredOrderId);
   const authorization = await authorizeCheckout(admin, "MATERIALS", {
     customerId: authData.user.id, resourceId: input.deliveredReleaseId,
     resourceSha256: selectedJobResourceSha256(matchIds),
@@ -215,6 +220,18 @@ export async function POST(request: Request) {
   const requestKey = authorization.authorizationId
     ? `${baseRequestKey}:${authorization.mode.toLowerCase()}:${authorization.authorizationId}` : baseRequestKey;
   const contactPayloadId = deterministicUuid(`material-contact:${requestKey}`);
+  if (searchActionsExpired(orderRetention)) {
+    const resume = orderRetention && !orderRetention.purged_at
+      ? await mayResumeMaterialCheckoutAfterActionExpiry(admin, { customerId: authData.user.id,
+        orderId: input.deliveredOrderId, releaseId: input.deliveredReleaseId, snapshotId: input.sourceSnapshotId,
+        contactPayloadId, requestKey, selectionSha256, launchReleaseSha: authorization.releaseSha,
+        mode: authorization.mode, authorizationId: authorization.authorizationId,
+        actionExpiresAt: orderRetention.action_expires_at }).catch(() => null) : false;
+    if (!resume) {
+      contactPlaintext.fill(0);
+      return NextResponse.json({ error: resume === null ? "The existing checkout could not be verified. No charge was made." : SEARCH_ACTIONS_EXPIRED_MESSAGE }, { status: resume === null ? 503 : 410 });
+    }
+  }
   const providerSelections = selections.map((selection) => ({
     ...selection,
     matchId: selection.jobMatchId,
@@ -285,7 +302,7 @@ export async function POST(request: Request) {
   if (prepareError || !checkout?.checkoutIntentId || !checkout.paymentAttemptId
     || !checkout.expiresAt || !checkout.providerIdempotencyKey) {
     return NextResponse.json({
-      error: "One or more jobs, instructions, references, entitlements, or capacity records are not checkout-ready. No charge was made.",
+      error: retentionErrorMessage(prepareError) || "One or more jobs, instructions, references, entitlements, or capacity records are not checkout-ready. No charge was made.",
     }, { status: 409 });
   }
   let session;

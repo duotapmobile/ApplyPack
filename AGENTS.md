@@ -11,14 +11,15 @@ The service must let a customer securely submit her background and preferences, 
 Before analysis or edits, read:
 
 1. This `AGENTS.md`
-2. `docs/applypack/17_OCTOBER_23_SANDBOX_VALIDATION_LAUNCH_AMENDMENT.md`
-3. `docs/applypack/16_OCTOBER_19_TAX_ACTIVATION_AMENDMENT.md`
-4. `docs/applypack/14_OCTOBER_19_OPEN_FONT_AMENDMENT.md`
-5. `docs/applypack/12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md`
-6. Every remaining file under `docs/applypack/`, preserving historical documents where the amendments say they are historical
-7. Root `DESIGN.md` when present
-8. Repository `README`, `START_HERE`, `PROJECT_MAP`, `PROJECT_STATUS`, `RECOVERY`, and `.agent-guidance` files when present
-9. Package, deployment, environment, migration, and test configuration
+2. `docs/applypack/18_OCTOBER_24_ONE_OFF_RETENTION_AMENDMENT.md`
+3. `docs/applypack/17_OCTOBER_23_SANDBOX_VALIDATION_LAUNCH_AMENDMENT.md`
+4. `docs/applypack/16_OCTOBER_19_TAX_ACTIVATION_AMENDMENT.md`
+5. `docs/applypack/14_OCTOBER_19_OPEN_FONT_AMENDMENT.md`
+6. `docs/applypack/12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md`
+7. Every remaining file under `docs/applypack/`, preserving historical documents where the amendments say they are historical
+8. Root `DESIGN.md` when present
+9. Repository `README`, `START_HERE`, `PROJECT_MAP`, `PROJECT_STATUS`, `RECOVERY`, and `.agent-guidance` files when present
+10. Package, deployment, environment, migration, and test configuration
 
 If the handoff remains outside the repository, read every file in:
 
@@ -31,16 +32,17 @@ C:\Users\mskir\Desktop\Apply_Pack\Chat docs
 Use this order when instructions conflict:
 
 1. User's latest direct instruction
-2. `docs/applypack/17_OCTOBER_23_SANDBOX_VALIDATION_LAUNCH_AMENDMENT.md`, for sandbox proof, production activation and recovery authority
-3. `docs/applypack/16_OCTOBER_19_TAX_ACTIVATION_AMENDMENT.md`, for tax-activation and fixed-total authority
-4. `docs/applypack/14_OCTOBER_19_OPEN_FONT_AMENDMENT.md`, for document font and delivery-format authority
-5. `docs/applypack/12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md`
-6. `DESIGN.md`, for visual design only
-7. `docs/applypack/01_PRODUCT_SOURCE_OF_TRUTH.md`
-8. `docs/applypack/02_SITE_COPY_AND_PAGE_MAP.md`
-9. `docs/applypack/03_CUSTOMER_AND_ADMIN_WORKFLOWS.md`
-10. Remaining ApplyPack handoff documents
-11. Existing implementation where compatible
+2. `docs/applypack/18_OCTOBER_24_ONE_OFF_RETENTION_AMENDMENT.md`, for prospective private-content retention and customer access
+3. `docs/applypack/17_OCTOBER_23_SANDBOX_VALIDATION_LAUNCH_AMENDMENT.md`, for sandbox proof, production activation and recovery authority
+4. `docs/applypack/16_OCTOBER_19_TAX_ACTIVATION_AMENDMENT.md`, for tax-activation and fixed-total authority
+5. `docs/applypack/14_OCTOBER_19_OPEN_FONT_AMENDMENT.md`, for document font and delivery-format authority
+6. `docs/applypack/12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md`
+7. `DESIGN.md`, for visual design only
+8. `docs/applypack/01_PRODUCT_SOURCE_OF_TRUTH.md`
+9. `docs/applypack/02_SITE_COPY_AND_PAGE_MAP.md`
+10. `docs/applypack/03_CUSTOMER_AND_ADMIN_WORKFLOWS.md`
+11. Remaining ApplyPack handoff documents
+12. Existing implementation where compatible
 
 Record material conflicts and resolutions in `docs/evidence/IMPLEMENTATION_DECISIONS.md`.
 
@@ -170,6 +172,8 @@ Recommended default:
 - Customer can access only her records
 
 Admin access is separate and requires MFA.
+
+New orders bound to the October 24 retention contract have 30-day service-access windows. Starting an optional pack checkout and submitting a new match-conflict request close 30 days after the original search delivery; a valid checkout already started may finish before its original expiry. Preserve historical terms, unfinished paid work, shared entitlements, required holds, and minimal financial records. Use `docs/runbooks/ONE_OFF_RETENTION.md` for cleanup and restore rules; never infer deletion authority from an expired link alone.
 
 ## Accessibility
 

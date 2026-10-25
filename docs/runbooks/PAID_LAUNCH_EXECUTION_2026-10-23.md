@@ -2,6 +2,8 @@
 
 Status: NOT READY. This record describes implementation and observed provider state. It does not authorize public purchasing or certify hosted acceptance.
 
+October24 forward update: [amendment18](../applypack/18_OCTOBER_24_ONE_OFF_RETENTION_AMENDMENT.md) and migration087 add new-order 30-day private-content access/retention, while preserving prior paid contracts. Current instructions are in [One-off retention](ONE_OFF_RETENTION.md). The 086 implementation and provider observations below remain historical evidence, not proof of the new candidate, a hosted migration, or deletion.
+
 ## Governing release
 
 Amendment 17 replaces mandatory live test payments/refunds with sandbox validation and a genuine first-customer pilot. Amendment 16 preserves fixed totals and tax configuration; amendment 14 preserves the approved document standard. Historical migrations and paid records are retained.

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Readable } from "node:stream";
 import { RECOVERY_TABLES } from "./lib/protected-recovery-protocol.mjs";
-import { RECOVERY, RECOVERY_BUCKETS, canonicalSha256, copyCheckpoint, inventoryDigest,
+import { RECOVERY, RECOVERY_BUCKETS, canonicalSha256, copyCheckpoint, createBootstrapArchive, inventoryDigest,
   restoreCheckpoint, sha256, validateInventory, validateManifest } from "./lib/protected-recovery-core.mjs";
 
 const NOW = Date.parse("2026-10-23T22:00:00.000Z");
@@ -30,6 +30,8 @@ function fixture() {
     id: `11111111-1111-4111-8111-${String(index + 1).padStart(12, "0")}`, field: "storage_path",
     bucket: object.bucket, key: object.key, expectedSha256: object.expectedSha256, retentionExpiresAt: null }));
   const first = seal({ schemaVersion: RECOVERY.inventorySchema, sourceEnvironment: "production", sourceProjectRef: RECOVERY.projectRef,
+    serviceRetention: { schemaVersion: "applypack-service-retention-overlay-v1", policyVersion: "one_off_30d_v1",
+      sourceWatermark: "1970-01-01T00:00:00.000Z", orders: [], holds: [], objectTombstones: [], objectPolicies: [] },
     releaseSha: RELEASE, buckets: [...RECOVERY_BUCKETS], startedAt: time(-4000), completedAt: time(-3000),
     inventoryDigest: "0".repeat(64), objects, references, tombstones: [],
     counts: { objects: 0, references: 0, tombstones: 0, tables: Object.fromEntries(RECOVERY_TABLES.map((table) => [table, table === "ap_document_versions" ? 4 : 0])) },
@@ -90,6 +92,9 @@ test("copies all four buckets, verifies bytes and exact versions, publishes mani
 
 for (const [label, mutate] of [
   ["unknown inventory schema", (i) => { i.schemaVersion = "unknown-v2"; }],
+  ["historical inventory without current retention evidence", (i) => { i.schemaVersion = "applypack-protected-recovery-inventory-v1"; delete i.serviceRetention; }],
+  ["object expiry contradicts authoritative policy", (i) => { i.serviceRetention.objectPolicies.push({ bucket: i.objects[0].bucket,
+    pathSha256: sha256(i.objects[0].key), protected: false, retentionExpiresAt: time(3600000) }); }],
   ["wrong production project", (i) => { i.sourceProjectRef = "fmugizadzdnqfckujqlw"; }],
   ["wrong release", (i) => { i.releaseSha = "b".repeat(40); }],
   ["missing empty-bucket coverage", (i) => { i.buckets.pop(); }],
@@ -112,6 +117,18 @@ for (const [label, mutate] of [
     assert.equal(context.events.includes("archive-object"), false);
   });
 }
+
+test("historical pre-migration bootstrap archives remain readable without claiming application completion", async () => {
+  const context = fixture();
+  for (const inventory of [context.first, context.second]) {
+    inventory.schemaVersion = "applypack-protected-recovery-inventory-v1"; delete inventory.serviceRetention; seal(inventory);
+  }
+  const result = await createBootstrapArchive({ ...context, completion: undefined, operatorBootstrap: true });
+  assert.equal(result.status, "BOOTSTRAP_ARCHIVED_WITHOUT_APPLICATION_CHECKPOINT");
+  assert.equal(result.applicationCheckpointCompleted, false);
+  assert.equal(context.events.includes("completion"), false);
+  assert.equal(validateManifest(result.manifest, result.manifestDigest), result.manifest);
+});
 
 test("counts and canonical inventory digest cannot be supplied independently", () => {
   const context = fixture();
@@ -253,6 +270,10 @@ async function restoreFixture() {
     target: {
       async assertLocked() { events.push("locks"); return locks; },
       async applyTombstones(request) { events.push("tombstones"); return { digest: request.digest, customerAccessLocked: true }; },
+      async sanitizeDatabase(request) { events.push("sanitize-database");
+        assert.match(request.sourceInventoryDigest, /^[a-f0-9]{64}$/u);
+        return { policyVersion: "one_off_30d_v1", overlayDigest: request.digest, ordersExamined: 0, ordersSanitized: 0,
+          objectsRevoked: 0, expiredPrivateRecordsRemaining: 0, accessLocked: true }; },
       async putPrivateObject(request) { events.push("restore-object"); assert.equal(request.overwrite, false);
         const chunks = []; for await (const chunk of request.body) chunks.push(chunk);
         const body = Buffer.concat(chunks); return { sha256: sha256(body), size: body.length, private: true, customerAccessLocked: true }; },
@@ -263,7 +284,8 @@ test("restore verifies exact archived versions with independent identity and rem
   const context = await restoreFixture(); const result = await restoreCheckpoint(context);
   assert.equal(result.status, "FILES_RESTORED_ACCESS_LOCKED");
   assert.equal(result.restoredObjects, 4);
-  assert.deepEqual(context.events.slice(0, 3), ["locks", "tombstones", "archive-read"]);
+  assert.deepEqual(context.events.slice(0, 4), ["locks", "tombstones", "sanitize-database", "archive-read"]);
+  assert.equal(result.databaseSanitized, true);
   assert.equal(context.events.at(-1), "locks");
 });
 for (const target of [RECOVERY.projectRef, "fmugizadzdnqfckujqlw", "unregisteredtargetxx"]) {
@@ -297,6 +319,33 @@ test("current source expiry overrides older checkpoint retention", async () => {
   const context = await restoreFixture();
   context.latestInventory.objects[0].retentionExpiresAt = time(-1);
   context.latestInventory.references[0].retentionExpiresAt = time(-1); seal(context.latestInventory);
+  const result = await restoreCheckpoint(context);
+  assert.equal(result.excludedObjects, 1);
+});
+for (const [label, currentExpiry] of [["current hold", null], ["current support extension", time(86400000)]]) {
+  test(`${label} protects an unchanged version from the old checkpoint expiry`, async () => {
+    const context = await restoreFixture();
+    context.manifest.inventory.objects[0].retentionExpiresAt = time(-1);
+    context.manifest.inventory.references[0].retentionExpiresAt = time(-1);
+    seal(context.manifest.inventory);
+    context.manifestDigest = canonicalSha256(context.manifest);
+    context.policy.expectedManifestDigest = context.manifestDigest;
+    context.latestInventory.objects[0].retentionExpiresAt = currentExpiry;
+    context.latestInventory.references[0].retentionExpiresAt = currentExpiry;
+    seal(context.latestInventory);
+    const result = await restoreCheckpoint(context);
+    assert.equal(result.excludedObjects, 0);
+    assert.equal(result.restoredObjects, 4);
+  });
+}
+test("a current hold cannot undo a durable deletion recorded in the checkpoint", async () => {
+  const context = await restoreFixture();
+  const reference = { ...context.manifest.inventory.references[0] };
+  delete reference.expectedSha256; delete reference.retentionExpiresAt;
+  context.manifest.inventory.tombstones.push({ ...reference, kind: "DELETED", effectiveAt: time(-3500) });
+  seal(context.manifest.inventory);
+  context.manifestDigest = canonicalSha256(context.manifest);
+  context.policy.expectedManifestDigest = context.manifestDigest;
   const result = await restoreCheckpoint(context);
   assert.equal(result.excludedObjects, 1);
 });
@@ -335,6 +384,32 @@ test("unacknowledged tombstone overlay blocks every restored object", async () =
   context.target.applyTombstones = async () => ({ digest: "f".repeat(64), customerAccessLocked: true });
   await assert.rejects(restoreCheckpoint(context), /RESTORE_TOMBSTONES_UNAPPLIED/u);
   assert.equal(context.events.includes("archive-read"), false);
+});
+for (const [label, mutation] of [
+  ["missing sanitizer", (context) => { delete context.target.sanitizeDatabase; }],
+  ["wrong digest", (context) => { context.target.sanitizeDatabase = async () => ({ policyVersion: "one_off_30d_v1", overlayDigest: "f".repeat(64), ordersExamined: 0, ordersSanitized: 0, objectsRevoked: 0, expiredPrivateRecordsRemaining: 0, accessLocked: true }); }],
+  ["remaining private records", (context) => { const original = context.target.sanitizeDatabase; context.target.sanitizeDatabase = async (request) => ({ ...await original(request), expiredPrivateRecordsRemaining: 1 }); }],
+  ["unlocked database", (context) => { const original = context.target.sanitizeDatabase; context.target.sanitizeDatabase = async (request) => ({ ...await original(request), accessLocked: false }); }],
+]) test(`restore blocks archive reads when ${label}`, async () => {
+  const context = await restoreFixture(); mutation(context);
+  await assert.rejects(restoreCheckpoint(context), /RESTORE_DATABASE_SANITIZATION_/u);
+  assert.equal(context.events.includes("archive-read"), false);
+});
+test("historical inventory is decodable but cannot stand in for the current retention overlay", async () => {
+  const context = await restoreFixture();
+  context.latestInventory.schemaVersion = "applypack-protected-recovery-inventory-v1";
+  delete context.latestInventory.serviceRetention; seal(context.latestInventory);
+  validateInventory(context.latestInventory, { now: NOW });
+  await assert.rejects(restoreCheckpoint(context), /CURRENT_RETENTION_OVERLAY_REQUIRED/u);
+  assert.deepEqual(context.events, []);
+});
+test("durable hashed-path tombstone excludes old bytes even if an old relational alias survives", async () => {
+  const context = await restoreFixture(); const object = context.latestInventory.objects[0];
+  context.latestInventory.serviceRetention.sourceWatermark = time(-1500);
+  context.latestInventory.serviceRetention.objectTombstones.push({ bucket: object.bucket, pathSha256: sha256(object.key), deletedAt: time(-1500) });
+  seal(context.latestInventory);
+  const result = await restoreCheckpoint(context);
+  assert.equal(result.excludedObjects, 1);
 });
 test("archive byte corruption is rejected while target remains locked", async () => {
   const context = await restoreFixture(); const entry = context.manifest.entries[0];

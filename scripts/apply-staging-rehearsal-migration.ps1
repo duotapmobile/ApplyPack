@@ -8,7 +8,8 @@ param(
     [string]$CaCertificatePath,
     [string]$ExpectedMigrationSha256,
     [string]$ExpectedSandboxActivationMigrationSha256,
-    [ValidateSet('202610220085', '202610230086')]
+    [string]$ExpectedRetentionMigrationSha256,
+    [ValidateSet('202610220085', '202610230086', '202610240087')]
     [string]$TargetSchemaVersion = '202610220085',
     [string]$BackupReceiptPath,
     [string]$RestoreReceiptPath
@@ -92,8 +93,8 @@ $script:MigrationPlan = @(
     }
 )
 # The legacy target keeps its exact authorization and receipt semantics. The
-# paid-launch target is a separately approved, two-step084 ->085 ->086 sequence.
-if ($TargetSchemaVersion -ceq '202610230086') {
+# Forward targets add exact, independently bound migrations after the historical085 step.
+if ($TargetSchemaVersion -cge '202610230086') {
     $script:RunnerVersion = 4
     $script:MigrationPlan += [ordered]@{
         version = '202610230086'
@@ -103,6 +104,18 @@ if ($TargetSchemaVersion -ceq '202610230086') {
         predecessor = '202610220085'
         predecessorCheckpoint = 'STAGING_REHEARSAL_CHECKOUT_ATTEMPTS'
         marker = 'STAGING_MIGRATION_202610230086_APPLIED'
+    }
+}
+if ($TargetSchemaVersion -ceq '202610240087') {
+    $script:RunnerVersion = 5
+    $script:MigrationPlan += [ordered]@{
+        version = '202610240087'
+        name = 'one_off_service_retention'
+        relativePath = 'supabase/migrations/202610240087_one_off_service_retention.sql'
+        checkpoint = 'ONE_OFF_SERVICE_RETENTION'
+        predecessor = '202610230086'
+        predecessorCheckpoint = 'SANDBOX_VALIDATION_LAUNCH_ACTIVATION'
+        marker = 'STAGING_MIGRATION_202610240087_APPLIED'
     }
 }
 $script:PublishedPredecessorPaths = @(
@@ -719,9 +732,9 @@ declare readiness jsonb;
 begin
   if (select max(version) from supabase_migrations.schema_migrations) is distinct from '202610190084'
     or __PREDECESSOR_LEDGER_CHECKS__
-    or (select count(*) from supabase_migrations.schema_migrations where version in ('202610220085','202610230086'))<>0
+    or (select count(*) from supabase_migrations.schema_migrations where version in ('202610220085','202610230086','202610240087'))<>0
     or (select count(*) from public.ap_migration_checkpoints where migration_id='202610190084' and checkpoint='LEGACY_BOARD_TERMINAL_EVENT_ORDERING')<>1
-    or (select count(*) from public.ap_migration_checkpoints where migration_id in ('202610220085','202610230086'))<>0
+    or (select count(*) from public.ap_migration_checkpoints where migration_id in ('202610220085','202610230086','202610240087'))<>0
     or exists (
       select 1
       from pg_catalog.pg_index index_row
@@ -1214,13 +1227,21 @@ function Assert-RehearsalApprovalAndRecovery {
     $actual = [string]$Release.hashes[[string]$script:MigrationPlan[0].relativePath]
     $authorization = [Environment]::GetEnvironmentVariable('AP_REHEARSAL_MIGRATION_AUTHORIZATION', 'Process')
     $expectedAuthorization = "apply085:$($script:ProjectRef):$($Release.releaseSha):$($actual.ToLowerInvariant())"
-    if ($script:PostSchemaVersion -ceq '202610230086') {
+    if ($script:PostSchemaVersion -cge '202610230086') {
         $activationHash = [string]$Release.hashes[[string]$script:MigrationPlan[1].relativePath]
         if ($ExpectedSandboxActivationMigrationSha256 -cnotmatch '^[A-Fa-f0-9]{64}$' -or
             $ExpectedSandboxActivationMigrationSha256.ToUpperInvariant() -cne $activationHash) {
             Throw-Controlled 'REHEARSAL_APPROVAL_BINDING_INVALID'
         }
         $expectedAuthorization = "apply084to086:$($script:ProjectRef):$($Release.releaseSha):$($actual.ToLowerInvariant()):$($activationHash.ToLowerInvariant())"
+    }
+    if ($script:PostSchemaVersion -ceq '202610240087') {
+        $retentionHash = [string]$Release.hashes[[string]$script:MigrationPlan[2].relativePath]
+        if ($ExpectedRetentionMigrationSha256 -cnotmatch '^[A-Fa-f0-9]{64}$' -or
+            $ExpectedRetentionMigrationSha256.ToUpperInvariant() -cne $retentionHash) {
+            Throw-Controlled 'REHEARSAL_APPROVAL_BINDING_INVALID'
+        }
+        $expectedAuthorization = "apply084to087:$($script:ProjectRef):$($Release.releaseSha):$($actual.ToLowerInvariant()):$($activationHash.ToLowerInvariant()):$($retentionHash.ToLowerInvariant())"
     }
     if ($ExpectedMigrationSha256 -cnotmatch '^[A-Fa-f0-9]{64}$' -or
         $ExpectedMigrationSha256.ToUpperInvariant() -cne $actual -or
@@ -1310,7 +1331,7 @@ function Invoke-Apply {
         }
         Assert-ReceiptReservation -Reservation $reservation
         $receipt = [ordered]@{
-            operation = if ($script:PostSchemaVersion -ceq '202610220085') { 'staging-single-085-rehearsal-migration' } else { 'staging-084-through-086-launch-migrations' }
+            operation = if ($script:PostSchemaVersion -ceq '202610220085') { 'staging-single-085-rehearsal-migration' } elseif ($script:PostSchemaVersion -ceq '202610230086') { 'staging-084-through-086-launch-migrations' } else { 'staging-084-through-087-launch-migrations' }
             runnerVersion = $script:RunnerVersion
             startedAt = $startedAt
             completedAt = [DateTimeOffset]::UtcNow.ToString('O')
@@ -1362,9 +1383,13 @@ function Invoke-Apply {
             teardownVerified = $true
             residualNamedContainers = 0
         }
-        if ($script:PostSchemaVersion -ceq '202610230086') {
+        if ($script:PostSchemaVersion -cge '202610230086') {
             $receipt.preState.migration086Rows = 0
             $receipt.postState.migration086Rows = 1
+        }
+        if ($script:PostSchemaVersion -ceq '202610240087') {
+            $receipt.preState.migration087Rows = 0
+            $receipt.postState.migration087Rows = 1
         }
         Publish-ReceiptReservation -Reservation $reservation -Receipt $receipt
         $receiptPublished = $true

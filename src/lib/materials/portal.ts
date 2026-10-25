@@ -5,6 +5,7 @@ import type { MaterialDeliveryView } from "@/components/portal/material-deliveri
 import type { DeliveredReferenceJob } from "@/components/portal/reference-manager";
 import { publicMaterialState } from "@/lib/materials/contract";
 import { isSupportedDocumentGeneratorVersion } from "@/lib/documents/requirements";
+import { privateAccessExpired, searchActionsExpired, type CustomerRetentionAccess } from "./retention-access";
 import type { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type Supabase = NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>;
@@ -16,6 +17,9 @@ export type DeliveredMatchGroup = {
   deliveredReleaseId: string;
   sourceSnapshotId: string;
   evaluatedAt: string;
+  accessExpiresAt: string | null;
+  actionExpiresAt: string | null;
+  actionsExpired: boolean;
   matches: MatchForSelection[];
 };
 
@@ -23,8 +27,11 @@ export async function loadDeliveredMatchGroups(input: {
   supabase: Supabase;
   releases: SearchRelease[];
   services: SearchService[];
+  retention: CustomerRetentionAccess;
 }) {
-  const exactReleases = input.releases.filter((release) => release.release_kind === "SEARCH_EXACT_TEN");
+  const accessByOrder = new Map(input.retention.orders.map((order) => [order.order_id, order]));
+  const exactReleases = input.releases.filter((release) => release.release_kind === "SEARCH_EXACT_TEN"
+    && !privateAccessExpired(accessByOrder.get(release.order_id)));
   if (!exactReleases.length) return { groups: [] as DeliveredMatchGroup[], jobs: [] as DeliveredReferenceJob[] };
   const releaseIds = exactReleases.map((release) => release.id);
   const membersResult = await input.supabase.from("ap_release_members")
@@ -90,10 +97,13 @@ export async function loadDeliveredMatchGroups(input: {
       deliveredReleaseId: release.id,
       sourceSnapshotId: service.original_snapshot_id,
       evaluatedAt: release.committed_at,
+      accessExpiresAt: accessByOrder.get(release.order_id)?.access_expires_at ?? null,
+      actionExpiresAt: accessByOrder.get(release.order_id)?.action_expires_at ?? null,
+      actionsExpired: searchActionsExpired(accessByOrder.get(release.order_id)),
       matches: matches.map((match, index) => ({ ...match, position: index + 1 })),
     });
   }
-  const jobs = groups.flatMap((group) => group.matches.map((match) => ({
+  const jobs = groups.filter((group) => !group.actionsExpired).flatMap((group) => group.matches.map((match) => ({
     deliveredReleaseId: group.deliveredReleaseId,
     jobSnapshotId: match.job_snapshot_id,
     employer: match.job.company,
@@ -102,27 +112,42 @@ export async function loadDeliveredMatchGroups(input: {
   return { groups, jobs };
 }
 
-export async function loadMaterialDeliveries(input: { supabase: Supabase; customerId: string }) {
+export async function loadMaterialDeliveries(input: { supabase: Supabase; customerId: string; retention: CustomerRetentionAccess }) {
   const purchasesResult = await input.supabase.from("ap_material_purchases")
     .select("id").eq("customer_id", input.customerId).order("created_at", { ascending: false });
   if (purchasesResult.error) throw new Error("material_purchases_unavailable");
   const purchaseIds = (purchasesResult.data || []).map((purchase) => purchase.id);
-  if (!purchaseIds.length) return [] as MaterialDeliveryView[];
-  const linesResult = await input.supabase.from("ap_material_lines")
+  const linesResult = purchaseIds.length ? await input.supabase.from("ap_material_lines")
     .select("id,purchase_id,delivered_match_id,fulfillment,substitution,materials_due_at,active_revision")
-    .in("purchase_id", purchaseIds).order("created_at", { ascending: false });
+    .in("purchase_id", purchaseIds).order("created_at", { ascending: false }) : { data: [], error: null };
   if (linesResult.error) throw new Error("material_lines_unavailable");
   const lines = linesResult.data || [];
-  const lineIds = lines.map((line) => line.id);
-  const matchIds = [...new Set(lines.map((line) => line.delivered_match_id))];
-  const [revisionsResult, proposalsResult, refundsResult, artifactsResult, regenerationsResult, matchesResult] = await Promise.all([
+  const accessByLine = new Map(input.retention.materials.map((line) => [line.material_line_id, line]));
+  const activeLines = lines.filter((line) => !privateAccessExpired(accessByLine.get(line.id)));
+  const lineIds = activeLines.map((line) => line.id);
+  const matchIds = [...new Set(activeLines.map((line) => line.delivered_match_id))];
+  const expiredAccess = input.retention.materials.filter((line) => privateAccessExpired(line));
+  const billingLineIds = [...new Set([...lines.map((line) => line.id), ...expiredAccess.map((line) => line.material_line_id)])];
+  const refundsResult = billingLineIds.length ? await input.supabase.from("ap_refund_operations").select("material_line_id,state,created_at")
+    .in("material_line_id", billingLineIds).eq("scope", "MATERIAL_LINE").is("superseded_at", null) : { data: [], error: null };
+  if (refundsResult.error) throw new Error("material_refund_status_unavailable");
+  const refundFor = (lineId: string) => (refundsResult.data || []).filter((candidate) => candidate.material_line_id === lineId)
+    .sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))[0];
+  // Expiry can hide the private line through RLS; use the owner's minimal policy
+  // record to retain a truthful payment/refund summary without private contents.
+  const expiredLines = expiredAccess.map((line): MaterialDeliveryView => ({
+    lineId: line.material_line_id, company: "", title: "Tailored resume and cover letter", jobSnapshotId: "",
+    stateLabel: "Private access ended", stateMessage: "Your 30-day private access window has ended. Your payment and service records remain available.",
+    dueAt: null, refundState: (refundFor(line.material_line_id)?.state || "NONE") as MaterialDeliveryView["refundState"], proposal: null, regeneration: null, artifacts: [],
+    accessExpiresAt: line.access_expires_at, accessExpired: true,
+  }));
+  if (!lineIds.length) return expiredLines;
+  const [revisionsResult, proposalsResult, artifactsResult, regenerationsResult, matchesResult] = await Promise.all([
     input.supabase.from("ap_material_line_revisions").select("id,line_id,version,job_snapshot_id")
       .in("line_id", lineIds).is("superseded_at", null),
     input.supabase.from("ap_material_change_proposals")
       .select("id,material_line_id,kind,state,reason_code,target_job_snapshot_id,fact_diff,proposal_expires_at")
       .in("material_line_id", lineIds).eq("state", "PROPOSED"),
-    input.supabase.from("ap_refund_operations").select("material_line_id,state,created_at")
-      .in("material_line_id", lineIds).eq("scope", "MATERIAL_LINE").is("superseded_at", null),
     input.supabase.from("ap_generated_artifacts").select("id,material_line_id,artifact_type,current_file_version,generator_version")
       .in("material_line_id", lineIds).in("artifact_type", ["RESUME", "COVER_LETTER", "REFERENCE_SHEET"]),
     input.supabase.from("ap_reference_regenerations").select("material_line_id,state,due_at,created_at")
@@ -152,12 +177,11 @@ export async function loadMaterialDeliveries(input: { supabase: Supabase; custom
     const job = Array.isArray(match.job) ? match.job[0] : match.job;
     return [match.id, job];
   }));
-  return lines.map((line) => {
+  return [...activeLines.map((line) => {
     const revision = currentRevisions.find((candidate) => candidate.line_id === line.id && Number(candidate.version) === Number(line.active_revision));
     const snapshot = revision?.job_snapshot_id ? snapshots.get(revision.job_snapshot_id) : null;
     const legacyJob = legacyMatches.get(line.delivered_match_id);
-    const refund = (refundsResult.data || []).filter((candidate) => candidate.material_line_id === line.id)
-      .sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))[0];
+    const refund = refundFor(line.id);
     const publicState = publicMaterialState({
       fulfillment: line.fulfillment,
       substitution: line.substitution,
@@ -187,6 +211,8 @@ export async function loadMaterialDeliveries(input: { supabase: Supabase; custom
     });
     return {
       lineId: line.id,
+      accessExpiresAt: accessByLine.get(line.id)?.access_expires_at ?? null,
+      accessExpired: false,
       company: snapshot?.company || legacyJob?.company || "Employer",
       title: snapshot?.exact_title || legacyJob?.title || "Selected job",
       jobSnapshotId: revision?.job_snapshot_id || "00000000-0000-4000-8000-000000000000",
@@ -207,7 +233,7 @@ export async function loadMaterialDeliveries(input: { supabase: Supabase; custom
       regeneration: regeneration ? { state: regeneration.state, dueAt: regeneration.due_at } : null,
       artifacts: lineArtifacts,
     } as MaterialDeliveryView;
-  });
+  }), ...expiredLines];
 }
 
 function jsonObject(value: unknown): Record<string, unknown> {

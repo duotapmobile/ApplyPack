@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { PRIVATE_ACCESS_EXPIRED_MESSAGE } from "@/lib/materials/retention-access";
+import { useAccessExpiry } from "./use-access-expiry";
 
 export type MaterialDeliveryView = {
   lineId: string;
@@ -10,6 +12,8 @@ export type MaterialDeliveryView = {
   stateLabel: string;
   stateMessage: string;
   dueAt: string | null;
+  accessExpiresAt?: string | null;
+  accessExpired?: boolean;
   refundState: "NONE" | "PENDING" | "FAILED" | "SUCCEEDED";
   proposal: {
     id: string;
@@ -164,7 +168,7 @@ export function MaterialDeliveries({ lines }: { lines: MaterialDeliveryView[] })
     <div className="material-line-list">{lines.map((line) => {
       const proposalPermissions = line.proposal?.targetJobSnapshotId ? permissionsByJob.get(line.proposal.targetJobSnapshotId) || [] : [];
       const currentPermissions = permissionsByJob.get(line.jobSnapshotId) || [];
-      return <article className="material-line" key={line.lineId}>
+      return <MaterialLineAccess key={line.lineId} line={line}>
         <div className="material-line__heading"><div><span>{line.stateLabel}</span><h3>{line.title}</h3><p>{line.company}</p></div><div>{line.dueAt ? <p>Active deadline<br /><strong>{new Date(line.dueAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET</strong></p> : null}<p>{line.stateMessage}</p></div></div>
         {line.refundState !== "NONE" ? <p className="match-warning"><strong>Refund:</strong> {line.refundState === "SUCCEEDED" ? "The full $7.99 line refund was confirmed." : line.refundState === "PENDING" ? "The full $7.99 line refund is processing." : "The required refund needs staff attention."}</p> : null}
         {line.proposal ? <section className="material-proposal"><h4>{line.proposal.kind === "SUBSTITUTION" ? "Choose a substitute or refund" : "Confirm a factual correction or refund"}</h4><p>Reason: {line.proposal.reasonCode.replaceAll("_", " ").toLowerCase()}.</p>{line.proposal.targetTitle ? <p>Proposed replacement: <strong>{line.proposal.targetTitle}</strong> at {line.proposal.targetCompany}.</p> : null}{line.proposal.factDiff ? <dl>{Object.entries(line.proposal.factDiff).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{safeValue(value)}</dd></div>)}</dl> : null}<p>Respond by {new Date(line.proposal.expiresAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET. No response results in the required full $7.99 line refund.</p>
@@ -180,10 +184,22 @@ export function MaterialDeliveries({ lines }: { lines: MaterialDeliveryView[] })
         })}</div> : <p>No approved files have been released for this line.</p>}
         <button type="button" className="text-button" aria-expanded={supportFor === line.lineId} onClick={() => setSupportFor(supportFor === line.lineId ? null : line.lineId)}>Request the included factual correction</button>
         {supportFor === line.lineId ? <form className="material-support" onSubmit={(event) => openSupport(line, event)}><label>Document<select required value={support.artifactId} onChange={(event) => setSupport((current) => ({ ...current, artifactId: event.target.value }))}><option value="">Choose the affected document</option>{line.artifacts.filter((artifact) => !artifact.downloadsRevokedAt && !artifact.supersededAt).map((artifact) => <option value={artifact.id} key={artifact.id}>{artifactLabel(artifact.type)}: version {artifact.version}</option>)}</select></label><label>Field or section<input required maxLength={100} value={support.field} onChange={(event) => setSupport((current) => ({ ...current, field: event.target.value }))} /></label><label>What the document says<textarea required maxLength={500} value={support.documentText} onChange={(event) => setSupport((current) => ({ ...current, documentText: event.target.value }))} /></label><label>The correct fact<textarea required maxLength={500} value={support.correctFact} onChange={(event) => setSupport((current) => ({ ...current, correctFact: event.target.value }))} /></label><button className="wizard-next" disabled={busy || !support.artifactId}>Submit factual correction</button></form> : null}
-      </article>;
+      </MaterialLineAccess>;
     })}</div>
     <p className={message ? "form-message" : "sr-only"} role="status" aria-live="polite">{message || "Materials delivery controls ready."}</p>
   </section>;
+}
+
+function MaterialLineAccess({ line, children }: { line: MaterialDeliveryView; children: React.ReactNode }) {
+  const expired = useAccessExpiry(line.accessExpiresAt, line.accessExpired);
+  return <article className="material-line">
+    {expired ? <><h3>Private document access ended</h3><p>{PRIVATE_ACCESS_EXPIRED_MESSAGE}</p>
+      {line.refundState !== "NONE" ? <p><strong>Refund:</strong> {line.refundState === "SUCCEEDED" ? "The full $7.99 line refund was confirmed." : line.refundState === "PENDING" ? "The full $7.99 line refund is processing." : "The required refund needs staff attention."}</p> : null}
+    </> : <>
+      {line.accessExpiresAt ? <p className="deadline-note">Save your documents before private access ends <time dateTime={line.accessExpiresAt}>{new Date(line.accessExpiresAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET</time>. The included factual-correction request window remains three calendar days after delivery.</p> : null}
+      {children}
+    </>}
+  </article>;
 }
 
 function safeValue(value: unknown) {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { retentionErrorMessage } from "@/lib/materials/retention-access";
 import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -25,6 +26,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ error: "Match not found." }, { status: 404 });
   }
   const { error } = await admin.from("job_matches").update({ customer_decision: parsed.data.decision }).eq("id", id);
+  if (retentionErrorMessage(error)) return NextResponse.json({ error: retentionErrorMessage(error) }, { status: 410 });
   if (error) return NextResponse.json({ error: "The decision could not be saved." }, { status: 502 });
   const audit = await admin.from("audit_logs").insert({ actor_id: authData.user.id, action: "job_match_decision", entity_type: "job_match", entity_id: id, details: { decision: parsed.data.decision } });
   if (audit.error) return NextResponse.json({ error: "The decision was saved, but its audit record failed." }, { status: 500 });

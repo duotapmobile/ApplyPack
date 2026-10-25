@@ -8,6 +8,7 @@ import { JobSourceOperations } from "@/components/admin/job-source-operations";
 import { StagingBoardMaterialReview } from "@/components/admin/staging-board-material-review";
 import { PendingIntakes } from "@/components/admin/pending-intakes";
 import { SearchCheckoutInvitations } from "@/components/admin/search-checkout-invitations";
+import { ServiceRetentionControls } from "@/components/admin/service-retention-controls";
 import { loadSearchInvitationQueue } from "@/lib/commerce/search-invitation-queue";
 import { Chunk4StaffQueue, type StaffQueueRow, type StaffReviewCandidate } from "@/components/admin/chunk4-staff-queue";
 import { SignOutButton } from "@/components/auth/sign-out-button";
@@ -248,6 +249,7 @@ export default async function AdminPage() {
         ]).values()]} />
       <PendingIntakes requests={pendingRequests || []} snapshots={pendingSnapshots || []} />
       <SearchCheckoutInvitations {...searchInvitationQueue} />
+      <ServiceRetentionControls />
         <section className="admin-table-wrap">
           <h2>Orders due</h2>
           {orders?.length ? <div className="admin-table-scroll"><table className="admin-table">

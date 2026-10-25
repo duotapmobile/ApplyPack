@@ -134,7 +134,11 @@ select case when
       and tgenabled='O'
       and not tgisinternal
   )
-  and public.ap_manual_launch_schema_readiness()->>'ready'='true'
+  -- The current retention contract deliberately stays unavailable until its
+  -- separately authorized cleanup and restore executors are implemented.
+  and public.ap_sandbox_activation_schema_installed()
+  and not public.ap_one_off_retention_schema_installed()
+  and public.ap_manual_launch_schema_readiness()->>'ready'='false'
   and exists(select 1 from public.ap_migration_checkpoints
     where migration_id='202610190083' and checkpoint='LEGACY_BOARD_READ_ONLY_ARCHIVE')
   and exists(select 1 from public.ap_migration_checkpoints
@@ -143,7 +147,9 @@ select case when
     where migration_id='202610220085' and checkpoint='STAGING_REHEARSAL_CHECKOUT_ATTEMPTS')
   and exists(select 1 from public.ap_migration_checkpoints
     where migration_id='202610230086' and checkpoint='SANDBOX_VALIDATION_LAUNCH_ACTIVATION')
-  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610230086'
+  and exists(select 1 from public.ap_migration_checkpoints
+    where migration_id='202610240087' and checkpoint='ONE_OFF_SERVICE_RETENTION')
+  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610240087'
   and exists (
     select 1 from pg_proc procedure
     join pg_namespace namespace on namespace.oid=procedure.pronamespace

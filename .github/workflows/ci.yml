@@ -82,6 +82,9 @@ jobs:
       - name: Validate084-to086 staged launch migration controls
         shell: pwsh
         run: node scripts/run-windows-release-self-test.mjs rehearsal-086
+      - name: Validate087 prospective retention migration controls
+        shell: pwsh
+        run: node scripts/run-windows-release-self-test.mjs rehearsal-087
       - run: npm run test:staging-schema084-backup
       - run: npm run test:production-migration
       - run: npm run test:production-backup

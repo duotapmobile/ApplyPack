@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { customerPrivateRetentionAccess } from "@/lib/materials/retention-access-server";
+import { PRIVATE_ACCESS_EXPIRED_MESSAGE } from "@/lib/materials/retention-access";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
@@ -35,6 +37,9 @@ async function authenticated() {
 export async function GET() {
   const auth = await authenticated();
   if (!auth) return noStoreJson({ error: "Authentication required." }, 401);
+  const allowed = await customerPrivateRetentionAccess(auth.admin, auth.user.id).catch(() => null);
+  if (allowed === null) return noStoreJson({ error: "Private service access could not be verified." }, 503);
+  if (!allowed) return noStoreJson({ references: [], accessExpired: true });
   const { data: records, error: recordsError } = await auth.admin.from("ap_reference_records")
     .select("id,opaque_client_id,current_version,created_at")
     .eq("customer_id", auth.user.id).is("removed_at", null).order("created_at");
@@ -49,13 +54,17 @@ export async function GET() {
     records.some((record) => record.id === version.reference_record_id && record.current_version === version.version));
   const payloadIds = currentVersions.map((version) => version.encrypted_payload_id);
   const versionIds = currentVersions.map((version) => version.id);
+  const visibleResult = await auth.admin.rpc("ap_customer_visible_reference_permissions", { p_customer_id: auth.user.id });
+  const visiblePermissions = z.array(z.uuid()).max(10_000).safeParse(visibleResult.data);
+  if (visibleResult.error || !visiblePermissions.success) return noStoreJson({ error: "Private application access could not be verified." }, 503);
   const [{ data: payloads, error: payloadsError }, { data: permissions, error: permissionsError }] = await Promise.all([
     auth.admin.from("ap_sensitive_payloads")
       .select("id,ciphertext,encryption_algorithm,encrypted_data_key,nonce,authentication_tag,content_sha256,kms_key_identity,kms_key_version,encryption_context_hash")
       .eq("customer_id", auth.user.id).in("id", payloadIds),
-    auth.admin.from("ap_reference_permissions")
+    visiblePermissions.data.length ? auth.admin.from("ap_reference_permissions")
       .select("id,reference_record_version_id,job_snapshot_id,employer_snapshot,exact_position_snapshot,attested_at,revoked_at,contact_version_changed_at")
-      .eq("customer_id", auth.user.id).in("reference_record_version_id", versionIds),
+      .eq("customer_id", auth.user.id).in("reference_record_version_id", versionIds).in("id", visiblePermissions.data)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (payloadsError || permissionsError || !payloads || !permissions) {
     return noStoreJson({ error: "References could not be loaded." }, 502);
@@ -77,7 +86,7 @@ export async function GET() {
         permissionStatus: version.permission_status,
         permissionLastConfirmedAt: version.permission_last_confirmed_at,
         allowedApplications: permissions.filter((permission) =>
-          permission.reference_record_version_id === version.id
+          visiblePermissions.data.includes(permission.id) && permission.reference_record_version_id === version.id
           && !permission.revoked_at && !permission.contact_version_changed_at)
           .map((permission) => ({
             permissionId: permission.id,
@@ -98,6 +107,9 @@ export async function POST(request: Request) {
   if (!isSameOriginRequest(request)) return noStoreJson({ error: "This request was rejected." }, 403);
   const auth = await authenticated();
   if (!auth) return noStoreJson({ error: "Authentication required." }, 401);
+  const allowed = await customerPrivateRetentionAccess(auth.admin, auth.user.id).catch(() => null);
+  if (allowed === null) return noStoreJson({ error: "Private service access could not be verified." }, 503);
+  if (!allowed) return noStoreJson({ error: PRIVATE_ACCESS_EXPIRED_MESSAGE }, 410);
   const parsed = createSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return noStoreJson({ error: "Complete every reference field and confirm current permission." }, 400);
   const rate = await consumeRateLimit({
