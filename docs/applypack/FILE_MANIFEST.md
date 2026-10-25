@@ -2,7 +2,7 @@
 
 ## Current forward amendments
 
-Read repository `AGENTS.md` for the controlling order. Amendment18 (`18_OCTOBER_24_ONE_OFF_RETENTION_AMENDMENT.md`) adds prospective one-off retention and access; amendment17 governs sandbox launch proof and recovery; amendments16,14 and12 retain their respective tax, document and manual-launch rules. The package manifest and `SHA256SUMS.txt` below describe the original handoff distribution, not the current repository tree or release integrity. Git history preserves the original content and subsequent authority banners.
+Read repository `AGENTS.md` for the controlling order. [Amendment19](19_OCTOBER_25_CONFIRMED_INTAKE_AND_SERVICE_ERROR_AMENDMENT.md) governs adaptive confirmed intake, system research/drafting with owner approval, and prospective service-error-only remedies. Amendment18 adds prospective one-off retention and access; amendment17 governs sandbox launch proof and recovery; amendments16,14 and12 retain their remaining tax, document and launch rules. The [completion plan](../launch/END_TO_END_COMPLETION_PLAN_2026-10-25.md) and [intake/service-error protocol](../runbooks/INTAKE_REVIEW_AND_SERVICE_ERROR_CORRECTIONS.md) describe required unfinished implementation. The package manifest and `SHA256SUMS.txt` below describe the original handoff distribution, not the current repository tree or release integrity. Git history preserves original content and subsequent authority banners; earlier paid contracts keep their recorded terms.
 
 This package is designed to be extracted directly into:
 

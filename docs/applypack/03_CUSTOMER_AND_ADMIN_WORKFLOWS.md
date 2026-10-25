@@ -1,5 +1,7 @@
 # ApplyPack Customer and Admin Workflows
 
+> Current intake and remedy authority: [October 25 amendment19](19_OCTOBER_25_CONFIRMED_INTAKE_AND_SERVICE_ERROR_AMENDMENT.md) requires adaptive intake (including outdated/no resume and career changes), contextual plain-language skills, targeted pre-submit clarification, complete section-editable review and immutable customer confirmation. The system researches and drafts; the owner approves delivery. New bound orders remedy ApplyPack-introduced errors only; customer mistakes, new/omitted facts and preferences do not automatically entitle rework. Earlier paid terms remain intact. Conflicting required-resume, manual-authorship and generic-correction instructions below are historical. See the [current completion plan](../launch/END_TO_END_COMPLETION_PLAN_2026-10-25.md) and [protocol](../runbooks/INTAKE_REVIEW_AND_SERVICE_ERROR_CORRECTIONS.md); this decision is not yet implemented or deployed.
+
 > Current retention authority: [October 24 amendment18](18_OCTOBER_24_ONE_OFF_RETENTION_AMENDMENT.md) governs new-order 30-day access, private-content minimization, holds, and restore safeguards. Earlier paid orders retain their recorded terms. Read repository AGENTS.md for the full current amendment order; conflicting original handoff text below is historical.
 
 > October 2, 2026 authority: `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` requires operator-issued, single-use search checkout invitations and starts each 24-hour clock only after successful payment and complete required inputs.

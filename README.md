@@ -1,8 +1,8 @@
 # ApplyPack
 
-Manual launch scope: $18.99 for exactly ten distinct, current, human-reviewed job matches and $7.99 per selected job for one tailored resume plus one tailored cover letter. These are fixed customer totals with no tax added at checkout. There is no launch subscription or public job board. Search checkout is operator-invited and remains locked until every non-tax launch gate passes.
+Launch scope: $18.99 for exactly ten distinct, current, human-reviewed job matches and $7.99 per selected job for one tailored resume plus one tailored cover letter. These are fixed customer totals with no tax added at checkout. There is no launch subscription or public job board. Search checkout is operator-invited and remains locked until every non-tax launch gate passes.
 
-ApplyPack is DuoTap LLC's manual-first job-search and application-document service at `applypack.work`.
+ApplyPack is DuoTap LLC's job-search and application-document service at `applypack.work`. The approved goal is system research and complete drafting with owner review and approval before delivery; that connected workflow remains incomplete.
 
 - Job Match Search: $18.99 for exactly 10 distinct, current, human-reviewed job matches, available only through a short-lived operator invitation.
 - Apply Pack: $7.99 per selected job for one tailored resume and one tailored cover letter.
@@ -14,7 +14,11 @@ The application includes the public site, guided intake, passwordless customer p
 
 ## Current boundary
 
-The codebase is locally implemented. It is not a live service until the production Supabase, Stripe, Resend, Railway, DNS, mailbox-routing, approved structural file-safety and isolation, backup, and end-to-end verification steps in `docs/runbooks/SHIP_CHECKLIST.md` pass.
+The codebase has implemented components and passing component checks, but the October25 audit found gaps in the connected intake, research, drafting, owner-review and repair workflows. Launch is **NOT READY**. Local code, Git publication and green CI do not establish a complete or deployed service.
+
+The latest [product amendment](docs/applypack/19_OCTOBER_25_CONFIRMED_INTAKE_AND_SERVICE_ERROR_AMENDMENT.md) requires low-friction intake for current/outdated/no resume and career changes, contextual plain-language skills, targeted clarification before final submission, and a complete section-editable review of the customer's information. New bound orders allow repair of ApplyPack-introduced errors only; customer mistakes, later-added experience and preference edits do not automatically entitle revised packs. Historical accepted terms remain intact. These are documented requirements, not yet implemented behavior.
+
+Use the [end-to-end completion plan](docs/launch/END_TO_END_COMPLETION_PLAN_2026-10-25.md) and [intake/service-error protocol](docs/runbooks/INTAKE_REVIEW_AND_SERVICE_ERROR_CORRECTIONS.md). Production Supabase, Stripe, Resend, Railway, DNS, mailbox-routing, structural file safety and isolation, recovery, human acceptance and every connected verification step in `docs/runbooks/SHIP_CHECKLIST.md` must also pass before launch.
 
 Do not use production language based on a local build alone.
 
@@ -102,6 +106,9 @@ The launch image workflow builds `Dockerfile.launch`, runs `npm run test:launch-
 
 ## Operations
 
+- Current intake, confirmed information and service-error policy: `docs/applypack/19_OCTOBER_25_CONFIRMED_INTAKE_AND_SERVICE_ERROR_AMENDMENT.md`
+- End-to-end work and completion scoring: `docs/launch/END_TO_END_COMPLETION_PLAN_2026-10-25.md`
+- Intake review and contract-aware service-error procedures: `docs/runbooks/INTAKE_REVIEW_AND_SERVICE_ERROR_CORRECTIONS.md`
 - Customer and operator workflows: `docs/runbooks/OPERATIONS.md`
 - Provider connection: `docs/runbooks/PROVIDER_SETUP.md`
 - Canonical October 2 release, canary, and rollback: `docs/runbooks/MANUAL_LAUNCH_RELEASE.md`
@@ -126,7 +133,7 @@ POST /api/cron/maintenance
 Authorization: Bearer <CRON_SECRET>
 ```
 
-It reconciles payment attempts and reservations, processes due private-content retention, and alerts the operator about approaching or missed deadlines. New-policy cleanup respects unfinished paid work, timely corrections/replacements, disputes, required holds, and shared historical/active entitlements. The current launch profile schedules it every 15 minutes with a 45-minute maximum heartbeat age; the historical hourly configuration cannot prove that profile. Automated employer-source schedules stay disabled.
+It reconciles payment attempts and reservations and includes deadline/retention checks. Automatic private-object removal, content redaction and restored-content sanitization remain incomplete; new-policy readiness fails closed. Required cleanup must respect unfinished paid work, qualifying timely service-error cases, historical correction rights, replacements, disputes, holds and shared entitlements. The launch profile schedules maintenance every 15 minutes with a 45-minute maximum heartbeat age; the historical hourly configuration cannot prove that profile. Automated employer-source schedules remain disabled until the new research workflow and its separate source/provider checks pass.
 
 ## Health
 

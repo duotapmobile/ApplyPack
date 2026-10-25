@@ -1,10 +1,12 @@
 # One-off customer information retention
 
-Governing authority: [October 24 amendment](../applypack/18_OCTOBER_24_ONE_OFF_RETENTION_AMENDMENT.md). This runbook describes the prospective release contract. It does not establish that production has been migrated or that customer/archive deletion has run.
+Governing authority: [October 24 amendment](../applypack/18_OCTOBER_24_ONE_OFF_RETENTION_AMENDMENT.md) for retention and [October 25 amendment 19](../applypack/19_OCTOBER_25_CONFIRMED_INTAKE_AND_SERVICE_ERROR_AMENDMENT.md) for new confirmed-intake/service-error contracts. This runbook describes required release behavior. It does not establish that production has been migrated or that customer/archive deletion has run. Amendment 19 is a prospective plan, not an implemented contract or authorization to resume a blocked destructive mechanism.
 
 ## Customer promise
 
-Newly accepted orders use `one_off_30d_v1`. Customers save their search results and documents within 30 days of the relevant latest approved delivery. Starting an optional pack checkout and submitting a new covered match-conflict request close 30 days after the original search delivery. A valid checkout already started may finish or be recovered through the same idempotent request before its original stated expiry; the existing 35-minute deadline is never extended. Timely open requests are completed; an approved replacement/correction refreshes access to that service, without reopening optional search purchases. Preserve the three-calendar-day factual-correction request rule and all historical paid-order terms.
+Orders explicitly bound to the retention contract use `one_off_30d_v1`. Customers save their search results and documents within 30 days of the relevant latest approved delivery. Starting an optional pack checkout and submitting a new covered match-conflict request close 30 days after the original search delivery. A valid checkout already started may finish or be recovered through the same idempotent request before its original stated expiry; the existing 35-minute deadline is never extended. Timely eligible open requests are completed; an approved replacement or qualifying correction delivery refreshes access to that service, without reopening optional search purchases.
+
+For a new order explicitly bound to `service-error-only-v1`, the existing three-calendar-day report window covers one grouped request to repair an attributable ApplyPack error against the confirmed intake and delivered work. Customer-confirmed mistakes/omissions, later facts, changed preferences or a new target do not qualify and must not trigger regeneration. A failed repair remains the same open case. Earlier accepted contracts retain their recorded factual-correction rights; do not infer the new restriction from a deployment, login, date or later re-consent. Follow [intake/correction operations](INTAKE_REVIEW_AND_SERVICE_ERROR_CORRECTIONS.md).
 
 ## Maintenance and operator review
 
@@ -19,6 +21,8 @@ Implementation approval status: automatic approval review rejected writing this 
 Only access deadlines control ordinary customer reads. A hold preserves necessary information for operations or recovery but does not grant open-ended customer browsing. Verify a signed link expires at or before the displayed deadline, including a request made seconds before expiry. The application must return an understandable expired state while preserving billing/support access.
 
 Required holds use restricted operator access and a recorded reason. Review open holds during daily order review; remove them after the paid service, correction, dispute, or recordkeeping need ends. Keep reasons and routine logs free of resume text or personal histories. A customer deletion request goes through the same obligation and shared-reference checks; do not promise immediate deletion of required records.
+
+The new correction workflow must retain the confirmed baseline, report, affected versions and evidence needed to decide and complete a timely eligible case while its obligation is unresolved. A denied customer-change request must not automatically extend access or retain the entire private family indefinitely; required disputes, holds and historical/shared obligations still take precedence. Preserve content-free decisions and necessary transaction evidence separately from private report text. This classification and its retention/restore integration remain to implement and test.
 
 ## Data remaining after minimization
 
@@ -41,5 +45,7 @@ Record the actual database-provider backup window, private-file archive cycle, i
 5. Collect independent review and exact committed-source CI/image checks. Preserve the frozen-candidate rule.
 6. After separate deployment/resource approvals, migrate only the verified target with protected backup and writers controlled. Run one manual maintenance cycle and two actual 15-minute cycles, including a failed-delete alert and retry.
 7. Record provider backup windows and tested archive erasure. Obtain human acceptance of the customer deadline/download behavior and the final go-live decision.
+
+Before activating amendment 19, add forward contract/receipt and correction-state changes without rewriting published migration 087 or earlier receipts. Extend the authoritative retention overlay and restore protocol, where needed, to preserve unresolved qualifying service repairs and historical rights; reject missing or incompatible policy evidence. Cover failed repair/redelivery, denied new-fact requests, expired access, current holds, shared references and stale restores in route/database/protocol tests. No test may substitute a dummy cleanup/sanitizer or claim archive erasure from a restore exclusion.
 
 Publication of this code and runbook is not step 6 or 7. Purchasing remains locked and launch status remains **NOT READY**.

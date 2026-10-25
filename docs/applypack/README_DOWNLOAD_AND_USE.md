@@ -1,5 +1,7 @@
 # How to Use This ApplyPack Codex Handoff
 
+> Current authority: read repository AGENTS.md and [October25 amendment19](19_OCTOBER_25_CONFIRMED_INTAKE_AND_SERVICE_ERROR_AMENDMENT.md) first. The current goal is system research/drafting with owner approval, adaptive intake including no resume, complete editable pre-submit review and prospective service-error-only remedies. Earlier prices, required-resume/manual-authorship and generic correction instructions below are preserved history. The [completion plan](../launch/END_TO_END_COMPLETION_PLAN_2026-10-25.md) and [protocol](../runbooks/INTAKE_REVIEW_AND_SERVICE_ERROR_CORRECTIONS.md) track unfinished implementation; a documentation update is not deployment.
+
 > October 2, 2026 authority: `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` controls current manual-launch prices and scope. Conflicting examples below are historical.
 
 ## 1. Download and extract
