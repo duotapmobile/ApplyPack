@@ -2,7 +2,7 @@ import { isIP } from "node:net";
 
 const lastRequestByOrigin = new Map<string, number>();
 
-type FetchPolicyOptions = { timeoutMs?: number };
+type FetchPolicyOptions = { timeoutMs?: number; beforeFetch?: () => Promise<void> };
 
 export async function fetchOfficialJson(url: string, allowedHosts: readonly string[], options: FetchPolicyOptions = {}): Promise<Response> {
   return fetchOfficial(url, allowedHosts, "application/json", options);
@@ -37,6 +37,7 @@ async function fetchOfficial(url: string, allowedHosts: readonly string[], accep
   const previous = lastRequestByOrigin.get(parsed.origin) || 0;
   const wait = Math.max(0, minimumInterval - (Date.now() - previous));
   if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+  await options.beforeFetch?.();
   lastRequestByOrigin.set(parsed.origin, Date.now());
   return fetch(parsed, {
     method: "GET",

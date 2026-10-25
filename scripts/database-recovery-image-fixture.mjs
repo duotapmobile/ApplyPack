@@ -55,7 +55,7 @@ try {
     "CREATE ROLE applypack_recovery_exporter LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;",
     "GRANT pg_read_all_data TO applypack_recovery_exporter; REVOKE CREATE ON SCHEMA public FROM PUBLIC;",
     "CREATE SCHEMA auth; CREATE SCHEMA storage; CREATE SCHEMA supabase_migrations;",
-    "CREATE TABLE supabase_migrations.schema_migrations(version text PRIMARY KEY); INSERT INTO supabase_migrations.schema_migrations VALUES('202610250090');",
+    "CREATE TABLE supabase_migrations.schema_migrations(version text PRIMARY KEY); INSERT INTO supabase_migrations.schema_migrations VALUES('202610250091');",
     "CREATE TABLE storage.buckets(id text,name text,public boolean); CREATE TABLE storage.objects(id uuid,bucket_id text,name text,version text,metadata jsonb);",
     ...RECOVERY_BUCKETS.map((bucket) => `INSERT INTO storage.buckets VALUES('${bucket}','${bucket}',false);`),
     ...RECOVERY_TABLES.map((table) => `CREATE TABLE public.${table}(${recoverySourceColumns[table].split(",").map((column) => `${column} text`).join(",")});`),
@@ -69,7 +69,7 @@ try {
   ];
   sql(statements.join("\n"));
   const target = { id: "synthetic-image-export", sourceProjectRef: RECOVERY_PROJECT, host: `db.${RECOVERY_PROJECT}.supabase.co`,
-    port: 5432, database: "postgres", user: "applypack_recovery_exporter", caSha256: sha256(ca), schemaVersion: "202610250090",
+    port: 5432, database: "postgres", user: "applypack_recovery_exporter", caSha256: sha256(ca), schemaVersion: "202610250091",
     runtimeManifestSha256: canonicalSha256(runtime) };
   const registry = { version: 1, targets: [target] };
   const environment = { APP_DATABASE_BACKUP_ENABLED: "true", APP_DEPLOYMENT_ENV: "production", APP_EXPECTED_RELEASE_SHA: releaseSha,
@@ -117,7 +117,7 @@ try {
   assert.equal(sql("SELECT body FROM auth.synthetic_identity WHERE id=1;", "recovered"), "fictional auth fixture");
   assert.equal(sql("SELECT count(*) FROM storage.buckets;", "recovered"), String(RECOVERY_BUCKETS.length));
   assert.equal(sql("SELECT count(*) FROM public.intakes WHERE resume_path IS NULL AND cover_letter_path IS NULL;", "recovered"), "1");
-  assert.equal(sql("SELECT max(version) FROM supabase_migrations.schema_migrations;", "recovered"), "202610250090");
+  assert.equal(sql("SELECT max(version) FROM supabase_migrations.schema_migrations;", "recovered"), "202610250091");
   assert.equal(sql("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid='public.synthetic_private'::regclass;", "recovered"), "t");
   assert.equal(sql("SELECT count(*) FROM pg_stat_activity WHERE usename='applypack_recovery_exporter';"), "0");
 } finally {

@@ -156,7 +156,12 @@ select case when
     where migration_id='202610250089' and checkpoint='CONFIRMED_INTAKE')
   and exists(select 1 from public.ap_migration_checkpoints
     where migration_id='202610250090' and checkpoint='MATCHING_EVIDENCE_COMPLETION')
-  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610250090'
+  and public.ap_material_draft_pair_schema_installed()
+  and exists(select 1 from public.ap_migration_checkpoints
+    where migration_id='202610250091' and checkpoint='MATERIAL_DRAFT_PAIR_WORKFLOW')
+  and exists(select 1 from public.ap_material_draft_runtime where singleton and not enabled and policy_id is null)
+  and not exists(select 1 from public.ap_material_draft_permits)
+  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610250091'
   and exists (
     select 1 from pg_proc procedure
     join pg_namespace namespace on namespace.oid=procedure.pronamespace

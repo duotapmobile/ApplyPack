@@ -147,10 +147,17 @@ if ($CapacityPressure) {
     ConvertTo-Json | Set-Content (Join-Path $evidenceRoot 'capacity-script-hash.json')
 }
 $previousOptions = $env:PGOPTIONS
+$startAttempted = $false
+$startConfirmed = $false
+$ownedPostmasterId = $null
+$step = 'isolated cluster initialization'
 try {
   Invoke-Native 'psql.exe' @('--version')
   Invoke-Native 'initdb.exe' @('-D', $dataPath, '-U', 'postgres', '--auth=trust', '--encoding=UTF8', '--locale=C') 180
-  Invoke-Native 'pg_ctl.exe' @('-D', $dataPath, '-l', $serverLog, '-o', "-h 127.0.0.1 -p $port", '-w', '-t', '30', 'start')
+  $startAttempted = $true
+  Invoke-Native 'pg_ctl.exe' @('-D', $dataPath, '-l', $serverLog, '-o', "-h 127.0.0.1 -p $port", '-w', '-t', '45', 'start') 60
+  $startConfirmed = $true
+  $ownedPostmasterId = [int](Get-Content -LiteralPath (Join-Path $dataPath 'postmaster.pid') -TotalCount 1)
   $env:PGOPTIONS = '-c statement_timeout=60000 -c lock_timeout=10000'
   $batchPath = Join-Path $inputPath 'run-all.sql'
   $batch = foreach ($input in ($inputs | Where-Object Kind -ne 'helper')) {
@@ -180,11 +187,33 @@ try {
   throw
 } finally {
   $env:PGOPTIONS = $previousOptions
-  if (Test-Path -LiteralPath (Join-Path $dataPath 'postmaster.pid')) {
-    Invoke-Native 'pg_ctl.exe' @('-D', $dataPath, '-w', '-t', '30', '-m', 'fast', 'stop')
+  $pidPath = Join-Path $dataPath 'postmaster.pid'
+  # pg_ctl can time out before its spawned server creates postmaster.pid. A
+  # missing PID file alone is never evidence that initialization is quiescent.
+  # Retain every unsuccessful startup, including an initdb timeout, and wait a
+  # bounded interval to stop a late-starting server using this exact data path.
+  if ($startAttempted -and !$startConfirmed -and !(Test-Path -LiteralPath $pidPath)) {
+    $lateStartDeadline = [DateTime]::UtcNow.AddSeconds(20)
+    while (!(Test-Path -LiteralPath $pidPath) -and [DateTime]::UtcNow -lt $lateStartDeadline) { Start-Sleep -Milliseconds 250 }
   }
-  if (Test-Path -LiteralPath (Join-Path $dataPath 'postmaster.pid')) { throw 'Cluster shutdown not confirmed; retaining data.' }
-  if (!$RetainClusterData -and (Test-Path -LiteralPath $dataPath)) {
+  try {
+    if (Test-Path -LiteralPath $pidPath) {
+      $pidLines = @(Get-Content -LiteralPath $pidPath -TotalCount 2)
+      if ($pidLines.Count -ne 2 -or $pidLines[0] -notmatch '^[1-9][0-9]*$' -or
+        [IO.Path]::GetFullPath($pidLines[1]) -ne [IO.Path]::GetFullPath($dataPath)) { throw 'Owned cluster PID identity is unverified; retaining data.' }
+      if ($null -ne $ownedPostmasterId -and $ownedPostmasterId -ne [int]$pidLines[0]) { throw 'Owned cluster PID changed; retaining data.' }
+      $ownedPostmasterId = [int]$pidLines[0]
+      Invoke-Native 'pg_ctl.exe' @('-D', $dataPath, '-w', '-t', '30', '-m', 'fast', 'stop') 45
+    }
+    if ((Test-Path -LiteralPath $pidPath) -or ($null -ne $ownedPostmasterId -and (Get-Process -Id $ownedPostmasterId -ErrorAction SilentlyContinue))) {
+      throw 'Owned cluster process shutdown not confirmed; retaining data.'
+    }
+  } catch {
+    "FAIL: owned cluster cleanup could not confirm shutdown; data retained.`n$($_.Exception.Message)" | Set-Content (Join-Path $evidenceRoot 'RESULT.txt')
+    throw
+  }
+  $cleanupConfirmed = $startConfirmed -and $null -ne $ownedPostmasterId
+  if (!$RetainClusterData -and $cleanupConfirmed -and (Test-Path -LiteralPath $dataPath)) {
     $resolvedData = (Resolve-Path -LiteralPath $dataPath).Path
     $resolvedEvidence = (Resolve-Path -LiteralPath $evidenceRoot).Path
     $expectedData = [IO.Path]::GetFullPath((Join-Path $resolvedEvidence 'cluster'))
@@ -194,6 +223,7 @@ try {
     Remove-Item -LiteralPath $resolvedData -Recurse -Force
     Add-Content -LiteralPath $logPath -Value 'Own isolated cluster stopped and data directory removed; evidence retained.'
   }
+  if (!$cleanupConfirmed) { Add-Content -LiteralPath $logPath -Value 'Unconfirmed startup: owned data retained. No deletion inferred from an absent PID file.' }
   if ($RetainClusterData) { Add-Content -LiteralPath $logPath -Value 'Own isolated cluster stopped; data retained by explicit option.' }
   Write-Host "Evidence: $evidenceRoot"
 }

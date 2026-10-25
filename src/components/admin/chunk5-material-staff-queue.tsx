@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { MATERIAL_RELEASE_CHECKS, materialReleaseChecksComplete, type MaterialReleaseChecklist, type MaterialReleaseExpectedBinding } from "@/lib/materials/release-checklist";
 
 export type MaterialStaffFile = {
   artifactType: string;
@@ -11,6 +12,11 @@ export type MaterialStaffFile = {
   automatedPassed: boolean;
   contentApproved: boolean;
   visualApproved: boolean;
+  checksumSha256: string | null;
+  contentApprovedAt: string | null;
+  contentApprovedBy: string | null;
+  visualApprovedAt: string | null;
+  visualApprovedBy: string | null;
   rendererIdentity: string | null;
   fontFamily: string;
   fontResolved: boolean;
@@ -33,6 +39,7 @@ export type MaterialStaffLine = {
   ruleSha256: string | null;
   generationCheckAt: string | null;
   releaseCheckAt: string | null;
+  releaseCheckId: string | null;
   files: MaterialStaffFile[];
   openProposalKind: string | null;
   openSupportCases: number;
@@ -46,6 +53,7 @@ export function Chunk5MaterialStaffQueue({ lines }: { lines: MaterialStaffLine[]
   const [attestations, setAttestations] = useState<Record<string, string>>( {} );
   const [generationJson, setGenerationJson] = useState<Record<string, string>>( {} );
   const [proposalJson, setProposalJson] = useState<Record<string, string>>( {} );
+  const [releaseReviews, setReleaseReviews] = useState<Record<string, { binding: string; checks: MaterialReleaseChecklist }>>({});
 
   async function action(lineId: string, body: Record<string, unknown>) {
     setBusy(lineId);
@@ -121,6 +129,9 @@ export function Chunk5MaterialStaffQueue({ lines }: { lines: MaterialStaffLine[]
     <div className="portal-section__heading"><div><p className="eyebrow">CHUNK 5 MATERIALS</p><h2 id="chunk5-material-heading">Evidence-bound materials queue</h2></div><p>Listing checks, generation, content approval, visual approval, and atomic release are separate guarded actions. Reference PII is never shown here.</p></div>
     <div className="material-staff-grid">{lines.map((line) => {
       const attestation = attestations[line.lineId] || "";
+      const expectedBinding = releaseExpectedBinding(line);
+      const reviewBinding = JSON.stringify(expectedBinding);
+      const releaseChecks = releaseReviews[line.lineId]?.binding === reviewBinding ? releaseReviews[line.lineId].checks : {};
       const currentFilesOnly = line.files.length > 0 && line.files.every((file) => file.currentStandard);
       const currentRegenerationFilesOnly = line.regeneration
         ? line.files.some((file) => file.referenceRegenerationId === line.regeneration!.id)
@@ -137,12 +148,34 @@ export function Chunk5MaterialStaffQueue({ lines }: { lines: MaterialStaffLine[]
         {line.regeneration ? <div className="deadline-note"><strong>Reference regeneration:</strong> {humanize(line.regeneration.state)}{line.regeneration.dueAt ? ` · ${eastern(line.regeneration.dueAt)}` : ""}. <button disabled={busy === line.lineId || line.regeneration.state !== "ACTIVE"} onClick={() => generate(line, true)}>Generate deterministic replacement</button><button disabled={busy === line.lineId || !currentRegenerationFilesOnly || line.regeneration.state !== "HUMAN_REVIEW"} onClick={() => action(line.lineId, { action: "COMMIT_REFERENCE_REGENERATION", regenerationId: line.regeneration!.id })}>Release approved replacement</button></div> : null}
         {line.files.length ? <div className="material-staff-files">{line.files.map((file) => <article key={file.fileVersionId}><h4>{humanize(file.artifactType)} · version {file.version}</h4><p>{file.filename}</p><p>Automated: {file.automatedPassed ? "passed" : "blocked"} · Font: {file.fontResolved ? `${file.fontFamily} resolved` : "blocked"}</p>{!file.currentStandard ? <p className="match-warning">Historical document: access only. Regenerate under the locked standard before approval or release.</p> : null}{file.rendererIdentity ? <p>Renderer: {file.rendererIdentity}</p> : null}<a href={`/api/admin/material-files/${file.fileVersionId}/render-preview`} target="_blank" rel="noreferrer">Open private rendered pages</a><div className="admin-buttons"><button disabled={busy === line.lineId || !file.currentStandard || !file.automatedPassed || file.contentApproved || attestation.trim().length < 20} onClick={() => action(line.lineId, { action: "APPROVE", fileVersionId: file.fileVersionId, approvalKind: "CONTENT", attestation })}>Record content approval</button><button disabled={busy === line.lineId || !file.currentStandard || !file.automatedPassed || file.visualApproved || attestation.trim().length < 20} onClick={() => action(line.lineId, { action: "APPROVE", fileVersionId: file.fileVersionId, approvalKind: "VISUAL", attestation })}>Record visual approval</button></div></article>)}</div> : null}
         <label>Approval or release attestation <span>(minimum 20 characters)</span><textarea maxLength={2_000} value={attestation} onChange={(event) => setAttestations((current) => ({ ...current, [line.lineId]: event.target.value }))} /></label>
-        <div className="admin-buttons"><button disabled={busy === line.lineId || !line.submissionRuleId || !line.ruleSha256} onClick={() => action(line.lineId, { action: "LISTING_CHECK", phase: "BEFORE_RELEASE", result: "ACTIVE", submissionRuleId: line.submissionRuleId, evidenceSha256: line.ruleSha256 })}>Record final active check</button><button disabled={busy === line.lineId || !currentFilesOnly || line.fulfillment !== "READY_TO_RELEASE" || attestation.trim().length < 20} onClick={() => action(line.lineId, { action: "RELEASE", rationale: attestation })}>Commit atomic customer release</button><button disabled={busy === line.lineId || line.fulfillment === "DELIVERED"} onClick={() => action(line.lineId, { action: "REFUND_LINE", reasonCode: "STAFF_CONFIRMED_LINE_REFUND" })}>Start full $7.99 line refund</button></div>
+        <fieldset disabled={busy === line.lineId || line.fulfillment === "DELIVERED"}>
+          <legend>Review before sending these documents</legend>
+          <p>Confirm each check yourself. Changes to the files, revision, instructions or final listing check clear these selections.</p>
+          {MATERIAL_RELEASE_CHECKS.map(({ key, label }) => <label key={key}><input type="checkbox" checked={releaseChecks[key] === true}
+            onChange={(event) => setReleaseReviews((current) => ({ ...current, [line.lineId]: {
+              binding: reviewBinding, checks: { ...releaseChecks, [key]: event.target.checked },
+            } }))} />{label}</label>)}
+        </fieldset>
+        <div className="admin-buttons"><button disabled={busy === line.lineId || !line.submissionRuleId || !line.ruleSha256} onClick={() => action(line.lineId, { action: "LISTING_CHECK", phase: "BEFORE_RELEASE", result: "ACTIVE", submissionRuleId: line.submissionRuleId, evidenceSha256: line.ruleSha256 })}>Record final active check</button><button disabled={busy === line.lineId || !expectedBinding || !currentFilesOnly || line.fulfillment !== "READY_TO_RELEASE" || attestation.trim().length < 20 || !materialReleaseChecksComplete(releaseChecks)} onClick={() => action(line.lineId, { action: "RELEASE", rationale: attestation, checklist: releaseChecks, expectedBinding })}>Commit atomic customer release</button><button disabled={busy === line.lineId || line.fulfillment === "DELIVERED"} onClick={() => action(line.lineId, { action: "REFUND_LINE", reasonCode: "STAFF_CONFIRMED_LINE_REFUND" })}>Start full $7.99 line refund</button></div>
         <details className="staff-review-evidence"><summary>Substitution, fact correction, or reference-scope action</summary><p>Use a reviewed action object. The server adds a fresh idempotency key and all database locks and capacity gates still apply.</p><textarea rows={8} spellCheck="false" value={proposalJson[line.lineId] || ""} onChange={(event) => setProposalJson((current) => ({ ...current, [line.lineId]: event.target.value }))} /><button disabled={busy === line.lineId} onClick={() => submitProposal(line)}>Submit guarded action</button></details>
         <p className={messages[line.lineId] ? "form-message" : "sr-only"} role="status" aria-live="polite">{messages[line.lineId] || "No action submitted."}</p>
       </article>;
     })}</div>
   </section>;
+}
+
+function releaseExpectedBinding(line: MaterialStaffLine): MaterialReleaseExpectedBinding | null {
+  if (!line.revisionId || !line.ruleSha256 || !line.releaseCheckId || !line.releaseCheckAt) return null;
+  const files: MaterialReleaseExpectedBinding["files"] = [];
+  for (const file of line.files.filter((candidate) => candidate.referenceRegenerationId === null)) {
+    if (!file.checksumSha256 || !file.contentApprovedAt || !file.contentApprovedBy || !file.visualApprovedAt || !file.visualApprovedBy) return null;
+    files.push({ fileVersionId: file.fileVersionId, version: file.version, checksumSha256: file.checksumSha256,
+      contentApprovedAt: file.contentApprovedAt, contentApprovedBy: file.contentApprovedBy,
+      visualApprovedAt: file.visualApprovedAt, visualApprovedBy: file.visualApprovedBy });
+  }
+  if (files.length < 2 || files.length > 3) return null;
+  return { revisionId: line.revisionId, ruleSha256: line.ruleSha256, releaseCheckId: line.releaseCheckId,
+    releaseCheckAt: line.releaseCheckAt, files: files.sort((left, right) => left.fileVersionId.localeCompare(right.fileVersionId)) };
 }
 
 function humanize(value: string) {

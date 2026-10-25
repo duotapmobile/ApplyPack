@@ -41,3 +41,13 @@ Approval binds the exact draft pair, evidence packet, employer-question/rule ver
 - The owner sees prompt provenance and can approve/reject the exact resulting wording; private delivery and historical access continue to work.
 
 Record local fixtures, source-adapter execution, hosted observation and human document review separately in the [implementation ledger](../launch/IMPLEMENTATION_PROGRESS_2026-10-25.md).
+
+## Current local implementation
+
+The Greenhouse collector can read public job-detail questions only when the verified source authorization explicitly permits `READ_APPLICATION_QUESTIONS`. It rechecks the current authorization, source run and lease immediately before the request and before preserving the fresh listing. Detail requests share the existing request budget and backoff. They do not change whether the listing enumeration proves closure. Default source permissions remain disabled.
+
+The immutable listing captures the exact job-detail response and its hash, source URL, time, run and authorization identities. The drafting packet rederives question prompts and requiredness from that capture. Unsupported or undocumented limits stay unknown. Lever and Ashby question collection remain explicitly unsupported through the configured public posting APIs; absence of questions in their listing data is not a successful form inspection.
+
+Identity/upload/demographic fields are excluded from tailoring. Heuristic or unsupported omissions leave a partial inspection, including ambiguous labels; ordinary experience questions about telephone work remain eligible. Observed questions are untrusted employer context and cannot manufacture candidate qualifications. The bounded draft proposal records which verified question influenced each passage, alongside the confirmed customer evidence required for its factual claims.
+
+These are local implementation and test boundaries. Live authorized-source execution, a connected complete document pair, visible owner provenance review and the final hosted journey remain required acceptance evidence.

@@ -29,19 +29,20 @@ function fixture({ failAt, alterState, missingMarker, ambiguousCreate, invalidIm
     return "";
   };
   const run = (args = [], environment = {}) => runRetentionPostgres17(args, { execute, environment, platform: "linux", uuid: () => runId,
-    inputs: () => ({ sql: "fictional SQL", hashes: [{ kind: "fixture", name: "fictional.sql", sha256: "b".repeat(64) }], migrationCount: 95 }) });
+    inputs: () => ({ sql: "fictional SQL", hashes: [{ kind: "fixture", name: "fictional.sql", sha256: "b".repeat(64) }], migrationCount: 96 }) });
   return { calls, run, deleted: () => deleted };
 }
 
 test("builds all current migrations with exact source hashes and unchanged independent-connection fixture", () => {
   const inputs = loadRetentionPostgresInputs();
-  assert.equal(inputs.migrationCount, 95);
+  assert.equal(inputs.migrationCount, 96);
   assert.equal(inputs.hashes.filter((entry) => entry.kind === "fixture").length, 5);
   assert(inputs.hashes.every((entry) => /^[a-f0-9]{64}$/u.test(entry.sha256)));
   assert.match(inputs.sql, /native_loopback_fixture_required/u);
   assert.match(inputs.sql, /dblink_send_query/u);
   assert.match(inputs.sql, /RETENTION_PG17_FIXTURE_5_COMPLETE/u);
   assert.match(inputs.sql, /'202610250090','matching_evidence_completion'/u);
+  assert.match(inputs.sql, /'202610250091','material_draft_pair_workflow'/u);
   const native = readFileSync(new URL("./test-database-native.ps1", import.meta.url), "utf8").match(/\$bootstrap = @'\r?\n([\s\S]*?)\r?\n'@/u)?.[1];
   const bootstrap = readFileSync(new URL("../tests/integration/retention-postgres17-bootstrap.sql", import.meta.url), "utf8");
   const normalize = (text) => text.split(/\r?\n/u).filter((line) => line.trim() && !line.trim().startsWith("--")).join("\n");

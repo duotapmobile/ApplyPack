@@ -6,10 +6,23 @@ import { isCurrentDocumentGeneratorVersion } from "@/lib/documents/requirements"
 import { isSameOriginRequest } from "@/lib/security/origin";
 
 const uuid = z.uuid();
+const hash = z.string().regex(/^[0-9a-f]{64}$/);
+const timestamp = z.iso.datetime({ offset: true });
+const releaseExpectedBinding = z.object({
+  revisionId: uuid, ruleSha256: hash, releaseCheckId: uuid, releaseCheckAt: timestamp,
+  files: z.array(z.object({ fileVersionId: uuid, version: z.number().int().positive().max(2_147_483_647), checksumSha256: hash,
+    contentApprovedAt: timestamp, contentApprovedBy: uuid, visualApprovedAt: timestamp, visualApprovedBy: uuid,
+  }).strict()).min(2).max(3).refine((files) => new Set(files.map((file) => file.fileVersionId)).size === files.length),
+}).strict();
+const releaseChecklist = z.object({
+  contentReviewed: z.literal(true), visualReviewed: z.literal(true), listingRechecked: z.literal(true),
+  instructionsReparsed: z.literal(true), linksRechecked: z.literal(true), provenanceReviewed: z.literal(true),
+  secureFilesConfirmed: z.literal(true),
+}).strict();
 const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("LISTING_CHECK"), phase: z.enum(["BEFORE_GENERATION", "BEFORE_RELEASE"]), result: z.enum(["ACTIVE", "CLOSED", "INSTRUCTION_BLOCKED"]), submissionRuleId: uuid, evidenceSha256: z.string().regex(/^[0-9a-f]{64}$/) }).strict(),
   z.object({ action: z.literal("APPROVE"), fileVersionId: uuid, approvalKind: z.enum(["CONTENT", "VISUAL"]), attestation: z.string().trim().min(20).max(2_000) }).strict(),
-  z.object({ action: z.literal("RELEASE"), rationale: z.string().trim().min(20).max(2_000) }).strict(),
+  z.object({ action: z.literal("RELEASE"), rationale: z.string().trim().min(20).max(2_000), checklist: releaseChecklist, expectedBinding: releaseExpectedBinding }).strict(),
   z.object({ action: z.literal("OFFER_SUBSTITUTION"), targetMatchId: uuid, targetRuleId: uuid, reasonCode: z.string().trim().min(3).max(100), proposalExpiresAt: z.iso.datetime(), estimateSeconds: z.number().int().min(60).max(86_400), idempotencyKey: uuid }).strict(),
   z.object({ action: z.literal("PROPOSE_FACT_CORRECTION"), correctedSnapshotId: uuid, factDiff: z.record(z.string(), z.unknown()), eligibilityPassed: z.boolean(), evidenceSufficient: z.boolean(), reasonCode: z.string().trim().min(3).max(100), proposalExpiresAt: z.iso.datetime(), estimateSeconds: z.number().int().min(60).max(86_400), idempotencyKey: uuid }).strict(),
   z.object({ action: z.literal("AMEND_REFERENCE_SCOPE"), includeReferenceSheet: z.boolean(), referencePermissionIds: z.array(uuid).max(3), idempotencyKey: uuid }).strict(),
@@ -81,19 +94,12 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
         if (!artifacts?.length || artifacts.some((artifact) => !isCurrentDocumentGeneratorVersion(artifact.generator_version))) {
           return response({ error: "Regenerate every file under the current document standard before release." }, 409);
         }
-        const result = await auth.admin.rpc("ap_commit_material_release_v2", {
+        const result = await auth.admin.rpc("ap_commit_material_release_expected", {
           p_material_line_id: line.id,
           p_reviewer_id: auth.user.id,
           p_release_id: randomUUID(),
-          p_review_checklist: {
-            contentReviewed: true,
-            visualReviewed: true,
-            listingRechecked: true,
-            instructionsReparsed: true,
-            linksRechecked: true,
-            provenanceReviewed: true,
-            secureFilesConfirmed: true,
-          },
+          p_expected_binding: input.data.expectedBinding,
+          p_review_checklist: input.data.checklist,
           p_reviewer_rationale: input.data.rationale,
           p_outbox_id: randomUUID(),
         });

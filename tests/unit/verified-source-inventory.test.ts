@@ -3,6 +3,7 @@ import { buildVerifiedSourceInventory, promoteVerifiedSourceInventory, type Sour
 import { captureRawSourceEvidence } from "@/lib/jobs/raw-source-evidence";
 import { normalizeJob } from "@/lib/jobs/normalize";
 import type { RawJobPosting } from "@/lib/jobs/types";
+import { GREENHOUSE_QUESTION_CAPTURE_VERSION, greenhouseQuestionUrl, questionResponseSha256, type GreenhouseQuestionCapture } from "@/lib/jobs/application-question-evidence";
 
 const now = new Date("2026-09-20T12:05:00Z");
 const text = "Remote full-time role in Virginia.\nRequired: 3 years of customer operations experience.\nResponsibilities: coordinate service recovery.";
@@ -18,6 +19,24 @@ const binding = { jobId: "c1000000-0000-4000-8000-000000000001", observedAt: "20
   observedHash: normalizeJob(posting, now).contentHash, adapterVersion: "lever-v3" };
 
 describe("verified source inventory bridge", () => {
+  it("binds fresh question evidence to the actual run without manufacturing qualification nodes", () => {
+    const raw = { id: 123, absolute_url: "https://job-boards.greenhouse.io/duolingo/jobs/123", questions: [{ label: "Describe a helpful conversation.", required: true, fields: [{ name: "question_1", type: "textarea" }] }] };
+    const capture: GreenhouseQuestionCapture = { schemaVersion: GREENHOUSE_QUESTION_CAPTURE_VERSION, sourceId: "duolingo", boardToken: "duolingo", externalJobId: "123",
+      sourceUrl: greenhouseQuestionUrl("duolingo", "123"), capturedAt: binding.observedAt,
+      authority: { sourceRunId: "76000000-0000-4000-8000-000000000001", authorizationId: "76000000-0000-4000-8000-000000000002", authorizationVersion: "test-v1", authorizationHeadRevision: 1, scopeSha256: "a".repeat(64) },
+      outcome: "RESPONSE", reasonCode: "CAPTURED", httpStatus: 200, rawResponse: raw, rawResponseSha256: questionResponseSha256(raw) };
+    const fresh: RawJobPosting = { ...posting, sourceId: "duolingo", employerName: "Duolingo", externalJobId: "123",
+      sourceJobUrl: raw.absolute_url, officialApplicationUrl: raw.absolute_url, applicationQuestionObservation: capture,
+      rawSourceEvidence: captureRawSourceEvidence("greenhouse-v4", { listing: { id: 123 }, applicationQuestionObservation: capture }) };
+    const freshInput = { ...input, officialListingUrl: raw.absolute_url, officialApplicationUrl: raw.absolute_url };
+    const freshBinding = { ...binding, observedHash: normalizeJob(fresh, now).contentHash, adapterVersion: "greenhouse-v4", questionRun: capture.authority! };
+    const result = buildVerifiedSourceInventory(freshInput, fresh, freshBinding, now);
+    expect(result.snapshot.captured_listing.applicationQuestionObservation).toEqual(capture);
+    expect(JSON.stringify(result.requirementNodes)).not.toContain("Describe a helpful conversation");
+    expect(() => buildVerifiedSourceInventory(freshInput, fresh, { ...freshBinding, questionRun: undefined }, now)).toThrow("binding_missing");
+    expect(() => buildVerifiedSourceInventory(freshInput, fresh, { ...freshBinding, questionRun: { ...capture.authority!, authorizationHeadRevision: 99 } }, now)).toThrow("run_binding_invalid");
+    expect(posting).not.toHaveProperty("applicationQuestionObservation");
+  });
   it("uses shared parsing and retains direct capture and provider evidence without manufacturing evaluations", () => {
     const result = buildVerifiedSourceInventory(input, posting, binding, now);
     expect(result.snapshot.application_host_type).toBe("APPROVED_THIRD_PARTY");

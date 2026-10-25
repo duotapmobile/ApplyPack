@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 // Test-only server image. Never import this image into a deployed worker: its
 // server/tooling packages have a separate vulnerability profile from runtime.
 export const RETENTION_POSTGRES_IMAGE = "postgres:17-trixie@sha256:3518071376d0b6156b02e1db2747a78511b5b9dc3763cc79c506ebe2dc2ee71c";
-const schema = "202610250090";
+const schema = "202610250091";
 const version = "17.11";
 const fixtureLabel = "service-retention-postgres17";
 const bin = "/usr/lib/postgresql/17/bin/";

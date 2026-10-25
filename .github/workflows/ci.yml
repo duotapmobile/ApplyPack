@@ -96,6 +96,9 @@ jobs:
       - name: Validate090 matching evidence migration controls
         shell: pwsh
         run: node scripts/run-windows-release-self-test.mjs rehearsal-090
+      - name: Validate091 complete document pair migration controls
+        shell: pwsh
+        run: node scripts/run-windows-release-self-test.mjs rehearsal-091
       - run: npm run test:staging-schema084-backup
       - run: npm run test:production-migration
       - run: npm run test:production-backup

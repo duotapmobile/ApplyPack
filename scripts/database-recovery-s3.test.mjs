@@ -38,7 +38,7 @@ function rolesMetadata() {
 }
 function databaseManifest() {
   const file = fileManifest(); const dump = Buffer.from("PGDMP synthetic"); const roles = canonicalBytes(rolesMetadata());
-  const snapshot = { sourceProjectRef: "spjaaxndiduhrcleazwb", releaseSha, schemaVersion: "202610250090",
+  const snapshot = { sourceProjectRef: "spjaaxndiduhrcleazwb", releaseSha, schemaVersion: "202610250091",
     startedAt: "2026-10-25T15:00:03.000Z", postgresVersion: "17.11", pgDumpVersion: "17.11", snapshotId: rolesMetadata().snapshotId,
     coverage: { schemas: ["public", "auth", "storage", "supabase_migrations"], allTablesReadable: true, rowSecurityBypass: true,
       roleDefinitionsIncluded: true, rolePasswordsIncluded: false, providerConfigurationIncluded: false } };

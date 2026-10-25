@@ -42,9 +42,9 @@ export const historical086PhaseSql = `do $$ begin
 end $$;`;
 
 // Schema installation readiness is distinct from checkout or hosted launch approval.
-export const current090LockedPhaseSql = `do $$ begin
-  if (select max(version) from supabase_migrations.schema_migrations) is distinct from '202610250090'
-    or public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610250090'
+export const current091LockedPhaseSql = `do $$ begin
+  if (select max(version) from supabase_migrations.schema_migrations) is distinct from '202610250091'
+    or public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610250091'
     or public.ap_manual_launch_schema_readiness()->>'ready' is distinct from 'true'
     or not public.ap_one_off_retention_schema_installed()
     or to_regprocedure('public.ap_claim_expired_service_retention(integer)') is null
@@ -59,7 +59,12 @@ export const current090LockedPhaseSql = `do $$ begin
       where migration_id='202610250089' and checkpoint='CONFIRMED_INTAKE')
     or not exists(select 1 from public.ap_migration_checkpoints
       where migration_id='202610250090' and checkpoint='MATCHING_EVIDENCE_COMPLETION')
+    or not public.ap_material_draft_pair_schema_installed()
+    or not exists(select 1 from public.ap_migration_checkpoints
+      where migration_id='202610250091' and checkpoint='MATERIAL_DRAFT_PAIR_WORKFLOW')
+    or not exists(select 1 from public.ap_material_draft_runtime where singleton and not enabled and policy_id is null)
+    or exists(select 1 from public.ap_material_draft_permits)
     or not exists(select 1 from public.ap_checkout_mode_configuration where singleton and mode='LOCKED')
     or not exists(select 1 from public.ap_commerce_configuration where singleton and not checkout_enabled)
-  then raise exception 'current_090_upgrade_phase_not_installed_and_locked'; end if;
+  then raise exception 'current_091_upgrade_phase_not_installed_and_locked'; end if;
 end $$;`;

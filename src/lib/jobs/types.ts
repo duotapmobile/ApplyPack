@@ -80,6 +80,7 @@ export type SourceDefinition = {
   authorizationVersion: string;
   /** Runtime-only allowlist copied from the immutable database authorization. */
   authorizationAllowedHosts?: readonly string[];
+  authorizationAllowedActions?: readonly string[];
   atsPlatform?: AtsPlatform;
   atsTenantIdentifier?: string;
   accessMethod?: SourceAccessMethod;
@@ -108,6 +109,7 @@ export type AffiliateDirectory = {
 
 export type RawJobPosting = {
   rawSourceEvidence?: import("./raw-source-evidence").RawSourceEvidence;
+  applicationQuestionObservation?: import("./application-question-evidence").GreenhouseQuestionCapture;
   sourceId: string;
   sourceName?: string | null;
   employerName: string;

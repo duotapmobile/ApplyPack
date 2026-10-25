@@ -10,6 +10,7 @@ import { validRawSourceEvidence } from "./raw-source-evidence";
 import type { RawJobPosting } from "./types";
 import { sourceCompensation, sourceFieldEvidence } from "./field-evidence";
 import { toJobDatabaseRow } from "./persistence";
+import { bindGreenhouseQuestionCapture, type QuestionCaptureRunBinding } from "./application-question-evidence";
 
 export const sourceVerificationSchema = z.object({
   projectionId: z.string().uuid(), snapshotId: z.string().uuid(),
@@ -27,7 +28,7 @@ export type IndependentSourceVerificationInput = z.infer<typeof independentSourc
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
 export function buildVerifiedSourceInventory(input: IndependentSourceVerificationInput, posting: RawJobPosting,
-  binding: { jobId: string; observedAt: string; observedHash: string; adapterVersion: string }, now = new Date()) {
+  binding: { jobId: string; observedAt: string; observedHash: string; adapterVersion: string; questionRun?: QuestionCaptureRunBinding }, now = new Date()) {
   if (!validRawSourceEvidence(posting.rawSourceEvidence, binding.adapterVersion)) throw new Error("source_verification_raw_evidence_invalid");
   if (input.lifecycleAction && input.lifecycleAction !== "UNCHANGED" && !input.transitionReason) {
     throw new Error("source_transition_reason_required");
@@ -52,8 +53,16 @@ export function buildVerifiedSourceInventory(input: IndependentSourceVerificatio
   const parser = parseListingRequirements({ jobSnapshotId, listingText: input.capturedText });
   if (parser.status !== "COMPLETE" || !parser.criteria.length) throw new Error("source_verification_parser_review_required");
   const compensation = sourceCompensation(posting);
+  const questionCapture = posting.applicationQuestionObservation;
+  const applicationQuestionObservation = questionCapture && questionCapture.authority ? (() => {
+    const source = getEmployerSource(job.canonicalEmployerId);
+    if (!binding.questionRun || source?.adapterKind !== "greenhouse" || !source.adapterKey || !job.externalJobId) throw new Error("source_question_capture_binding_missing");
+    return bindGreenhouseQuestionCapture(questionCapture, { ...binding.questionRun, sourceId: job.sourceId,
+      boardToken: source.adapterKey, externalJobId: job.externalJobId, observedAt: binding.observedAt,
+      rawSourcePayload: posting.rawSourceEvidence!.payload });
+  })() : undefined;
   const capturedListing = { text: input.capturedText, parserIssues: parser.issues, rawSourceEvidence: posting.rawSourceEvidence,
-    fieldEvidence: sourceFieldEvidence(posting) };
+    fieldEvidence: sourceFieldEvidence(posting), ...(applicationQuestionObservation ? { applicationQuestionObservation } : {}) };
   const review = { ...input, method: "HUMAN_DIRECT_OFFICIAL_REVIEW",
     captureSha256: createHash("sha256").update(input.capturedText, "utf8").digest("hex") };
   return { review, normalized: toJobDatabaseRow(job, compensation.text), stableJobId: stableNormalizedJobId(job), requirementNodes: requirementPersistenceRows(parser, input.capturedText),
@@ -79,7 +88,7 @@ export async function verifyIndependentSourceInventory(admin: AdminClient, actor
   const [observation, run] = await Promise.all([
     admin.from("job_source_run_listings").select("captured_listing,content_sha256,observed_at")
       .eq("run_id", projection.run_id).eq("listing_key", projection.listing_key).maybeSingle(),
-    admin.from("job_source_runs").select("adapter_version,status,enumeration_status").eq("id", projection.run_id).maybeSingle(),
+    admin.from("job_source_runs").select("adapter_version,status,enumeration_status,source_authorization_id,authorization_head_revision,scope_sha256").eq("id", projection.run_id).maybeSingle(),
   ]);
   if (observation.error || run.error || !observation.data || !run.data?.adapter_version
     || run.data.status !== "succeeded" || run.data.enumeration_status !== "complete") {
@@ -87,7 +96,9 @@ export async function verifyIndependentSourceInventory(admin: AdminClient, actor
   }
   const built = buildVerifiedSourceInventory(input, observation.data.captured_listing as unknown as RawJobPosting,
     { jobId: projection.job_id, observedAt: observation.data.observed_at,
-      observedHash: observation.data.content_sha256, adapterVersion: run.data.adapter_version });
+      observedHash: observation.data.content_sha256, adapterVersion: run.data.adapter_version,
+      questionRun: { sourceRunId: projection.run_id, authorizationId: run.data.source_authorization_id!,
+        authorizationHeadRevision: run.data.authorization_head_revision!, scopeSha256: run.data.scope_sha256! } });
   const rpc = admin.rpc.bind(admin) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ data: string | null; error: unknown }>;
   const result = await rpc("ap_verify_source_observation", { p_projection_id: input.projectionId, p_actor_id: actorId,
     p_review: built.review, p_stable_job_id: built.stableJobId, p_job_snapshot: built.snapshot,
@@ -104,14 +115,16 @@ export async function promoteVerifiedSourceInventory(admin: AdminClient, actorId
   const [{ data: observation, error: observationError }, { data: run, error: runError }, { data: plan, error: planError }] = await Promise.all([
     admin.from("job_source_run_listings").select("captured_listing,content_sha256,observed_at")
       .eq("run_id", projection.run_id).eq("listing_key", projection.listing_key).maybeSingle(),
-    admin.from("job_source_runs").select("adapter_version,status,enumeration_status").eq("id", projection.run_id).maybeSingle(),
+    admin.from("job_source_runs").select("adapter_version,status,enumeration_status,source_authorization_id,authorization_head_revision,scope_sha256").eq("id", projection.run_id).maybeSingle(),
     admin.from("ap_feasibility_coverage_plans").select("inventory_version_id").eq("snapshot_id", input.snapshotId)
       .order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   if (observationError || runError || planError || !observation || !plan || !run?.adapter_version
     || run.status !== "succeeded" || run.enumeration_status !== "complete") throw new Error("source_verification_inventory_or_run_unavailable");
   const built = buildVerifiedSourceInventory(input, observation.captured_listing as unknown as RawJobPosting,
-    { jobId: projection.job_id, observedAt: observation.observed_at, observedHash: observation.content_sha256, adapterVersion: run.adapter_version });
+    { jobId: projection.job_id, observedAt: observation.observed_at, observedHash: observation.content_sha256, adapterVersion: run.adapter_version,
+      questionRun: { sourceRunId: projection.run_id, authorizationId: run.source_authorization_id!,
+        authorizationHeadRevision: run.authorization_head_revision!, scopeSha256: run.scope_sha256! } });
   const rpc = admin.rpc.bind(admin) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ data: string | null; error: unknown }>;
   const result = await rpc("ap_promote_verified_source_inventory", {
     p_projection_id: input.projectionId, p_actor_id: actorId, p_criteria_snapshot_id: input.snapshotId,
