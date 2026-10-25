@@ -46,6 +46,14 @@ For outdated resumes, ask what changed since the document was written, whether a
 
 ## Sufficiency and the final review
 
+### Employer application questions as tailoring evidence
+
+The owner's October25 follow-up requires the system to inspect accessible employer application questions, including short-answer prompts, while researching a selected job. These questions can reveal what the employer values beyond the job description. Preserve their exact wording, source, retrieval time, job/rule version, requiredness and any stated answer limit. Use them to choose emphasis and supported examples in the resume and cover letter, and show them beside the owner draft review.
+
+An inferred priority is labelled as an inference. A question about leadership does not prove a management requirement or that the customer led a team. Match its theme only to confirmed customer evidence, retaining actual scope and role attribution. Do not invent an answer or transform a prompt into a qualification. Distinguish observed questions, a successfully checked form with none, a partial inspection, and an unavailable form; absence of captured questions is not evidence that no questions exist.
+
+Collection follows the approved source permissions and access controls. Do not create or submit an application, send customer information, bypass authentication/CAPTCHA, or answer screening/consent questions merely to reveal later pages. Conditional or inaccessible prompts remain an explicit limitation for owner review. This adds tailoring evidence to the existing resume/cover-letter deliverable; it does not create a separate application-answer product. Protocol: [Employer application questions](../runbooks/EMPLOYER_APPLICATION_QUESTIONS.md).
+
 Sufficiency is a documented decision, not a hidden word-count or requirement to choose a minimum number of skills. It must establish:
 
 - Usable confirmed identity/contact fields and a coherent history appropriate to the customer; missing dates and conflicting sources are resolved or explicitly qualified.

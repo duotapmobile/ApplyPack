@@ -34,7 +34,7 @@ vi.mock("@/lib/email/send", () => ({ sendTransactionalEmail: dependencies.sendTr
 import { POST } from "@/app/api/cron/maintenance/route";
 function query() {
   const chain: Record<string, unknown> = {};
-  for (const method of ["select", "update", "delete", "eq", "not", "is", "lt", "lte", "gte", "in", "order", "limit"]) chain[method] = vi.fn(() => chain);
+  for (const method of ["select", "update", "delete", "eq", "not", "is", "lt", "lte", "gte", "in", "order", "limit", "maybeSingle"]) chain[method] = vi.fn(() => chain);
   chain.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ data: [], error: null, count: 0 }).then(resolve);
   return chain;
 }
@@ -235,6 +235,78 @@ describe("maintenance authorization and independent queues", () => {
     expect(dependencies.adminClient.mock.results[0].value.storage.from).not.toHaveBeenCalled();
     expect(dependencies.recordMaintenanceOutcome).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(),
       expect.arrayContaining([{ code: "EXPIRATION_CLEANUP", status: "SUCCEEDED" }]), expect.any(Date), ["BOARD_RECOMPUTATION"]);
+  });
+  function cleanupRace(bucket: string, current: (row: { id: string; bucket: string; storage_path: string; attempts: number }) => unknown) {
+    const row = { id: "cleanup-original", bucket, storage_path: "synthetic/material.pdf", attempts: 2 };
+    const events: string[] = [];
+    const queueQueries: ReturnType<typeof query>[] = [];
+    const remove = vi.fn(async () => { events.push("remove"); return { error: null }; });
+    const from = vi.fn((table: string) => {
+      const chain = query();
+      if (table !== "storage_cleanup_queue") return chain;
+      const index = queueQueries.length;
+      queueQueries.push(chain);
+      chain.then = (resolve: (value: unknown) => unknown, reject: (error: unknown) => unknown) => Promise.resolve().then(() => {
+        if (index === 0) return { data: null, error: null, count: 0 };
+        if (index === 1) { events.push("fetch"); return { data: [row], error: null }; }
+        if (index === 2) { events.push("reread"); return current(row); }
+        events.push("finish"); return { data: null, error: null };
+      }).then(resolve, reject);
+      return chain;
+    });
+    const rpc = vi.fn(async (name: string) => {
+      if (name === "ap_legacy_retention_object_allowed") { events.push("durable-intent"); return { data: true, error: null }; }
+      return { data: 0, error: null };
+    });
+    dependencies.adminClient.mockReturnValue({ from, rpc, storage: { from: vi.fn(() => ({ remove })) } });
+    return { row, events, queueQueries, remove, rpc };
+  }
+  it.each(["operator-drafts", "customer-deliveries", "operator-render-previews"])("preserves a %s upload when committed registration removed the fetched cleanup row", async bucket => {
+    const state = cleanupRace(bucket, () => ({ data: null, error: null }));
+    expect((await POST(request())).status).toBe(200);
+    expect(state.events).toEqual(["fetch", "durable-intent", "reread"]);
+    expect(state.remove).not.toHaveBeenCalled();
+    expect(state.queueQueries).toHaveLength(3);
+    const recheck = state.queueQueries[2];
+    expect(recheck.eq).toHaveBeenCalledWith("id", state.row.id);
+    expect(recheck.eq).toHaveBeenCalledWith("bucket", state.row.bucket);
+    expect(recheck.eq).toHaveBeenCalledWith("storage_path", state.row.storage_path);
+    expect(recheck.lt).toHaveBeenCalledWith("attempts", 20);
+    expect(recheck.lte).toHaveBeenCalledWith("not_before", expect.any(String));
+    expect(recheck.maybeSingle).toHaveBeenCalledOnce();
+    expect(dependencies.processWorkflowTasks).toHaveBeenCalledOnce();
+  });
+  it("removes a still-queued orphan only after the durable intent and exact-row read", async () => {
+    const state = cleanupRace("operator-drafts", row => ({ data: row, error: null }));
+    expect((await POST(request())).status).toBe(200);
+    expect(state.events).toEqual(["fetch", "durable-intent", "reread", "remove", "finish"]);
+    expect(state.remove).toHaveBeenCalledWith([state.row.storage_path]);
+    expect(state.queueQueries[3].delete).toHaveBeenCalledOnce();
+    expect(state.queueQueries[3].eq).toHaveBeenCalledWith("id", state.row.id);
+  });
+  it.each([
+    { data: null, error: { message: "private database detail" } },
+    { data: { id: "replacement-intent", bucket: "operator-drafts", storage_path: "synthetic/material.pdf" }, error: null },
+    { data: { id: "cleanup-original", bucket: "customer-deliveries", storage_path: "synthetic/material.pdf" }, error: null },
+    { data: { id: "cleanup-original", bucket: "operator-drafts", storage_path: "different/material.pdf" }, error: null },
+  ])("fails closed on an unreadable or changed cleanup intent without stopping paid work (%j)", async current => {
+    const state = cleanupRace("operator-drafts", () => current);
+    const response = await POST(request());
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain("private database detail");
+    expect(state.remove).not.toHaveBeenCalled();
+    expect(state.queueQueries).toHaveLength(3);
+    expect(dependencies.processWorkflowTasks).toHaveBeenCalledOnce();
+    expect(dependencies.recordMaintenanceOutcome).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(),
+      expect.arrayContaining([{ code: "EXPIRATION_CLEANUP", status: "FAILED" }]), expect.any(Date), ["BOARD_RECOMPUTATION"]);
+  });
+  it("retains the upload on a lost post-intent queue response", async () => {
+    const state = cleanupRace("operator-drafts", () => { throw new Error("private transport detail"); });
+    const response = await POST(request());
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain("private transport detail");
+    expect(state.remove).not.toHaveBeenCalled();
+    expect(dependencies.reconcileCheckoutInitiations).toHaveBeenCalledOnce();
   });
   it("runs cleanup and paid work despite an existing overdue diagnostic, then records the recovered action", async () => {
     dependencies.recordMaintenanceDiagnosis.mockResolvedValue({

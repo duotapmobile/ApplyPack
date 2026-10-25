@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { checkDatabaseRecoveryRuntime } from "./check-database-recovery-runtime.mjs";
 const hash = (value) => createHash("sha256").update(value).digest("hex");
@@ -61,4 +62,36 @@ test("preserves complete bundled license comment blocks", async () => {
   const { sourceNotices } = await import("../infra/database-recovery/collect-notices.mjs");
   const legal = "/* Copyright Example. Redistribution permitted. NO WARRANTY. */";
   assert.deepEqual(sourceNotices("/* implementation note */\n" + legal + "\nint sample;"), [legal]);
+});
+
+function builderToolCheck(unavailable = []) {
+  assert(unavailable.every((name) => /^[a-z0-9-]+$/u.test(name)));
+  const helper = readFileSync(new URL("../infra/database-recovery/check-build-tools.sh", import.meta.url), "utf8");
+  // Simulate the pinned builder's command inventory without installing software
+  // on the host. Execute the same dependency check sourced by both build phases.
+  const inventory = unavailable.length ? `case "$2" in ${unavailable.join("|")}) return 1;; esac;` : "";
+  return spawnSync(process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "bash",
+    ["--noprofile", "--norc", "-c", helper + `\ncommand() { ${inventory} return 0; }\ncheck_postgres_build_tools`],
+    { encoding: "utf8", timeout: 5_000, windowsHide: true });
+}
+
+test("builder rejects missing bzip2 before extracting the verified archive", () => {
+  const result = builderToolCheck(["bzip2"]);
+  assert.equal(result.error, undefined); assert.equal(result.status, 1);
+  assert.match(result.stderr, /postgres_client_build_tools_missing:bzip2/u);
+  const build = readFileSync(new URL("../infra/database-recovery/build-clients.sh", import.meta.url), "utf8");
+  const prepare = build.slice(build.indexOf("prepare)"), build.indexOf("compile)"));
+  assert(prepare.indexOf("apt-get install") < prepare.indexOf("check_postgres_build_tools"));
+  assert(prepare.indexOf("check_postgres_build_tools") < prepare.indexOf("tar -tjf"));
+  assert.match(prepare, /apt-get install[^;]*\bbzip2\b/u);
+});
+
+test("builder reports all missing compiler, parser, packaging and inspection tools together", () => {
+  const result = builderToolCheck(["bison", "dpkg-deb", "flex", "gcc", "perl", "readelf"]);
+  assert.equal(result.status, 1);
+  assert.equal(result.stderr.trim(), "postgres_client_build_tools_missing:bison dpkg-deb flex gcc perl readelf");
+});
+
+test("complete tool inventory passes without an install or network fallback", () => {
+  const result = builderToolCheck(); assert.equal(result.status, 0); assert.equal(result.stdout, ""); assert.equal(result.stderr, "");
 });

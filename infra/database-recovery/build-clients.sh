@@ -2,13 +2,25 @@
 set -euo pipefail
 umask 022
 source /client-build/client-build-inputs.env
+source /client-build/check-build-tools.sh
 export SOURCE_DATE_EPOCH LANG=C LC_ALL=C TZ=UTC
 die() { printf '%s\n' "$1" >&2; exit 1; }
 [[ $(id -u) == 0 && $(uname -m) == x86_64 ]] || die 'postgres_client_amd64_builder_required'
 case "${1:-}" in
 prepare)
   [[ ! -e /pg-source && ! -e /out ]] || die 'postgres_client_clean_builder_required'
+  # Install build-only dependencies before archive inspection: the pinned Go
+  # builder does not include bzip2. Declare compiler/packaging tools explicitly
+  # as well, instead of relying on incidental contents of the parent image.
+  apt-get update
+  apt-get install -y --no-install-recommends \
+    bash binutils bison bzip2 ca-certificates coreutils curl diffutils dpkg-dev \
+    findutils flex gawk gcc grep gzip libc6-dev libssl-dev make perl pkg-config \
+    sed tar xz-utils zlib1g-dev
+  check_postgres_build_tools
   mkdir -p /pg-source /out/build-evidence /out/root/usr/share/applypack/postgresql
+  dpkg-query -W > /out/build-evidence/build-packages.txt
+  gcc --version > /out/build-evidence/compiler.txt
   curl --proto '=https' --tlsv1.2 --fail --silent --show-error --max-time 120 --max-filesize 33554432 \
     --output /postgresql.tar.bz2 "https://ftp.postgresql.org/pub/source/v${POSTGRES_VERSION}/postgresql-${POSTGRES_VERSION}.tar.bz2"
   printf '%s  %s\n' "$POSTGRES_SOURCE_SHA256" /postgresql.tar.bz2 | sha256sum --check --status
@@ -17,17 +29,12 @@ prepare)
     /out/build-evidence/source-paths.txt || die 'postgres_client_source_path_invalid'
   tar -xjf /postgresql.tar.bz2 --directory=/pg-source --strip-components=1 --no-same-owner --no-same-permissions
   node /client-build/collect-notices.mjs
-  # Build-only dependencies never enter the runtime. Their actual versions are
-  # retained with the source/compiler evidence for this particular image build.
-  apt-get update
-  apt-get install -y --no-install-recommends bison flex libssl-dev zlib1g-dev
-  dpkg-query -W > /out/build-evidence/build-packages.txt
-  gcc --version > /out/build-evidence/compiler.txt
   cp /client-build/client-build-inputs.env /out/root/usr/share/applypack/postgresql/
   cp /pg-source/COPYRIGHT /out/root/usr/share/applypack/postgresql/COPYRIGHT
   ;;
 compile)
   [[ -d /pg-source && ! -e /out/root/usr/lib/postgresql ]] || die 'postgres_client_prepared_builder_required'
+  check_postgres_build_tools
   cd /pg-source
   # No interactive readline (and therefore no ncurses), ICU, LDAP, Kerberos or
   # XML stack. TLS and standard custom-format dump compression remain enabled.

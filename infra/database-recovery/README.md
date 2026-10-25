@@ -15,4 +15,6 @@ Inputs and source evidence:
 
 The build emits `/opt/applypack/database-recovery-runtime.json` with actual compiled client hashes. Capture and bind its canonical digest in the reviewed target registry for the exact candidate image. No registry registration, hosted execution or deployment is performed by this build.
 
+Build dependencies are installed before source extraction. Candidate `cabe2feffd9e04b2692cfb6f77d98c10e22e699d` failed [run 40230422424](https://github.com/duotapmobile/ApplyPack/actions/runs/40230422424) because the pinned Go builder lacked `bzip2`, which `tar -j` needs. The corrected builder explicitly installs the archive tools, GNU utilities, C compiler and linker, Perl, Flex/Bison, Debian packaging tools and TLS/zlib headers, then checks every executable before preparation and offline compilation. Actual package versions remain in `build-packages.txt`. These tools stay in the build stage; the runtime inventory and HIGH/CRITICAL scan gate are unchanged.
+
 Local Docker is unavailable on this host. Shell/JavaScript syntax, executable runtime guards, scanner coverage and container-orchestration tests are local evidence only. The new image build, real roundtrip and HIGH/CRITICAL scan remain mandatory CI gates. The fixture checks exact shipping client/libpq/manifest parity before testing the snapshot.

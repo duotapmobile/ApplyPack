@@ -234,6 +234,22 @@ export async function POST(request: Request) {
     const allowed = await admin.rpc("ap_legacy_retention_object_allowed", { p_bucket: row.bucket, p_path: row.storage_path });
     if (allowed.error || typeof allowed.data !== "boolean") { expirationCleanupFailed = true; continue; }
     if (!allowed.data) continue;
+    // Registration clears upload intents in the same transaction that acquires
+    // the path fence. Re-read after the durable removal intent: registration
+    // that committed first removed this exact row; a later one cannot commit.
+    // A different/requeued intent never inherits this worker's stale authority.
+    try {
+      const current = await admin.from("storage_cleanup_queue")
+        .select("id,bucket,storage_path").eq("id", row.id)
+        .eq("bucket", row.bucket).eq("storage_path", row.storage_path)
+        .lt("attempts", storageCleanupMaxAttempts).lte("not_before", nowIso).maybeSingle();
+      if (current.error) { expirationCleanupFailed = true; continue; }
+      if (!current.data) continue;
+      if (current.data.id !== row.id || current.data.bucket !== row.bucket || current.data.storage_path !== row.storage_path) {
+        expirationCleanupFailed = true;
+        continue;
+      }
+    } catch { expirationCleanupFailed = true; continue; }
     const removal = await admin.storage.from(row.bucket).remove([row.storage_path]);
     if (!removal.error) {
       const deletion = await admin.from("storage_cleanup_queue").delete().eq("id", row.id);
