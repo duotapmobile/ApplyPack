@@ -38,6 +38,17 @@ export const DOCUMENT_GENERATOR_VERSION = [
   `exporter=${DOCUMENT_VERSIONS.exporter}`,
 ].join("|");
 
+// A separate acceptance profile: the default legacy renderer's bytes and
+// version remain unchanged. SQL093 also requires the exact source-aware QA.
+export const SOURCE_AWARE_DOCUMENT_GENERATOR_VERSION = [
+  "applypack-documents",
+  `instructions=${DOCUMENT_VERSIONS.instructions}`,
+  `standardSha256=${DOCUMENT_STANDARD_SHA256}`,
+  "content=applypack-content-2026-10-25.1",
+  "template=applypack-template-2026-10-25.1",
+  `exporter=${DOCUMENT_VERSIONS.exporter}`,
+].join("|");
+
 // Previously released files remain customer-accessible by their immutable
 // quality evidence. This compatibility allowlist must never be used to approve
 // or release new work under an older contract.
@@ -59,6 +70,7 @@ export const LEGACY_DOCUMENT_GENERATOR_VERSION = [
 
 export const SUPPORTED_DOCUMENT_GENERATOR_VERSIONS = Object.freeze([
   DOCUMENT_GENERATOR_VERSION,
+  SOURCE_AWARE_DOCUMENT_GENERATOR_VERSION,
   PREVIOUS_DOCUMENT_GENERATOR_VERSION,
   LEGACY_DOCUMENT_GENERATOR_VERSION,
 ]);
@@ -120,11 +132,11 @@ export const DOCUMENT_REQUIREMENTS = Object.freeze({
 });
 
 export function isCurrentDocumentGeneratorVersion(value: unknown) {
-  return value === DOCUMENT_GENERATOR_VERSION;
+  return value === DOCUMENT_GENERATOR_VERSION || value === SOURCE_AWARE_DOCUMENT_GENERATOR_VERSION;
 }
 
 export function supportedDocumentFontFamily(value: unknown): "Arial" | "Liberation Sans" | null {
-  if (value === DOCUMENT_GENERATOR_VERSION) return "Liberation Sans";
+  if (value === DOCUMENT_GENERATOR_VERSION || value === SOURCE_AWARE_DOCUMENT_GENERATOR_VERSION) return "Liberation Sans";
   if (value === PREVIOUS_DOCUMENT_GENERATOR_VERSION) return "Arial";
   if (value === LEGACY_DOCUMENT_GENERATOR_VERSION) return "Liberation Sans";
   return null;

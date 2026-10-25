@@ -19,6 +19,7 @@ const approvedCommands = [
   ["rehearsal-090", "apply-staging-rehearsal-migration.ps1", ["-Mode", "SelfTest", "-TargetSchemaVersion", "202610250090"]],
   ["rehearsal-091", "apply-staging-rehearsal-migration.ps1", ["-Mode", "SelfTest", "-TargetSchemaVersion", "202610250091"]],
   ["rehearsal-092", "apply-staging-rehearsal-migration.ps1", ["-Mode", "SelfTest", "-TargetSchemaVersion", "202610250092"]],
+  ["rehearsal-093", "apply-staging-rehearsal-migration.ps1", ["-Mode", "SelfTest", "-TargetSchemaVersion", "202610250093"]],
   ["staging-084-backup", "staging-schema084-database-safeguard.ps1", ["-Mode", "SelfTest"]],
   ["production-migration", "apply-production-forward-migrations.ps1", ["-Mode", "SelfTest"]],
   ["production-backup", "production-database-safeguard.ps1", ["-Mode", "SelfTest"]],

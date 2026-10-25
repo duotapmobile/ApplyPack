@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 
 // Only the disposable local stack is selected. Positive historical activation
-// remains tested at086;087 refuses incomplete cleanup support and092 installs
+// remains tested at086;087 refuses incomplete cleanup support and093 installs
 // the reviewed local schema while preserving the purchasing lock.
 function run(command, args, expected) {
   const result = spawnSync(command, args, { cwd: process.cwd(), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 600_000 });
@@ -17,11 +17,11 @@ try {
   run("supabase", ["db", "reset", "--local", "--no-seed", "--version", "202610240087"]);
   run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs", "--historical-087"], "Database contract fixtures passed: 1. Schema phase: 202610240087.");
   run("supabase", ["migration", "up", "--local"]);
-  run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs"], "Database contract fixtures passed: 7. Schema phase: 202610250092.");
+  run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs"], "Database contract fixtures passed: 8. Schema phase: 202610250093.");
 } catch (error) { failure = error; }
 finally {
   try { run("supabase", ["db", "reset", "--local", "--no-seed"]); }
   catch (error) { if (!failure) failure = error; }
 }
 if (failure) throw failure;
-console.log("All 19 historical086 contract fixtures, historical087 missing-executor guard and seven current092 fixtures passed; latest disposable local schema restored.");
+console.log("All 19 historical086 contract fixtures, historical087 missing-executor guard and eight current093 fixtures passed; latest disposable local schema restored.");

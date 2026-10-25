@@ -5,6 +5,7 @@ param(
   [switch]$CapacityPressure,
   [switch]$RetainClusterData,
   [switch]$RuleRevalidationUpgrade,
+  [switch]$SourceAwareDocumentUpgrade,
   [switch]$LegalReceiptUpgrade,
   [string[]]$FixtureNames,
   [string]$MaximumMigrationVersion
@@ -84,11 +85,19 @@ if ($RuleRevalidationUpgrade) {
   $fixtures += @('material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql')
 }
 if ($LegalReceiptUpgrade) {
-  if ($LegacyBackfill -or $CapacityPressure -or $MaximumMigrationVersion -cne '202610250092' -or
-      $migrationFiles[-1].Name -cne '202610250092_material_rule_revalidation.sql') {
-    throw 'Legal receipt upgrade requires the exact isolated historical-to-092 sequence.'
+  if ($LegacyBackfill -or $CapacityPressure -or $MaximumMigrationVersion -cnotin @('202610250092','202610250093') -or
+      $migrationFiles[-1].Name.Split('_')[0] -cne $MaximumMigrationVersion) {
+    throw 'Legal receipt upgrade requires an exact isolated historical-to-092 or093 sequence.'
   }
   $fixtures += @('legal-receipt-074-fixture.sql','legal-receipt-076-verify.sql','legal-receipt-086-verify.sql','legal-receipt-087-verify.sql')
+}
+if ($SourceAwareDocumentUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $MaximumMigrationVersion -cne '202610250093' -or
+      $migrationFiles[-1].Name -cne '202610250093_source_aware_document_acceptance.sql') {
+    throw 'Source-aware document upgrade requires the exact isolated092-to093 sequence.'
+  }
+  $fixtures += @('source-aware-document-upgrade-seed.sql','source-aware-document-upgrade-verify.sql')
+  if ($LegalReceiptUpgrade) { $fixtures += @('material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql') }
 }
 $inputs = @([pscustomobject]@{Kind='bootstrap'; Name='bootstrap.sql'; Path=$bootstrapPath})
 foreach ($migration in $migrationFiles) {
@@ -115,6 +124,14 @@ if ($RuleRevalidationUpgrade) {
     @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250092' }) +
     @($inputs | Where-Object Name -eq 'material-rule-revalidation-upgrade-verify.sql') +
     @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql') })
+}
+if ($SourceAwareDocumentUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250092' }) +
+    @($inputs | Where-Object Name -eq 'source-aware-document-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250093' }) +
+    @($inputs | Where-Object Name -eq 'source-aware-document-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('source-aware-document-upgrade-seed.sql','source-aware-document-upgrade-verify.sql') })
 }
 if ($LegalReceiptUpgrade) {
   $bindingPath = Join-Path $repoRoot 'scripts/launch-legal-contract.mjs'
@@ -155,7 +172,7 @@ create table public.retention_legal_upgrade_preservation_fixture as
     $generated[$name] = [pscustomobject]@{Kind='fixture';Name=$name;Path=$path}
   }
   $historicalNames = @('legal-receipt-074-fixture.sql','legal-receipt-076-verify.sql','legal-receipt-086-verify.sql','legal-receipt-087-verify.sql',
-    'material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql')
+    'material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql','source-aware-document-upgrade-seed.sql','source-aware-document-upgrade-verify.sql')
   $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
     @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610040074' }) +
     @($inputs | Where-Object Name -eq 'legal-receipt-074-fixture.sql') +
@@ -175,6 +192,10 @@ create table public.retention_legal_upgrade_preservation_fixture as
     @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250092' }) +
     @($inputs | Where-Object Name -eq 'material-rule-revalidation-upgrade-verify.sql') +
     @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') +
+    @($inputs | Where-Object Name -eq 'source-aware-document-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250093' }) +
+    @($inputs | Where-Object Name -eq 'source-aware-document-upgrade-verify.sql') +
+    $(if ($MaximumMigrationVersion -ceq '202610250093') { @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') } else { @() }) +
     @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin $historicalNames })
 }
 $sharedFixture = 'reviewed-source-fixture.sql'
@@ -201,8 +222,10 @@ Inputs copied and hashed before execution. No existing database is accessed.
 Rule revalidation upgrade mode: $RuleRevalidationUpgrade. When true, exact091
 public records and document guard definitions are captured before092 and
 compared afterward; the new provider runtime remains disabled.
+Source-aware document upgrade mode: $SourceAwareDocumentUpgrade. When true,
+all existing public records are compared across exact092-to093; drafting stays disabled.
 Legal receipt upgrade mode: $LegalReceiptUpgrade. When true, original074 facts
-pass076/086/087 verification and the exact087 verifier is rerun at091 and092.
+pass076/086/087 verification and the exact087 verifier is rerun at091,092 and the selected093 endpoint.
 Legacy backfill mode: $LegacyBackfill. When true, synthetic paid legacy records
 are inserted after version 202609030021, before all remaining migrations and
 the existing legacy verification fixture. This is not a provider migration

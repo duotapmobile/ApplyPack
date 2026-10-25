@@ -98,3 +98,36 @@ export const current092LockedPhaseSql = `do $$ begin
     or not exists(select 1 from public.ap_commerce_configuration where singleton and not checkout_enabled)
   then raise exception 'current_092_upgrade_phase_not_installed_and_locked'; end if;
 end $$;`;
+
+export const current093LockedPhaseSql = `do $$ begin
+  if (select max(version) from supabase_migrations.schema_migrations) is distinct from '202610250093'
+    or public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610250093'
+    or public.ap_manual_launch_schema_readiness()->>'ready' is distinct from 'true'
+    or not public.ap_one_off_retention_schema_installed()
+    or to_regprocedure('public.ap_claim_expired_service_retention(integer)') is null
+    or to_regprocedure('public.ap_authorize_service_retention_object(uuid,uuid)') is null
+    or to_regprocedure('public.ap_finish_service_retention_object(uuid,uuid)') is null
+    or to_regprocedure('public.ap_apply_retention_restore_overlay(text,text)') is null
+    or not exists(select 1 from public.ap_migration_checkpoints
+      where migration_id='202610240087' and checkpoint='ONE_OFF_SERVICE_RETENTION')
+    or not exists(select 1 from public.ap_migration_checkpoints
+      where migration_id='202610250088' and checkpoint='SERVICE_RETENTION_CLEANUP')
+    or not exists(select 1 from public.ap_migration_checkpoints
+      where migration_id='202610250089' and checkpoint='CONFIRMED_INTAKE')
+    or not exists(select 1 from public.ap_migration_checkpoints
+      where migration_id='202610250090' and checkpoint='MATCHING_EVIDENCE_COMPLETION')
+    or not public.ap_material_draft_pair_schema_installed()
+    or not exists(select 1 from public.ap_migration_checkpoints
+      where migration_id='202610250091' and checkpoint='MATERIAL_DRAFT_PAIR_WORKFLOW')
+    or not public.ap_material_rule_revalidation_schema_installed()
+    or not public.ap_source_aware_document_schema_installed()
+    or not exists(select 1 from public.ap_migration_checkpoints
+      where migration_id='202610250093' and checkpoint='SOURCE_AWARE_DOCUMENT_ACCEPTANCE')
+    or not exists(select 1 from public.ap_migration_checkpoints
+      where migration_id='202610250092' and checkpoint='MATERIAL_RULE_REVALIDATION')
+    or not exists(select 1 from public.ap_material_draft_runtime where singleton and not enabled and policy_id is null)
+    or exists(select 1 from public.ap_material_draft_permits)
+    or not exists(select 1 from public.ap_checkout_mode_configuration where singleton and mode='LOCKED')
+    or not exists(select 1 from public.ap_commerce_configuration where singleton and not checkout_enabled)
+  then raise exception 'current_093_upgrade_phase_not_installed_and_locked'; end if;
+end $$;`;

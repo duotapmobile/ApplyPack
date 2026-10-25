@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { pdfStructureIsValid, pdfCatalogLanguageMatches } from "@/lib/documents/pdf-validation";
 import {
   DOCUMENT_GENERATOR_VERSION,
+  SOURCE_AWARE_DOCUMENT_GENERATOR_VERSION,
   DOCUMENT_FONT_CONTRACT,
   DOCUMENT_REQUIREMENTS,
   DOCUMENT_STANDARD_SHA256,
@@ -18,8 +19,22 @@ import {
   selectDocumentDelivery,
   supportedDocumentFontFamily,
 } from "@/lib/documents/requirements";
+import { DRAFT_DOCX_GENERATOR_VERSION } from "@/lib/documents/draft-format";
 
 describe("versioned document requirements", () => {
+  it("accepts only the exact source-aware profile while preserving the default generator bytes", () => {
+    expect(SOURCE_AWARE_DOCUMENT_GENERATOR_VERSION).toBe(DRAFT_DOCX_GENERATOR_VERSION);
+    expect(SOURCE_AWARE_DOCUMENT_GENERATOR_VERSION).not.toBe(DOCUMENT_GENERATOR_VERSION);
+    expect(DOCUMENT_VERSIONS.content).toBe("applypack-content-2026-10-19.1");
+    expect(DOCUMENT_VERSIONS.template).toBe("applypack-template-2026-10-19.1");
+    expect(isCurrentDocumentGeneratorVersion(SOURCE_AWARE_DOCUMENT_GENERATOR_VERSION)).toBe(true);
+    expect(isSupportedDocumentGeneratorVersion(SOURCE_AWARE_DOCUMENT_GENERATOR_VERSION)).toBe(true);
+    expect(supportedDocumentFontFamily(SOURCE_AWARE_DOCUMENT_GENERATOR_VERSION)).toBe("Liberation Sans");
+    for (const value of [`${SOURCE_AWARE_DOCUMENT_GENERATOR_VERSION} `, SOURCE_AWARE_DOCUMENT_GENERATOR_VERSION.replace("2026-10-25.1", "2026-10-26.1")]) {
+      expect(isCurrentDocumentGeneratorVersion(value)).toBe(false);
+      expect(isSupportedDocumentGeneratorVersion(value)).toBe(false);
+    }
+  });
   it("reads language from the catalog, never page text or an unrelated object", () => {
     const valid = Buffer.from("%PDF-1.7\n1 0 obj\n<</Type/Catalog /Lang(en-US)>>\nendobj\ntrailer<</Root 1 0 R>>");
     expect(pdfCatalogLanguageMatches(valid, "en-US")).toBe(true);

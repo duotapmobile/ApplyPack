@@ -99,7 +99,7 @@ describe("real DOCX from the exact reviewed draft source", () => {
     const input = inputFor(fixture()), output = await prepareDraftDocx(input, now);
     expect(output.generatorVersion).toBe(DRAFT_DOCX_GENERATOR_VERSION);
     expect(output.generatorVersion).not.toBe(DOCUMENT_GENERATOR_VERSION);
-    expect(isCurrentDocumentGeneratorVersion(output.generatorVersion)).toBe(false);
+    expect(isCurrentDocumentGeneratorVersion(output.generatorVersion)).toBe(true);
     for (const artifact of [output.resume, output.coverLetter]) {
       expect(artifact.buffer.subarray(0, 2).toString()).toBe("PK");
       expect(artifact.inspection.passed).toBe(true);

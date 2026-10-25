@@ -23,9 +23,9 @@ import type { DocumentRenderInput } from "@/lib/documents/renderer";
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 type Command = { input: Record<string, unknown>; constructor: { name: string } };
 describe("new-profile isolated-worker private buffer ownership", () => {
-  let cleared: Array<{ bytes: Buffer; before: string }>, input: DocumentRenderInput, response: Record<string, unknown>;
+  let cleared: Array<{ bytes: Buffer; before: string }>, downloaded: Uint8Array[], input: DocumentRenderInput, response: Record<string, unknown>;
   beforeEach(() => {
-    vi.clearAllMocks(); deps.deleted.length = 0; cleared = [];
+    vi.clearAllMocks(); deps.deleted.length = 0; cleared = []; downloaded = [];
     const fill = Buffer.prototype.fill;
     vi.spyOn(Buffer.prototype, "fill").mockImplementation(function (this: Buffer, ...args) {
       if (args[0] === 0 && (this.subarray(0, 12).toString().startsWith("%PDF-private") || this.toString().startsWith("private-page"))) cleared.push({ bytes: this, before: this.toString() });
@@ -47,7 +47,7 @@ describe("new-profile isolated-worker private buffer ownership", () => {
     deps.send.mockImplementation(async (command: Command) => {
       const key = String(command.input.Key);
       if (command.constructor.name === "DeleteObjectCommand") deps.deleted.push(key);
-      if (command.constructor.name === "GetObjectCommand") return { Body: { transformToByteArray: async () => Buffer.from(key.endsWith(".pdf") ? "%PDF-private" : `private-page-${key.endsWith("2.png") ? 2 : 1}`) } };
+      if (command.constructor.name === "GetObjectCommand") return { Body: { transformToByteArray: async () => { const bytes = new TextEncoder().encode(key.endsWith(".pdf") ? "%PDF-private" : `private-page-${key.endsWith("2.png") ? 2 : 1}`); downloaded.push(bytes); return bytes; } } };
       return {};
     });
     deps.validate.mockImplementation(() => { throw new Error("semantic/link validation failed"); });
@@ -58,6 +58,7 @@ describe("new-profile isolated-worker private buffer ownership", () => {
     await expect(renderWithDocumentWorker(input)).rejects.toThrow("semantic/link validation failed");
     expect(cleared.map((row) => row.before)).toEqual(["%PDF-private", "private-page-1", "private-page-2"]);
     expect(cleared.every((row) => row.bytes.every((byte) => byte === 0))).toBe(true);
+    expect(downloaded).toHaveLength(3); expect(downloaded.every((bytes) => bytes.every((byte) => byte === 0))).toBe(true);
     expect(input.docx.toString()).toBe("caller-owned-docx"); expect(deps.deleted).toHaveLength(4);
   });
   it("clears completed downloads if the second image cannot be read", async () => {
@@ -66,10 +67,12 @@ describe("new-profile isolated-worker private buffer ownership", () => {
     await expect(renderWithDocumentWorker(input)).rejects.toThrow("second image unavailable");
     expect(cleared.map((row) => row.before)).toEqual(["%PDF-private", "private-page-1"]);
     expect(cleared.every((row) => row.bytes.every((byte) => byte === 0))).toBe(true); expect(deps.deleted).toHaveLength(4);
+    expect(downloaded).toHaveLength(2); expect(downloaded.every((bytes) => bytes.every((byte) => byte === 0))).toBe(true);
   });
   it("transfers successful downloaded buffers without clearing the caller's result", async () => {
     deps.validate.mockReturnValue({ schemaVersion: "unit-cleanup-only" });
     const result = await renderWithDocumentWorker(input);
     expect(result.searchablePdf.toString()).toBe("%PDF-private"); expect(result.pageImages[1].bytes.toString()).toBe("private-page-2"); expect(cleared).toHaveLength(0);
+    expect(downloaded).toHaveLength(3); expect(downloaded.every((bytes) => bytes.every((byte) => byte === 0))).toBe(true);
   });
 });

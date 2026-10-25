@@ -16,6 +16,7 @@
     "test:database": "node scripts/run-supabase-retention-upgrade-test.mjs && node scripts/run-supabase-legal-upgrade-test.mjs && node scripts/run-supabase-inventory-upgrade-test.mjs && node scripts/run-supabase-legacy-board-upgrade-test.mjs && node scripts/run-supabase-rehearsal-upgrade-test.mjs",
     "test:launch-operations": "node scripts/run-windows-release-self-test.mjs launch-operations",
     "test:rule-revalidation-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-092",
+    "test:source-aware-document-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-093",
     "test:rehearsal-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-085",
     "test:staging-schema084-backup": "node scripts/run-windows-release-self-test.mjs staging-084-backup",
     "test:production-migration": "node scripts/run-windows-release-self-test.mjs production-migration",

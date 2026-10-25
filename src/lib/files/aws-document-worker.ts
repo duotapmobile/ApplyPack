@@ -186,7 +186,10 @@ async function readObject(s3: S3Client, bucket: string, key: string, clearInvali
     abortSignal: AbortSignal.timeout(15_000),
   });
   if (!result.Body) throw new Error("document_worker_output_missing");
-  const bytes = Buffer.from(await result.Body.transformToByteArray());
+  const downloaded = await result.Body.transformToByteArray();
+  let bytes: Buffer;
+  try { bytes = Buffer.from(downloaded); }
+  finally { if (clearInvalid) downloaded.fill(0); }
   if (!bytes.length || bytes.length > 10 * 1024 * 1024) {
     if (clearInvalid) bytes.fill(0);
     throw new Error("document_worker_output_bound");
