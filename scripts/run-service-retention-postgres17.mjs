@@ -8,14 +8,15 @@ import { fileURLToPath } from "node:url";
 // Test-only server image. Never import this image into a deployed worker: its
 // server/tooling packages have a separate vulnerability profile from runtime.
 export const RETENTION_POSTGRES_IMAGE = "postgres:17-trixie@sha256:3518071376d0b6156b02e1db2747a78511b5b9dc3763cc79c506ebe2dc2ee71c";
-const schema = "202610250100";
+const schema = "202610260102";
 const version = "17.11";
 const fixtureLabel = "service-retention-postgres17";
 const bin = "/usr/lib/postgresql/17/bin/";
 const directory = "/tmp/applypack-retention";
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
-const fixtureNames = Object.freeze(["one-off-service-retention.sql", "service-retention-cleanup.sql", "confirmed-intake.sql", "reviewed-commute.sql", "material-draft-pair-workflow.sql", "material-rule-revalidation.sql", "source-aware-document-acceptance.sql", "reference-aware-draft-delivery.sql", "service-error-contract-and-triage.sql", "material-draft-change-requests.sql", "protected-archive-lifecycle.sql", "scoped-service-error-repairs.sql", "automatic-research-preparation.sql", "protected-archive-limited-role.sql", "protected-archive-races.sql", "service-retention-races.sql", "material-draft-stage-claiming.sql"]);
+const fixtureNames = Object.freeze(["one-off-service-retention.sql", "service-retention-cleanup.sql", "confirmed-intake.sql", "reviewed-commute.sql", "material-draft-pair-workflow.sql", "material-rule-revalidation.sql", "source-aware-document-acceptance.sql", "reference-aware-draft-delivery.sql", "service-error-contract-and-triage.sql", "material-draft-change-requests.sql", "protected-archive-lifecycle.sql", "scoped-service-error-repairs.sql", "automatic-research-preparation.sql", "material-clarification-confirmation.sql", "service-repair-case-state.sql", "protected-archive-limited-role.sql", "protected-archive-races.sql", "service-retention-races.sql", "material-clarification-races.sql", "material-draft-stage-claiming.sql", "service-repair-case-state-races.sql"]);
 const fixtureMarkers = Object.freeze(fixtureNames.map((_, index) => `RETENTION_PG17_FIXTURE_${index + 1}_COMPLETE`));
+const isolatedFixture = "service-repair-case-state-races.sql";
 
 export function loadRetentionPostgresInputs() {
   const root = new URL("../", import.meta.url);
@@ -25,14 +26,16 @@ export function loadRetentionPostgresInputs() {
     const bytes = readFileSync(new URL(location, root));
     const text = bytes.toString("utf8"); assert(Buffer.from(text, "utf8").equals(bytes), "RETENTION_FIXTURE_INVALID_UTF8");
     let source = text.replace(/^\uFEFF/u, "");
-    if (kind === "fixture") source = source.replace(/^\\ir (reviewed-source-fixture|protected-archive-lifecycle)\.sql\r?$/gmu, (_line, helperName) => {
+    const expand = (text, depth = 0) => text.replace(/^\\ir (reviewed-source-fixture|protected-archive-lifecycle|service-repair-case-state-fixture)\.sql\r?$/gmu, (_line, helperName) => {
+      assert(depth < 2, "RETENTION_FIXTURE_HELPER_DEPTH");
       const helperBytes = readFileSync(new URL(`tests/integration/${helperName}.sql`, root));
-      const helper = helperBytes.toString("utf8").replace(/^\uFEFF/u, "");
+      const helper = expand(helperBytes.toString("utf8").replace(/^\uFEFF/u, ""), depth + 1);
       assert(Buffer.from(helperBytes.toString("utf8"), "utf8").equals(helperBytes)
         && helper.length > 0 && helper.length < 2 * 1024 * 1024 && !/^\s*\\/mu.test(helper), "RETENTION_FIXTURE_HELPER_INVALID");
       if (!helpers.some((entry) => entry.name === `${helperName}.sql`)) helpers.push({ kind: "helper", name: `${helperName}.sql`, sha256: sha256(helperBytes), executedSha256: sha256(helper) });
       return helper;
     });
+    if (kind === "fixture") source = expand(source);
     assert(source.length > 0 && source.length < 2 * 1024 * 1024, "RETENTION_FIXTURE_INPUT_BOUND");
     assert(!/^\s*\\/mu.test(source), "RETENTION_FIXTURE_META_COMMAND_FORBIDDEN");
     inputs.push({ kind, name, sha256: sha256(bytes), executedSha256: sha256(source), source });
@@ -44,19 +47,23 @@ export function loadRetentionPostgresInputs() {
   assert.equal(migrations.at(-1).slice(0, 12), schema, "RETENTION_FIXTURE_SCHEMA_CHANGED");
   for (const name of migrations) add("migration", name, `supabase/migrations/${name}`);
   for (const name of fixtureNames) add("fixture", name, `tests/integration/${name}`);
-  const statements = inputs.map(({ kind, name, source }) => {
+  const statement = ({ kind, name, source }) => {
     if (kind === "fixture") return `${source}\nselect '${fixtureMarkers[fixtureNames.indexOf(name)]}';`;
     if (kind !== "migration") return source;
     const id = name.slice(0, 12); const migrationName = name.slice(13, -4); const delimiter = `$retention_source_${id}$`;
     assert(!source.includes(delimiter), "RETENTION_FIXTURE_DELIMITER_COLLISION");
     return `${source}\ninsert into supabase_migrations.schema_migrations(version,name,statements) values('${id}','${migrationName}',array[${delimiter}${source}${delimiter}]);`;
-  });
-  const sql = `do $$ begin
+  };
+  const header = `do $$ begin
     if current_setting('server_version') not like '${version}%' or current_setting('listen_addresses')<>'127.0.0.1'
       or current_database()<>'postgres' or inet_server_addr()<>'127.0.0.1'::inet then raise exception 'isolated_postgres17_required'; end if;
-    end $$;\n${statements.join("\n")}\n`;
-  assert(Buffer.byteLength(sql) < 16 * 1024 * 1024, "RETENTION_FIXTURE_BATCH_BOUND");
-  return { sql, hashes: [...inputs.map(({ kind, name, sha256, executedSha256 }) => ({ kind, name, sha256, executedSha256 })), ...helpers], migrationCount: migrations.length };
+    end $$;\n`;
+  // Both race suites commit their fictional lifecycle and use fixed IDs. A
+  // second fresh cluster preserves their exact bytes and independent claims.
+  const sql = header + inputs.filter(item => item.name !== isolatedFixture).map(statement).join("\n") + "\n";
+  const isolatedSql = header + inputs.filter(item => item.kind !== "fixture" || item.name === isolatedFixture).map(statement).join("\n") + "\n";
+  assert([sql, isolatedSql].every(value => Buffer.byteLength(value) < 16 * 1024 * 1024), "RETENTION_FIXTURE_BATCH_BOUND");
+  return { sql, isolatedSql, hashes: [...inputs.map(({ kind, name, sha256, executedSha256 }) => ({ kind, name, sha256, executedSha256 })), ...helpers], migrationCount: migrations.length };
 }
 
 function validateImage(metadata) {
@@ -100,7 +107,8 @@ export function runRetentionPostgres17(args = [], { execute = execFileSync, envi
   const docker = (parameters, input, timeout = 30000) => execute("docker", ["--host", host, ...parameters], {
     input, encoding: "utf8", timeout, maxBuffer: 16 * 1024 * 1024, windowsHide: true, env: childEnvironment,
   });
-  const { sql, hashes, migrationCount } = inputs();
+  const { sql, isolatedSql, hashes, migrationCount } = inputs();
+  assert(typeof sql === "string" && typeof isolatedSql === "string" && isolatedSql.length > 0, "RETENTION_FIXTURE_ISOLATED_INPUT_REQUIRED");
   const metadata = JSON.parse(docker(["image", "inspect", RETENTION_POSTGRES_IMAGE]))[0];
   const volumes = validateImage(metadata);
   const runId = uuid(); assert(/^[a-f0-9-]{36}$/u.test(runId), "RETENTION_FIXTURE_RUN_ID");
@@ -112,11 +120,11 @@ export function runRetentionPostgres17(args = [], { execute = execFileSync, envi
   const executeLocal = (binary, parameters, input, timeout) => docker(["exec", "-i", name, "/usr/bin/env", "-i",
     `PATH=${bin}:/usr/bin:/bin`, "HOME=/tmp", "LANG=C.UTF-8", "LC_ALL=C.UTF-8", "TZ=UTC",
     "PGOPTIONS=-c statement_timeout=60000 -c lock_timeout=10000", binary, ...parameters], input, timeout);
-  let attemptedCreate = false; let started = false; let result; let primaryError;
+  let attemptedCreate = false; let started = false; let result; let primaryError; let clusterData = `${directory}/data`;
   try {
     attemptedCreate = true;
     docker(["create", "--name", name, "--label", `io.applypack.fixture=${fixtureLabel}`, "--label", `io.applypack.fixture-run=${runId}`,
-      ...isolation, "--entrypoint", "/bin/sleep", metadata.Id, "900"]);
+      ...isolation, "--entrypoint", "/bin/sleep", metadata.Id, "1500"]);
     const state = JSON.parse(docker(["inspect", name]))[0];
     validateOwnedContainer(state, name, runId); validateContainerIsolation(state, metadata.Id);
     docker(["start", name]);
@@ -126,10 +134,19 @@ export function runRetentionPostgres17(args = [], { execute = execFileSync, envi
       `-h 127.0.0.1 -p 5432 -k ${directory} -c max_connections=12 -c shared_buffers=16MB -c unix_socket_permissions=0700`], undefined, 45000);
     started = true;
     const output = executeLocal(`${bin}psql`, ["-X", "-q", "-h", "127.0.0.1", "-p", "5432", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1"], sql, 600000);
-    for (const marker of fixtureMarkers) assert(output.split(/\r?\n/u).some((line) => line.trim() === marker), `RETENTION_FIXTURE_MARKER_MISSING:${marker}`);
+    for (const marker of fixtureMarkers.slice(0, -1)) assert(output.split(/\r?\n/u).some((line) => line.trim() === marker), `RETENTION_FIXTURE_MARKER_MISSING:${marker}`);
+    executeLocal(`${bin}pg_ctl`, ["-D", clusterData, "-w", "-t", "30", "-m", "fast", "stop"], undefined, 45000);
+    started = false; clusterData = `${directory}/case-data`;
+    executeLocal(`${bin}initdb`, ["-D", clusterData, "-U", "postgres", "--auth-local=trust", "--auth-host=trust", "--encoding=UTF8", "--no-locale"]);
+    executeLocal(`${bin}pg_ctl`, ["-D", clusterData, "-l", `${directory}/case-postgres.log`, "-w", "-t", "30", "start", "-o",
+      `-h 127.0.0.1 -p 5432 -k ${directory} -c max_connections=12 -c shared_buffers=16MB -c unix_socket_permissions=0700`], undefined, 45000);
+    started = true;
+    const isolatedOutput = executeLocal(`${bin}psql`, ["-X", "-q", "-h", "127.0.0.1", "-p", "5432", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1"], isolatedSql, 600000);
+    const isolatedMarker = fixtureMarkers.at(-1);
+    assert(isolatedOutput.split(/\r?\n/u).some(line => line.trim() === isolatedMarker), `RETENTION_FIXTURE_MARKER_MISSING:${isolatedMarker}`);
     result = { status: "PASS", scope: "fictional-postgres17-retention-concurrency", postgresVersion: version, schemaVersion: schema,
       imageId: metadata.Id, imageDigest: RETENTION_POSTGRES_IMAGE.split("@")[1], migrationCount, fixtureCount: fixtureNames.length,
-      inputHashes: hashes, sqlSha256: sha256(sql), actualIndependentConnections: true, networkMode: "none", publishedPorts: 0,
+      inputHashes: hashes, sqlSha256: sha256(sql), isolatedSqlSha256: sha256(isolatedSql), freshClusterCount: 2, actualIndependentConnections: true, networkMode: "none", publishedPorts: 0,
       providerCalls: 0, hostedProof: false };
   } catch (error) { primaryError = error; }
   finally {
@@ -138,7 +155,7 @@ export function runRetentionPostgres17(args = [], { execute = execFileSync, envi
         const present = docker(["ps", "--all", "--quiet", "--filter", `name=^/${name}$`]).trim();
         if (present) {
           const state = JSON.parse(docker(["inspect", name]))[0]; validateOwnedContainer(state, name, runId);
-          try { if (started) executeLocal(`${bin}pg_ctl`, ["-D", `${directory}/data`, "-w", "-t", "30", "-m", "immediate", "stop"], undefined, 45000); }
+          try { if (started) executeLocal(`${bin}pg_ctl`, ["-D", clusterData, "-w", "-t", "30", "-m", "immediate", "stop"], undefined, 45000); }
           finally { docker(["rm", "--force", "--volumes", name]); }
         }
         assert.equal(docker(["ps", "--all", "--quiet", "--filter", `name=^/${name}$`]).trim(), "", "RETENTION_FIXTURE_TEARDOWN_INCOMPLETE");

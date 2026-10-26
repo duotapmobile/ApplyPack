@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url';
 
 export const RESEARCH_POSTGRES_IMAGE='postgres:17-trixie@sha256:3518071376d0b6156b02e1db2747a78511b5b9dc3763cc79c506ebe2dc2ee71c';
 export const RESEARCH_NODE_IMAGE='node:22-bookworm-slim@sha256:ea11b74b986d520137cdef9a5346e447a00f275ecc4abc0055b7151226231e09';
-const schema='202610250100', label='research-route-postgres17', bin='/usr/lib/postgresql/17/bin/';
+const schema='202610260102', label='research-route-postgres17', bin='/usr/lib/postgresql/17/bin/';
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 const root=fileURLToPath(new URL('../',import.meta.url));
 const selections=Object.freeze(['src','supabase/migrations','package.json','package-lock.json','tsconfig.json',

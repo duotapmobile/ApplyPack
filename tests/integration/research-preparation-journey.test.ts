@@ -18,7 +18,7 @@ import { POST as issueInvitation } from "@/app/api/admin/search-checkout-invitat
 const id = (n: number) => `a1000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const origin = "https://applypack.work";
 function post(path: string, body: unknown) { return new Request(`${origin}${path}`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(body) }); }
-async function response(response: Response, status: number) { const body = await response.json(); expect(body, JSON.stringify(body)).toBeDefined(); expect(response.status, JSON.stringify(body)).toBe(status); return body; }
+async function response(response: Response, status: number, diagnostics?: unknown) { const body = await response.json(); expect(body, JSON.stringify(body)).toBeDefined(); expect(response.status, JSON.stringify({ body, diagnostics })).toBe(status); return body; }
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 it("produces automatic research through actual collection, owner-review, evaluation and feasibility routes without a manual plan", async () => {
   const qualified = process.env.AP_RESEARCH_TEST_CASE === "QUALIFIED", count = qualified ? 10 : 1, bound = qualified ? 20 : 10;
@@ -104,9 +104,40 @@ it("produces automatic research through actual collection, owner-review, evaluat
   if (qualified) {
     const assessment = await database.sql("select to_jsonb(a) from public.ap_feasibility_assessments a where state='COMPLETE'", true);
     expect(assessment).toMatchObject({ outcome: "LIKELY", preliminarily_deliverable_count: 10, reviewable_count: 0, excluded_count: 0 });
-    await response(await issueInvitation(post("/api/admin/search-checkout-invitations", { draftId: id(1), snapshotId: id(2), assessmentId: assessment.id,
-      rationale: "Reviewed all ten distinct fictional opportunities and their exact confirmed evidence before inviting payment." })), 201);
-    expect(await database.sql("select count(*)::int from public.ap_search_checkout_invitations", true)).toBe(1);
+    const invitationRequest = { draftId: id(1), snapshotId: id(2), assessmentId: assessment.id,
+      rationale: "Reviewed all ten distinct fictional opportunities and their exact confirmed evidence before inviting payment." };
+    // A completed assessment does not provision operator capacity. Prove the
+    // isolated, unconfigured database still rejects admission before setup.
+    expect(await database.sql("select count(*)::int from public.ap_capacity_pools where resource='SEARCH'", true)).toBe(0);
+    const failuresBeforeAdmission = database.failures.length;
+    await response(await issueInvitation(post("/api/admin/search-checkout-invitations", invitationRequest)), 409, database.failures);
+    expect(database.failures.slice(failuresBeforeAdmission)).toEqual([expect.stringContaining("capacity_unconfigured")]);
+    expect(await database.sql("select count(*)::int from public.ap_search_checkout_invitations", true)).toBe(0);
+    expect(await database.sql("select count(*)::int from public.ap_capacity_allocations", true)).toBe(0);
+
+    // Fictional operator staffing is a separate administrator decision. Invoke
+    // the real capacity control; do not seed allocations or enable checkout.
+    await database.script(`begin;
+      insert into auth.users(id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
+        values('${id(80)}','00000000-0000-4000-8000-000000000000','authenticated','authenticated','research-capacity-admin@example.invalid','',now(),'{}','{}',now(),now());
+      update public.profiles set role='admin' where id='${id(80)}';
+      commit;`);
+    expect(await database.sql(`select to_jsonb(public.ap_set_manual_launch_capacity_state('SEARCH',true,'${id(80)}','Fictional isolated research journey staffing approval.'))`)).toBe(true);
+    expect(await database.sql(`select to_jsonb(role) from public.profiles where id='${boundaries.operatorId}'`, true)).toBe("operator");
+    const failuresAfterSetup = database.failures.length;
+    const invitation = await response(await issueInvitation(post("/api/admin/search-checkout-invitations", invitationRequest)), 201, database.failures);
+    expect(database.failures.slice(failuresAfterSetup)).toEqual([]);
+    expect(await database.sql(`select jsonb_build_object('invitationCount',(select count(*) from public.ap_search_checkout_invitations),
+      'allocationCount',(select count(*) from public.ap_capacity_allocations),'bound',exists(
+        select 1 from public.ap_search_checkout_invitations i join public.ap_capacity_allocations a on a.id=i.capacity_allocation_id
+          join public.ap_capacity_buckets b on b.id=a.bucket_id join public.ap_capacity_pools p on p.id=b.pool_id
+        where i.id='${invitation.invitationId}' and i.draft_id='${id(1)}' and i.snapshot_id='${id(2)}' and i.assessment_id='${assessment.id}'
+          and i.issued_by='${boundaries.operatorId}' and a.draft_id=i.draft_id and a.criteria_revision_id=i.snapshot_id and a.customer_id is null
+          and a.request_key='search-invitation:'||i.id::text and a.units=1 and a.lifecycle='RESERVED' and a.debit_disposition='HELD'
+          and a.expires_at=i.expires_at and i.expires_at>clock_timestamp() and p.resource='SEARCH' and p.enabled))`, true))
+      .toEqual({ invitationCount: 1, allocationCount: 1, bound: true });
+    expect(await database.sql("select jsonb_build_object('checkoutEnabled',checkout_enabled,'salesActivationApproved',sales_activation_approved) from public.ap_commerce_configuration where singleton", true))
+      .toEqual({ checkoutEnabled: false, salesActivationApproved: false });
   } else expect(await database.sql("select count(*)::int from public.ap_feasibility_assessments where state='COMPLETE' and outcome='LIMITED' and preliminarily_deliverable_count=0 and reviewable_count=0 and excluded_count=1", true)).toBe(1);
   prepared = await response(await readPreparation(new Request(`${origin}/api/admin/research-preparation?snapshotId=${id(2)}`)), 200);
   expect(prepared.listings[0].admitted).toBe(true);

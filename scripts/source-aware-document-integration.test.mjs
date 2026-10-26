@@ -16,7 +16,9 @@ for (const [flag, version, count, containsRule, containsSource] of [
   ["--historical-097", "202610250097", 12, true, true],
   ["--historical-098", "202610250098", 13, true, true],
   ["--historical-099", "202610250099", 14, true, true],
-  [null, "202610250100", 15, true, true],
+  ["--historical-100", "202610250100", 15, true, true],
+  ["--historical-101", "202610250101", 16, true, true],
+  [null, "202610260102", 17, true, true],
 ]) {
   test(`the real fixture selector executes only its exact ${version} phase`, () => {
     const source = readFileSync(new URL("./run-supabase-db-tests-v2.mjs", import.meta.url), "utf8")

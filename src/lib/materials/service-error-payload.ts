@@ -8,10 +8,11 @@ import { decryptSensitivePayload, encryptSensitivePayload, sensitivePayloadConfi
   type KmsEnvelopeAdapter, type SensitivePayloadConfiguration } from "@/lib/security/sensitive-payload";
 import { ServiceErrorContractError, serviceErrorCanonicalJson, serviceErrorSha256,
   SERVICE_ERROR_REPORT_PURPOSE, SERVICE_ERROR_REVIEW_PURPOSE } from "./service-error-contract";
+import { REPAIR_FEEDBACK_PURPOSE, REPAIR_CASE_EVENT_PURPOSE } from "./service-repair-followup";
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/), uuid = z.uuid();
 const inputSchema = z.object({ customerId: uuid, materialLineId: uuid, requestId: uuid, payloadId: uuid,
-  purpose: z.enum([SERVICE_ERROR_REPORT_PURPOSE, SERVICE_ERROR_REVIEW_PURPOSE]), sha256: hash }).strict();
+  purpose: z.enum([SERVICE_ERROR_REPORT_PURPOSE, SERVICE_ERROR_REVIEW_PURPOSE, REPAIR_FEEDBACK_PURPOSE, REPAIR_CASE_EVENT_PURPOSE]), sha256: hash }).strict();
 export type ServiceErrorPayloadInput = z.infer<typeof inputSchema>;
 const receiptSchema = z.object({ id: uuid, customer_id: uuid, content_sha256: hash,
   retention_state: z.literal("ACTIVE"), encryption_context_hash: hash }).strict();

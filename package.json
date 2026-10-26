@@ -56,6 +56,9 @@
     "test:fixtures": "node scripts/generate-soft-opening-fixtures.mjs",
     "maintenance:once": "node scripts/run-maintenance-once.mjs",
     "test:automatic-research-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-100",
+    "test:repair-case-state-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-102",
+    "test:material-clarification-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-101",
+    "test:material-clarification-integration": "node --test scripts/material-clarification-integration.test.mjs",
     "test:automatic-research-integration": "node --test scripts/automatic-research-integration.test.mjs"
   },
   "dependencies": {

@@ -16,6 +16,9 @@ param(
   [ValidateSet('LIMITED','QUALIFIED')]
   [string]$ResearchJourneyCase = 'LIMITED',
   [switch]$ResearchPreparationUpgrade,
+  [switch]$MaterialClarificationUpgrade,
+  [switch]$RepairCaseStateUpgrade,
+  [switch]$ClarificationCaseUpgrade,
   [switch]$LegalReceiptUpgrade,
   [string[]]$FixtureNames,
   [string]$MaximumMigrationVersion
@@ -101,9 +104,9 @@ if ($RuleRevalidationUpgrade) {
   $fixtures += @('material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql')
 }
 if ($LegalReceiptUpgrade) {
-  if ($LegacyBackfill -or $CapacityPressure -or $MaximumMigrationVersion -cnotin @('202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098') -or
+  if ($LegacyBackfill -or $CapacityPressure -or $MaximumMigrationVersion -cnotin @('202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102') -or
       $migrationFiles[-1].Name.Split('_')[0] -cne $MaximumMigrationVersion) {
-    throw 'Legal receipt upgrade requires an exact isolated historical-to-092,093,094,095,096,097 or098 sequence.'
+    throw 'Legal receipt upgrade requires an exact isolated historical-to-092 through102 sequence.'
   }
   $fixtures += @('legal-receipt-074-fixture.sql','legal-receipt-076-verify.sql','legal-receipt-086-verify.sql','legal-receipt-087-verify.sql')
 }
@@ -170,6 +173,28 @@ if ($ResearchPreparationUpgrade) {
   }
   if (-not $FixtureNames) { $fixtures = @() }
   $fixtures += @('research-preparation-upgrade-seed.sql','research-preparation-upgrade-verify.sql')
+}
+if ($MaterialClarificationUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $ServiceRepairUpgrade -or $LegalReceiptUpgrade -or
+      $MaximumMigrationVersion -cne '202610250101' -or $migrationFiles[-1].Name -cne '202610250101_material_clarification_confirmation.sql') {
+    throw 'Forward upgrade requires the exact isolated100-to101 preservation sequence.'
+  }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('material-clarification-upgrade-seed.sql','material-clarification-upgrade-verify.sql')
+}
+if ($RepairCaseStateUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $ServiceRepairUpgrade -or $LegalReceiptUpgrade -or
+      $MaximumMigrationVersion -cne '202610260102' -or $migrationFiles[-1].Name -cne '202610260102_service_repair_case_state_cas.sql') {
+    throw 'Forward upgrade requires the exact isolated101-to102 preservation sequence.'
+  }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('service-repair-case-state-upgrade-seed.sql','service-repair-case-state-upgrade-verify.sql')
+}
+if ($ClarificationCaseUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $ServiceRepairUpgrade -or $ResearchPreparationUpgrade -or $MaterialClarificationUpgrade -or $RepairCaseStateUpgrade -or $LegalReceiptUpgrade -or $ResearchJourney -or
+      $MaximumMigrationVersion -cne '202610260102' -or $migrationFiles[-1].Name -cne '202610260102_service_repair_case_state_cas.sql') { throw 'Combined upgrade requires the exact isolated100-to101-to102 sequence.' }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('material-clarification-upgrade-seed.sql','material-clarification-upgrade-verify.sql','service-repair-case-state-upgrade-seed.sql','service-repair-case-state-upgrade-verify.sql')
 }
 $inputs = @([pscustomobject]@{Kind='bootstrap'; Name='bootstrap.sql'; Path=$bootstrapPath})
 foreach ($migration in $migrationFiles) {
@@ -260,6 +285,33 @@ if ($ResearchPreparationUpgrade) {
     @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250100' }) +
     @($inputs | Where-Object Name -eq 'research-preparation-upgrade-verify.sql') +
     @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('research-preparation-upgrade-seed.sql','research-preparation-upgrade-verify.sql') })
+}
+if ($MaterialClarificationUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250100' }) +
+    @($inputs | Where-Object Name -eq 'material-clarification-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250101' }) +
+    @($inputs | Where-Object Name -eq 'material-clarification-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('material-clarification-upgrade-seed.sql','material-clarification-upgrade-verify.sql') })
+}
+if ($RepairCaseStateUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250101' }) +
+    @($inputs | Where-Object Name -eq 'service-repair-case-state-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610260102' }) +
+    @($inputs | Where-Object Name -eq 'service-repair-case-state-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('service-repair-case-state-upgrade-seed.sql','service-repair-case-state-upgrade-verify.sql') })
+}
+if ($ClarificationCaseUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250100' }) +
+    @($inputs | Where-Object Name -eq 'material-clarification-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250101' }) +
+    @($inputs | Where-Object Name -eq 'material-clarification-upgrade-verify.sql') +
+    @($inputs | Where-Object Name -eq 'service-repair-case-state-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610260102' }) +
+    @($inputs | Where-Object Name -eq 'service-repair-case-state-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('material-clarification-upgrade-seed.sql','material-clarification-upgrade-verify.sql','service-repair-case-state-upgrade-seed.sql','service-repair-case-state-upgrade-verify.sql') })
 }
 if ($LegalReceiptUpgrade) {
   $bindingPath = Join-Path $repoRoot 'scripts/launch-legal-contract.mjs'
@@ -354,6 +406,12 @@ $materialRehearsalFixture = 'rehearsal-material-checkout.sql'
 $materialRehearsalFixtureCopy = Join-Path $inputPath $materialRehearsalFixture
 Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$materialRehearsalFixture") -Destination $materialRehearsalFixtureCopy
 $inputs += [pscustomobject]@{Kind='helper'; Name=$materialRehearsalFixture; Path=$materialRehearsalFixtureCopy}
+if ($fixtures -contains 'service-repair-case-state.sql' -or $fixtures -contains 'service-repair-case-state-races.sql') {
+  $caseStateFixture = 'service-repair-case-state-fixture.sql'
+  $caseStateFixtureCopy = Join-Path $inputPath $caseStateFixture
+  Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$caseStateFixture") -Destination $caseStateFixtureCopy
+  $inputs += [pscustomobject]@{Kind='helper'; Name=$caseStateFixture; Path=$caseStateFixtureCopy}
+}
 if ($fixtures -contains 'protected-archive-limited-role.sql' -and $fixtures -notcontains 'protected-archive-lifecycle.sql') {
   $archiveFixture = 'protected-archive-lifecycle.sql'
   $archiveFixtureCopy = Join-Path $inputPath $archiveFixture
@@ -449,7 +507,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Capacity pressure failed; see process output.' }
   }
   if ($ResearchJourney) {
-    if ($LegacyBackfill -or $CapacityPressure -or $ServiceRepairUpgrade -or $MaximumMigrationVersion -cne '202610250100') { throw 'Research journey requires the explicit100 fictional fixture boundary.' }
+    if ($LegacyBackfill -or $CapacityPressure -or $ServiceRepairUpgrade -or $MaximumMigrationVersion -cne '202610260102') { throw 'Research journey requires the explicit102 fictional fixture boundary.' }
     $step = 'actual research routes against the owned loopback cluster'
     $researchMarker = [guid]::NewGuid().ToString('N')
     Invoke-Native 'psql.exe' @('-X', '-h', '127.0.0.1', '-p', "$port", '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', "create table public.ap_research_local_test_identity(marker text primary key); insert into public.ap_research_local_test_identity values('$researchMarker');") 30

@@ -6,7 +6,7 @@ import { loadRetentionPostgresInputs, RETENTION_POSTGRES_IMAGE, runRetentionPost
 const runId = "11111111-2222-4333-8444-555555555555";
 const imageId = `sha256:${"a".repeat(64)}`;
 const name = `applypack-retention-pg17-${runId}`;
-function fixture({ failAt, alterState, missingMarker, ambiguousCreate, invalidImage, cleanupFailure } = {}) {
+function fixture({ failAt, alterState, missingMarker, ambiguousCreate, invalidImage, cleanupFailure, failIsolated } = {}) {
   const calls = []; let exists = false; let deleted = false;
   const state = { Name: `/${name}`, Image: imageId,
     Config: { User: "65534:65534", Labels: { "io.applypack.fixture": "service-retention-postgres17", "io.applypack.fixture-run": runId } },
@@ -25,22 +25,32 @@ function fixture({ failAt, alterState, missingMarker, ambiguousCreate, invalidIm
     if (operation === "ps") return exists ? "fictional-container-id\n" : "";
     if (operation === "rm") { if (cleanupFailure) throw new Error("cleanup unavailable"); exists = false; deleted = true; return name; }
     if (operation === failAt || (operation === "exec" && args.some((value) => value.endsWith(`/${failAt}`)))) throw new Error("fictional process failed");
-    if (args.includes("/usr/lib/postgresql/17/bin/psql")) return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17].filter((index) => index !== missingMarker).map((index) => ` RETENTION_PG17_FIXTURE_${index}_COMPLETE \n`).join("");
+    if (args.includes("/usr/lib/postgresql/17/bin/psql")) {
+      const isolated = options.input === "fictional isolated SQL";
+      if (isolated && failIsolated) throw new Error("isolated fixture failed");
+      return (isolated ? [21] : Array.from({ length: 20 }, (_, index) => index + 1))
+        .filter(index => index !== missingMarker).map(index => ` RETENTION_PG17_FIXTURE_${index}_COMPLETE \n`).join("");
+    }
     return "";
   };
   const run = (args = [], environment = {}) => runRetentionPostgres17(args, { execute, environment, platform: "linux", uuid: () => runId,
-    inputs: () => ({ sql: "fictional SQL", hashes: [{ kind: "fixture", name: "fictional.sql", sha256: "b".repeat(64) }], migrationCount: 105 }) });
+    inputs: () => ({ sql: "fictional SQL", isolatedSql: "fictional isolated SQL", hashes: [{ kind: "fixture", name: "fictional.sql", sha256: "b".repeat(64) }], migrationCount: 107 }) });
   return { calls, run, deleted: () => deleted };
 }
 
 test("builds all current migrations with exact source hashes and unchanged independent-connection fixture", () => {
   const inputs = loadRetentionPostgresInputs();
-  assert.equal(inputs.migrationCount, 105);
-  assert.equal(inputs.hashes.filter((entry) => entry.kind === "fixture").length, 17);
+  assert.equal(inputs.migrationCount, 107);
+  assert.equal(inputs.hashes.filter((entry) => entry.kind === "fixture").length, 21);
   assert(inputs.hashes.every((entry) => /^[a-f0-9]{64}$/u.test(entry.sha256)));
   assert.match(inputs.sql, /native_loopback_fixture_required/u);
   assert.match(inputs.sql, /dblink_send_query/u);
-  assert.match(inputs.sql, /RETENTION_PG17_FIXTURE_17_COMPLETE/u);
+  assert.match(inputs.sql, /RETENTION_PG17_FIXTURE_20_COMPLETE/u);
+  assert.doesNotMatch(inputs.sql, /RETENTION_PG17_FIXTURE_21_COMPLETE/u);
+  assert.match(inputs.isolatedSql, /RETENTION_PG17_FIXTURE_21_COMPLETE/u);
+  assert.doesNotMatch(inputs.isolatedSql, /RETENTION_PG17_FIXTURE_20_COMPLETE/u);
+  assert.match(inputs.isolatedSql, /dblink_send_query/u);
+  assert.match(inputs.isolatedSql, /'202610260102','service_repair_case_state_cas'/u);
   assert.match(inputs.sql, /PROTECTED_ARCHIVE_NON_OWNER_BOUNDARY_OK/u);
   assert.match(inputs.sql, /set local role ap_archive_fixture_non_owner/u);
   assert.match(inputs.sql, /'202610250090','matching_evidence_completion'/u);
@@ -68,6 +78,25 @@ test("uses only an immutable image and isolated tmpfs container, actual local SQ
   assert.equal(execution.options.input, "fictional SQL"); assert(execution.args.includes("127.0.0.1"));
   assert(f.calls.some(({ args }) => args.includes("--auth-host=trust")));
   assert(f.calls.some(({ args }) => args.includes("-h 127.0.0.1 -p 5432 -k /tmp/applypack-retention -c max_connections=12 -c shared_buffers=16MB -c unix_socket_permissions=0700")));
+  assert.equal(receipt.freshClusterCount, 2);
+  const sqlCalls = f.calls.filter(({ args }) => args.includes("/usr/lib/postgresql/17/bin/psql"));
+  assert.deepEqual(sqlCalls.map(call => call.options.input), ["fictional SQL", "fictional isolated SQL"]);
+  const firstStop = f.calls.findIndex(({ args }) => args.includes("fast") && args.includes("stop"));
+  const secondInit = f.calls.findIndex(({ args }) => args.includes("/usr/lib/postgresql/17/bin/initdb") && args.includes("/tmp/applypack-retention/case-data"));
+  assert(firstStop > f.calls.indexOf(sqlCalls[0]) && secondInit > firstStop && f.calls.indexOf(sqlCalls[1]) > secondInit);
+  assert(f.calls.some(({ args }) => args.includes("immediate") && args.includes("/tmp/applypack-retention/case-data")));
+});
+
+test("first cluster success cannot hide missing isolated race proof", () => {
+  const f = fixture({ missingMarker: 21 });
+  assert.throws(() => f.run(), /RETENTION_FIXTURE_MARKER_MISSING:RETENTION_PG17_FIXTURE_21_COMPLETE/u);
+  assert(f.deleted());
+});
+test("isolated second-cluster failure stops and removes only its owned container", () => {
+  const f = fixture({ failIsolated: true });
+  assert.throws(() => f.run(), /isolated fixture failed/u);
+  assert(f.deleted());
+  assert(f.calls.some(({ args }) => args.includes("immediate") && args.includes("/tmp/applypack-retention/case-data")));
 });
 
 for (const args of [["postgres://external/db"], ["--image", "latest"], ["--skip-cleanup"]]) test("rejects caller-supplied targets/options before process execution", () => {

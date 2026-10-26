@@ -74,7 +74,7 @@ select pg_temp.assert_commute(position('evaluation_row.root_result<>''PASS''' in
 select pg_temp.assert_commute(position('public.ap_commute_evaluation_current(evaluation)' in pg_get_functiondef('public.ap_persist_derived_feasibility_assessment(uuid,text,text)'::regprocedure))>0,'SQL feasibility checks commute freshness');
 select pg_temp.assert_commute((select count(*)=7 from pg_trigger where tgname in ('ap_reviewed_commute_guard','ap_commute_evaluation_guard','ap_commute_selection_guard','ap_commute_release_review_guard','ap_commute_delivery_guard','ap_commute_invitation_guard','ap_commute_quote_guard')),'downstream commute guards installed');
 select pg_temp.assert_commute(public.ap_matching_evidence_schema_installed(),'090 schema evidence installed');
-select pg_temp.assert_commute(public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' in ('202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100'),'090 through 092 readiness floor');
+select pg_temp.assert_commute(public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' in ('202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102'),'090 through 092 readiness floor');
 alter table public.ap_quotes disable trigger ap_commute_quote_guard;
 select pg_temp.assert_commute(not public.ap_matching_evidence_schema_installed(),'disabled commute guard closes readiness');
 alter table public.ap_quotes enable trigger ap_commute_quote_guard;

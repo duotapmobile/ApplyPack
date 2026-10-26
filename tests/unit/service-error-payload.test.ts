@@ -44,6 +44,15 @@ function fixture() {
 }
 beforeEach(() => { captured.decrypted.length = 0; }); afterEach(() => vi.useRealTimers());
 describe("purpose-bound service-error private payloads", () => {
+  it.each(["SERVICE_REPAIR_FEEDBACK", "SERVICE_REPAIR_CASE_EVENT"] as const)("encrypts %s with its own context and rejects legacy-purpose replay", async (purpose) => {
+    const f = fixture(), input = { ...f.input, purpose };
+    await storeServiceErrorPayload(f.admin, input, f.plaintext, { signal: signal(), configuration: f.configuration, kms: f.kms });
+    const bytes = await readServiceErrorPayload(f.admin, input, { signal: signal(), configuration: f.configuration, kms: f.kms });
+    expect(bytes).toEqual(f.plaintext); bytes.fill(0);
+    expect(f.kms.wrapDataKey.mock.calls[0][0].encryptionContext).toMatchObject({ purpose });
+    await expect(f.read()).rejects.toThrow("PAYLOAD_IDENTITY_MISMATCH");
+    expect(f.kms.unwrapDataKey).toHaveBeenCalledOnce();
+  });
   it("uses real authenticated encryption and returns caller-owned plaintext only after the current identity reread", async () => {
     const f = fixture(); expect(await f.store()).toEqual({ payloadId: f.input.payloadId, sha256: f.input.sha256 });
     expect(f.row().ciphertext).not.toContain(f.plaintext.toString("hex"));

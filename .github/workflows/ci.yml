@@ -129,6 +129,12 @@ jobs:
         run: npm run test:automatic-research-migration
       - name: Verify100 historical phases and recovery coverage
         run: npm run test:automatic-research-integration
+      - name: Confirmed clarification migration controls
+        run: npm run test:material-clarification-migration
+      - name: Reviewed repair case-state migration controls
+        run: npm run test:repair-case-state-migration
+      - name: Confirmed clarification and case-state integration
+        run: npm run test:material-clarification-integration
       - name: Validate098 default-disabled protected archive lifecycle controls
         shell: pwsh
         run: npm run test:archive-lifecycle-migration
@@ -293,6 +299,8 @@ jobs:
           - '202610250097'
           - '202610250098'
           - '202610250099'
+          - '202610250100'
+          - '202610250101'
     steps:
       - uses: actions/checkout@v4
         with:

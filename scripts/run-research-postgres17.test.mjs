@@ -10,7 +10,7 @@ import {researchFixtureIdentity} from './lib/research-fixture-identity.mjs';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const pgId=`sha256:${'a'.repeat(64)}`,nodeId=`sha256:${'b'.repeat(64)}`;
 function fixture({fail,drift,missingMarker,ambiguousCreate,cleanupFailure}={}) {
-  const calls=[],states=new Map(),writes=[],prepared={commit:'c'.repeat(40),schemaVersion:'202610250100',workspace:'/fixture/source',dependencies:'/fixture/dependencies',directory:'/fixture/evidence',sql:'-- actual schema input placeholder',migrationCount:105,inputHashes:[],sourceArchiveSha256:'d'.repeat(64)};
+  const calls=[],states=new Map(),writes=[],prepared={commit:'c'.repeat(40),schemaVersion:'202610260102',workspace:'/fixture/source',dependencies:'/fixture/dependencies',directory:'/fixture/evidence',sql:'-- actual schema input placeholder',migrationCount:107,inputHashes:[],sourceArchiveSha256:'d'.repeat(64)};
   let counter=0;
   const execute=(command,args,options)=>{
     calls.push({command,args,options});assert.equal(command,'docker');assert.deepEqual(args.slice(0,2),['--host','unix:///var/run/docker.sock']);
@@ -80,7 +80,7 @@ for(const changes of [{AP_RESEARCH_TEST_PORT:'5433'},{AP_RESEARCH_TEST_MARKER:'w
 test('source preparation archives only committed allowlisted bytes and excludes developer secrets/WIP',()=>{
  const base=resolve(tmpdir()),directory=mkdtempSync(join(base,'applypack-research-input-'));
  const files=['src/example.ts','package.json','package-lock.json','tsconfig.json','scripts/run-research-native-journey.mjs','scripts/lib/research-fixture-identity.mjs','vitest.research-container.config.mjs',
-  'tests/integration/automatic-research-preparation.sql','tests/integration/retention-postgres17-bootstrap.sql','tests/integration/research-local-database.ts','tests/integration/research-local-postgres.ts','tests/integration/research-preparation-journey.test.ts','supabase/migrations/202610250100_fictional.sql'];
+  'tests/integration/automatic-research-preparation.sql','tests/integration/retention-postgres17-bootstrap.sql','tests/integration/research-local-database.ts','tests/integration/research-local-postgres.ts','tests/integration/research-preparation-journey.test.ts','supabase/migrations/202610260102_fictional.sql'];
  try {
   for(const path of files){mkdirSync(dirname(join(directory,path)),{recursive:true});writeFileSync(join(directory,path),path.endsWith('.sql')?'select 1;\n':'committed bytes\n');}
   const git=args=>execFileSync('git',args,{cwd:directory,stdio:'pipe',timeout:30000});

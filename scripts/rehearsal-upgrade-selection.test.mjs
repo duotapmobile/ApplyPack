@@ -24,7 +24,7 @@ for (const predecessor of REHEARSAL_PREDECESSORS) test(`exact ${predecessor} par
 });
 
 for (const args of [null, "202610250099", ["--predecessor"], ["202610250099"], ["--predecessor", "099"],
-  ["--predecessor", REHEARSAL_TARGET_VERSION], ["--predecessor", "202610250101"], ["--predecessor", "202610250099 "],
+  ["--predecessor", REHEARSAL_TARGET_VERSION], ["--predecessor", "202610260199"], ["--predecessor", "202610250099 "],
   ["--predecessor", "202610250099", "--skip"], ["--predecessor", "202610250099", "--predecessor", "202610250098"],
   ["--predecessor", "https://database.invalid"], ["--predecessor", "202610250099;echo"], ["--database-url", "postgres://localhost"]]) {
   test(`invalid selector fails closed: ${JSON.stringify(args)}`, () => assert.throws(() => selectRehearsalPredecessors(args), /REHEARSAL_UPGRADE_SELECTION_INVALID/));
@@ -83,7 +83,7 @@ test("selection stays outside upgrade assertions and all local cleanup and concu
   assert(source.includes("await proveRehearsalCheckoutConcurrency()"));
   assert(source.includes('run("supabase", ["db", "reset", "--local", "--no-seed"])'));
   assert(source.includes('if (failure) throw failure;'));
-  assert(source.includes("All twenty launch upgrade predecessors passed"));
+  assert(source.includes("All twenty-two launch upgrade predecessors passed"));
   assert(source.includes("Selected launch upgrade predecessor ${predecessors[0]} passed"));
   const scripts = JSON.parse(read("../package.json")).scripts;
   assert(scripts["test:database"].endsWith("node scripts/run-supabase-rehearsal-upgrade-test.mjs"));

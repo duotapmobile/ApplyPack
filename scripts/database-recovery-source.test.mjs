@@ -10,7 +10,7 @@ const SHA = "a".repeat(40); const HASH = "b".repeat(64);
 const runtime = { schemaVersion: "applypack-database-recovery-runtime-v1", postgresMajor: 17, clientVersion: "17.11",
   baseImageDigest: `sha256:${HASH}`, psqlSha256: HASH, pgDumpSha256: HASH };
 const target = { id: "production-read-only-export", sourceProjectRef: RECOVERY_PROJECT, host: `db.${RECOVERY_PROJECT}.supabase.co`, port: 5432,
-  database: "postgres", user: "applypack_recovery_exporter", caSha256: HASH, schemaVersion: "202610250100", runtimeManifestSha256: recoveryCanonicalSha256(runtime) };
+  database: "postgres", user: "applypack_recovery_exporter", caSha256: HASH, schemaVersion: "202610260102", runtimeManifestSha256: recoveryCanonicalSha256(runtime) };
 function registration(overrides = {}) {
   const registry = { version: 1, targets: [structuredClone(target)] };
   const environment = { APP_DATABASE_BACKUP_ENABLED: "true", APP_DEPLOYMENT_ENV: "production", APP_EXPECTED_RELEASE_SHA: SHA,

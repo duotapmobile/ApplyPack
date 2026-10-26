@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MaterialDeliveries, type MaterialDeliveryView } from "@/components/portal/material-deliveries";
+vi.mock("@/components/portal/service-repair-feedback", () => ({ ServiceRepairFeedback: ({ materialLineId }: { materialLineId: string }) =>
+  <section aria-label="Existing repair feedback" data-line-id={materialLineId} /> }));
 const id = (n: number) => `99000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const line = (): MaterialDeliveryView => ({ lineId: id(1), company: "Example employer", title: "Office assistant", jobSnapshotId: id(2),
   stateLabel: "Delivered", stateMessage: "Your files are ready.", dueAt: null, accessExpiresAt: "2099-10-30T12:00:00Z", refundState: "NONE",
@@ -21,6 +23,15 @@ describe("customer corrected-document presentation", () => {
     expect(screen.getByRole("link", { name: "Report a factual error or view your report" })).toHaveAttribute("href", `/my-applypack/material-lines/${id(1)}/service-error`);
     expect(screen.queryByRole("button", { name: "Request the included factual correction" })).not.toBeInTheDocument();
     expect(screen.getByText(/not an editing round/)).toBeInTheDocument(); expect(screen.getByText(/original delivery/, { selector: ".deadline-note" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Existing repair feedback" })).toHaveAttribute("data-line-id", id(1));
+  });
+  it("does not offer repaired-file feedback before an actual repair release", () => {
+    const value = line(); delete value.artifacts[0].repair; render(<MaterialDeliveries lines={[value]} />);
+    expect(screen.queryByRole("region", { name: "Existing repair feedback" })).not.toBeInTheDocument();
+  });
+  it("does not expose prospective repair feedback under a historical contract", () => {
+    const value = line(); value.supportPolicy = "HISTORICAL"; render(<MaterialDeliveries lines={[value]} />);
+    expect(screen.queryByRole("region", { name: "Existing repair feedback" })).not.toBeInTheDocument();
   });
   it("preserves the historical request flow and its original promise", () => {
     const value = line(); value.supportPolicy = "HISTORICAL"; delete value.artifacts[0].repair; render(<MaterialDeliveries lines={[value]} />);
@@ -32,6 +43,7 @@ describe("customer corrected-document presentation", () => {
     const value = line(); value.supportPolicy = policy; render(<MaterialDeliveries lines={[value]} />);
     expect(screen.queryByRole("button", { name: /included factual/ })).not.toBeInTheDocument(); expect(screen.queryByRole("link", { name: /Report a factual/ })).not.toBeInTheDocument();
     expect(screen.getByText(/support options are temporarily unavailable/)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Existing repair feedback" })).not.toBeInTheDocument();
   });
   it("hides a revoked replacement link without offering its prior file", () => {
     const value = line(); value.artifacts[0].downloadsRevokedAt = "2026-10-25T12:00:00Z"; render(<MaterialDeliveries lines={[value]} />);
@@ -53,5 +65,6 @@ describe("customer corrected-document presentation", () => {
     const value = line(); value.accessExpiresAt = "2020-10-30T12:00:00Z"; render(<MaterialDeliveries lines={[value]} />);
     expect(screen.getByRole("heading", { name: "Private document access ended" })).toBeInTheDocument(); expect(screen.queryByText("Corrected_resume.pdf")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Download|Report a factual/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Existing repair feedback" })).not.toBeInTheDocument();
   });
 });

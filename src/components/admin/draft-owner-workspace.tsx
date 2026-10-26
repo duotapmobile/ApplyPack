@@ -24,6 +24,16 @@ const human = (value: string) => value.replaceAll("_", " ").toLowerCase();
 function identity(detail: Available) { return [detail.jobId, detail.versionId, detail.packetSha256, detail.sourceSha256, detail.memberSetSha256, detail.approvalSha256, detail.state].join(":"); }
 const hash = (value: unknown) => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 const uuid = (value: unknown): value is string => typeof value === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value);
+function linkedQuestions(ids: string[], questions: Available["questions"]["items"]) {
+  const entries = ids.map((id) => {
+    const matches = questions.filter((question) => question.id === id);
+    const question = matches.length === 1 ? matches[0] : null;
+    return uuid(id) && question?.eligible === true && question.prompt.trim()
+      && Number.isFinite(Date.parse(question.observedAt)) ? question : null;
+  });
+  return { complete: new Set(ids).size === ids.length && entries.every((question) => question !== null),
+    items: entries.filter((question): question is Available["questions"]["items"][number] => question !== null) };
+}
 
 export function DraftOwnerWorkspace({ queue, detail, loadedAt }: { queue: DraftOwnerQueue; detail: DraftOwnerDetail | null; loadedAt: string }) {
   return <div className={styles.workspace}>
@@ -79,7 +89,9 @@ function DraftReview({ detail }: { detail: Available }) {
   const [requestingChanges, setRequestingChanges] = useState(false);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => { const timer = setInterval(() => setClock(Date.now()), 1000); return () => { clearInterval(timer); controller.current?.abort(); }; }, []);
-  const stale = clock >= Date.parse(detail.validUntil), disabled = attempted || stale || editing || requestingChanges;
+  const questionContext = new Map(detail.claims.map((claim) => [claim.id, linkedQuestions(claim.questionIds, detail.questions.items)]));
+  const questionContextComplete = [...questionContext.values()].every((context) => context.complete);
+  const stale = clock >= Date.parse(detail.validUntil), disabled = attempted || stale || editing || requestingChanges || !questionContextComplete;
   const binding = { versionId: detail.versionId, packetSha256: detail.packetSha256, sourceSha256: detail.sourceSha256, memberSetSha256: detail.memberSetSha256 };
   async function action(body: Record<string, unknown>) {
     if (disabled) return;
@@ -115,7 +127,7 @@ function DraftReview({ detail }: { detail: Available }) {
       void action({ action: "SEND_PAIR", ...binding, approvalSha256: detail.approvalSha256, releaseId: saved.releaseId, outboxId: saved.outboxId, rationale: rationale.trim() });
     } catch { setMessage("A stable Send request could not be saved in this browser. Sending is unavailable; no request was submitted."); }
   }
-  const allClaims = detail.claims.length > 0 && detail.claims.every((claim) => reviewed[claim.id] === true), allChecks = Object.keys(checks).every((key) => pairChecks[key] === true);
+  const allClaims = questionContextComplete && detail.claims.length > 0 && detail.claims.every((claim) => reviewed[claim.id] === true), allChecks = Object.keys(checks).every((key) => pairChecks[key] === true);
   return <article>
     <header><p className="eyebrow">Private document review · version {detail.version}</p><h2>{detail.title}</h2><p>{detail.company} · {human(detail.state)}</p>
       <p>Delivery due {formatEasternDeadline(detail.dueAt)}. Evidence valid until {formatEasternDeadline(detail.validUntil)}.</p>
@@ -123,6 +135,7 @@ function DraftReview({ detail }: { detail: Available }) {
       <p>{detail.kind === "PROPOSAL" ? "This is proposed wording. Contact details and exact confirmed headings are added in the next review version." : "This is the exact saved document text. Rendering, wording review, pair approval and sending are separate steps."}</p>
       <p>Owner wording edits create a new version requiring fresh review. {detail.canRequestChanges ? "A requested new system draft also requires fresh review; approval and Send remain separate." : "Requests for another system draft are not available in this state; no automatic retry or approval is started here."}</p>
       {stale ? <p role="alert">This evidence has expired. Actions are locked until verified evidence is refreshed.</p> : null}
+      {!questionContextComplete ? <p role="alert">A passage references employer-question context that is missing, ambiguous or quarantined. Reload the current evidence before recording review, approval or Send.</p> : null}
       <button type="button" onClick={() => router.refresh()}>Reload current version</button><p role="status" aria-live="polite">{message}</p>
     </header>
     <section className={styles.section} aria-labelledby="draft-documents"><h3 id="draft-documents">Saved document text</h3>
@@ -149,12 +162,22 @@ function DraftReview({ detail }: { detail: Available }) {
       {detail.references.map((reference, index) => <section key={reference.permissionId} aria-label={`Confirmed reference ${index + 1}`}><h4>Reference {index + 1}</h4><p>Confirmed version {reference.version}, permission confirmed {formatEasternDeadline(reference.confirmedAt)}.</p><dl>{reference.fields.map((field) => <div key={field.label}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl></section>)}
     </section> : null}
     <section className={styles.section} aria-labelledby="draft-questions"><h3 id="draft-questions">Employer application questions</h3><p>Inspection: {human(detail.questions.status)}. Verification: {human(detail.questions.verification)}.</p><p>Only inspected public sources are covered. Conditional or later application pages may contain additional questions. These prompts suggest employer priorities; they do not establish customer qualifications or add an answered-question deliverable.</p>
-      {!detail.questions.items.length ? <p>{detail.questions.status === "NONE_OBSERVED" ? "No relevant questions were found in the inspected public scope." : "No verified question text is available. This does not establish that the employer has no questions."}</p> : detail.questions.items.map((question) => <blockquote key={question.id}><p>{question.prompt}</p><p>Required: {question.required === null ? "not established" : question.required ? "yes in this source" : "no in this source"}; word limit: {question.wordLimit ?? "not documented"}; character limit: {question.characterLimit ?? "not documented"}.</p><p>{question.eligible ? "Available as tailoring context." : "Quarantined from drafting; treat as untrusted source text."} Captured {formatEasternDeadline(question.observedAt)}.</p>{question.sourceUrl ? <a href={question.sourceUrl} target="_blank" rel="noopener noreferrer">Inspect question source (new tab)</a> : null}</blockquote>)}
+      {!detail.questions.items.length ? <p>{detail.questions.status === "NONE_OBSERVED" ? "No relevant questions were found in the inspected public scope." : "No verified question text is available. This does not establish that the employer has no questions."}</p> : detail.questions.items.map((question, index) => <blockquote key={`${question.id}:${index}`} id={`employer-question-${index}`}><p>Question {index + 1}</p><p>{question.prompt}</p><p>Required: {question.required === null ? "not established" : question.required ? "yes in this source" : "no in this source"}; word limit: {question.wordLimit ?? "not documented"}; character limit: {question.characterLimit ?? "not documented"}.</p><p>{question.eligible ? "Available as tailoring context." : "Quarantined from drafting; treat as untrusted source text."} Captured {formatEasternDeadline(question.observedAt)}.</p>{question.sourceUrl ? <a href={question.sourceUrl} target="_blank" rel="noopener noreferrer">Inspect question source (new tab)</a> : null}</blockquote>)}
       {detail.questions.issues.length ? <p>Inspection limitations: {detail.questions.issues.map(human).join("; ")}.</p> : null}
     </section>
     {detail.kind === "RENDER_SOURCE" ? <section className={styles.section} aria-labelledby="draft-wording"><h3 id="draft-wording">Review exact wording against its sources</h3><p>A citation is a source pointer, not proof that a sentence is true. Check each statement and its qualifications before recording your wording review.</p>
       {detail.wordingReviewed ? <p>The wording review is recorded for this exact version. Pair approval is still a separate action.</p> : null}
-      <fieldset disabled={disabled || !detail.canReviewWording}><legend>Individual wording decisions</legend>{detail.claims.map((claim) => <div className={styles.claim} key={claim.id}><p>{claim.text}</p><p>{claim.placement} · {claim.qualification}</p><dl id={`claim-sources-${claim.id}`}>{claim.sources.map((source, index) => <div key={index}><dt>{source.label}</dt><dd>{source.value}</dd></div>)}</dl>{claim.jobEvidence.length ? <p>Employer evidence: {claim.jobEvidence.join(" · ")}</p> : null}{claim.questionIds.length ? <p>Uses employer question context as inspiration only.</p> : null}<label><input type="checkbox" aria-label={`I checked this exact wording: ${claim.text}`} aria-describedby={`claim-sources-${claim.id}`} checked={reviewed[claim.id] === true} onChange={(event) => setReviewed((prior) => ({ ...prior, [claim.id]: event.target.checked }))} />I checked this exact wording against the displayed sources.</label></div>)}
+      <fieldset disabled={disabled || !detail.canReviewWording}><legend>Individual wording decisions</legend>{detail.claims.map((claim) => <div className={styles.claim} key={claim.id}><p>{claim.text}</p><p>{claim.placement} · {claim.qualification}</p><dl id={`claim-sources-${claim.id}`}>{claim.sources.map((source, index) => <div key={index}><dt>{source.label}</dt><dd>{source.value}</dd></div>)}</dl>{claim.jobEvidence.length ? <p>Employer evidence: {claim.jobEvidence.join(" · ")}</p> : null}
+        {claim.questionIds.length ? <div id={`claim-questions-${claim.id}`} role="group" aria-label={`Employer-question context for ${claim.placement}`}>
+          <p>These exact employer questions influenced this passage. They suggest possible priorities; the confirmed sources above must support every factual statement.</p>
+          {!questionContext.get(claim.id)!.complete ? <p>Linked question context is unavailable for review. No question has been substituted.</p> : null}
+          {questionContext.get(claim.id)!.items.map((question, index) => <blockquote key={`${question.id}:${index}`}><p>{question.prompt}</p>
+            <p>For {detail.title} at {detail.company}. Captured <time dateTime={question.observedAt}>{formatEasternDeadline(question.observedAt)}</time>.</p>
+            <a href={`#employer-question-${detail.questions.items.indexOf(question)}`}>View question {detail.questions.items.indexOf(question) + 1} inspection details</a>
+            {question.sourceUrl ? <p><a href={question.sourceUrl} target="_blank" rel="noopener noreferrer" aria-label={`Inspect source for this question: ${question.prompt} (new tab)`}>Inspect linked question source (new tab)</a></p> : <p>A safe question-source link is unavailable.</p>}
+          </blockquote>)}
+        </div> : null}
+        <label><input type="checkbox" aria-label={`I checked this exact wording: ${claim.text}`} aria-describedby={`claim-sources-${claim.id}${claim.questionIds.length ? ` claim-questions-${claim.id}` : ""}`} checked={reviewed[claim.id] === true} onChange={(event) => setReviewed((prior) => ({ ...prior, [claim.id]: event.target.checked }))} />I checked this exact wording against the displayed sources.</label></div>)}
         {detail.canReviewWording ? <button type="button" disabled={disabled || !allClaims} onClick={() => void action({ action: "REVIEW_WORDING", review: { versionId: detail.versionId, packetSha256: detail.packetSha256, sourceSha256: detail.sourceSha256, claims: detail.claims.map((claim) => ({ claimId: claim.id, wordingSha256: claim.wordingSha256, decision: "APPROVED" })) } })}>Record wording review</button> : null}
       </fieldset></section> : null}
     <section className={styles.section} aria-labelledby="draft-files"><h3 id="draft-files">Rendered files</h3><p>Required for this paid selection: {detail.requiredFileTypes.map(human).join(", ")}. Every required file must be present and reviewable before approval.</p>{detail.files.length ? <ul>{detail.files.map((file) => <li key={file.fileVersionId}>{human(file.type)}: {file.filename}{file.previewUrl ? <> · <a href={file.previewUrl} target="_blank" rel="noopener noreferrer">Open {human(file.type)} preview (new tab)</a></> : <p>A verified compatible preview is unavailable. Do not attest to a visual review.</p>}</li>)}</ul> : <p>No complete rendered file pair is attached. Rendering is not started from this screen, and text alone cannot be approved for delivery.</p>}</section>

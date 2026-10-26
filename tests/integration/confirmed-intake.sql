@@ -1,6 +1,6 @@
 begin;
 do $$ declare readiness jsonb:=public.ap_manual_launch_schema_readiness(); begin
- if readiness->>'requiredSchemaVersion' not in ('202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100') or not (readiness->'requiredMigrations' ?& array['202610240087','202610250088','202610250089'])
+ if readiness->>'requiredSchemaVersion' not in ('202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102') or not (readiness->'requiredMigrations' ?& array['202610240087','202610250088','202610250089'])
    or not public.ap_confirmed_intake_schema_installed() then raise exception 'confirmed intake schema readiness is incomplete'; end if;
 end $$;
 create function pg_temp.assert_true(value boolean,message text) returns void language plpgsql as $$
@@ -52,9 +52,20 @@ do $$ declare source text; receipt jsonb; second_receipt jsonb; payload jsonb; b
   perform pg_temp.assert_true((select confirmed_review=receipt from public.ap_intake_snapshots where id='e8900000-0000-4000-8000-000000000011'),'snapshot lost the exact confirmation receipt');
 end $$;
 
--- A later answer revision invalidates the prepared review without mutating the earlier snapshot.
-select * from public.ap_save_four_step_draft('e8900000-0000-4000-8000-000000000001',repeat('a',64),3,3,pg_temp.answers('GUIDED')||'{"phone":"555 0101"}'::jsonb);
-select pg_temp.assert_true(public.ap_read_intake_confirmation('e8900000-0000-4000-8000-000000000001',repeat('a',64)) is null,'edited answers retained prior approval');
+-- Historical phases permitted reopening.101 requires a separately confirmed
+-- successor, whose full workflow is exercised by material-clarification-confirmation.sql.
+do $$ begin
+ if (public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion') in('202610250101','202610260102') then
+  begin
+   perform public.ap_save_four_step_draft('e8900000-0000-4000-8000-000000000001',repeat('a',64),3,3,pg_temp.answers('GUIDED')||'{"phone":"555 0101"}'::jsonb);
+   raise exception 'confirmed draft reopened without successor';
+  exception when others then if sqlerrm<>'confirmed_intake_requires_successor_review' then raise; end if; end;
+  perform pg_temp.assert_true(public.ap_read_intake_confirmation('e8900000-0000-4000-8000-000000000001',repeat('a',64)) is not null,'blocked edit erased confirmation');
+ else
+  perform public.ap_save_four_step_draft('e8900000-0000-4000-8000-000000000001',repeat('a',64),3,3,pg_temp.answers('GUIDED')||'{"phone":"555 0101"}'::jsonb);
+  perform pg_temp.assert_true(public.ap_read_intake_confirmation('e8900000-0000-4000-8000-000000000001',repeat('a',64)) is null,'edited answers retained prior approval');
+ end if;
+end $$;
 select pg_temp.assert_true((select confirmed_review is not null from public.ap_intake_snapshots where id='e8900000-0000-4000-8000-000000000011'),'edit rewrote historical confirmation');
 
 -- Uploaded facts retain their full values and references, including a previously confirmed fact corrected before payment.
@@ -75,7 +86,9 @@ values('e8900000-0000-4000-8000-000000000044','e8900000-0000-4000-8000-000000000
  '{"taskOrTool":"Excel sorting","capabilityStatus":"CAN_DO_NOW"}',
  'DOCUMENT','e8900000-0000-4000-8000-000000000032','Fixture page 1','EXTRACTED_UNCONFIRMED','fixture-v1','fixture-v1','MATCH_ENHANCING','Excel','{"summary":"Excel sorting: can do now"}','CAN_DO_NOW');
 select * from public.ap_save_four_step_draft('e8900000-0000-4000-8000-000000000002',repeat('b',64),2,3,pg_temp.answers('CURRENT_RESUME'));
-do $$ declare fact record; reviews jsonb:='{}'; receipt jsonb; begin
+do $$ declare fact record; reviews jsonb:='{}'; receipt jsonb;
+ successor_required boolean:=(public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion') in('202610250101','202610260102');
+ edit_version bigint; begin
   for fact in select id from public.ap_candidate_facts where draft_id='e8900000-0000-4000-8000-000000000002' and snapshot_id is null loop
     perform public.ap_record_fact_presentation('e8900000-0000-4000-8000-000000000002',repeat('b',64),3,fact.id,'fact-'||fact.id::text);
     reviews:=reviews||jsonb_build_object(fact.id::text,jsonb_build_object('decision','CONFIRM','correction',null));
@@ -83,49 +96,72 @@ do $$ declare fact record; reviews jsonb:='{}'; receipt jsonb; begin
   reviews:=reviews||jsonb_build_object('e8900000-0000-4000-8000-000000000043',jsonb_build_object('decision','CORRECT','correction',jsonb_build_object('category','RESPONSIBILITY','responsibility','Handled customer payments')));
   receipt:=public.ap_prepare_intake_confirmation('e8900000-0000-4000-8000-000000000002',repeat('b',64),3,
     public.ap_intake_confirmation_source('e8900000-0000-4000-8000-000000000002',repeat('b',64),3),repeat('c',64),repeat('d',64));
-  perform pg_temp.finalize('e8900000-0000-4000-8000-000000000002',3,'e8900000-0000-4000-8000-000000000012','e8900000-0000-4000-8000-000000000022',pg_temp.payload('CURRENT_RESUME',receipt),reviews);
+  begin
+   perform pg_temp.finalize('e8900000-0000-4000-8000-000000000002',3,'e8900000-0000-4000-8000-000000000012','e8900000-0000-4000-8000-000000000022',pg_temp.payload('CURRENT_RESUME',receipt),reviews);
   perform pg_temp.assert_true(exists(select 1 from public.ap_candidate_facts child join public.ap_candidate_facts parent on parent.id=(child.typed_value->>'employmentFactId')::uuid
     where child.snapshot_id='e8900000-0000-4000-8000-000000000012' and parent.snapshot_id=child.snapshot_id and child.typed_value->>'activity'='Handled customer payments'), 'corrected responsibility lost its same-snapshot employment link');
   perform pg_temp.assert_true(exists(select 1 from public.ap_candidate_facts where snapshot_id='e8900000-0000-4000-8000-000000000012' and value_kind='EMPLOYMENT' and starts_on='2020-01-01' and ends_on='2022-01-01' and calendar_duration_days=731 and intensity_percent=50),'unchanged confirmed duration/intensity lost');
   perform pg_temp.assert_true(exists(select 1 from public.ap_candidate_facts where snapshot_id='e8900000-0000-4000-8000-000000000012' and capability_status='CAN_DO_NOW'),'unchanged confirmed capability lost');
-  perform public.ap_save_four_step_draft('e8900000-0000-4000-8000-000000000002',repeat('b',64),4,3,pg_temp.answers('OUTDATED_RESUME'));
+   -- On101+, keep subsequent edits before confirmation by rolling back this
+   -- complete tested finalization, never by disabling the source freeze.
+   if successor_required then raise exception 'fixture_reset_unconfirmed'; end if;
+  exception when others then if not successor_required or sqlerrm<>'fixture_reset_unconfirmed' then raise; end if; end;
+  edit_version:=case when successor_required then 3 else 4 end;
+  perform public.ap_save_four_step_draft('e8900000-0000-4000-8000-000000000002',repeat('b',64),edit_version,3,pg_temp.answers('OUTDATED_RESUME'));
+  edit_version:=edit_version+1;
   reviews:=reviews||jsonb_build_object('e8900000-0000-4000-8000-000000000044',jsonb_build_object('decision','CORRECT','correction',jsonb_build_object('category','FIELD_EDITS','fields',jsonb_build_object('capabilityStatus','NOT_DONE'))));
 
   reviews:=reviews||jsonb_build_object('e8900000-0000-4000-8000-000000000042',jsonb_build_object('decision','CORRECT','correction',jsonb_build_object('category','FIELD_EDITS','fields',jsonb_build_object('employer','Corrected Store','historicalTitle','Team lead','phone','555 0199','startsOn','2021-01-01','endsOn','2024-01-01'))));
-  receipt:=public.ap_prepare_intake_confirmation('e8900000-0000-4000-8000-000000000002',repeat('b',64),5,
-    public.ap_intake_confirmation_source('e8900000-0000-4000-8000-000000000002',repeat('b',64),5),repeat('e',64),repeat('f',64));
-  perform pg_temp.finalize('e8900000-0000-4000-8000-000000000002',5,'e8900000-0000-4000-8000-000000000013','e8900000-0000-4000-8000-000000000023',pg_temp.payload('OUTDATED_RESUME',receipt),reviews);
+  receipt:=public.ap_prepare_intake_confirmation('e8900000-0000-4000-8000-000000000002',repeat('b',64),edit_version,
+    public.ap_intake_confirmation_source('e8900000-0000-4000-8000-000000000002',repeat('b',64),edit_version),repeat('e',64),repeat('f',64));
+  begin
+   perform pg_temp.finalize('e8900000-0000-4000-8000-000000000002',edit_version,'e8900000-0000-4000-8000-000000000013','e8900000-0000-4000-8000-000000000023',pg_temp.payload('OUTDATED_RESUME',receipt),reviews);
   perform pg_temp.assert_true(exists(select 1 from public.ap_candidate_facts where snapshot_id='e8900000-0000-4000-8000-000000000013' and typed_value->>'employer'='Corrected Store' and typed_value->>'historicalTitle'='Team lead' and typed_value->>'phone'='555 0199' and typed_value->>'startsOn'='2021-01-01'),'reopened correction was ignored or lost unchanged source fields');
-  perform pg_temp.assert_true(exists(select 1 from public.ap_candidate_facts where snapshot_id='e8900000-0000-4000-8000-000000000012' and typed_value->>'employer'='Fixture Store'),'reopened correction rewrote the old snapshot');
+  if not successor_required then
+   perform pg_temp.assert_true(exists(select 1 from public.ap_candidate_facts where snapshot_id='e8900000-0000-4000-8000-000000000012' and typed_value->>'employer'='Fixture Store'),'reopened correction rewrote the old snapshot');
+  else
+   perform pg_temp.assert_true((select typed_value->>'employer'='Fixture Store' from public.ap_candidate_facts where id='e8900000-0000-4000-8000-000000000042'),'pre-confirmation correction rewrote extracted source');
+  end if;
   perform pg_temp.assert_true(exists(select 1 from public.ap_candidate_facts where snapshot_id='e8900000-0000-4000-8000-000000000013' and value_kind='EMPLOYMENT' and starts_on='2021-01-01' and ends_on='2024-01-01' and calendar_duration_days=1095 and intensity_percent=50 and customer_display_value->>'summary' like '%Team lead%' and customer_display_value->>'summary' not like '%Cashier%'),'corrected projection/display retained stale source');
   perform pg_temp.assert_true(exists(select 1 from public.ap_candidate_facts where snapshot_id='e8900000-0000-4000-8000-000000000013' and capability_status='NOT_DONE'),'corrected capability projection retained old claim');
-  perform public.ap_save_four_step_draft('e8900000-0000-4000-8000-000000000002',repeat('b',64),6,3,pg_temp.answers('OUTDATED_RESUME'));
+   if successor_required then raise exception 'fixture_reset_unconfirmed'; end if;
+  exception when others then if not successor_required or sqlerrm<>'fixture_reset_unconfirmed' then raise; end if; end;
+  if not successor_required then edit_version:=edit_version+1; end if;
+  perform public.ap_save_four_step_draft('e8900000-0000-4000-8000-000000000002',repeat('b',64),edit_version,3,pg_temp.answers('OUTDATED_RESUME'));
+  edit_version:=edit_version+1;
   reviews:=jsonb_set(reviews,'{e8900000-0000-4000-8000-000000000042,correction,fields,datePrecision}','"YEAR"');
-  receipt:=public.ap_prepare_intake_confirmation('e8900000-0000-4000-8000-000000000002',repeat('b',64),7,
-    public.ap_intake_confirmation_source('e8900000-0000-4000-8000-000000000002',repeat('b',64),7),repeat('e',64),repeat('f',64));
-  perform pg_temp.finalize('e8900000-0000-4000-8000-000000000002',7,'e8900000-0000-4000-8000-000000000016','e8900000-0000-4000-8000-000000000026',pg_temp.payload('OUTDATED_RESUME',receipt),reviews);
+  receipt:=public.ap_prepare_intake_confirmation('e8900000-0000-4000-8000-000000000002',repeat('b',64),edit_version,
+    public.ap_intake_confirmation_source('e8900000-0000-4000-8000-000000000002',repeat('b',64),edit_version),repeat('e',64),repeat('f',64));
+  perform pg_temp.finalize('e8900000-0000-4000-8000-000000000002',edit_version,'e8900000-0000-4000-8000-000000000016','e8900000-0000-4000-8000-000000000026',pg_temp.payload('OUTDATED_RESUME',receipt),reviews);
   perform pg_temp.assert_true(exists(select 1 from public.ap_candidate_facts where snapshot_id='e8900000-0000-4000-8000-000000000016' and value_kind='EMPLOYMENT' and starts_on is null and ends_on is null and calendar_duration_days is null),'approximate corrected dates retained exact projection');
 
 end $$;
 
 -- Source changes invalidate a prepared review; approximate guided dates stay approximate.
 select * from public.ap_create_anonymous_draft('e8900000-0000-4000-8000-000000000003',repeat('c',64),now()+interval '1 day');
-do $$ declare answers jsonb; receipt jsonb; payload jsonb; begin
+do $$ declare answers jsonb; receipt jsonb; payload jsonb;
+ successor_required boolean:=(public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion') in('202610250101','202610260102');
+ edit_version bigint; begin
  answers:=pg_temp.answers('GUIDED')||'{"noPriorEmployment":false,"experienceAdditions":[{"clientId":"guide-1","kind":"PAID_EMPLOYMENT","organizationOrProject":"Fixture Store","roleOrRelationship":"Cashier","startsOn":"2020-01-01","endsOn":"2022-01-01","datePrecision":"YEAR","responsibilities":["Handled payments"],"intensityPercent":null}]}'::jsonb;
  perform public.ap_save_four_step_draft('e8900000-0000-4000-8000-000000000003',repeat('c',64),1,3,answers);
  receipt:=public.ap_prepare_intake_confirmation('e8900000-0000-4000-8000-000000000003',repeat('c',64),2,
    public.ap_intake_confirmation_source('e8900000-0000-4000-8000-000000000003',repeat('c',64),2),repeat('c',64),repeat('d',64));
  payload:=pg_temp.payload('GUIDED',receipt)||jsonb_build_object('experienceAdditions',answers->'experienceAdditions');
- perform pg_temp.finalize('e8900000-0000-4000-8000-000000000003',2,'e8900000-0000-4000-8000-000000000014','e8900000-0000-4000-8000-000000000024',payload,'{}');
+  begin
+   perform pg_temp.finalize('e8900000-0000-4000-8000-000000000003',2,'e8900000-0000-4000-8000-000000000014','e8900000-0000-4000-8000-000000000024',payload,'{}');
  perform pg_temp.assert_true(exists(select 1 from public.ap_candidate_facts where snapshot_id='e8900000-0000-4000-8000-000000000014' and typed_value->>'datePrecision'='YEAR' and starts_on is null and ends_on is null),'approximate dates became exact experience credit');
  perform pg_temp.assert_true(exists(select 1 from public.ap_experience_identities where draft_id='e8900000-0000-4000-8000-000000000003' and starts_on is null and ends_on is null),'approximate identity dates became exact');
- perform public.ap_save_four_step_draft('e8900000-0000-4000-8000-000000000003',repeat('c',64),3,3,answers);
- receipt:=public.ap_prepare_intake_confirmation('e8900000-0000-4000-8000-000000000003',repeat('c',64),4,
-   public.ap_intake_confirmation_source('e8900000-0000-4000-8000-000000000003',repeat('c',64),4),repeat('c',64),repeat('d',64));
- perform public.ap_register_anonymous_document('e8900000-0000-4000-8000-000000000003',repeat('c',64),4,
+   if successor_required then raise exception 'fixture_reset_unconfirmed'; end if;
+  exception when others then if not successor_required or sqlerrm<>'fixture_reset_unconfirmed' then raise; end if; end;
+  edit_version:=case when successor_required then 2 else 3 end;
+  perform public.ap_save_four_step_draft('e8900000-0000-4000-8000-000000000003',repeat('c',64),edit_version,3,answers);
+  edit_version:=edit_version+1;
+  receipt:=public.ap_prepare_intake_confirmation('e8900000-0000-4000-8000-000000000003',repeat('c',64),edit_version,
+    public.ap_intake_confirmation_source('e8900000-0000-4000-8000-000000000003',repeat('c',64),edit_version),repeat('c',64),repeat('d',64));
+  perform public.ap_register_anonymous_document('e8900000-0000-4000-8000-000000000003',repeat('c',64),edit_version,
    'e8900000-0000-4000-8000-000000000033','PRIOR_COVER_LETTER','fixture.pdf','anonymous/e8900000-0000-4000-8000-000000000003/prior_cover_letter/fixture.pdf',128,'application/pdf','application/pdf',repeat('1',64));
  begin
-  perform pg_temp.finalize('e8900000-0000-4000-8000-000000000003',5,'e8900000-0000-4000-8000-000000000015','e8900000-0000-4000-8000-000000000025',pg_temp.payload('GUIDED',receipt)||jsonb_build_object('experienceAdditions',answers->'experienceAdditions'),'{}');
+   perform pg_temp.finalize('e8900000-0000-4000-8000-000000000003',edit_version+1,'e8900000-0000-4000-8000-000000000015','e8900000-0000-4000-8000-000000000025',pg_temp.payload('GUIDED',receipt)||jsonb_build_object('experienceAdditions',answers->'experienceAdditions'),'{}');
   raise exception 'changed source accepted stale receipt';
  exception when others then if sqlerrm<>'intake_review_stale' then raise; end if; end;
 end $$;

@@ -47,7 +47,7 @@ function fixture() {
       sha256: object.expectedSha256, size: object.size, archiveVersionId: `existing-file-version-${index}`,
       archiveKey: `objects/${object.bucket}/${sha256(`${object.bucket}\0${object.key}\0${object.sourceVersion}`)}` })) };
   const fileDigest = canonicalSha256(fileManifest);
-  const snapshot = { sourceProjectRef: DATABASE_RECOVERY.projectRef, releaseSha: RELEASE, schemaVersion: "202610250100",
+  const snapshot = { sourceProjectRef: DATABASE_RECOVERY.projectRef, releaseSha: RELEASE, schemaVersion: "202610260102",
     startedAt: stamp(-60000), postgresVersion: "17.6", pgDumpVersion: "17.11", snapshotId: "00000003-0000001B-1",
     coverage: { schemas: ["public", "auth", "storage", "supabase_migrations"], allTablesReadable: true, rowSecurityBypass: true,
       roleDefinitionsIncluded: true, rolePasswordsIncluded: false, providerConfigurationIncluded: false } };
