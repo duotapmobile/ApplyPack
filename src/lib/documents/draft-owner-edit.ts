@@ -73,7 +73,7 @@ export function buildOwnerEditedDraftSource(input: { request: unknown; source: D
   ensure(exactOwnerEditJson(request.output.resume.sections.map((section) => section.anchorFactId)) === exactOwnerEditJson(prior.resume.sections.map((section) => section.anchorFactId))
     && exactOwnerEditJson(request.output.resume.educationFactIds) === exactOwnerEditJson(prior.resume.educationFactIds), "LOCAL_FIELDS_IMMUTABLE");
   ensure(exactOwnerEditJson(request.output) !== exactOwnerEditJson(prior), "NO_CHANGES");
-  const proposal = validateDraftOutput(request.output, packet, now);
+  const proposal = validateDraftOutput(request.output, packet, now, source.changeRequest);
   const generated = buildDraftRenderSource({ packet, proposal, contact: input.contact, references: input.references,
     finalVersionAt: now.toISOString(), ...(source.resume.careerBreak ? { careerBreakFactId: source.resume.careerBreak.sourceFactId } : {}) }, now);
   const detached = JSON.parse(serializeDraftRenderSource(generated)) as Omit<DraftRenderSource, "renderSourceSha256">;

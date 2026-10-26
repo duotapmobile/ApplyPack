@@ -23,9 +23,9 @@ export default async function DocumentDraftEvidencePage({ searchParams }: { sear
       questions: { status: "OBSERVED", verification: "BOUND_SOURCE_EVIDENCE", comparisonAvailable: true, items: [question] } };
     detail = { status: "REFRESH_REQUIRED", jobId: id(1), message: "Review the saved employer evidence before any explicit recovery action.", recovery };
   } else {
-    const complete = state === "approve" || state === "send";
-    detail = { status: "AVAILABLE", jobId: id(1), state: state === "send" ? "APPROVED" : complete ? "REVIEW_READY" : "SOURCE_READY", versionId: id(2), version: 2, lineId: id(3), revisionId: id(4),
-      packetSha256: sha("a"), sourceSha256: sha("b"), ruleSha256: sha("d"), memberSetSha256: complete ? sha("c") : null, approvalSha256: state === "send" ? sha("e") : null,
+    const approved = state === "send" || state === "changes", complete = state === "approve" || approved;
+    detail = { status: "AVAILABLE", jobId: id(1), state: approved ? "APPROVED" : complete ? "REVIEW_READY" : "SOURCE_READY", versionId: id(2), version: 2, lineId: id(3), revisionId: id(4),
+      packetSha256: sha("a"), sourceSha256: sha("b"), ruleSha256: sha("d"), memberSetSha256: complete ? sha("c") : null, approvalSha256: approved ? sha("e") : null,
       dueAt: new Date(now + 86_400_000).toISOString(), validUntil: new Date(now + 3_000_000).toISOString(), kind: "RENDER_SOURCE", company: "Synthetic employer", title: "Office assistant", applicationUrl: "https://example.invalid/apply",
       documents: [{ title: "Resume", sections: [{ heading: "Community experience", lines: [{ text: "Organized schedules for community activities.", claimId: id(20), bullet: true }] }] },
         { title: "Cover letter", sections: [{ heading: "Relevant experience", lines: [{ text: "I gained experience organizing community event schedules.", claimId: id(21), bullet: false }] }] }],
@@ -41,7 +41,7 @@ export default async function DocumentDraftEvidencePage({ searchParams }: { sear
         sections: [{ anchorFactId: id(30), label: "Volunteer coordinator · Synthetic community center" }],
         sources: [{ id: sha("4"), factId: id(30), parentFactId: null, label: "Confirmed responsibilities", value: "Organized event schedules", disposition: "CONFIRMED", localOnly: false },
           { id: sha("5"), factId: id(30), parentFactId: null, label: "Confirmed organization", value: "Synthetic community center", disposition: "CONFIRMED", localOnly: true }] },
-      wordingReviewed: complete, canPromote: false, canReviewWording: !complete, canApprove: state === "approve", canSend: state === "send" };
+      wordingReviewed: complete, canPromote: false, canReviewWording: !complete, canApprove: state === "approve", canSend: approved, canRequestChanges: state === "changes" };
   }
   return <main id="main-content" className="portal-page"><div className="page-frame"><header><p className="eyebrow">Synthetic component evidence</p><h1>Owner document review</h1>
     <p>This development fixture uses synthetic records only. Browser tests intercept action requests; it is not hosted payment, delivery or administrator-access proof.</p></header>

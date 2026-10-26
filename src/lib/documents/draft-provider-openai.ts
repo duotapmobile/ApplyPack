@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { canonicalSha256, stableStringify } from "@/lib/domain/foundation";
 import { draftInstructions, draftOutputJsonSchema, draftOutputSchema, type DraftOutput, type DraftOutputEvidence } from "./draft-output";
+import { draftChangeProviderContextSchema, type DraftChangeProviderContext } from "./draft-change-request";
 
 const BASE = "https://api.openai.com/v1/responses";
 const permitSchema = z.object({ requestId: z.uuid(), dispatchAuthorized: z.literal(true), state: z.literal("DISPATCHED"),
@@ -16,6 +17,7 @@ export type OpenAiDraftResult =
 type RequestInput = {
   runtimeEnabled: boolean; apiKey: string; requestId: string; model: string; policySha256: string;
   maxInputTokens: number; maxOutputTokens: number; evidence: DraftOutputEvidence;
+  ownerChangeRequest?: DraftChangeProviderContext;
   /** Calls the durable DB reservation RPC exactly once. A replay receipt never
    * authorizes another provider request. Callers must use a fresh fenced lease. */
   reserveDispatch: () => Promise<unknown>;
@@ -64,7 +66,8 @@ export async function requestOpenAiDraft(input: RequestInput): Promise<OpenAiDra
   try {
     // Async reservation/count callbacks must not change which input or model
     // the already-checked request will use.
-    input = { ...input, evidence: structuredClone(input.evidence) };
+    input = { ...input, evidence: structuredClone(input.evidence),
+      ...(input.ownerChangeRequest ? { ownerChangeRequest: draftChangeProviderContextSchema.parse(input.ownerChangeRequest) } : {}) };
     requireThat(z.uuid().safeParse(input.requestId).success && /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{1,119}$/u.test(input.model)
       && /^[0-9a-f]{64}$/u.test(input.policySha256) && input.apiKey.length > 10 && !/[\r\n]/u.test(input.apiKey), "INPUT_INVALID");
     requireThat(Number.isInteger(input.maxInputTokens) && input.maxInputTokens >= 1 && input.maxInputTokens <= 50_000
@@ -72,7 +75,8 @@ export async function requestOpenAiDraft(input: RequestInput): Promise<OpenAiDra
     requireThat(!input.signal?.aborted && Date.parse(input.evidence.validUntil) > (input.now?.() ?? new Date()).getTime()
       && canonicalSha256(input.evidence.providerView) === input.evidence.providerViewSha256, "INPUT_INVALID");
     body = { model: input.model, instructions: draftInstructions(),
-      input: [{ role: "user", content: [{ type: "input_text", text: stableStringify(input.evidence.providerView) }] }],
+      input: [{ role: "user", content: [{ type: "input_text", text: stableStringify(input.ownerChangeRequest
+        ? { evidence: input.evidence.providerView, ownerRevisionRequest: input.ownerChangeRequest } : input.evidence.providerView) }] }],
       text: { format: { type: "json_schema", name: "applypack_draft_proposal", strict: true, schema: draftOutputJsonSchema } },
       tools: [], tool_choice: "none", truncation: "disabled" };
     requireThat(Buffer.byteLength(JSON.stringify(body), "utf8") <= 256_000, "INPUT_INVALID");

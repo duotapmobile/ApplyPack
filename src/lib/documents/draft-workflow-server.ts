@@ -7,6 +7,8 @@ import { createDraftPacketServices, readEncryptedDraftPayload, storeEncryptedDra
 import { loadDraftingEvidencePacket } from "./drafting-evidence-server";
 import { draftingEvidenceExpectationSchema, serializeDraftingEvidencePacket } from "./drafting-evidence";
 import type { DraftGenerationServices } from "./draft-generation-worker";
+import type { DraftChangePort } from "./draft-change-port";
+import { loadDraftChangeForVersion } from "./draft-change-loader";
 
 type Admin = SupabaseClient<Database>;
 type ObservationArgs = Database["public"]["Functions"]["ap_observe_material_draft_response"]["Args"];
@@ -52,7 +54,7 @@ function sameVersion(job: z.infer<typeof jobSchema>, version: z.infer<typeof ver
  * and starts no work. The caller still owns scheduling and provider activation.
  * The generated Database contract is authoritative; no local RPC type aliases
  * or untyped client fallback are used for the 091 database surface. */
-export function createDraftWorkflowServer(admin: Admin, options: { now?: () => Date } = {}) {
+export function createDraftWorkflowServer(admin: Admin, options: { now?: () => Date; changePort?: DraftChangePort } = {}) {
   const now = options.now ?? (() => new Date());
   const enabled = () => process.env.APP_MATERIAL_DRAFTING_ENABLED === "true";
   let runtimePolicy: string | null = null, approvedPolicy: string | null = null;
@@ -106,6 +108,19 @@ export function createDraftWorkflowServer(admin: Admin, options: { now?: () => D
     }),
   };
   const generation: DraftGenerationServices = {
+    ...(options.changePort ? {
+      loadChangeRequest: (state, packet, signal) => bounded(signal, async (child) => {
+        const request = await loadDraftChangeForVersion(admin, options.changePort!,
+          { jobId: state.jobId, versionId: state.versionId, customerId: state.customerId, materialLineId: state.materialLineId }, packet, child, now);
+        return request ? { lineage: request.lineage, providerContext: request.providerContext } : null;
+      }),
+      reserveWithChanges: (args, signal) => bounded(signal, async (child) => {
+        ensure(enabled() && approvedPolicy === args.p_policy_id && runtimePolicy === args.p_policy_id, "PROVIDER_DISABLED");
+        const parsed = parse(dispatchArgs.extend({ p_input_token_cap: z.number().int().min(1).max(50_000), p_output_token_cap: z.number().int().min(16).max(16_000),
+          p_change_request_id: uuid, p_change_payload_sha256: hash }).strict(), args, "INPUT_INVALID");
+        return options.changePort!.reserve(parsed, child);
+      }),
+    } satisfies Partial<DraftGenerationServices> : {}),
     readRuntime: (signal) => bounded(signal, async (child) => {
       runtimePolicy = null; approvedPolicy = null;
       if (!enabled()) return { enabled: false, policy_id: null };

@@ -63,4 +63,19 @@ describe("service-error authenticated database adapter", () => {
     expect(f.calls[0].args).toEqual({ p_customer_id: f.customerId, p_request_id: f.body.requestId });
     f.report.customerId = id(99); await expect(f.customer.receipt(f.body.requestId, new AbortController().signal)).rejects.toThrow("OWNERSHIP_MISMATCH");
   });
+  it("preserves first-decision NULL and structured evidence in the actual generated RPC boundary", async () => {
+    const f = fixture(), decision = { requestId: id(20), caseId: f.caseId, expectedDecisionId: null,
+      classification: "CONFIRMED_SERVICE_ERROR", reasonCode: "CONFIRMED_SOURCE_MISMATCH",
+      explanation: "The delivered name differs from the exact confirmed contact.",
+      evidence: [{ ...f.members[0], sourceSnapshotId: f.contract.sourceSnapshotId, sourceFactIds: [], documentVersionIds: [] }],
+      affected: f.members, confirmedValuesReviewed: true, deliveredVersionReviewed: true, parserProvenanceReviewed: true };
+    payload.store.mockImplementation(async (_admin, input) => ({ payloadId: input.payloadId, sha256: input.sha256 }));
+    // The fixture deliberately supplies no durable decision receipt: reaching
+    // the mutation must not turn its missing response into claimed completion.
+    await expect(f.owner.decide(decision, new AbortController().signal)).rejects.toThrow("DECISION_RESULT_UNKNOWN");
+    const calls = f.calls.filter((call) => call.name === "ap_record_material_service_error_decision");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args).toMatchObject({ p_previous_decision_id: null, p_evidence: decision.evidence, p_affected: decision.affected });
+    expect(calls[0].signal).toBeInstanceOf(AbortSignal);
+  });
 });

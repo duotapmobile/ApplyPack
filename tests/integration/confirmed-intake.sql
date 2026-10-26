@@ -1,6 +1,6 @@
 begin;
 do $$ declare readiness jsonb:=public.ap_manual_launch_schema_readiness(); begin
- if readiness->>'requiredSchemaVersion' not in ('202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096') or not (readiness->'requiredMigrations' ?& array['202610240087','202610250088','202610250089'])
+ if readiness->>'requiredSchemaVersion' not in ('202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097') or not (readiness->'requiredMigrations' ?& array['202610240087','202610250088','202610250089'])
    or not public.ap_confirmed_intake_schema_installed() then raise exception 'confirmed intake schema readiness is incomplete'; end if;
 end $$;
 create function pg_temp.assert_true(value boolean,message text) returns void language plpgsql as $$

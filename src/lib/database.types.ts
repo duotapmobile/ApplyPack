@@ -8800,6 +8800,364 @@ export type Database = {
           },
         ]
       }
+      ap_service_error_affected_members: {
+        Row: {
+          artifact_id: string
+          case_id: string
+          created_at: string
+          customer_id: string
+          decision_id: string | null
+          file_version_id: string
+          id: string
+          material_line_id: string
+          member_kind: string
+          position: number
+          release_id: string
+          source_snapshot_id: string
+        }
+        Insert: {
+          artifact_id: string
+          case_id: string
+          created_at?: string
+          customer_id: string
+          decision_id?: string | null
+          file_version_id: string
+          id?: string
+          material_line_id: string
+          member_kind: string
+          position: number
+          release_id: string
+          source_snapshot_id: string
+        }
+        Update: {
+          artifact_id?: string
+          case_id?: string
+          created_at?: string
+          customer_id?: string
+          decision_id?: string | null
+          file_version_id?: string
+          id?: string
+          material_line_id?: string
+          member_kind?: string
+          position?: number
+          release_id?: string
+          source_snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_service_error_affected_members_artifact_id_fkey"
+            columns: ["artifact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_generated_artifacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_affected_members_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "ap_service_error_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_affected_members_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_affected_members_decision_id_fkey"
+            columns: ["decision_id"]
+            isOneToOne: false
+            referencedRelation: "ap_service_error_decisions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_affected_members_file_version_id_fkey"
+            columns: ["file_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_generated_file_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_affected_members_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_affected_members_release_id_fkey"
+            columns: ["release_id"]
+            isOneToOne: false
+            referencedRelation: "ap_releases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_affected_members_source_snapshot_id_fkey"
+            columns: ["source_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_service_error_contracts: {
+        Row: {
+          bound_at: string
+          confirmed_intake_version: string
+          contract_version: string
+          customer_id: string
+          intake_review_id: string
+          intake_review_sha256: string
+          legal_receipt_id: string
+          material_line_id: string
+          privacy_content_sha256: string
+          privacy_version: string
+          purchase_id: string
+          reporting_time_zone: string
+          source_snapshot_id: string
+          terms_content_sha256: string
+          terms_version: string
+        }
+        Insert: {
+          bound_at: string
+          confirmed_intake_version: string
+          contract_version: string
+          customer_id: string
+          intake_review_id: string
+          intake_review_sha256: string
+          legal_receipt_id: string
+          material_line_id: string
+          privacy_content_sha256: string
+          privacy_version: string
+          purchase_id: string
+          reporting_time_zone?: string
+          source_snapshot_id: string
+          terms_content_sha256: string
+          terms_version: string
+        }
+        Update: {
+          bound_at?: string
+          confirmed_intake_version?: string
+          contract_version?: string
+          customer_id?: string
+          intake_review_id?: string
+          intake_review_sha256?: string
+          legal_receipt_id?: string
+          material_line_id?: string
+          privacy_content_sha256?: string
+          privacy_version?: string
+          purchase_id?: string
+          reporting_time_zone?: string
+          source_snapshot_id?: string
+          terms_content_sha256?: string
+          terms_version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_service_error_contracts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_contracts_legal_receipt_id_fkey"
+            columns: ["legal_receipt_id"]
+            isOneToOne: false
+            referencedRelation: "ap_snapshot_legal_content_receipts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_contracts_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: true
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_contracts_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_purchase_status"
+            referencedColumns: ["purchase_id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_contracts_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_purchases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_contracts_source_snapshot_id_fkey"
+            columns: ["source_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_service_error_decisions: {
+        Row: {
+          affected: Json
+          case_id: string
+          classification: string
+          customer_id: string
+          decided_at: string
+          evidence: Json
+          id: string
+          material_line_id: string
+          previous_decision_id: string | null
+          reason_code: string
+          request_id: string
+          review_sha256: string
+          reviewer_id: string
+          sensitive_payload_id: string
+          version: number
+        }
+        Insert: {
+          affected: Json
+          case_id: string
+          classification: string
+          customer_id: string
+          decided_at: string
+          evidence: Json
+          id: string
+          material_line_id: string
+          previous_decision_id?: string | null
+          reason_code: string
+          request_id: string
+          review_sha256: string
+          reviewer_id: string
+          sensitive_payload_id: string
+          version: number
+        }
+        Update: {
+          affected?: Json
+          case_id?: string
+          classification?: string
+          customer_id?: string
+          decided_at?: string
+          evidence?: Json
+          id?: string
+          material_line_id?: string
+          previous_decision_id?: string | null
+          reason_code?: string
+          request_id?: string
+          review_sha256?: string
+          reviewer_id?: string
+          sensitive_payload_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_service_error_decisions_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "ap_service_error_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_decisions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_decisions_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_decisions_previous_decision_id_fkey"
+            columns: ["previous_decision_id"]
+            isOneToOne: false
+            referencedRelation: "ap_service_error_decisions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_decisions_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_decisions_sensitive_payload_id_fkey"
+            columns: ["sensitive_payload_id"]
+            isOneToOne: true
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_service_error_reports: {
+        Row: {
+          customer_id: string
+          id: string
+          material_line_id: string
+          report_deadline: string
+          report_sha256: string
+          reported_at: string
+          request_id: string
+          sensitive_payload_id: string
+        }
+        Insert: {
+          customer_id: string
+          id: string
+          material_line_id: string
+          report_deadline: string
+          report_sha256: string
+          reported_at: string
+          request_id: string
+          sensitive_payload_id: string
+        }
+        Update: {
+          customer_id?: string
+          id?: string
+          material_line_id?: string
+          report_deadline?: string
+          report_sha256?: string
+          reported_at?: string
+          request_id?: string
+          sensitive_payload_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_service_error_reports_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_reports_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "ap_material_support_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_reports_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: true
+            referencedRelation: "ap_service_error_contracts"
+            referencedColumns: ["material_line_id"]
+          },
+          {
+            foreignKeyName: "ap_service_error_reports_sensitive_payload_id_fkey"
+            columns: ["sensitive_payload_id"]
+            isOneToOne: true
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_service_retention_claims: {
         Row: {
           completed_at: string | null
@@ -13903,6 +14261,10 @@ export type Database = {
         Args: { p_event: string; p_step: number }
         Returns: boolean
       }
+      ap_inspect_material_service_error: {
+        Args: { p_case_id: string; p_reviewer_id: string }
+        Returns: Json
+      }
       ap_intake_confirmation_source: {
         Args: {
           p_draft_id: string
@@ -14073,6 +14435,10 @@ export type Database = {
         Args: never
         Returns: boolean
       }
+      ap_material_service_error_context: {
+        Args: { p_customer_id: string; p_material_line_id: string }
+        Returns: Json
+      }
       ap_observe_material_draft_response: {
         Args: {
           p_input_tokens: number
@@ -14102,6 +14468,17 @@ export type Database = {
         Returns: string
       }
       ap_one_off_retention_schema_installed: { Args: never; Returns: boolean }
+      ap_open_material_service_error_report: {
+        Args: {
+          p_customer_id: string
+          p_material_line_id: string
+          p_members: Json
+          p_payload_id: string
+          p_report_sha256: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       ap_open_postdelivery_false_claim_case: {
         Args: {
           p_artifact_id: string
@@ -14295,6 +14672,14 @@ export type Database = {
         Args: { p_draft_id: string; p_secret_hash: string }
         Returns: Json
       }
+      ap_read_material_service_error_decision: {
+        Args: { p_request_id: string; p_reviewer_id: string }
+        Returns: Json
+      }
+      ap_read_material_service_error_report: {
+        Args: { p_customer_id: string; p_request_id: string }
+        Returns: Json
+      }
       ap_reconcile_checkout_initiation: {
         Args: {
           p_attempt_id: string
@@ -14444,6 +14829,21 @@ export type Database = {
           p_submission_rule_id: string
         }
         Returns: string
+      }
+      ap_record_material_service_error_decision: {
+        Args: {
+          p_affected: Json
+          p_case_id: string
+          p_classification: string
+          p_evidence: Json
+          p_payload_id: string
+          p_previous_decision_id: string
+          p_reason_code: string
+          p_request_id: string
+          p_review_sha256: string
+          p_reviewer_id: string
+        }
+        Returns: Json
       }
       ap_record_reference_isolation: {
         Args: {
@@ -14921,6 +15321,26 @@ export type Database = {
         }
         Returns: string
       }
+      ap_service_error_contract_json: {
+        Args: { p_line: string }
+        Returns: Json
+      }
+      ap_service_error_deadline: {
+        Args: { p_delivered_at: string }
+        Returns: string
+      }
+      ap_service_error_lock: {
+        Args: { p_customer: string; p_line: string }
+        Returns: undefined
+      }
+      ap_service_error_member: {
+        Args: { p_customer: string; p_member: Json }
+        Returns: Json
+      }
+      ap_service_error_triage_schema_installed: {
+        Args: never
+        Returns: boolean
+      }
       ap_service_retention_access_allowed: {
         Args: { p_action?: boolean; p_line_id?: string; p_order_id: string }
         Returns: boolean
@@ -14947,6 +15367,10 @@ export type Database = {
       }
       ap_service_retention_object_policies: { Args: never; Returns: Json }
       ap_service_retention_order_protected: {
+        Args: { p_order_id: string }
+        Returns: boolean
+      }
+      ap_service_retention_order_protected_before_096: {
         Args: { p_order_id: string }
         Returns: boolean
       }

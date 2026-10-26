@@ -6,6 +6,8 @@ import { serializeDraftingEvidencePacket, type DraftingEvidencePacket } from "./
 import { serializeDraftProposal, validateDraftOutput } from "./draft-output";
 import { requestOpenAiDraft, type DraftProviderUsage, type OpenAiDraftResult } from "./draft-provider-openai";
 import type { DraftPayloadInput } from "./draft-packet-worker";
+import { draftChangeLineageSchema } from "./draft-change-contract";
+import { draftChangeProviderContextSchema } from "./draft-change-request";
 
 const uuid = z.uuid(), hash = z.string().regex(/^[a-f0-9]{64}$/), timestamp = z.iso.datetime({ offset: true });
 const claimSchema = z.object({ jobId: uuid, ownerId: uuid, leaseToken: uuid }).strict();
@@ -33,10 +35,13 @@ export type DraftGenerationServices = {
   readState(claim: DraftGenerationClaim, signal: AbortSignal): Promise<unknown>;
   readPolicy(policyId: string, signal: AbortSignal): Promise<unknown>;
   loadPacket(state: DraftGenerationState, signal: AbortSignal): Promise<DraftingEvidencePacket>;
+  loadChangeRequest?(state: DraftGenerationState, packet: DraftingEvidencePacket, signal: AbortSignal): Promise<unknown>;
   renewLease(claim: DraftGenerationClaim, signal: AbortSignal): Promise<unknown>;
   readApiKey(): string;
   reserve(args: { p_job_id: string; p_lease_token: string; p_version_id: string; p_request_id: string; p_policy_id: string;
     p_input_token_cap: number; p_output_token_cap: number }, signal: AbortSignal): Promise<unknown>;
+  reserveWithChanges?(args: { p_job_id: string; p_lease_token: string; p_version_id: string; p_request_id: string; p_policy_id: string;
+    p_input_token_cap: number; p_output_token_cap: number; p_change_request_id: string; p_change_payload_sha256: string }, signal: AbortSignal): Promise<unknown>;
   recheck(args: { p_job_id: string; p_lease_token: string; p_request_id: string; p_version_id: string; p_policy_id: string }, signal: AbortSignal): Promise<unknown>;
   observe(observation: DraftResponseObservation, signal: AbortSignal): Promise<unknown>;
   storePayload(input: DraftPayloadInput, signal: AbortSignal): Promise<{ payloadId: string; sha256: string }>;
@@ -94,6 +99,10 @@ export async function generateDraftForClaim(services: DraftGenerationServices, r
       && packet.expected.revisionVersion === state.revisionVersion && packet.expected.bindingSha256 === state.bindingSha256
       && packet.binding.snapshotId === state.snapshotId && packet.binding.dueAt === state.dueAt
       && Date.parse(packet.validUntil) > now().getTime(), "PACKET_MISMATCH");
+    const change = services.loadChangeRequest ? parse(z.object({ lineage: draftChangeLineageSchema,
+      providerContext: draftChangeProviderContextSchema }).strict().nullable(),
+      await call(() => services.loadChangeRequest!(state, packet, signal)), "CHANGE_REQUEST_INVALID") : null;
+    ensure(!change || services.reserveWithChanges, "CHANGE_REQUEST_UNAVAILABLE");
     const renewed = parse(timestamp, await call(() => services.renewLease(currentClaim, signal)), "LEASE_UNCONFIRMED");
     ensure(Date.parse(renewed) > now().getTime(), "LEASE_UNCONFIRMED");
     const apiKey = services.readApiKey();
@@ -101,10 +110,12 @@ export async function generateDraftForClaim(services: DraftGenerationServices, r
     const currentRequest = requestId;
     const transport = await requestOpenAiDraft({ runtimeEnabled: true, apiKey, requestId, model: policy.model,
       policySha256: policy.policy_sha256, maxInputTokens: policy.max_input_tokens, maxOutputTokens: policy.max_output_tokens,
-      evidence: packet, signal, now, fetchImpl: options.fetchImpl,
-      reserveDispatch: () => { reservationAttempted = true; return call(() => services.reserve({ p_job_id: state.jobId,
+      evidence: packet, ...(change ? { ownerChangeRequest: change.providerContext } : {}), signal, now, fetchImpl: options.fetchImpl,
+      reserveDispatch: () => { reservationAttempted = true; const args = { p_job_id: state.jobId,
         p_lease_token: currentClaim.leaseToken, p_version_id: state.versionId, p_request_id: currentRequest,
-        p_policy_id: policy.id, p_input_token_cap: policy.max_input_tokens, p_output_token_cap: policy.max_output_tokens }, signal)); },
+        p_policy_id: policy.id, p_input_token_cap: policy.max_input_tokens, p_output_token_cap: policy.max_output_tokens };
+        return call(() => change ? services.reserveWithChanges!({ ...args, p_change_request_id: change.lineage.requestId,
+          p_change_payload_sha256: change.lineage.requestPayloadSha256 }, signal) : services.reserve(args, signal)); },
       recheckDispatch: async () => await call(() => services.recheck({ p_job_id: state.jobId, p_lease_token: currentClaim.leaseToken,
         p_request_id: currentRequest, p_version_id: state.versionId, p_policy_id: policy.id }, signal)) === true,
     });
@@ -119,7 +130,7 @@ export async function generateDraftForClaim(services: DraftGenerationServices, r
     };
     if (transport.outcome === "RESULT_UNKNOWN") { await observe("RESULT_UNKNOWN", transport); throw new WorkerError(transport.code); }
     let proposal: ReturnType<typeof validateDraftOutput>;
-    try { proposal = validateDraftOutput(transport.output, packet, now()); }
+    try { proposal = validateDraftOutput(transport.output, packet, now(), change?.lineage); }
     catch { await observe("PROPOSAL_REJECTED", transport); throw new WorkerError("PROPOSAL_REJECTED"); }
     const source = serializeDraftProposal(proposal);
     ensure(createHash("sha256").update(source, "utf8").digest("hex") === proposal.sourceSha256, "SOURCE_DIGEST_INVALID");

@@ -222,7 +222,7 @@ select pg_temp.assert_true(not public.ap_material_draft_checkout_contact_matches
 create temporary table stage_fixture_state(job_id uuid,version_id uuid,policy_id uuid,worker_id uuid default gen_random_uuid());
 insert into stage_fixture_state(job_id) select id from public.ap_material_draft_jobs;
 select pg_temp.assert_true(public.ap_material_draft_stage_claiming_schema_installed(),'094 schema not installed');
-select pg_temp.assert_true(public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' in('202610250094','202610250095','202610250096'),'094 schema floor missing');
+select pg_temp.assert_true(public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' in('202610250094','202610250095','202610250096','202610250097'),'094 schema floor missing');
 select pg_temp.reject('select public.ap_claim_material_draft_stage(null,''PREPARE'',1)','material_draft_stage_claim_invalid');
 select pg_temp.reject('select public.ap_claim_material_draft_stage(gen_random_uuid(),''SEND'',1)','material_draft_stage_claim_invalid');
 select pg_temp.reject('select public.ap_claim_material_draft_stage(gen_random_uuid(),''PREPARE'',6)','material_draft_stage_claim_invalid');

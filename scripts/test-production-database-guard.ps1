@@ -152,7 +152,7 @@ foreach ($mutation in @(
 # Every current forward boundary preserves its predecessor ledger and applies
 # only the missing, exact ordered suffix. The historical087 cases above remain.
 $current = Copy-Fixture
-$current.postSchemaVersion = '202610250096'
+$current.postSchemaVersion = '202610250097'
 foreach ($extra in @(
     @('202610250088','service_retention_cleanup','SERVICE_RETENTION_CLEANUP','202610240087','ONE_OFF_SERVICE_RETENTION'),
     @('202610250089','confirmed_intake','CONFIRMED_INTAKE','202610250088','SERVICE_RETENTION_CLEANUP'),
@@ -162,7 +162,8 @@ foreach ($extra in @(
     @('202610250093','source_aware_document_acceptance','SOURCE_AWARE_DOCUMENT_ACCEPTANCE','202610250092','MATERIAL_RULE_REVALIDATION'),
     @('202610250094','material_draft_stage_claiming','MATERIAL_DRAFT_STAGE_CLAIMING','202610250093','SOURCE_AWARE_DOCUMENT_ACCEPTANCE'),
     @('202610250095','reference_aware_draft_delivery','REFERENCE_AWARE_DRAFT_DELIVERY','202610250094','MATERIAL_DRAFT_STAGE_CLAIMING'),
-    @('202610250096','service_error_contract_and_triage','SERVICE_ERROR_CONTRACT_AND_TRIAGE','202610250095','REFERENCE_AWARE_DRAFT_DELIVERY')
+    @('202610250096','service_error_contract_and_triage','SERVICE_ERROR_CONTRACT_AND_TRIAGE','202610250095','REFERENCE_AWARE_DRAFT_DELIVERY'),
+    @('202610250097','material_draft_change_requests','MATERIAL_DRAFT_CHANGE_REQUESTS','202610250096','SERVICE_ERROR_CONTRACT_AND_TRIAGE')
 )) {
     $current.migrations += [pscustomobject]@{version=$extra[0];name=$extra[1];checkpoint=$extra[2];relativePath="supabase/migrations/$($extra[0])_$($extra[1]).sql";predecessor=$extra[3];predecessorCheckpoint=$extra[4];sha256=('a' * 64)}
 }
@@ -192,7 +193,12 @@ $historical095.postSchemaVersion = '202610250095'
 $historical095.migrations = @($historical095.migrations | Where-Object version -cle '202610250095')
 Assert-ProductionDatabaseManifest -Manifest $historical095 -Registry $registry
 $checks++
-foreach ($boundary in @('202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095')) {
+$historical096 = $current | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+$historical096.postSchemaVersion = '202610250096'
+$historical096.migrations = @($historical096.migrations | Where-Object version -cle '202610250096')
+Assert-ProductionDatabaseManifest -Manifest $historical096 -Registry $registry
+$checks++
+foreach ($boundary in @('202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096')) {
     $advance = $current | ConvertTo-Json -Depth 10 | ConvertFrom-Json
     $advance.expectedSchemaVersion = $boundary
     $advance.expectedLedger = @($entry) + @($advance.migrations | Where-Object { $_.version -cle $boundary } | ForEach-Object {
@@ -201,6 +207,10 @@ foreach ($boundary in @('202610240087','202610250088','202610250089','2026102500
     $text = @($advance.expectedLedger | ForEach-Object { "$($_.version):$($_.name):$($_.statementCount):$($_.statementsDigest)" }) -join "`n"
     $advance.expectedLedgerSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($text))).ToLowerInvariant()
     $advance.migrations = @($advance.migrations | Where-Object { $_.version -cgt $boundary })
+    if ($boundary -ceq '202610250096' -and
+        (@($advance.migrations).Count -ne 1 -or $advance.migrations[0].version -cne '202610250097' -or
+         $advance.migrations[0].predecessorCheckpoint -cne 'SERVICE_ERROR_CONTRACT_AND_TRIAGE' -or
+         $advance.expectedLedger[-1].version -cne '202610250096')) { throw 'GUARD_097_ONLY_SUFFIX_FIXTURE_INVALID' }
     Assert-ProductionDatabaseManifest -Manifest $advance -Registry $registry
     $checks++
     foreach ($mutation in @(

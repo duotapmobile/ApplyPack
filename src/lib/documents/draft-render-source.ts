@@ -71,7 +71,7 @@ export function buildDraftRenderSource(input: {
       && Date.parse(input.finalVersionAt) <= now.getTime(), "CLOCK_INVALID");
     requireThat(proposal.evidencePacketSha256 === packet.packetSha256 && proposal.providerViewSha256 === packet.providerViewSha256
       && canonicalSha256(proposal.expected) === canonicalSha256(packet.expected), "PACKET_MISMATCH");
-    const verified = validateDraftOutput(proposal.output, packet, now);
+    const verified = validateDraftOutput(proposal.output, packet, now, proposal.changeRequest);
     requireThat(verified.sourceSha256 === proposal.sourceSha256, "PROPOSAL_MISMATCH");
     requireThat(input.contact.payloadId === packet.binding.contactPayloadId && isUint8Array(input.contact.plaintext)
       && input.contact.plaintext.byteLength > 0 && input.contact.plaintext.byteLength <= 8_192, "CONTACT_BINDING_INVALID");
@@ -262,7 +262,8 @@ export function buildDraftRenderSource(input: {
     } else requireThat(!input.references?.length && rawReferenceBindings === undefined, "REFERENCE_SCOPE_NOT_SELECTED");
     requireThat(claims.length <= 250 && new Set(claims.map((claim) => claim.claimId)).size === claims.length, "CLAIM_BOUND_EXCEEDED");
     const source = { schemaVersion: DRAFT_RENDER_SOURCE_VERSION, expected: packet.expected, packetSha256: packet.packetSha256,
-      proposalSourceSha256: proposal.sourceSha256, contactPayloadId: packet.binding.contactPayloadId, contactSha256: packet.binding.contactSha256,
+      proposalSourceSha256: proposal.sourceSha256, ...(proposal.changeRequest ? { changeRequest: proposal.changeRequest } : {}),
+      contactPayloadId: packet.binding.contactPayloadId, contactSha256: packet.binding.contactSha256,
       finalVersionAt: input.finalVersionAt, validUntil: packet.validUntil, language: "en-US" as const,
       outputRules: packet.providerView.outputRules, resume, coverLetter, ...(referenceSheet ? { referenceSheet } : {}), ownerReviewClaims: claims,
       state: "OWNER_REVIEW_REQUIRED" as const, deliveryAuthorized: false as const };

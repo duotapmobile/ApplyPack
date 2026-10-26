@@ -18,6 +18,8 @@ import type { materialRuleBasisSchema } from "./material-rule-evidence";
 import { buildEmployerQuestionInsights } from "./employer-question-evidence";
 import { getEmployerSource } from "@/lib/jobs/source-registry";
 import { buildDraftOwnerEditModel, type DraftOwnerEditModel } from "./draft-owner-edit";
+import type { DraftChangePort } from "./draft-change-port";
+import { loadDraftChangeForVersion } from "./draft-change-loader";
 
 const uuid = z.uuid(), hash = z.string().regex(/^[a-f0-9]{64}$/), time = z.iso.datetime({ offset: true });
 const states = ["EVIDENCE_PENDING", "PREPARING", "READY", "DRAFTING", "SOURCE_READY", "RENDERING", "REVIEW_READY", "APPROVED", "RELEASED", "RESULT_UNKNOWN", "OWNER_EXCEPTION", "SUPERSEDED", "CANCELED"] as const;
@@ -57,6 +59,8 @@ export type DraftOwnerDetail = {
   references?: { permissionId: string; version: number; confirmedAt: string; fields: { label: string; value: string }[] }[];
   referenceFilenameInstruction?: string | null;
   editing?: DraftOwnerEditModel;
+  canRequestChanges?: boolean;
+  revisionRequest?: { instructions: string; priorVersionId: string; priorSourceSha256: string };
   questions: { status: string; verification: string; issues: string[]; items: { id: string; prompt: string; required: boolean | null; wordLimit: number | null; characterLimit: number | null; sourceUrl: string | null; observedAt: string; eligible: boolean }[] };
   requiredFileTypes: string[]; files: { type: string; filename: string; fileVersionId: string; checksumSha256: string; previewUrl: string | null }[];
   wordingReviewed: boolean; canPromote: boolean; canReviewWording: boolean; canApprove: boolean; canSend: boolean;
@@ -79,7 +83,7 @@ function fields(value: unknown): { label: string; value: string }[] {
 /** Server-only private reader. The page must first requireAdmin() with fresh MFA.
  * Only the selected current job is decrypted. Read consistency is optimistic;
  * mutation authority remains the separate transactional owner RPCs. */
-export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedReviewerId: string, options: { now?: () => Date } = {}) {
+export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedReviewerId: string, options: { now?: () => Date; changePort?: DraftChangePort } = {}) {
   const reviewerId = parse(uuid, trustedReviewerId), now = options.now ?? (() => new Date());
   async function run<T>(external: AbortSignal, operation: (signal: AbortSignal) => Promise<T>) {
     const controller = new AbortController(), abort = () => controller.abort();
@@ -93,7 +97,7 @@ export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedRev
   async function data(query: PromiseLike<{ data: unknown; error: unknown }>, signal: AbortSignal) {
     ensure(!signal.aborted); const value = await query; ensure(!signal.aborted && !value.error); return value.data;
   }
-  const authorize = (signal: AbortSignal) => data(admin.rpc("ap_require_material_reviewer", { p_reviewer_id: reviewerId }).abortSignal(signal), signal);
+  const authorize = async (signal: AbortSignal) => parse(z.literal(true), await data(admin.rpc("ap_require_material_reviewer", { p_reviewer_id: reviewerId }).abortSignal(signal), signal));
   const job = async (id: string, signal: AbortSignal) => {
     const row = parse(jobSchema, await data(admin.from("ap_material_draft_jobs").select(jobColumns).eq("id", id).abortSignal(signal).single(), signal)); ensure(row.id === id); return row;
   };
@@ -230,6 +234,8 @@ export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedRev
         ensure(packet.packetSha256 === v.packet_sha256 && serializeDraftingEvidencePacket(packet) === savedPacket.body && packet.binding.snapshotId === current.source_snapshot_id && packet.binding.dueAt === revision.due_at, "REFRESH_REQUIRED");
         if (!v.encrypted_payload_id || !v.source_sha256) return { status: "PENDING", jobId, message: "Evidence is saved, but a complete document proposal has not been recorded. No approval is available." };
         const saved = await readPayload(current, v.encrypted_payload_id, v.source_sha256, "MATERIAL_DRAFT_SOURCE", child);
+        const change = options.changePort ? await loadDraftChangeForVersion(admin, options.changePort, { jobId: current.id,
+          versionId: v.id, customerId: current.customer_id, materialLineId: current.material_line_id }, packet, child, now) : null;
         const facts = packet.ownerEvidence.facts.map((fact) => {
           const document = packet.ownerEvidence.documents.find((item) => item.id === fact.document_version_id);
           return { id: fact.id, label: fact.customer_display_label || label(fact.value_kind), disposition: packet.providerView.facts.find((item) => item.id === fact.id)?.disposition ?? "Do not infer a qualification", fields: fields(fact.typed_value),
@@ -237,6 +243,7 @@ export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedRev
         });
         const sourceEnvelope = z.object({ schemaVersion: z.literal("applypack-draft-render-source-v1") }).passthrough().safeParse(saved.value);
         const storedSource = sourceEnvelope.success ? readStoredDraftRenderSource(saved, v.source_sha256, packet, now) : undefined;
+        if (storedSource) ensure(JSON.stringify(storedSource.changeRequest ?? null) === JSON.stringify(change?.lineage ?? null));
         const references = await (async () => {
           const request = draftReferenceRequest(packet); if (!request) return [];
           let bytes: DraftReferenceInput[] = [];
@@ -284,7 +291,7 @@ export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedRev
             }), jobEvidence: claim.jobEvidenceIds.map((id) => packet.ownerEvidence.requirements.find((node) => node.id === id)?.source_excerpt ?? "Source unavailable"), questionIds: claim.questionInsights.map((item) => item.questionId) });
         } else {
           const envelope = parse(z.object({ schemaVersion: z.literal("applypack-draft-proposal-v1"), output: draftOutputSchema }).passthrough(), saved.value);
-          const proposal = validateDraftOutput(envelope.output, packet, now()); ensure(proposal.sourceSha256 === v.source_sha256 && serializeDraftProposal(proposal) === saved.body);
+          const proposal = validateDraftOutput(envelope.output, packet, now(), change?.lineage); ensure(proposal.sourceSha256 === v.source_sha256 && serializeDraftProposal(proposal) === saved.body);
           const lines = (items: readonly { text: string }[], bullet = false) => items.map((item) => ({ text: item.text, claimId: null, bullet }));
           documents.push({ title: "Resume proposal", sections: [{ heading: "Summary", lines: lines(proposal.output.resume.summary) }, { heading: "Skills", lines: lines(proposal.output.resume.skills, true) }, ...proposal.output.resume.sections.map((section) => ({ heading: facts.find((fact) => fact.id === section.anchorFactId)?.fields.map((field) => field.value).slice(0, 3).join(" · ") || "Confirmed experience", lines: lines(section.bullets, true) }))].filter((section) => section.lines.length) });
           documents.push({ title: "Cover letter proposal", sections: [{ heading: "Body", lines: proposal.output.coverLetter.body.map((paragraph) => ({ text: paragraph.sentences.map((item) => item.text).join(" "), claimId: null, bullet: false })) }] });
@@ -306,6 +313,8 @@ export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedRev
         const complete = !!v.member_set_sha256 && files.length === expectedTypes.length && expectedTypes.every((type) => files.some((file) => file.type === type)) && files.every((file) => file.previewUrl !== null);
         return { status: "AVAILABLE", jobId, state: current.state, versionId: v.id, version: v.version, lineId: current.material_line_id, revisionId: revision.id, packetSha256: v.packet_sha256, sourceSha256: v.source_sha256,
           ruleSha256: packet.binding.ruleSha256, memberSetSha256: v.member_set_sha256, approvalSha256: v.approval_sha256, dueAt: revision.due_at, validUntil: packet.validUntil, kind,
+          canRequestChanges: Boolean(options.changePort) && kind === "RENDER_SOURCE" && ["SOURCE_READY", "REVIEW_READY", "APPROVED"].includes(current.state),
+          ...(change ? { revisionRequest: { instructions: change.ownerInstructions, priorVersionId: change.lineage.priorVersionId, priorSourceSha256: change.lineage.priorSourceSha256 } } : {}),
           company: packet.ownerEvidence.targetJob.company, title: packet.ownerEvidence.targetJob.exactTitle, applicationUrl: safeUrl(packet.ownerEvidence.targetJob.canonicalApplicationUrl), documents, claims, facts,
           ...(references.length ? { references, referenceFilenameInstruction: packet.ownerEvidence.referenceFilenameInstruction ?? null } : {}),
           ...(storedSource && ["SOURCE_READY", "REVIEW_READY", "APPROVED"].includes(current.state) ? { editing: buildDraftOwnerEditModel(storedSource, packet, now()) } : {}),

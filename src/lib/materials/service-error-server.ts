@@ -10,22 +10,7 @@ import { recordMaterialServiceErrorDecision, reportMaterialServiceError, service
 
 type Admin = SupabaseClient<Database>;
 type Result = { data: unknown; error: unknown };
-type RpcQuery = { abortSignal(signal: AbortSignal): PromiseLike<Result> };
-// Narrow source contract for the unpublished096 functions. Replace with the
-// real generated Database surface when its CI artifact is available; this is
-// not a generated-schema claim or an unbounded RPC escape hatch.
-type RpcArgs = {
-  ap_material_service_error_context: { p_customer_id: string; p_material_line_id: string };
-  ap_read_material_service_error_report: { p_customer_id: string; p_request_id: string };
-  ap_open_material_service_error_report: { p_customer_id: string; p_request_id: string; p_material_line_id: string;
-    p_payload_id: string; p_report_sha256: string; p_members: { artifactId: string; fileVersionId: string; releaseId: string }[] };
-  ap_inspect_material_service_error: { p_reviewer_id: string; p_case_id: string };
-  ap_read_material_service_error_decision: { p_reviewer_id: string; p_request_id: string };
-  ap_record_material_service_error_decision: { p_reviewer_id: string; p_case_id: string; p_request_id: string; p_previous_decision_id: string | null;
-    p_payload_id: string; p_review_sha256: string; p_classification: string; p_reason_code: string;
-    p_evidence: z.infer<typeof serviceErrorDecisionSchema>["evidence"]; p_affected: z.infer<typeof serviceErrorDecisionSchema>["affected"] };
-};
-type Rpc = <Name extends keyof RpcArgs>(name: Name, args: RpcArgs[Name]) => RpcQuery;
+type DecisionArgs = Database["public"]["Functions"]["ap_record_material_service_error_decision"]["Args"];
 const uuid = z.uuid();
 function ensure(value: unknown, code: string): asserts value { if (!value) throw new ServiceErrorContractError(code); }
 function parse<T>(schema: z.ZodType<T>, value: unknown, code = "RECEIPT_INVALID"): T {
@@ -37,16 +22,17 @@ async function data(query: PromiseLike<Result>, signal: AbortSignal) {
   ensure(!signal.aborted, "ABORTED"); ensure(!result.error, "UNCONFIRMED"); return result.data;
 }
 function workflow(admin: Admin): ServiceErrorWorkflowPort {
-  const rpc = admin.rpc.bind(admin) as unknown as Rpc;
   return {
-    reportContext: (customerId, materialLineId, signal) => data(rpc("ap_material_service_error_context", { p_customer_id: customerId, p_material_line_id: materialLineId }).abortSignal(signal), signal),
-    readReport: (customerId, requestId, signal) => data(rpc("ap_read_material_service_error_report", { p_customer_id: customerId, p_request_id: requestId }).abortSignal(signal), signal),
-    openReport: (input, signal) => data(rpc("ap_open_material_service_error_report", { p_customer_id: input.customerId, p_request_id: input.requestId,
+    reportContext: (customerId, materialLineId, signal) => data(admin.rpc("ap_material_service_error_context", { p_customer_id: customerId, p_material_line_id: materialLineId }).abortSignal(signal), signal),
+    readReport: (customerId, requestId, signal) => data(admin.rpc("ap_read_material_service_error_report", { p_customer_id: customerId, p_request_id: requestId }).abortSignal(signal), signal),
+    openReport: (input, signal) => data(admin.rpc("ap_open_material_service_error_report", { p_customer_id: input.customerId, p_request_id: input.requestId,
       p_material_line_id: input.materialLineId, p_payload_id: input.payloadId, p_report_sha256: input.reportSha256, p_members: input.members }).abortSignal(signal), signal),
-    inspect: (reviewerId, caseId, signal) => data(rpc("ap_inspect_material_service_error", { p_reviewer_id: reviewerId, p_case_id: caseId }).abortSignal(signal), signal),
-    readDecision: (reviewerId, requestId, signal) => data(rpc("ap_read_material_service_error_decision", { p_reviewer_id: reviewerId, p_request_id: requestId }).abortSignal(signal), signal),
-    decide: (input, signal) => data(rpc("ap_record_material_service_error_decision", { p_reviewer_id: input.reviewerId, p_case_id: input.caseId,
-      p_request_id: input.requestId, p_previous_decision_id: input.previousDecisionId, p_payload_id: input.payloadId, p_review_sha256: input.reviewSha256,
+    inspect: (reviewerId, caseId, signal) => data(admin.rpc("ap_inspect_material_service_error", { p_reviewer_id: reviewerId, p_case_id: caseId }).abortSignal(signal), signal),
+    readDecision: (reviewerId, requestId, signal) => data(admin.rpc("ap_read_material_service_error_decision", { p_reviewer_id: reviewerId, p_request_id: requestId }).abortSignal(signal), signal),
+    decide: (input, signal) => data(admin.rpc("ap_record_material_service_error_decision", { p_reviewer_id: input.reviewerId, p_case_id: input.caseId,
+      // PostgreSQL permits NULL for the first decision. Generated Args omits
+      // argument nullability; preserve the actual value at this one field.
+      p_request_id: input.requestId, p_previous_decision_id: input.previousDecisionId as DecisionArgs["p_previous_decision_id"], p_payload_id: input.payloadId, p_review_sha256: input.reviewSha256,
       p_classification: input.classification, p_reason_code: input.reasonCode, p_evidence: input.evidence, p_affected: input.affected }).abortSignal(signal), signal),
     store: (input, bytes, signal) => storeServiceErrorPayload(admin, input, bytes, { signal }),
   };

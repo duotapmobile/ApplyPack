@@ -124,7 +124,7 @@ function database(mode: "proposal" | "source" = "proposal", withQuestions = fals
       or: (value: string) => { call.cursor = value; return builder; }, abortSignal: (signal: AbortSignal) => { call.signal = signal; return builder; }, single: () => { call.single = true; return builder; },
       then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve().then(async () => {
         calls.push(call); if (overrides.has(call.name)) return overrides.get(call.name)!(call);
-        if (call.name === "ap_require_material_reviewer") return { data: null, error: null };
+        if (call.name === "ap_require_material_reviewer") return { data: true, error: null };
         if (call.name === "ap_material_draft_context_sha256") return { data: context, error: null };
         const rows = (tables[call.name] ?? []).filter((row) => call.filters.every(([name, value]) => Array.isArray(value) ? value.includes(row[name]) : row[name] === value)).map((row) => Object.fromEntries(call.columns!.split(",").map((key) => [key, row[key]])));
         return { data: call.single ? rows[0] ?? null : rows, error: null };
@@ -165,6 +165,19 @@ describe("private owner draft read model", () => {
     const d = database(); d.overrides.set("ap_require_material_reviewer", () => ({ error: "private provider failure", data: null }));
     expect(await d.view.list(null, new AbortController().signal)).toEqual({ status: "UNAVAILABLE", jobs: [], nextCursor: null }); expect(d.calls).toHaveLength(1);
     d.overrides.clear(); expect((await d.view.list("forged", new AbortController().signal)).status).toBe("UNAVAILABLE");
+  });
+  it.each([false, null, {}, "true"])("requires exact reviewer authorization instead of malformed success %j", async (value) => {
+    const d = database(); d.overrides.set("ap_require_material_reviewer", () => ({ error: null, data: value }));
+    expect((await d.view.list(null, new AbortController().signal)).status).toBe("UNAVAILABLE");
+    expect((await d.detail()).status).toBe("UNAVAILABLE");
+    expect(d.calls.every((call) => call.name === "ap_require_material_reviewer")).toBe(true); expect(dependencies.read).not.toHaveBeenCalled();
+  });
+  it("offers requests only with the instruction-aware server port and a current rendered source", async () => {
+    const d = database("source"); const port = { readRequest: vi.fn(), readEvidence: vi.fn(async () => null), reserve: vi.fn(), commit: vi.fn() };
+    const enabled = createDraftOwnerView(d.admin, id(90), { now: () => now, changePort: port });
+    expect(await d.detail()).toMatchObject({ status: "AVAILABLE", canRequestChanges: false });
+    expect(await enabled.detail(d.job.id, new AbortController().signal)).toMatchObject({ status: "AVAILABLE", canRequestChanges: true });
+    expect(port.readEvidence).toHaveBeenCalledWith(d.version.id, expect.any(AbortSignal)); expect(port.commit).not.toHaveBeenCalled(); expect(port.reserve).not.toHaveBeenCalled();
   });
   it("distinguishes a successful empty page and pending/released jobs", async () => {
     const d = database(); d.tables.ap_material_draft_jobs = [];

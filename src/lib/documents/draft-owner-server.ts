@@ -11,6 +11,8 @@ import { readEncryptedDraftPayload, storeEncryptedDraftPayload } from "./draft-p
 import { serializeDraftingEvidencePacket, type DraftingEvidencePacket } from "./drafting-evidence";
 import { loadDraftingEvidencePacket } from "./drafting-evidence-server";
 import { draftOutputSchema, serializeDraftProposal, validateDraftOutput } from "./draft-output";
+import type { DraftChangePort } from "./draft-change-port";
+import { loadDraftChangeForVersion } from "./draft-change-loader";
 import { buildDraftRenderSource, serializeDraftRenderSource } from "./draft-render-source";
 import { readStoredDraftRenderSource, renderClaimSchema, DraftRenderSourceStorageError } from "./draft-render-source-storage";
 
@@ -55,7 +57,7 @@ function exact(value: unknown): string {
  * only after requireAdmin() fresh MFA, with that verified session's user ID.
  * The DB rechecks the reviewer before private reads and again inside each CAS.
  * No method approves a document pair, sends mail, or calls a model provider. */
-export function createDraftOwnerServer(admin: Admin, trustedReviewerId: string, options: { now?: () => Date } = {}) {
+export function createDraftOwnerServer(admin: Admin, trustedReviewerId: string, options: { now?: () => Date; changePort?: DraftChangePort } = {}) {
   const reviewerId = parse(uuid, trustedReviewerId, "REVIEWER_INVALID"), now = options.now ?? (() => new Date());
   async function bounded<T>(external: AbortSignal, operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
     ensure(!external.aborted, "ABORTED");
@@ -74,7 +76,7 @@ export function createDraftOwnerServer(admin: Admin, trustedReviewerId: string, 
     ensure(!signal.aborted, "ABORTED"); const result = await query;
     ensure(!signal.aborted, "ABORTED"); ensure(!result.error, "UNCONFIRMED"); return result.data;
   }
-  const authorize = async (signal: AbortSignal) => { await data(admin.rpc("ap_require_material_reviewer", { p_reviewer_id: reviewerId }).abortSignal(signal), signal); };
+  const authorize = async (signal: AbortSignal) => { parse(z.literal(true), await data(admin.rpc("ap_require_material_reviewer", { p_reviewer_id: reviewerId }).abortSignal(signal), signal), "REVIEWER_UNCONFIRMED"); };
   const readJob = async (id: string, signal: AbortSignal) => {
     const value = parse(jobSchema, await data(admin.from("ap_material_draft_jobs").select(jobColumns).eq("id", id).abortSignal(signal).single(), signal));
     ensure(value.id === id, "JOB_MISMATCH"); return value;
@@ -130,7 +132,9 @@ export function createDraftOwnerServer(admin: Admin, trustedReviewerId: string, 
       ensure(current.version.claim_review_sha256 === null, "ALREADY_REVIEWED");
       const packet = await packetFor(current, child), saved = await payload(current, current.version.encrypted_payload_id, current.version.source_sha256, "MATERIAL_DRAFT_SOURCE", child);
       const envelope = parse(z.object({ schemaVersion: z.literal("applypack-draft-proposal-v1"), output: draftOutputSchema }).passthrough(), saved.value, "PROPOSAL_REQUIRED");
-      const proposal = validateDraftOutput(envelope.output, packet, now());
+      const change = options.changePort ? await loadDraftChangeForVersion(admin, options.changePort, { jobId: current.job.id,
+        versionId: current.version.id, customerId: current.job.customer_id, materialLineId: current.job.material_line_id }, packet, child, now) : null;
+      const proposal = validateDraftOutput(envelope.output, packet, now(), change?.lineage);
       ensure(proposal.sourceSha256 === current.version.source_sha256 && serializeDraftProposal(proposal) === saved.body, "PROPOSAL_CHANGED");
       let contact: Buffer | undefined; let references: DraftReferenceInput[] = [];
       try {
@@ -168,7 +172,11 @@ export function createDraftOwnerServer(admin: Admin, trustedReviewerId: string, 
       const { jobId, request } = parse(reviewSchema, raw, "INPUT_INVALID"); await authorize(child);
       const current = await state(jobId, request.versionId, request.sourceSha256, child), packet = await packetFor(current, child);
       const saved = await payload(current, current.version.encrypted_payload_id, current.version.source_sha256, "MATERIAL_DRAFT_SOURCE", child);
-      const source = readSource(saved, current, packet), binding = { versionId: current.version.id, packetSha256: current.version.packet_sha256,
+      const source = readSource(saved, current, packet);
+      const change = options.changePort ? await loadDraftChangeForVersion(admin, options.changePort, { jobId: current.job.id,
+        versionId: current.version.id, customerId: current.job.customer_id, materialLineId: current.job.material_line_id }, packet, child, now) : null;
+      ensure(JSON.stringify(source.changeRequest ?? null) === JSON.stringify(change?.lineage ?? null), "CHANGE_LINEAGE_MISMATCH");
+      const binding = { versionId: current.version.id, packetSha256: current.version.packet_sha256,
         sourceSha256: current.version.source_sha256, customerId: current.job.customer_id, materialLineId: current.job.material_line_id, revisionId: current.revision.id };
       const referenceRequest = draftReferenceRequest(packet);
       if (referenceRequest) {

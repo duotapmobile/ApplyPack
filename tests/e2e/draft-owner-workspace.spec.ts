@@ -155,3 +155,45 @@ test("owner wording editor is labelled and reflows with expanded source choices"
   expect(results.violations.filter((item) => ["moderate", "serious", "critical"].includes(item.impact ?? ""))).toEqual([]);
   await page.screenshot({ path: test.info().outputPath("owner-editor-320.png"), fullPage: true });
 });
+
+const changeInstructions = "Make the scheduling example more concise without adding new facts.";
+async function beginSystemChange(page: Page) {
+  await tabTo(page, page.getByRole("button", { name: "Request changes", exact: true })); await page.keyboard.press("Enter");
+  const notes = page.getByRole("textbox", { name: "Requested wording changes", exact: true }); await tabTo(page, notes); await notes.fill(changeInstructions);
+  await keyboardCheck(page, page.getByRole("group", { name: "Instructions for the new draft" }).getByRole("checkbox"));
+}
+function changeReceipt(body: Record<string, unknown>) {
+  return { action: "REQUEST_DRAFT_CHANGES", result: { jobId: "78000000-0000-4000-8000-000000000001", requestId: body.requestId,
+    parentVersionId: body.expectedVersionId, versionId: "78000000-0000-4000-8000-000000000090", requestSha256: "f".repeat(64),
+    recorded: true, current: true, state: "CHANGES_REQUESTED", deliveryAuthorized: false } };
+}
+test("owner system revision requests require explicit keyboard confirmation and block the old Send", async ({ page }) => {
+  const requests: Record<string, unknown>[] = [];
+  await page.route("**/api/admin/material-draft-jobs/*", async (route) => { const body = route.request().postDataJSON(); requests.push(body); await route.fulfill({ json: changeReceipt(body) }); });
+  await open(page, "changes"); await beginSystemChange(page);
+  await expect(page.getByRole("button", { name: "Send approved pair" })).toBeDisabled();
+  const notes = page.getByRole("textbox", { name: "Requested wording changes", exact: true }); await notes.fill(changeInstructions + " Keep the confirmed dates.");
+  const confirmation = page.getByRole("group", { name: "Instructions for the new draft" }).getByRole("checkbox"); await expect(confirmation).not.toBeChecked();
+  await expect(page.getByRole("button", { name: "Queue new draft" })).toBeDisabled(); await keyboardCheck(page, confirmation);
+  await tabTo(page, page.getByRole("button", { name: "Queue new draft" })); await page.keyboard.press("Enter"); await expect.poll(() => requests.length).toBe(1);
+  expect(Object.keys(requests[0]).sort()).toEqual(["action", "expectedSourceSha256", "expectedVersionId", "instructions", "requestId"]);
+  await expect(page.getByText(/Request recorded. A new unapproved draft is queued/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send approved pair" })).toBeDisabled();
+});
+test("owner system revision reconciles the same uncertain request without storing private instructions", async ({ page }) => {
+  const requests: Record<string, unknown>[] = [];
+  await page.route("**/api/admin/material-draft-jobs/*", async (route) => { const body = route.request().postDataJSON(); requests.push(body); if (requests.length === 1) return route.abort("failed"); await route.fulfill({ json: changeReceipt(body) }); });
+  await open(page, "changes"); await beginSystemChange(page); await page.getByRole("button", { name: "Queue new draft" }).click();
+  const reconcile = page.getByRole("button", { name: "Reconcile change request" }); await expect(reconcile).toBeEnabled();
+  await expect(page.getByRole("textbox", { name: "Requested wording changes", exact: true })).toBeDisabled();
+  await tabTo(page, reconcile); await page.keyboard.press("Enter"); await expect.poll(() => requests.length).toBe(2); expect(requests[1]).toEqual(requests[0]);
+  const stored = await page.evaluate(() => JSON.stringify({ local: Object.entries(localStorage), session: Object.entries(sessionStorage) }));
+  expect(stored).not.toContain(changeInstructions); expect(requests.every((value) => value.action === "REQUEST_DRAFT_CHANGES")).toBe(true);
+});
+test("owner system revision instructions are labelled and reflow at 320 CSS pixels", async ({ page }) => {
+  await open(page, "changes"); await page.getByRole("button", { name: "Request changes", exact: true }).click(); await page.setViewportSize({ width: 320, height: 900 });
+  await expect(page.getByRole("textbox", { name: "Requested wording changes", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  const results = await new AxeBuilder({ page }).exclude("script").analyze(); expect(results.violations.filter((item) => ["moderate", "serious", "critical"].includes(item.impact ?? ""))).toEqual([]);
+  await page.screenshot({ path: test.info().outputPath("owner-request-changes-320.png"), fullPage: true });
+});

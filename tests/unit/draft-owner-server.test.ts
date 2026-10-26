@@ -8,6 +8,8 @@ import { buildDraftRenderSource } from "@/lib/documents/draft-render-source";
 import { captureRawSourceEvidence } from "@/lib/jobs/raw-source-evidence";
 import { questionResponseSha256 } from "@/lib/jobs/application-question-evidence";
 import { draftReferenceFixture } from "../fixtures/draft-reference";
+import { buildDraftChangePayload, readDraftChangePayload } from "@/lib/documents/draft-change-request";
+import type { DraftChangePort, DraftChangeRecord } from "@/lib/documents/draft-change-port";
 
 vi.mock("server-only", () => ({}));
 const id = (n: number) => `78000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -111,7 +113,7 @@ function database(base = fixture()) {
   let lostPromotion = false, lostReview = false, suppressMutation = false;
   function rpc(call: Call): Receipt {
     const args = call.args!;
-    if (call.name === "ap_require_material_reviewer") return { data: null, error: null };
+    if (call.name === "ap_require_material_reviewer") return { data: true, error: null };
     if (call.name === "ap_material_draft_context_sha256") return { data: currentContext, error: null };
     if (call.name === "ap_revise_material_draft_source") {
       const prior = versions.get(String(args.p_version_id))!;
@@ -198,6 +200,33 @@ describe("owner source promotion and exact wording review", () => {
     const f = database(); f.overrides.set("ap_require_material_reviewer", [() => ({ data: null, error: { message: "private denial" } })]);
     await expect(f.promote()).rejects.toThrow("DRAFT_OWNER_UNCONFIRMED");
     expect(f.calls).toHaveLength(1); expect(dependency.read).not.toHaveBeenCalled();
+  });
+  it.each([false, null, {}, "true"])("requires literal reviewer approval before private reads for malformed receipt %j", async (value) => {
+    const f = database(); f.overrides.set("ap_require_material_reviewer", [() => ({ data: value, error: null })]);
+    await expect(f.promote()).rejects.toThrow("REVIEWER_UNCONFIRMED"); expect(f.calls).toHaveLength(1); expect(dependency.read).not.toHaveBeenCalled();
+  });
+  it("promotes and explicitly reviews a new proposal only with its exact encrypted owner request lineage", async () => {
+    const f = database(), prior = f.base.build(), packet = f.base.input.packet;
+    const request = { jobId: f.job.id, expectedVersionId: id(80), expectedSourceSha256: prior.renderSourceSha256, requestId: id(81), instructions: "Make the existing example more concise without adding facts." };
+    const built = buildDraftChangePayload({ request, source: prior, packet, contextSha256: f.original.context_sha256, reviewerId: f.reviewerId, localIdentityValues: [] }, now);
+    const record: DraftChangeRecord = { id: request.requestId, customer_id: f.job.customer_id, material_line_id: f.job.material_line_id, job_id: f.job.id,
+      parent_version_id: request.expectedVersionId, successor_version_id: f.original.id, encrypted_payload_id: id(82), request_sha256: built.requestSha256,
+      payload_sha256: built.payloadSha256, parent_source_sha256: prior.renderSourceSha256, parent_proposal_sha256: prior.proposalSourceSha256,
+      packet_sha256: packet.packetSha256, context_sha256: f.original.context_sha256, reviewer_id: f.reviewerId, created_at: now.toISOString() };
+    const lineage = readDraftChangePayload(built.body, { requestId: record.id, requestSha256: record.request_sha256, payloadSha256: record.payload_sha256,
+      jobId: record.job_id, customerId: record.customer_id, materialLineId: record.material_line_id, parentVersionId: record.parent_version_id,
+      parentSourceSha256: record.parent_source_sha256, parentProposalSha256: record.parent_proposal_sha256, packetSha256: record.packet_sha256,
+      contextSha256: record.context_sha256, reviewerId: record.reviewer_id }, packet, now).lineage;
+    const proposal = validateDraftOutput(f.base.draft, packet, now, lineage); f.original.source_sha256 = proposal.sourceSha256;
+    f.bodies.set(f.original.encrypted_payload_id, serializeDraftProposal(proposal)); f.bodies.set(record.encrypted_payload_id, built.body);
+    await expect(f.promote()).rejects.toThrow("PROPOSAL_CHANGED"); expect(dependency.store).not.toHaveBeenCalled();
+    const port: DraftChangePort = { readRequest: vi.fn(), readEvidence: vi.fn(async () => structuredClone(record)), reserve: vi.fn(), commit: vi.fn() };
+    const services = createDraftOwnerServer(f.admin, f.reviewerId, { now: () => now, changePort: port });
+    await services.promoteSource({ jobId: f.job.id, expectedVersionId: f.original.id, expectedSourceSha256: f.original.source_sha256 }, new AbortController().signal);
+    expect(JSON.parse(f.bodies.get(f.current().encrypted_payload_id)!).changeRequest).toEqual(lineage);
+    await services.recordWordingReview(f.reviewRequest(), new AbortController().signal);
+    expect(f.current().claim_review_sha256).not.toBeNull(); expect(port.commit).not.toHaveBeenCalled(); expect(port.reserve).not.toHaveBeenCalled();
+    expect(f.calls.some((call) => /approve|send|release/.test(call.name))).toBe(false); expect(f.readBuffers.every((bytes) => bytes.every((byte) => byte === 0))).toBe(true);
   });
   it("promotes a real validated proposal to a distinct source version using original paid contact and exact CAS", async () => {
     const f = database(), result = await f.promote();

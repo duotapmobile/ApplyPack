@@ -43,7 +43,8 @@ describe("readable owner document workspace", () => {
     expect(screen.getByRole("region", { name: "Resume" })).toHaveTextContent("Organized event schedules.");
     expect(screen.getAllByText("Organized event schedules").length).toBeGreaterThan(0);
     expect(screen.getByText(/No verified question text is available/)).toBeInTheDocument();
-    expect(screen.getByText(/No complete rendered file pair is attached/)).toBeInTheDocument(); expect(screen.getByText(/Requests for another system draft are not connected/)).toBeInTheDocument();
+    expect(screen.getByText(/No complete rendered file pair is attached/)).toBeInTheDocument(); expect(screen.getByText(/Requests for another system draft are not available in this state/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Request changes" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Older active drafts" })).toHaveAttribute("href", "/admin/document-drafts?cursor=page-token");
     expect(screen.queryByRole("button", { name: "Send approved pair" })).not.toBeInTheDocument();
     expect(screen.getByText("Surname_Resume.pdf")).toBeInTheDocument(); expect(screen.getByText("Surname_Letter.pdf")).toBeInTheDocument();
@@ -80,6 +81,14 @@ describe("readable owner document workspace", () => {
     expect(screen.getByRole("button", { name: "Record wording review" })).toBeDisabled(); expect(screen.getByRole("button", { name: "Send approved pair" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Cancel edits" }));
     expect(screen.getByLabelText(/I am ready to send/)).not.toBeChecked(); expect(screen.getByRole("button", { name: "Record wording review" })).toBeDisabled();
+  });
+  it("locks old wording and Send while a new system request is open, then clears decisions on cancel", () => {
+    const value = detail({ state: "APPROVED", canSend: true, approvalSha256: "a".repeat(64), canRequestChanges: true });
+    render(<DraftOwnerWorkspace {...props(value)} />); checked(screen.getByRole("group", { name: "Individual wording decisions" })); checked(screen.getByRole("group", { name: "Separate delivery decision" }));
+    fireEvent.click(screen.getByRole("button", { name: "Request changes" }));
+    expect(screen.getByRole("button", { name: "Record wording review" })).toBeDisabled(); expect(screen.getByRole("button", { name: "Send approved pair" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel request" })); expect(screen.getByLabelText(/I am ready to send/)).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Record wording review" })).toBeDisabled();
   });
   it("resets checked wording and all pair checks when immutable identity changes", () => {
     const initial = detail({ canApprove: true, memberSetSha256: "8".repeat(64) }); const view = render(<DraftOwnerWorkspace {...props(initial)} />);

@@ -29,8 +29,8 @@ function Assert-ProductionDatabaseManifest {
         $Manifest.credentialTarget -cne 'ApplyPack/Supabase/Production/Database' -or
         $Manifest.caSha256 -cnotmatch '^[a-f0-9]{64}$' -or $Manifest.releaseSha -cnotmatch '^[a-f0-9]{40}$' -or
         $Manifest.expectedLedgerSha256 -cnotmatch '^[a-f0-9]{64}$' -or
-        $Manifest.expectedSchemaVersion -notin @('202610040080','202610190081','202610190082','202610190083','202610190084','202610220085','202610230086','202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095') -or
-        $Manifest.postSchemaVersion -notin @('202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096') -or
+        $Manifest.expectedSchemaVersion -notin @('202610040080','202610190081','202610190082','202610190083','202610190084','202610220085','202610230086','202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096') -or
+        $Manifest.postSchemaVersion -notin @('202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097') -or
         $Manifest.expectedSchemaVersion -cge $Manifest.postSchemaVersion -or
         $Manifest.recoveryStrategy -notin @('TESTED_COMPATIBLE_SHA','LOCKED_FORWARD_RECOVERY')) {
         throw 'PRODUCTION_MANIFEST_INVALID'
@@ -75,6 +75,7 @@ function Assert-ProductionDatabaseManifest {
         '202610250094' = @('material_draft_stage_claiming','MATERIAL_DRAFT_STAGE_CLAIMING')
         '202610250095' = @('reference_aware_draft_delivery','REFERENCE_AWARE_DRAFT_DELIVERY')
         '202610250096' = @('service_error_contract_and_triage','SERVICE_ERROR_CONTRACT_AND_TRIAGE')
+        '202610250097' = @('material_draft_change_requests','MATERIAL_DRAFT_CHANGE_REQUESTS')
     }
     $expected = @($known.Keys | Where-Object { $_ -cgt $Manifest.expectedSchemaVersion -and $_ -cle $Manifest.postSchemaVersion })
     if (@($Manifest.migrations).Count -ne $expected.Count) { throw 'PRODUCTION_MIGRATION_SCOPE_INVALID' }

@@ -20,6 +20,7 @@
     "test:material-draft-stage-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-094",
     "test:reference-draft-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-095",
     "test:service-error-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-096",
+    "test:draft-change-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-097",
     "test:rehearsal-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-085",
     "test:staging-schema084-backup": "node scripts/run-windows-release-self-test.mjs staging-084-backup",
     "test:production-migration": "node scripts/run-windows-release-self-test.mjs production-migration",

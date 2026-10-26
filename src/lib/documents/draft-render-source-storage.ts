@@ -4,6 +4,7 @@ import { z } from "zod";
 import { draftingEvidenceExpectationSchema, type DraftingEvidencePacket } from "./drafting-evidence";
 import { serializeDraftRenderSource } from "./draft-render-source";
 import { DRAFT_REFERENCE_FIELDS, draftReferenceBindingSchema } from "./draft-reference-source";
+import { draftChangeLineageSchema } from "./draft-change-contract";
 const uuid = z.uuid(), hash = z.string().regex(/^[a-f0-9]{64}$/), time = z.iso.datetime({ offset: true });
 const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
 export class DraftRenderSourceStorageError extends Error {
@@ -22,6 +23,7 @@ export const renderClaimSchema = z.object({ claimId: uuid, placement: z.string()
     interpretation: z.literal("POTENTIAL_EMPLOYER_PRIORITY_NOT_A_CANDIDATE_QUALIFICATION") }).strict()).max(8), state: z.literal("OWNER_REVIEW_REQUIRED") }).strict();
 const claims = z.array(renderClaimSchema).max(250);
 const renderSourceSchema = z.object({ schemaVersion: z.literal("applypack-draft-render-source-v1"), expected: draftingEvidenceExpectationSchema,
+  changeRequest: draftChangeLineageSchema.optional(),
   ownerEdit: z.object({ schemaVersion: z.literal("applypack-owner-draft-edit-v1"), requestId: uuid, requestSha256: hash,
     priorVersionId: uuid, priorSourceSha256: hash, originalProposalSourceSha256: hash, reviewerId: uuid, editedAt: time,
     validatedOutputSha256: hash, changedPlacements: z.array(z.string().regex(/^(?:resume\.(?:summary\.\d+|skills\.\d+|sections\.\d+\.bullets\.\d+)|coverLetter\.body\.\d+\.sentences\.\d+)$/)).min(1).max(250) }).strict().optional(),

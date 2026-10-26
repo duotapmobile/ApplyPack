@@ -37,7 +37,7 @@ export type DraftPacketWorkflowPort = {
   readContext(args: { p_job_id: string }, signal: AbortSignal): Promise<unknown>;
   attach(args: { p_job_id: string; p_lease_token: string; p_payload_id: string; p_packet_sha256: string; p_context_sha256: string }, signal: AbortSignal): Promise<unknown>;
 };
-export const draftPayloadPurposes = ["MATERIAL_DRAFT_PACKET", "MATERIAL_DRAFT_SOURCE", "MATERIAL_DRAFT_CLAIM_REVIEW"] as const;
+export const draftPayloadPurposes = ["MATERIAL_DRAFT_PACKET", "MATERIAL_DRAFT_SOURCE", "MATERIAL_DRAFT_CLAIM_REVIEW", "MATERIAL_DRAFT_CHANGE_REQUEST"] as const;
 const payloadInputSchema = z.object({ customerId: uuid, jobId: uuid, payloadId: uuid, purpose: z.enum(draftPayloadPurposes),
   body: z.string().min(1).max(4_000_000), sha256: hash }).strict();
 export type DraftPayloadInput = z.infer<typeof payloadInputSchema>;
