@@ -317,6 +317,12 @@ $materialRehearsalFixture = 'rehearsal-material-checkout.sql'
 $materialRehearsalFixtureCopy = Join-Path $inputPath $materialRehearsalFixture
 Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$materialRehearsalFixture") -Destination $materialRehearsalFixtureCopy
 $inputs += [pscustomobject]@{Kind='helper'; Name=$materialRehearsalFixture; Path=$materialRehearsalFixtureCopy}
+if ($fixtures -contains 'protected-archive-limited-role.sql' -and $fixtures -notcontains 'protected-archive-lifecycle.sql') {
+  $archiveFixture = 'protected-archive-lifecycle.sql'
+  $archiveFixtureCopy = Join-Path $inputPath $archiveFixture
+  Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$archiveFixture") -Destination $archiveFixtureCopy
+  $inputs += [pscustomobject]@{Kind='helper'; Name=$archiveFixture; Path=$archiveFixtureCopy}
+}
 $inputs | ForEach-Object { [pscustomobject]@{Kind=$_.Kind;Name=$_.Name;Sha256=(Get-FileHash -LiteralPath $_.Path -Algorithm SHA256).Hash} } | ConvertTo-Json | Set-Content (Join-Path $evidenceRoot 'input-hashes.json')
 @"
 Native PostgreSQL engine validation only. Synthetic auth.users/auth.uid/auth.jwt,

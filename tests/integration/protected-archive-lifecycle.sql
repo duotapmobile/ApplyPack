@@ -8,9 +8,12 @@ begin
   or not (public.ap_manual_launch_schema_readiness()->'requiredMigrations' @> '["202610250096","202610250097","202610250098"]'::jsonb)
  then raise exception 'archive schema checkpoint not installed'; end if;
  if not public.ap_archive_fence_coverage_current() then raise exception 'archive fence coverage missing'; end if;
- alter table storage.objects disable trigger ap_archive_source_mutation;
+ -- Local Supabase's postgres test role owns application tables, not Storage.
+ -- Exercise a disabled guard on our own table; Storage guards are verified by
+ -- their catalog identity and by actual private/unrelated DML below.
+ alter table public.ap_unpaid_source_cleanup disable trigger ap_archive_source_mutation;
  if public.ap_protected_archive_schema_installed() then raise exception 'disabled source fence was ready'; end if;
- alter table storage.objects enable trigger ap_archive_source_mutation;
+ alter table public.ap_unpaid_source_cleanup enable trigger ap_archive_source_mutation;
  delete from public.ap_archive_fence_relations where schema_name='storage' and table_name='objects';
  if public.ap_archive_fence_coverage_current() then raise exception 'missing finite storage roster accepted'; end if;
  insert into public.ap_archive_fence_relations values('storage','objects');

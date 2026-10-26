@@ -25,7 +25,7 @@ function fixture({ failAt, alterState, missingMarker, ambiguousCreate, invalidIm
     if (operation === "ps") return exists ? "fictional-container-id\n" : "";
     if (operation === "rm") { if (cleanupFailure) throw new Error("cleanup unavailable"); exists = false; deleted = true; return name; }
     if (operation === failAt || (operation === "exec" && args.some((value) => value.endsWith(`/${failAt}`)))) throw new Error("fictional process failed");
-    if (args.includes("/usr/lib/postgresql/17/bin/psql")) return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].filter((index) => index !== missingMarker).map((index) => ` RETENTION_PG17_FIXTURE_${index}_COMPLETE \n`).join("");
+    if (args.includes("/usr/lib/postgresql/17/bin/psql")) return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].filter((index) => index !== missingMarker).map((index) => ` RETENTION_PG17_FIXTURE_${index}_COMPLETE \n`).join("");
     return "";
   };
   const run = (args = [], environment = {}) => runRetentionPostgres17(args, { execute, environment, platform: "linux", uuid: () => runId,
@@ -36,11 +36,13 @@ function fixture({ failAt, alterState, missingMarker, ambiguousCreate, invalidIm
 test("builds all current migrations with exact source hashes and unchanged independent-connection fixture", () => {
   const inputs = loadRetentionPostgresInputs();
   assert.equal(inputs.migrationCount, 103);
-  assert.equal(inputs.hashes.filter((entry) => entry.kind === "fixture").length, 14);
+  assert.equal(inputs.hashes.filter((entry) => entry.kind === "fixture").length, 15);
   assert(inputs.hashes.every((entry) => /^[a-f0-9]{64}$/u.test(entry.sha256)));
   assert.match(inputs.sql, /native_loopback_fixture_required/u);
   assert.match(inputs.sql, /dblink_send_query/u);
-  assert.match(inputs.sql, /RETENTION_PG17_FIXTURE_14_COMPLETE/u);
+  assert.match(inputs.sql, /RETENTION_PG17_FIXTURE_15_COMPLETE/u);
+  assert.match(inputs.sql, /PROTECTED_ARCHIVE_NON_OWNER_BOUNDARY_OK/u);
+  assert.match(inputs.sql, /set local role ap_archive_fixture_non_owner/u);
   assert.match(inputs.sql, /'202610250090','matching_evidence_completion'/u);
   assert.match(inputs.sql, /'202610250091','material_draft_pair_workflow'/u);
   assert.match(inputs.sql, /'202610250092','material_rule_revalidation'/u);

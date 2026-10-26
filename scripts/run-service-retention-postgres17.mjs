@@ -14,7 +14,7 @@ const fixtureLabel = "service-retention-postgres17";
 const bin = "/usr/lib/postgresql/17/bin/";
 const directory = "/tmp/applypack-retention";
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
-const fixtureNames = Object.freeze(["one-off-service-retention.sql", "service-retention-cleanup.sql", "confirmed-intake.sql", "reviewed-commute.sql", "material-draft-pair-workflow.sql", "material-rule-revalidation.sql", "source-aware-document-acceptance.sql", "reference-aware-draft-delivery.sql", "service-error-contract-and-triage.sql", "material-draft-change-requests.sql", "protected-archive-lifecycle.sql", "protected-archive-races.sql", "service-retention-races.sql", "material-draft-stage-claiming.sql"]);
+const fixtureNames = Object.freeze(["one-off-service-retention.sql", "service-retention-cleanup.sql", "confirmed-intake.sql", "reviewed-commute.sql", "material-draft-pair-workflow.sql", "material-rule-revalidation.sql", "source-aware-document-acceptance.sql", "reference-aware-draft-delivery.sql", "service-error-contract-and-triage.sql", "material-draft-change-requests.sql", "protected-archive-lifecycle.sql", "protected-archive-limited-role.sql", "protected-archive-races.sql", "service-retention-races.sql", "material-draft-stage-claiming.sql"]);
 const fixtureMarkers = Object.freeze(fixtureNames.map((_, index) => `RETENTION_PG17_FIXTURE_${index + 1}_COMPLETE`));
 
 export function loadRetentionPostgresInputs() {
@@ -25,12 +25,12 @@ export function loadRetentionPostgresInputs() {
     const bytes = readFileSync(new URL(location, root));
     const text = bytes.toString("utf8"); assert(Buffer.from(text, "utf8").equals(bytes), "RETENTION_FIXTURE_INVALID_UTF8");
     let source = text.replace(/^\uFEFF/u, "");
-    if (kind === "fixture") source = source.replace(/^\\ir reviewed-source-fixture\.sql\r?$/gmu, () => {
-      const helperBytes = readFileSync(new URL("tests/integration/reviewed-source-fixture.sql", root));
+    if (kind === "fixture") source = source.replace(/^\\ir (reviewed-source-fixture|protected-archive-lifecycle)\.sql\r?$/gmu, (_line, helperName) => {
+      const helperBytes = readFileSync(new URL(`tests/integration/${helperName}.sql`, root));
       const helper = helperBytes.toString("utf8").replace(/^\uFEFF/u, "");
       assert(Buffer.from(helperBytes.toString("utf8"), "utf8").equals(helperBytes)
         && helper.length > 0 && helper.length < 2 * 1024 * 1024 && !/^\s*\\/mu.test(helper), "RETENTION_FIXTURE_HELPER_INVALID");
-      if (helpers.length === 0) helpers.push({ kind: "helper", name: "reviewed-source-fixture.sql", sha256: sha256(helperBytes), executedSha256: sha256(helper) });
+      if (!helpers.some((entry) => entry.name === `${helperName}.sql`)) helpers.push({ kind: "helper", name: `${helperName}.sql`, sha256: sha256(helperBytes), executedSha256: sha256(helper) });
       return helper;
     });
     assert(source.length > 0 && source.length < 2 * 1024 * 1024, "RETENTION_FIXTURE_INPUT_BOUND");
