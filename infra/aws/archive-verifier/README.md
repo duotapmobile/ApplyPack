@@ -1,0 +1,29 @@
+# Read-only verifier: local quote input
+
+This is an unprovisioned proposal. The template adds exactly one IAM permissions boundary, one role and one disabled Roles Anywhere profile. It reuses the verified production archive bucket, archive KMS key and independently held public-CA trust anchor. It creates no private CA, NAT gateway, bucket, KMS key or compute service. Hosted provisioning and all deletion remain unapproved.
+
+AWS's read-only `ValidateTemplate` accepted template SHA-256 `c62dfc25d65a46a17a4aac75a2d964195ccc1dd49e3b919be091d6f21ddc5b1c` at `2026-10-26T02:11:19.762Z`. The local receipt is `evidence/archive-verifier-template-validation-c62dfc25d65a.json`. This verifies template structure only; no resources were created and no effective IAM or hosted recovery result is claimed.
+
+The unattended role is `applypack-production-archive-verifier`, with a distinct leaf certificate and one-hour temporary sessions. Its certificate is valid for at most 30 days; the local credential adapter rejects fewer than 65 minutes remaining. Rotate it before seven days remain using the existing independently held issuer. Never place the issuer key, human recovery credentials or root credentials in Railway. The human MFA recovery-reader role remains unchanged. Missing verifier configuration fails closed; there is no default-chain or human-role fallback.
+
+The template permits listing versions only in the five exact archive prefixes, reading exact versions within eight finite prefixes, and decrypting with the exact archive key only through S3 and matching object context. It permits no archive write, delete, bucket configuration or primary database access. The application reads manifest bytes and HEADs referenced file/database objects with checksums. **IAM does not provide a HEAD-only permission:** `s3:GetObjectVersion` can also read those version bodies if the verifier process is compromised. The code's no-private-body rule is an application boundary, not an IAM guarantee. AWS documents the shared read permission and the general-purpose-bucket checksum requirement for `kms:Decrypt` in [HeadObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html). Provider validation must confirm the reviewed policy works without widening it.
+
+Configuration on the application uses `APP_ARCHIVE_VERIFICATION_ENABLED`, `APP_BACKUP_KMS_KEY_ARN`, and the `APP_ARCHIVE_VERIFIER_AWS_RA_` deployment/role/anchor/profile/helper/certificate/key/hash variables. The runtime pins account `838445019912`, region `us-east-1`, production, certificate subject and helper path. Do not copy writer or retention credentials into that namespace. The existing web identity may coexist, but the verifier does not use it.
+
+## Incremental costs to include in the consolidated quote
+
+Rates checked against primary AWS pages on 2026-10-25; these are calculation inputs, not an approved monthly bill or a claim about available account credits.
+
+| Addition | Incremental recurring basis |
+| --- | --- |
+| IAM role, boundary and Roles Anywhere profile | No additional IAM/Roles Anywhere service charge; own public CA used. [AWS Roles Anywhere announcement](https://aws.amazon.com/about-aws/whats-new/2023/12/iam-roles-anywhere-additional-aws-regions/) |
+| Existing archive KMS key | No additional key is created. Symmetric request estimate is $0.03 per 10,000 calls before any unused shared free allowance. [AWS KMS pricing](https://aws.amazon.com/kms/pricing/) |
+| S3 Standard version reads/HEAD | $0.0004 per 1,000 requests in US East; LIST is $0.005 per 1,000. [AWS S3 pricing](https://aws.amazon.com/s3/pricing/) and [AWS request-cost example](https://aws.amazon.com/blogs/storage/run-spark-31-faster-and-optimize-compute-costs-with-amazon-s3-express-one-zone-on-amazon-emr/) |
+| Certificate issuance/rotation | No paid CA is proposed. Existing offline issuer, independent custody, rotation work and secure provider storage must be verified. |
+| Application execution and traffic | Additional Railway CPU/memory and AWS outbound manifest bytes depend on observed run duration, manifest count/size and the existing plan. Not verified or included as zero. |
+
+A complete verification reads every retained manifest and HEADs every referenced version. For `V` verification passes, `M` manifests, `O` distinct referenced object/role/dump versions and `P` list pages per pass, request cost is approximately `V × ((M + O) × 0.0004/1000 + P × 0.005/1000)`, plus actual KMS calls and traffic. For example, 8,640 passes, 100 manifests, 200 referenced versions and five pages produce $1.2528 in S3 requests; 300 KMS calls per pass would add $7.776 before shared allowances. That scenario is illustrative, not a measured forecast. Pruning's independent absence checks add list requests.
+
+Current bounds are 50,000 listed versions, 10,000 manifests and 64 MiB of manifest evidence per pass; exceeding a bound blocks verification rather than dropping history. The authorized cleanup scope excludes database archives. Every retained database manifest pins its exact file manifest and file versions. Interrupted cleanup can also preserve orphan bytes. Therefore this slice cannot promise bounded total storage or a fixed long-term recovery bill. The final quote needs actual inventory/run measurements, the complete backup schedule and an explicit separately approved database-history policy if bounded database growth is required.
+
+Before hosted use: review the template and exact existing key/bucket policy, independently verify the leaf/issuer recovery path, approve the consolidated quote, verify read-only provider identity/checksums, retire all unchecked old writer revisions/credentials, and approve deployment/deletion separately. No parameter or environment flag is evidence that those approvals occurred.

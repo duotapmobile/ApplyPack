@@ -3,6 +3,8 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { readDatabaseArchiveStatus } from "../../../scripts/lib/archive-writer-completion.mjs";
+import { DATABASE_RECOVERY } from "../../../scripts/lib/database-recovery-protocol.mjs";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 export const RECOVERY_SOURCE_PROJECT_REF = "spjaaxndiduhrcleazwb";
@@ -63,6 +65,25 @@ export function assessProtectedRecoveryCheckpoint(
     reason: age < RECOVERY_ACCEPTANCE_AGE_MS ? "VERIFIED" : "STALE" };
 }
 
+export function assessDatabaseRecoveryStatus(
+  value: unknown, expectedReleaseSha: string, now = Date.now(), expectedSchemaVersion: string = DATABASE_RECOVERY.schemaVersion,
+): RecoveryReadiness {
+  const denied: RecoveryReadiness = { required: true, ready: false, warning: true, ageSeconds: null, reason: "UNVERIFIED" };
+  const parsed = z.object({ schemaVersion: z.literal("applypack-database-archive-status-v1"), state: z.literal("VERIFIED"), reason: z.null(),
+    runId: z.uuid(), releaseSha: z.literal(expectedReleaseSha), sourceProjectRef: z.literal(RECOVERY_SOURCE_PROJECT_REF),
+    schemaVersionOfSnapshot: z.literal(expectedSchemaVersion), sourceWatermark: timestamp, databaseSnapshotAt: timestamp,
+    verifiedAt: timestamp, providerVerificationSha256: digest, evidenceExpiresAt: timestamp,
+  }).strict().safeParse(value);
+  if (!parsed.success || !Number.isFinite(now) || !/^[a-f0-9]{40}$/.test(expectedReleaseSha)) return denied;
+  const start = Date.parse(parsed.data.sourceWatermark), snapshot = Date.parse(parsed.data.databaseSnapshotAt);
+  const verified = Date.parse(parsed.data.verifiedAt), expires = Date.parse(parsed.data.evidenceExpiresAt);
+  if (start > snapshot || snapshot > verified || verified > now || verified - start > RECOVERY_WARNING_AGE_MS
+    || expires !== start + 15 * 60_000 || now >= expires) return denied;
+  const age = now - start;
+  return { required: true, ready: age < RECOVERY_ACCEPTANCE_AGE_MS, warning: age >= RECOVERY_WARNING_AGE_MS,
+    ageSeconds: Math.floor(age / 1_000), reason: age < RECOVERY_ACCEPTANCE_AGE_MS ? "VERIFIED" : "STALE" };
+}
+
 export async function readProtectedRecoveryReadiness(admin: AdminClient): Promise<RecoveryReadiness> {
   const productionSource = `https://${RECOVERY_SOURCE_PROJECT_REF}.supabase.co`;
   const required = process.env.APP_DEPLOYMENT_ENV === "production"
@@ -75,18 +96,40 @@ export async function readProtectedRecoveryReadiness(admin: AdminClient): Promis
   const sha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.APP_RELEASE_SHA || "";
   if (process.env.APP_DEPLOYMENT_ENV !== "production" || process.env.APP_EXPECTED_RELEASE_SHA !== sha
     || process.env.NEXT_PUBLIC_SUPABASE_URL !== productionSource) return denied;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5_000);
+  let onAbort: (() => void) | undefined;
   try {
-    const [archive, retention] = await Promise.all(["protected_recovery", "protected_recovery_retention"].map((task) =>
-      admin.from("operational_heartbeats").select("last_succeeded_at,summary").eq("task_name", task).maybeSingle()));
+    const reads = Promise.all([
+      admin.from("operational_heartbeats").select("last_succeeded_at,summary").eq("task_name", "protected_recovery").abortSignal(controller.signal).maybeSingle(),
+      admin.from("operational_heartbeats").select("last_succeeded_at,summary").eq("task_name", "protected_recovery_retention").abortSignal(controller.signal).maybeSingle(),
+      readDatabaseArchiveStatus({ releaseSha: sha, expectedSchemaVersion: DATABASE_RECOVERY.schemaVersion, signal: controller.signal,
+        readLatestDatabaseCompletion: async ({ signal }: { signal: AbortSignal }) => {
+          const result = await admin.rpc("ap_latest_verified_database_archive").abortSignal(signal);
+          if (result.error) throw new Error("DATABASE_RECOVERY_READ_UNAVAILABLE");
+          return result.data;
+        },
+      }),
+    ]);
+    const [archive, retention, database] = await Promise.race([reads, new Promise<never>((_, reject) => {
+      onAbort = () => reject(new Error("RECOVERY_READ_UNAVAILABLE"));
+      controller.signal.addEventListener("abort", onAbort, { once: true });
+      if (controller.signal.aborted) onAbort();
+    })]);
+    if (controller.signal.aborted) return denied;
     if (archive.error || retention.error) return denied;
     const results = [assessProtectedRecoveryCheckpoint(archive.data, sha),
-      assessProtectedRecoveryCheckpoint(retention.data, sha, Date.now(), "retention")];
+      assessProtectedRecoveryCheckpoint(retention.data, sha, Date.now(), "retention"), assessDatabaseRecoveryStatus(database, sha)];
     if (results.some((result) => result.reason === "UNVERIFIED")) return denied;
     const ready = results.every((result) => result.ready);
     return { required: true, ready, warning: results.some((result) => result.warning),
       ageSeconds: Math.max(...results.map((result) => result.ageSeconds ?? 0)), reason: ready ? "VERIFIED" : "STALE" };
   } catch {
     return denied;
+  } finally {
+    clearTimeout(timer);
+    if (onAbort) controller.signal.removeEventListener("abort", onAbort);
+    controller.abort();
   }
 }
 

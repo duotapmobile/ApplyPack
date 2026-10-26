@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import {
-  assessProtectedRecoveryCheckpoint, newIntakeRecoveryHold, readProtectedRecoveryReadiness,
+  assessDatabaseRecoveryStatus, assessProtectedRecoveryCheckpoint, newIntakeRecoveryHold, readProtectedRecoveryReadiness,
   RECOVERY_ACCEPTANCE_AGE_MS, RECOVERY_SOURCE_PROJECT_REF, RECOVERY_WARNING_AGE_MS,
 } from "@/lib/operations/protected-recovery-readiness";
+import { DATABASE_RECOVERY } from "../../scripts/lib/database-recovery-protocol.mjs";
+import { canonicalSha256 } from "../../scripts/lib/protected-recovery-core.mjs";
+import { inspectDatabaseArchiveCompletion } from "../../scripts/lib/archive-writer-completion.mjs";
 
 const now = Date.parse("2026-10-23T22:00:00.000Z");
 const sha = "a".repeat(40);
@@ -28,12 +31,25 @@ function retentionCheckpoint(age = 60_000) {
     deletedVersionCount: 0, retainedVersionCount: 4,
   } };
 }
-function client(data: unknown, error: unknown = null, retention: unknown = retentionCheckpoint()) {
-  const query = { select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn()
+function databaseCompletion(age = 60_000) {
+  const at = (offset: number) => new Date(now - age + offset).toISOString();
+  const id = "11111111-1111-4111-8111-111111111111";
+  const receipt = { schemaVersion: "applypack-archive-writer-completion-v1", runId: id, kind: "DATABASE", releaseSha: sha,
+    sourceProjectRef: RECOVERY_SOURCE_PROJECT_REF, snapshotSchemaVersion: DATABASE_RECOVERY.schemaVersion,
+    sourceWatermark: at(0), databaseSnapshotAt: at(15_000), verifiedAt: at(30_000), evidenceExpiresAt: at(900_000),
+    manifestSha256: "b".repeat(64), manifestVersionId: "database-v1", inventoryDigest: "c".repeat(64),
+    pairedFileManifestSha256: "d".repeat(64), pairedFileManifestVersionId: "files-v1", applicationCheckpointSha256: "e".repeat(64), providerVerificationSha256: "f".repeat(64) };
+  return { id, kind: "DATABASE", state: "COMPLETE", provider_dispatched: true, release_sha: sha, started_at: at(10_000),
+    finished_at: at(40_000), completion_receipt: receipt, result_sha256: canonicalSha256(receipt) };
+}
+function client(data: unknown, error: unknown = null, retention: unknown = retentionCheckpoint(), database: unknown = databaseCompletion()) {
+  const query = { select: vi.fn(), eq: vi.fn(), abortSignal: vi.fn(), maybeSingle: vi.fn()
     .mockResolvedValueOnce({ data, error }).mockResolvedValue({ data: retention, error }) };
-  query.select.mockReturnValue(query); query.eq.mockReturnValue(query);
+  query.select.mockReturnValue(query); query.eq.mockReturnValue(query); query.abortSignal.mockReturnValue(query);
   const from = vi.fn().mockReturnValue(query);
-  return { from, query, admin: { from } as unknown as Parameters<typeof readProtectedRecoveryReadiness>[0] };
+  const rpcQuery = { abortSignal: vi.fn().mockResolvedValue({ data: database, error }) };
+  const rpc = vi.fn().mockReturnValue(rpcQuery);
+  return { from, query, rpc, rpcQuery, admin: { from, rpc } as unknown as Parameters<typeof readProtectedRecoveryReadiness>[0] };
 }
 
 describe("protected recovery acceptance", () => {
@@ -103,12 +119,51 @@ describe("protected recovery acceptance", () => {
     expect(response?.headers.get("cache-control")).toBe("private, no-store");
   });
 
-  it("reads only the fixed checkpoint row, without issuing a write", async () => {
+  it("reads only the fixed file/retention rows and immutable database completion, without issuing a write", async () => {
     const mock = client(checkpoint());
     expect(await newIntakeRecoveryHold(mock.admin)).toBeNull();
     expect(mock.from).toHaveBeenCalledWith("operational_heartbeats");
     expect(mock.query.eq).toHaveBeenCalledWith("task_name", "protected_recovery");
     expect(mock.query.eq).toHaveBeenCalledWith("task_name", "protected_recovery_retention");
+    expect(mock.rpc).toHaveBeenCalledExactlyOnceWith("ap_latest_verified_database_archive");
+  });
+
+  it("requires a verified database checkpoint even when files and retention are fresh", async () => {
+    for (const database of [null, {}, { ...databaseCompletion(), state: "OPEN" },
+      { ...databaseCompletion(), provider_dispatched: false }, { ...databaseCompletion(), result_sha256: "0".repeat(64) }]) {
+      const mock = client(checkpoint(), null, retentionCheckpoint(), database);
+      expect((await readProtectedRecoveryReadiness(mock.admin)).ready).toBe(false);
+    }
+    const bad = databaseCompletion(); Object.assign(bad.completion_receipt, { snapshotSchemaVersion: "202610250090" });
+    bad.result_sha256 = canonicalSha256(bad.completion_receipt);
+    expect((await readProtectedRecoveryReadiness(client(checkpoint(), null, retentionCheckpoint(), bad).admin)).ready).toBe(false);
+  });
+
+  it("warns at ten and locks acceptance at twelve minutes for database source coverage", async () => {
+    expect(await readProtectedRecoveryReadiness(client(checkpoint(), null, retentionCheckpoint(), databaseCompletion(600_000)).admin))
+      .toMatchObject({ ready: true, warning: true, ageSeconds: 600 });
+    expect(await readProtectedRecoveryReadiness(client(checkpoint(), null, retentionCheckpoint(), databaseCompletion(720_000)).admin))
+      .toMatchObject({ ready: false, warning: true, ageSeconds: 720, reason: "STALE" });
+    expect((await newIntakeRecoveryHold(client(checkpoint(), null, retentionCheckpoint(), databaseCompletion(720_000)).admin))?.status).toBe(503);
+  });
+
+  it("rejects stale-schema, partial and forged database status projections", () => {
+    const status = inspectDatabaseArchiveCompletion(databaseCompletion(), { releaseSha: sha, expectedSchemaVersion: DATABASE_RECOVERY.schemaVersion, now });
+    expect(assessDatabaseRecoveryStatus(status, sha, now)).toMatchObject({ ready: true, ageSeconds: 60 });
+    for (const patch of [{ sourceProjectRef: "other" }, { releaseSha: "e".repeat(40) }, { providerVerificationSha256: null },
+      { schemaVersionOfSnapshot: "202610250090" }, { state: "UNKNOWN" }, { evidenceExpiresAt: new Date(now + 1).toISOString() },
+      { databaseSnapshotAt: new Date(now + 1).toISOString() }, { verifiedAt: new Date(now + 1).toISOString() }, { workerUploaded: true }]) {
+      expect(assessDatabaseRecoveryStatus({ ...status, ...patch }, sha, now).ready).toBe(false);
+    }
+  });
+
+  it("fails closed at the read deadline even if one transport ignores cancellation", async () => {
+    const mock = client(checkpoint()); mock.query.maybeSingle.mockReset().mockReturnValue(new Promise(() => {}));
+    const operation = readProtectedRecoveryReadiness(mock.admin);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await operation).toMatchObject({ ready: false, reason: "UNVERIFIED" });
+    expect(vi.getTimerCount()).toBe(0);
+    expect(mock.query.abortSignal.mock.calls[0][0].aborted).toBe(true);
   });
 
   it("requires both archive and deletion cycles, rejects using one receipt for the other, and uses the oldest age", async () => {

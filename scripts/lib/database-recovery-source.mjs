@@ -9,10 +9,12 @@ export const DATABASE_RECOVERY_REQUIRED_TABLES = Object.freeze([
   "ap_material_draft_attempts", "ap_material_draft_members", "ap_material_draft_permits",
   "ap_material_draft_reconciliations", "ap_material_draft_observations", "ap_material_rule_revalidations",
   "ap_material_draft_change_requests",
+  "ap_archive_lifecycle_configuration", "ap_archive_writer_runs", "ap_archive_retention_runs",
+  "ap_archive_retention_versions", "ap_archive_fence_relations", "ap_archive_fence_function_contracts",
   "ap_service_error_contracts", "ap_service_error_reports", "ap_service_error_decisions", "ap_service_error_affected_members",
 ]);
 export const DATABASE_RECOVERY_SOURCE = Object.freeze({
-  projectRef: RECOVERY_PROJECT, schemaVersion: "202610250097", user: "applypack_recovery_exporter",
+  projectRef: RECOVERY_PROJECT, schemaVersion: "202610250098", user: "applypack_recovery_exporter",
   schemas: ["public", "auth", "storage", "supabase_migrations"], maximumDumpBytes: 128 * 1024 * 1024,
   maximumRoles: 4096, maximumMemberships: 16384,
 });

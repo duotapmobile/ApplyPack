@@ -9,6 +9,14 @@ Current prospective authority: [amendment 19](../applypack/19_OCTOBER_25_CONFIRM
 3. Confirm human capacity before changing either limit.
 4. Work the earliest deadline first.
 
+## Recovery status before new business
+
+Require current file, authenticated database and verified archive-retention proofs for the exact production release/project/schema. The application warns when their source watermark is ten minutes old and holds new intake and checkout at twelve minutes, against the fifteen-minute recovery-point target. Missing or unverified proof is a hold, even when a worker reports that an upload finished. Check the independent monitor and delivered alert evidence as well as application status.
+
+The prepared database design uses bounded protected snapshot exports paired to file checkpoints. PITR is optional only if included in the selected, approved recovery arrangement; a daily dump alone does not meet the target. Recovery still needs independent access to keys, authentication and configuration, a measured restore within four hours, and reconciliation of every paid Stripe transaction. See [protected recovery](PROTECTED_RECOVERY.md) and [database recovery](DATABASE_RECOVERY_WORKER.md).
+
+Local archive-lifecycle code and fictional tests are approved, but hosted deletion/resources remain gated. A live maintenance fence gives affected ownership/hold/payment mutations a retryable failure and preserves verified event intake for reconciliation; do not discard an event or reset a paid deadline to clear it. Unknown archive dispatch remains locked until exact reconciliation. Never retry irreversible deletion blindly or clear the fence manually because a timer expired.
+
 ## Intake before payment
 
 1. Accept either a source resume or guided, sufficiently complete factual answers at the existing price. A resume is optional; adequate confirmed facts are not.

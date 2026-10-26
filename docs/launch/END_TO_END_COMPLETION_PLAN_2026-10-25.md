@@ -76,6 +76,10 @@ For every stage below, define actor, input, output, durable state, authorized tr
 4. Replace the incomplete delivered-document correction path with contract-aware service-error review/repair. Test customer-input error denial separately from an ApplyPack-transcription defect and repeated failed repair.
 5. Complete the separately authorized operations/recovery/retention work, accurate live copy, provider configuration and hosted acceptance before go-live. Documentation publication alone closes none of these runtime gates.
 
+The latest connected audit adds explicit acceptance for two uncovered transitions: confirmed intake must durably start bounded research under an approved source policy without a manually prebuilt plan; material pre-payment clarification must create a successor draft, require a fresh complete review and prevent checkout or research against a superseded snapshot. Research failures and incomplete source coverage remain visible owner exceptions. Original confirmed snapshots and already-paid order facts must remain unchanged. These transitions are assigned to forward100 and101, respectively, after identifier verification; they remain incomplete until actual route-created records pass the connected scenarios. Forward099 scoped service-error repair is a separate workstream.
+
+Forward098 archive coordination and the independent observer have local implementation and review evidence in the progress ledger. They still require exact candidate checks, generated declarations, provider permissions, hosted recovery/alert drills and the consolidated cost checkpoint. Retained database archives pin their dependencies; the current design does not claim bounded total archive storage.
+
 ## Remaining provider and launch decisions
 
 - Drafting provider/model, actual customer-data handling and bounded cost; source coverage/cadence and reliable commute evidence.

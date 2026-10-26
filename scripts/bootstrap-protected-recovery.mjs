@@ -27,6 +27,9 @@ export async function readBootstrapCredential(stream, { signal } = {}) {
 }
 
 export async function runBootstrapRecovery({ environment = process.env, credentialStream = process.stdin, dependencies = {} } = {}) {
+  // This historical pre-migration tool cannot participate in the authenticated
+  // completion protocol. Retire its credentials before enabling archive pruning.
+  if (environment.APP_ARCHIVE_LIFECYCLE_ENABLED === "true") throw new Error("PROTECTED_RECOVERY_BOOTSTRAP_LEGACY_WRITER_RETIRED");
   if (environment.APP_RECOVERY_BOOTSTRAP_WRITERS_LOCKED !== "true"
     || !/^[a-f0-9]{40}$/u.test(environment.APP_RECOVERY_BOOTSTRAP_SOURCE_SHA || "")
     || !/^[a-f0-9]{64}$/u.test(environment.APP_RECOVERY_BOOTSTRAP_DATABASE_EVIDENCE_SHA256 || "")) {

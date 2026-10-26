@@ -5,12 +5,13 @@ import { runDatabaseRecovery, sanitizedDatabaseRecoveryFailure } from "./run-dat
 import { RECOVERY_BUCKETS, RECOVERY_TABLES, RECOVERY_PROJECT, recoveryInventoryDigest } from "./lib/protected-recovery-protocol.mjs";
 import { canonicalBytes, canonicalSha256, sha256 } from "./lib/protected-recovery-core.mjs";
 import { createDatabaseRecoveryS3Transport } from "./lib/database-recovery-s3.mjs";
+import { fictionalArchiveLifecycle } from "./archive-writer-test-fixture.mjs";
 
 const NOW = Date.parse("2026-10-25T16:00:00Z"); const SHA = "a".repeat(40); const HASH = "b".repeat(64);
 const runtime = { schemaVersion: "applypack-database-recovery-runtime-v1", postgresMajor: 17, clientVersion: "17.11",
   baseImageDigest: `sha256:${HASH}`, psqlSha256: HASH, pgDumpSha256: HASH };
 const target = { id: "synthetic-export", sourceProjectRef: RECOVERY_PROJECT, host: `db.${RECOVERY_PROJECT}.supabase.co`, port: 5432,
-  database: "postgres", user: "applypack_recovery_exporter", caSha256: HASH, schemaVersion: "202610250097", runtimeManifestSha256: canonicalSha256(runtime) };
+  database: "postgres", user: "applypack_recovery_exporter", caSha256: HASH, schemaVersion: "202610250098", runtimeManifestSha256: canonicalSha256(runtime) };
 const archive = { bucket: "applypack-production-protected-recovery-838445019912",
   kmsKeyArn: "arn:aws:kms:us-east-1:838445019912:key/11111111-1111-4111-8111-111111111111" };
 function fixture() {
@@ -65,18 +66,30 @@ function fixture() {
   }, destroy() { state.destinationClosed++; } } });
   state.dependencies = { now: () => NOW, readConfiguration: async (file) => typeof file === "string" ? runtime : registry,
     validateArchive: () => archive, certificateStatus: () => ({}), createTools: ({ password }) => { state.password = password; return tools; },
-    createDestination: () => destination };
+    createDestination: () => destination, createLifecycle: () => fictionalArchiveLifecycle(SHA, "DATABASE", state.calls) };
   return state;
 }
 
 test("runner connects validated snapshot, graph, dump, encrypted versioned destination and safe receipt", async () => {
   const f = fixture(); const receipt = await runDatabaseRecovery(f.environment, f.dependencies);
   assert.equal(receipt.status, "DATABASE_CHECKPOINT_ARCHIVED"); assert.equal(receipt.serviceRecoveryComplete, false);
+  assert.equal(receipt.authenticatedCheckpointRecorded, true);
+  assert.deepEqual(f.calls.slice(0, 2), ["lifecycle.begin", "lifecycle.dispatch"]);
+  assert.equal(f.calls.at(-1), "lifecycle.complete");
   assert.equal(receipt.readinessUpdated, false); assert.equal(f.closed, 1); assert.equal(f.disposed, 1); assert.equal(f.destinationClosed, 1);
   assert.ok(f.password.every((byte) => byte === 0)); assert.equal(f.writes.length, 3);
   assert.ok(f.writes[2].key.startsWith("database/manifests/"));
   assert.equal(f.calls.includes("inspect"), true); assert.equal(f.calls.includes("GetObjectCommand"), true);
   assert.equal(JSON.stringify(receipt).includes("synthetic-local-password"), false);
+});
+
+test("database writer cannot open a snapshot or upload after an unconfirmed dispatch", async () => {
+  const f = fixture(); const lifecycle = fictionalArchiveLifecycle(SHA, "DATABASE", f.calls);
+  lifecycle.dispatch = async () => { throw new Error("fictional lost dispatch response"); };
+  f.dependencies.createLifecycle = () => lifecycle;
+  await assert.rejects(runDatabaseRecovery(f.environment, f.dependencies));
+  assert.equal(f.calls.includes("inspect"), false); assert.equal(f.writes.length, 0); assert.equal(f.calls.includes("lifecycle.cancel"), false);
+  assert.equal(f.disposed, 1); assert.equal(f.destinationClosed, 1); assert.ok(f.password.every((byte) => byte === 0));
 });
 test("disabled and wrong-release runners do not inspect credentials or open a source", async () => {
   for (const extra of [{ APP_DATABASE_BACKUP_ENABLED: "false" }, { APP_DEPLOYMENT_ENV: "staging" },

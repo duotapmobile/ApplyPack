@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import { RECOVERY, copyCheckpoint } from "./lib/protected-recovery-core.mjs";
 import { createRecoveryHttpTransport } from "./lib/protected-recovery-transport.mjs";
 import { createProtectedRecoveryDestination } from "./lib/protected-recovery-s3.mjs";
+import { createArchiveLifecycleHttpTransport } from "./lib/archive-lifecycle-transport.mjs";
+import { runRegisteredArchiveWriter } from "./lib/archive-writer-run.mjs";
 
 export function sanitizedRecoveryFailure(error) {
   return typeof error?.message === "string" && /^(?:PROTECTED_RECOVERY_[A-Z0-9_]{1,100}|aws_backup_roles_anywhere_[a-z_]{1,100})$/u.test(error.message)
@@ -11,22 +13,24 @@ export function sanitizedRecoveryFailure(error) {
 
 export async function runProtectedRecovery(environment = process.env, dependencies = {}) {
   const transport = (dependencies.createTransport || createRecoveryHttpTransport)(environment);
+  const lifecycle = (dependencies.createLifecycle || createArchiveLifecycleHttpTransport)(environment, "FILE");
   const destination = (dependencies.createDestination || createProtectedRecoveryDestination)(environment);
   const now = dependencies.now || Date.now;
-  const started = now();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), RECOVERY.maximumRunMilliseconds);
   try {
-    const previous = await destination.readPreviousManifest({ signal: controller.signal });
-    const remaining = RECOVERY.maximumRunMilliseconds - (now() - started);
-    if (controller.signal.aborted || remaining <= 0) throw new Error("PROTECTED_RECOVERY_TIMEOUT");
-    const result = await (dependencies.copy || copyCheckpoint)({ source: transport.source, completion: transport.completion,
-      destination, archive: destination.archive, releaseSha: transport.releaseSha, previous, now, maximumRunMilliseconds: remaining });
+    const registered = await runRegisteredArchiveWriter({ lifecycle, kind: "FILE", releaseSha: transport.releaseSha, now,
+      maximumRunMilliseconds: RECOVERY.maximumRunMilliseconds, execute: async ({ signal, remainingMilliseconds }) => {
+        const previous = await destination.readPreviousManifest({ signal });
+        const result = await (dependencies.copy || copyCheckpoint)({ source: transport.source, completion: transport.completion,
+          destination, archive: destination.archive, releaseSha: transport.releaseSha, previous, now, maximumRunMilliseconds: remainingMilliseconds() });
+        return { ...result, manifestSha256: result.manifestDigest };
+      } });
+    const result = registered.result;
     return { schemaVersion: "applypack-protected-recovery-run-result-v1", status: "COMPLETED", releaseSha: transport.releaseSha,
+      runId: registered.runId, completionReceiptSha256: registered.completionReceiptSha256,
       sourceStartedAt: result.manifest.watermark, manifestSha256: result.manifestDigest,
       objectCount: result.manifest.entries.length, referenceCount: result.manifest.inventory.references.length,
       tombstoneCount: result.manifest.inventory.tombstones.length };
-  } finally { clearTimeout(timer); controller.abort(); destination.close(); }
+  } finally { destination.close(); }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

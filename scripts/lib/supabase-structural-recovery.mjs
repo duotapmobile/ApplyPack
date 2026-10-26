@@ -161,6 +161,10 @@ select case when
   and public.ap_source_aware_document_schema_installed()
   and public.ap_material_draft_stage_claiming_schema_installed()
   and public.ap_reference_aware_draft_schema_installed()
+  and public.ap_protected_archive_schema_installed()
+  and exists(select 1 from public.ap_migration_checkpoints where migration_id='202610250098' and checkpoint='PROTECTED_ARCHIVE_LIFECYCLE')
+  and exists(select 1 from public.ap_archive_lifecycle_configuration where singleton and not enabled)
+  and not exists(select 1 from public.ap_archive_retention_runs where state not in ('COMPLETE','CANCELED'))
   and public.ap_material_draft_change_schema_installed()
   and exists(select 1 from public.ap_migration_checkpoints where migration_id='202610250097' and checkpoint='MATERIAL_DRAFT_CHANGE_REQUESTS')
   and public.ap_service_error_triage_schema_installed()
@@ -179,7 +183,7 @@ select case when
     where migration_id='202610250091' and checkpoint='MATERIAL_DRAFT_PAIR_WORKFLOW')
   and exists(select 1 from public.ap_material_draft_runtime where singleton and not enabled and policy_id is null)
   and not exists(select 1 from public.ap_material_draft_permits)
-  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610250097'
+  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610250098'
   and exists (
     select 1 from pg_proc procedure
     join pg_namespace namespace on namespace.oid=procedure.pronamespace

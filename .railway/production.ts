@@ -68,6 +68,7 @@ export default defineRailway((ctx: RailwayContext) => {
       APP_DEPLOYMENT_ENV: "production", APP_BASE_URL: "https://applypack.work", APP_EXPECTED_RELEASE_SHA: sha,
       AWS_REGION: "us-east-1", APP_AWS_ACCOUNT_ID: "838445019912",
       APP_RECOVERY_READER_SECRET: preserve(), APP_RECOVERY_COMPLETION_SECRET: preserve(),
+      APP_ARCHIVE_LIFECYCLE_ENABLED: preserve(),
       APP_BACKUP_BUCKET: "applypack-production-protected-recovery-838445019912",
       APP_BACKUP_KMS_KEY_ARN: preserve(), APP_BACKUP_AWS_RA_DEPLOYMENT_ENV: "production",
       APP_BACKUP_AWS_RA_TRUST_ANCHOR_ARN: preserve(), APP_BACKUP_AWS_RA_PROFILE_ARN: preserve(),

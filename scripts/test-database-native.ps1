@@ -10,6 +10,7 @@ param(
   [switch]$ReferenceDraftUpgrade,
   [switch]$ServiceErrorUpgrade,
   [switch]$DraftChangeUpgrade,
+  [switch]$ArchiveLifecycleUpgrade,
   [switch]$LegalReceiptUpgrade,
   [string[]]$FixtureNames,
   [string]$MaximumMigrationVersion
@@ -95,9 +96,9 @@ if ($RuleRevalidationUpgrade) {
   $fixtures += @('material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql')
 }
 if ($LegalReceiptUpgrade) {
-  if ($LegacyBackfill -or $CapacityPressure -or $MaximumMigrationVersion -cnotin @('202610250092','202610250093','202610250094','202610250095','202610250096','202610250097') -or
+  if ($LegacyBackfill -or $CapacityPressure -or $MaximumMigrationVersion -cnotin @('202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098') -or
       $migrationFiles[-1].Name.Split('_')[0] -cne $MaximumMigrationVersion) {
-    throw 'Legal receipt upgrade requires an exact isolated historical-to-092,093,094,095,096 or097 sequence.'
+    throw 'Legal receipt upgrade requires an exact isolated historical-to-092,093,094,095,096,097 or098 sequence.'
   }
   $fixtures += @('legal-receipt-074-fixture.sql','legal-receipt-076-verify.sql','legal-receipt-086-verify.sql','legal-receipt-087-verify.sql')
 }
@@ -140,6 +141,14 @@ if ($DraftChangeUpgrade) {
   }
   if (-not $FixtureNames) { $fixtures = @() }
   $fixtures += @('draft-change-upgrade-seed.sql','draft-change-upgrade-verify.sql')
+}
+if ($ArchiveLifecycleUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $LegalReceiptUpgrade -or
+      $MaximumMigrationVersion -cne '202610250098' -or $migrationFiles[-1].Name -cne '202610250098_protected_archive_lifecycle.sql') {
+    throw 'Archive lifecycle upgrade requires the exact isolated097-to098 preservation sequence.'
+  }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('archive-lifecycle-upgrade-seed.sql','archive-lifecycle-upgrade-verify.sql')
 }
 $inputs = @([pscustomobject]@{Kind='bootstrap'; Name='bootstrap.sql'; Path=$bootstrapPath})
 foreach ($migration in $migrationFiles) {
@@ -206,6 +215,14 @@ if ($DraftChangeUpgrade) {
     @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250097' }) +
     @($inputs | Where-Object Name -eq 'draft-change-upgrade-verify.sql') +
     @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('draft-change-upgrade-seed.sql','draft-change-upgrade-verify.sql') })
+}
+if ($ArchiveLifecycleUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250097' }) +
+    @($inputs | Where-Object Name -eq 'archive-lifecycle-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250098' }) +
+    @($inputs | Where-Object Name -eq 'archive-lifecycle-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('archive-lifecycle-upgrade-seed.sql','archive-lifecycle-upgrade-verify.sql') })
 }
 if ($LegalReceiptUpgrade) {
   $bindingPath = Join-Path $repoRoot 'scripts/launch-legal-contract.mjs'
@@ -283,7 +300,9 @@ create table public.retention_legal_upgrade_preservation_fixture as
     @($inputs | Where-Object Name -eq 'service-error-upgrade-verify.sql') +
     $(if ($MaximumMigrationVersion -cge '202610250096') { @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') } else { @() }) +
     @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250097' }) +
-    $(if ($MaximumMigrationVersion -ceq '202610250097') { @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') } else { @() }) +
+    $(if ($MaximumMigrationVersion -cge '202610250097') { @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') } else { @() }) +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250098' }) +
+    $(if ($MaximumMigrationVersion -ceq '202610250098') { @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') } else { @() }) +
     @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin $historicalNames })
 }
 $sharedFixture = 'reviewed-source-fixture.sql'

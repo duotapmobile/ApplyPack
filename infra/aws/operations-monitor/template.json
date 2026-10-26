@@ -1,0 +1,901 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "ApplyPack independent operations observer. Local preparation only; cost and provider approval required before provisioning.",
+  "Parameters": {
+    "ActivateMonitoring": {
+      "Type": "String",
+      "AllowedValues": [
+        "true",
+        "false"
+      ],
+      "Default": "false"
+    },
+    "AlertEmail": {
+      "Type": "String",
+      "AllowedPattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+      "MaxLength": 254,
+      "Description": "Owner-approved destination; SNS subscription must be confirmed and tested."
+    },
+    "ExistingParameterKmsKeyArn": {
+      "Type": "String",
+      "AllowedPattern": "^arn:aws:kms:us-east-1:838445019912:key/[a-f0-9-]{36}$"
+    },
+    "ExistingCodeBucket": {
+      "Type": "String",
+      "AllowedPattern": "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
+    },
+    "CodeKey": {
+      "Type": "String",
+      "AllowedPattern": "^operations-monitor/[a-f0-9]{64}\\.zip$"
+    },
+    "CodeVersion": {
+      "Type": "String",
+      "MinLength": 1,
+      "MaxLength": 1024,
+      "AllowedPattern": "^(?!null$)[A-Za-z0-9._~+/=:-]+$"
+    },
+    "ExpectedCodeSha256": {
+      "Type": "String",
+      "AllowedPattern": "^[A-Za-z0-9+/]{43}=$",
+      "Description": "Base64 SHA-256 of the exact reviewed zip, from the package receipt."
+    },
+    "BucketCodeKey": {
+      "Type": "String",
+      "AllowedPattern": "^worker-bucket-monitor/[a-f0-9]{64}\\.zip$"
+    },
+    "BucketCodeVersion": {
+      "Type": "String",
+      "MinLength": 1,
+      "MaxLength": 1024,
+      "AllowedPattern": "^(?!null$)[A-Za-z0-9._~+/=:-]+$"
+    },
+    "ExpectedBucketCodeSha256": {
+      "Type": "String",
+      "AllowedPattern": "^[A-Za-z0-9+/]{43}=$",
+      "Description": "Base64 SHA-256 of the separate reviewed bucket observer zip."
+    },
+    "ProductionReleaseSha": {
+      "Type": "String",
+      "AllowedPattern": "^[a-f0-9]{40}$"
+    },
+    "StagingReleaseSha": {
+      "Type": "String",
+      "AllowedPattern": "^[a-f0-9]{40}$"
+    }
+  },
+  "Rules": {
+    "FixedAccountAndRegion": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::And": [
+              {
+                "Fn::Equals": [
+                  {
+                    "Ref": "AWS::AccountId"
+                  },
+                  "838445019912"
+                ]
+              },
+              {
+                "Fn::Equals": [
+                  {
+                    "Ref": "AWS::Region"
+                  },
+                  "us-east-1"
+                ]
+              }
+            ]
+          },
+          "AssertDescription": "Only the verified ApplyPack account and region are supported."
+        }
+      ]
+    }
+  },
+  "Conditions": {
+    "MonitoringEnabled": {
+      "Fn::Equals": [
+        {
+          "Ref": "ActivateMonitoring"
+        },
+        "true"
+      ]
+    }
+  },
+  "Resources": {
+    "Alerts": {
+      "Type": "AWS::SNS::Topic",
+      "Properties": {
+        "TopicName": "applypack-operations-alerts",
+        "Subscription": [
+          {
+            "Protocol": "email",
+            "Endpoint": {
+              "Ref": "AlertEmail"
+            }
+          }
+        ]
+      }
+    },
+    "AlertPolicy": {
+      "Type": "AWS::SNS::TopicPolicy",
+      "Properties": {
+        "Topics": [
+          {
+            "Ref": "Alerts"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "cloudwatch.amazonaws.com"
+              },
+              "Action": "sns:Publish",
+              "Resource": {
+                "Ref": "Alerts"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": "838445019912"
+                },
+                "ArnLike": {
+                  "aws:SourceArn": "arn:aws:cloudwatch:us-east-1:838445019912:alarm:applypack-operations-*"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "Logs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/aws/lambda/applypack-operations-monitor",
+        "RetentionInDays": 7
+      }
+    },
+    "Role": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "read-fixed-health-and-publish-fixed-metrics",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "ssm:GetParameter",
+                  "Resource": [
+                    "arn:aws:ssm:us-east-1:838445019912:parameter/applypack/operations-monitor/production",
+                    "arn:aws:ssm:us-east-1:838445019912:parameter/applypack/operations-monitor/staging"
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "kms:Decrypt",
+                  "Resource": {
+                    "Ref": "ExistingParameterKmsKeyArn"
+                  },
+                  "Condition": {
+                    "StringEquals": {
+                      "kms:ViaService": "ssm.us-east-1.amazonaws.com",
+                      "kms:EncryptionContext:PARAMETER_ARN": [
+                        "arn:aws:ssm:us-east-1:838445019912:parameter/applypack/operations-monitor/production",
+                        "arn:aws:ssm:us-east-1:838445019912:parameter/applypack/operations-monitor/staging"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "cloudwatch:PutMetricData",
+                  "Resource": "*",
+                  "Condition": {
+                    "StringEquals": {
+                      "cloudwatch:namespace": "ApplyPack/IndependentOperations"
+                    }
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": "arn:aws:logs:us-east-1:838445019912:log-group:/aws/lambda/applypack-operations-monitor:log-stream:*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "Observer": {
+      "Type": "AWS::Lambda::Function",
+      "DependsOn": "Logs",
+      "Properties": {
+        "FunctionName": "applypack-operations-monitor",
+        "Runtime": "python3.13",
+        "Handler": "handler.handler",
+        "Architectures": [
+          "arm64"
+        ],
+        "Role": {
+          "Fn::GetAtt": [
+            "Role",
+            "Arn"
+          ]
+        },
+        "MemorySize": 128,
+        "Timeout": 45,
+        "ReservedConcurrentExecutions": 1,
+        "Code": {
+          "S3Bucket": {
+            "Ref": "ExistingCodeBucket"
+          },
+          "S3Key": {
+            "Ref": "CodeKey"
+          },
+          "S3ObjectVersion": {
+            "Ref": "CodeVersion"
+          }
+        },
+        "Environment": {
+          "Variables": {
+            "PRODUCTION_RELEASE_SHA": {
+              "Ref": "ProductionReleaseSha"
+            },
+            "STAGING_RELEASE_SHA": {
+              "Ref": "StagingReleaseSha"
+            }
+          }
+        }
+      }
+    },
+    "ObserverVersion": {
+      "Type": "AWS::Lambda::Version",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "Observer"
+        },
+        "CodeSha256": {
+          "Ref": "ExpectedCodeSha256"
+        },
+        "Description": {
+          "Fn::Join": [
+            " ",
+            [
+              "Release-bound observer",
+              {
+                "Ref": "CodeKey"
+              },
+              {
+                "Ref": "ProductionReleaseSha"
+              },
+              {
+                "Ref": "StagingReleaseSha"
+              }
+            ]
+          ]
+        }
+      }
+    },
+    "InvocationPolicy": {
+      "Type": "AWS::Lambda::EventInvokeConfig",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "Observer"
+        },
+        "Qualifier": {
+          "Fn::GetAtt": [
+            "ObserverVersion",
+            "Version"
+          ]
+        },
+        "MaximumEventAgeInSeconds": 60,
+        "MaximumRetryAttempts": 0
+      }
+    },
+    "Schedule": {
+      "Type": "AWS::Events::Rule",
+      "DependsOn": "InvocationPolicy",
+      "Properties": {
+        "Name": "applypack-operations-observer",
+        "ScheduleExpression": "rate(1 minute)",
+        "State": {
+          "Fn::If": [
+            "MonitoringEnabled",
+            "ENABLED",
+            "DISABLED"
+          ]
+        },
+        "Targets": [
+          {
+            "Id": "observer",
+            "Arn": {
+              "Ref": "ObserverVersion"
+            },
+            "RetryPolicy": {
+              "MaximumEventAgeInSeconds": 60,
+              "MaximumRetryAttempts": 0
+            }
+          }
+        ]
+      }
+    },
+    "SchedulePermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "ObserverVersion"
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "Schedule",
+            "Arn"
+          ]
+        },
+        "SourceAccount": "838445019912"
+      }
+    },
+    "BucketLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/aws/lambda/applypack-worker-bucket-monitor",
+        "RetentionInDays": 7
+      }
+    },
+    "BucketRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "read-fixed-bucket-controls-and-publish-health",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetBucketVersioning",
+                    "s3:GetBucketPolicy"
+                  ],
+                  "Resource": [
+                    "arn:aws:s3:::applypack-838445019912-staging-document-worker-temp",
+                    "arn:aws:s3:::applypack-838445019912-production-document-worker-temp"
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "cloudwatch:PutMetricData",
+                  "Resource": "*",
+                  "Condition": {
+                    "StringEquals": {
+                      "cloudwatch:namespace": "ApplyPack/IndependentOperations"
+                    }
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": "arn:aws:logs:us-east-1:838445019912:log-group:/aws/lambda/applypack-worker-bucket-monitor:log-stream:*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "BucketObserver": {
+      "Type": "AWS::Lambda::Function",
+      "DependsOn": "BucketLogs",
+      "Properties": {
+        "FunctionName": "applypack-worker-bucket-monitor",
+        "Runtime": "python3.13",
+        "Handler": "handler.handler",
+        "Architectures": [
+          "arm64"
+        ],
+        "Role": {
+          "Fn::GetAtt": [
+            "BucketRole",
+            "Arn"
+          ]
+        },
+        "MemorySize": 128,
+        "Timeout": 30,
+        "ReservedConcurrentExecutions": 1,
+        "Code": {
+          "S3Bucket": {
+            "Ref": "ExistingCodeBucket"
+          },
+          "S3Key": {
+            "Ref": "BucketCodeKey"
+          },
+          "S3ObjectVersion": {
+            "Ref": "BucketCodeVersion"
+          }
+        },
+        "Environment": {
+          "Variables": {
+            "APP_DOCUMENT_WORKER_BUCKET_MONITOR_ENABLED": {
+              "Ref": "ActivateMonitoring"
+            }
+          }
+        }
+      }
+    },
+    "BucketObserverVersion": {
+      "Type": "AWS::Lambda::Version",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "BucketObserver"
+        },
+        "CodeSha256": {
+          "Ref": "ExpectedBucketCodeSha256"
+        },
+        "Description": {
+          "Fn::Join": [
+            " ",
+            [
+              "Fixed bucket controls observer",
+              {
+                "Ref": "BucketCodeKey"
+              },
+              {
+                "Ref": "ActivateMonitoring"
+              }
+            ]
+          ]
+        }
+      }
+    },
+    "BucketInvocationPolicy": {
+      "Type": "AWS::Lambda::EventInvokeConfig",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "BucketObserver"
+        },
+        "Qualifier": {
+          "Fn::GetAtt": [
+            "BucketObserverVersion",
+            "Version"
+          ]
+        },
+        "MaximumEventAgeInSeconds": 60,
+        "MaximumRetryAttempts": 0
+      }
+    },
+    "BucketSchedule": {
+      "Type": "AWS::Events::Rule",
+      "DependsOn": "BucketInvocationPolicy",
+      "Properties": {
+        "Name": "applypack-worker-bucket-observer",
+        "ScheduleExpression": "rate(5 minutes)",
+        "State": {
+          "Fn::If": [
+            "MonitoringEnabled",
+            "ENABLED",
+            "DISABLED"
+          ]
+        },
+        "Targets": [
+          {
+            "Id": "bucket-observer",
+            "Arn": {
+              "Ref": "BucketObserverVersion"
+            },
+            "RetryPolicy": {
+              "MaximumEventAgeInSeconds": 60,
+              "MaximumRetryAttempts": 0
+            }
+          }
+        ]
+      }
+    },
+    "BucketSchedulePermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "BucketObserverVersion"
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "BucketSchedule",
+            "Arn"
+          ]
+        },
+        "SourceAccount": "838445019912"
+      }
+    },
+    "BucketIsolationAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmName": "applypack-operations-document-worker-bucket-isolation",
+        "AlarmDescription": "Temporary document bucket control is missing, changed, or unverifiable. Pause new document work, inspect exact bucket controls, preserve paid obligations, and verify cleanup before resuming.",
+        "Namespace": "ApplyPack/IndependentOperations",
+        "MetricName": "DocumentWorkerBucketsHealthy",
+        "Unit": "Count",
+        "Period": 300,
+        "EvaluationPeriods": 2,
+        "DatapointsToAlarm": 2,
+        "Statistic": "Minimum",
+        "Threshold": 1,
+        "ComparisonOperator": "LessThanThreshold",
+        "TreatMissingData": "breaching",
+        "ActionsEnabled": {
+          "Fn::If": [
+            "MonitoringEnabled",
+            true,
+            false
+          ]
+        },
+        "AlarmActions": [
+          {
+            "Ref": "Alerts"
+          }
+        ],
+        "OKActions": [
+          {
+            "Ref": "Alerts"
+          }
+        ]
+      }
+    },
+    "stagingDocumentWorkerErrorsAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmName": "applypack-operations-staging-document-worker-errors",
+        "AlarmDescription": "A document worker invocation failed. Inspect redacted failure evidence and cleanup; reconcile the existing draft before retrying.",
+        "Namespace": "AWS/Lambda",
+        "MetricName": "Errors",
+        "Dimensions": [
+          {
+            "Name": "FunctionName",
+            "Value": "applypack-staging-document-worker"
+          }
+        ],
+        "Unit": "Count",
+        "Period": 60,
+        "EvaluationPeriods": 1,
+        "DatapointsToAlarm": 1,
+        "Statistic": "Sum",
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching",
+        "ActionsEnabled": {
+          "Fn::If": [
+            "MonitoringEnabled",
+            true,
+            false
+          ]
+        },
+        "AlarmActions": [
+          {
+            "Ref": "Alerts"
+          }
+        ],
+        "OKActions": [
+          {
+            "Ref": "Alerts"
+          }
+        ]
+      }
+    },
+    "productionDocumentWorkerErrorsAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmName": "applypack-operations-production-document-worker-errors",
+        "AlarmDescription": "A document worker invocation failed. Inspect redacted failure evidence and cleanup; reconcile the existing draft before retrying.",
+        "Namespace": "AWS/Lambda",
+        "MetricName": "Errors",
+        "Dimensions": [
+          {
+            "Name": "FunctionName",
+            "Value": "applypack-production-document-worker"
+          }
+        ],
+        "Unit": "Count",
+        "Period": 60,
+        "EvaluationPeriods": 1,
+        "DatapointsToAlarm": 1,
+        "Statistic": "Sum",
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching",
+        "ActionsEnabled": {
+          "Fn::If": [
+            "MonitoringEnabled",
+            true,
+            false
+          ]
+        },
+        "AlarmActions": [
+          {
+            "Ref": "Alerts"
+          }
+        ],
+        "OKActions": [
+          {
+            "Ref": "Alerts"
+          }
+        ]
+      }
+    },
+    "productionmaintenanceAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmName": "applypack-operations-production-maintenance",
+        "AlarmDescription": "Verified evidence missing, stale, failed, or unavailable. Follow the independent operations runbook; preserve paid work.",
+        "Namespace": "ApplyPack/IndependentOperations",
+        "MetricName": "VerifiedHealthy",
+        "Dimensions": [
+          {
+            "Name": "Environment",
+            "Value": "production"
+          },
+          {
+            "Name": "Check",
+            "Value": "maintenance"
+          }
+        ],
+        "Unit": "Count",
+        "Period": 60,
+        "EvaluationPeriods": 5,
+        "DatapointsToAlarm": 5,
+        "Statistic": "Minimum",
+        "Threshold": 1,
+        "ComparisonOperator": "LessThanThreshold",
+        "TreatMissingData": "breaching",
+        "ActionsEnabled": {
+          "Fn::If": [
+            "MonitoringEnabled",
+            true,
+            false
+          ]
+        },
+        "AlarmActions": [
+          {
+            "Ref": "Alerts"
+          }
+        ],
+        "OKActions": [
+          {
+            "Ref": "Alerts"
+          }
+        ]
+      }
+    },
+    "productionfileRecoveryAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmName": "applypack-operations-production-fileRecovery",
+        "AlarmDescription": "Verified evidence missing, stale, failed, or unavailable. Follow the independent operations runbook; preserve paid work.",
+        "Namespace": "ApplyPack/IndependentOperations",
+        "MetricName": "VerifiedHealthy",
+        "Dimensions": [
+          {
+            "Name": "Environment",
+            "Value": "production"
+          },
+          {
+            "Name": "Check",
+            "Value": "fileRecovery"
+          }
+        ],
+        "Unit": "Count",
+        "Period": 60,
+        "EvaluationPeriods": 2,
+        "DatapointsToAlarm": 2,
+        "Statistic": "Minimum",
+        "Threshold": 1,
+        "ComparisonOperator": "LessThanThreshold",
+        "TreatMissingData": "breaching",
+        "ActionsEnabled": {
+          "Fn::If": [
+            "MonitoringEnabled",
+            true,
+            false
+          ]
+        },
+        "AlarmActions": [
+          {
+            "Ref": "Alerts"
+          }
+        ],
+        "OKActions": [
+          {
+            "Ref": "Alerts"
+          }
+        ]
+      }
+    },
+    "productiondatabaseRecoveryAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmName": "applypack-operations-production-databaseRecovery",
+        "AlarmDescription": "Verified evidence missing, stale, failed, or unavailable. Follow the independent operations runbook; preserve paid work.",
+        "Namespace": "ApplyPack/IndependentOperations",
+        "MetricName": "VerifiedHealthy",
+        "Dimensions": [
+          {
+            "Name": "Environment",
+            "Value": "production"
+          },
+          {
+            "Name": "Check",
+            "Value": "databaseRecovery"
+          }
+        ],
+        "Unit": "Count",
+        "Period": 60,
+        "EvaluationPeriods": 2,
+        "DatapointsToAlarm": 2,
+        "Statistic": "Minimum",
+        "Threshold": 1,
+        "ComparisonOperator": "LessThanThreshold",
+        "TreatMissingData": "breaching",
+        "ActionsEnabled": {
+          "Fn::If": [
+            "MonitoringEnabled",
+            true,
+            false
+          ]
+        },
+        "AlarmActions": [
+          {
+            "Ref": "Alerts"
+          }
+        ],
+        "OKActions": [
+          {
+            "Ref": "Alerts"
+          }
+        ]
+      }
+    },
+    "productionarchiveRetentionAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmName": "applypack-operations-production-archiveRetention",
+        "AlarmDescription": "Verified evidence missing, stale, failed, or unavailable. Follow the independent operations runbook; preserve paid work.",
+        "Namespace": "ApplyPack/IndependentOperations",
+        "MetricName": "VerifiedHealthy",
+        "Dimensions": [
+          {
+            "Name": "Environment",
+            "Value": "production"
+          },
+          {
+            "Name": "Check",
+            "Value": "archiveRetention"
+          }
+        ],
+        "Unit": "Count",
+        "Period": 60,
+        "EvaluationPeriods": 2,
+        "DatapointsToAlarm": 2,
+        "Statistic": "Minimum",
+        "Threshold": 1,
+        "ComparisonOperator": "LessThanThreshold",
+        "TreatMissingData": "breaching",
+        "ActionsEnabled": {
+          "Fn::If": [
+            "MonitoringEnabled",
+            true,
+            false
+          ]
+        },
+        "AlarmActions": [
+          {
+            "Ref": "Alerts"
+          }
+        ],
+        "OKActions": [
+          {
+            "Ref": "Alerts"
+          }
+        ]
+      }
+    },
+    "stagingmaintenanceAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmName": "applypack-operations-staging-maintenance",
+        "AlarmDescription": "Verified evidence missing, stale, failed, or unavailable. Follow the independent operations runbook; preserve paid work.",
+        "Namespace": "ApplyPack/IndependentOperations",
+        "MetricName": "VerifiedHealthy",
+        "Dimensions": [
+          {
+            "Name": "Environment",
+            "Value": "staging"
+          },
+          {
+            "Name": "Check",
+            "Value": "maintenance"
+          }
+        ],
+        "Unit": "Count",
+        "Period": 60,
+        "EvaluationPeriods": 5,
+        "DatapointsToAlarm": 5,
+        "Statistic": "Minimum",
+        "Threshold": 1,
+        "ComparisonOperator": "LessThanThreshold",
+        "TreatMissingData": "breaching",
+        "ActionsEnabled": {
+          "Fn::If": [
+            "MonitoringEnabled",
+            true,
+            false
+          ]
+        },
+        "AlarmActions": [
+          {
+            "Ref": "Alerts"
+          }
+        ],
+        "OKActions": [
+          {
+            "Ref": "Alerts"
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "ObserverArn": {
+      "Value": {
+        "Ref": "ObserverVersion"
+      }
+    },
+    "BucketObserverArn": {
+      "Value": {
+        "Ref": "BucketObserverVersion"
+      }
+    },
+    "AlertTopicArn": {
+      "Value": {
+        "Ref": "Alerts"
+      }
+    },
+    "OperatorAction": {
+      "Value": "Confirm alert subscription and prove both failure and recovery delivery outside Railway before acceptance."
+    }
+  }
+}

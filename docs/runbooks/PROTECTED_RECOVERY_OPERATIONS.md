@@ -2,13 +2,14 @@
 
 For new-policy orders, apply [One-off retention](ONE_OFF_RETENTION.md) before enabling a restored service. The latest trusted expiry/deletion overlay and database sanitization are required alongside file-version verification. A current hold protects recovery bytes without reopening expired customer access. Preserve historical entitlements; do not treat this requirement as permission to prune the protected archive.
 
-Status: implemented source with offline tests; not provisioned, deployed, provider-verified or drilled. Purchasing remains locked. The current tools archive private files and their reference graph. They do not establish database PITR health, independently recoverable authentication/configuration, retained KMS access, or the 240-minute/15-minute recovery result by themselves.
+Status: implemented source with offline tests; not provisioned, deployed, provider-verified or drilled. Purchasing remains locked. The file tools archive private files and their reference graph; the separate database worker exports the paired snapshot. Neither establishes independently recoverable authentication/configuration, retained KMS access, or the 240-minute/15-minute recovery result by itself.
 
 ## Continuous file checkpoint
 
 The separate production service runs `node scripts/run-protected-recovery.mjs` without arguments every five minutes, using the reviewed web image and its exact release SHA. Configure:
 
 - `APP_DEPLOYMENT_ENV=production`, `APP_BASE_URL=https://applypack.work` and identical full `APP_EXPECTED_RELEASE_SHA` / `RAILWAY_GIT_COMMIT_SHA`.
+- `APP_ARCHIVE_LIFECYCLE_ENABLED=true` only after its separate hosted activation gates pass. The writer registers and receives a single dispatch acknowledgement before provider access; uncertain dispatched runs remain protected until exact reconciliation.
 - Distinct sealed `APP_RECOVERY_READER_SECRET` and `APP_RECOVERY_COMPLETION_SECRET`. The server alone holds the distinct receipt-signing secret. The service refuses Supabase master keys, database credentials, the receipt secret and maintenance token.
 - The dedicated `APP_BACKUP_AWS_RA_*` workload identity, `APP_AWS_ACCOUNT_ID=838445019912`, `AWS_REGION=us-east-1`, `APP_BACKUP_BUCKET=applypack-production-protected-recovery-838445019912` and the exact retained `APP_BACKUP_KMS_KEY_ARN`. The web identity and AWS default credential chain are forbidden.
 
@@ -16,7 +17,7 @@ The fixed internal API completely enumerates four private buckets and its finite
 
 The immutable private manifest is published last. Only a successful authenticated, monotonic server completion acknowledgement updates `protected_recovery`; its watermark is the first inventory start, never the upload finish. Failure, timeout, partial upload, stale scan, checksum mismatch or replay cannot manufacture a completion. An upload whose response was lost may leave an unreferenced immutable version; a retry writes another version without erasing history. The entire cycle is bounded to five minutes. Logs contain only status, release, digests and counts.
 
-The file checkpoint must be combined with verified Supabase PITR, independent authentication/configuration custody and retained application/backup keys. Before launch, demonstrate a usable database recovery point consistent with the stable file interval, actual cycle timing, staleness/failure alerts and intake/checkout lock behavior. Provider project destruction is a separate scenario: a daily independent database export does not promise15-minute recovery if both the project and its provider PITR are destroyed.
+The file checkpoint must be combined with an authenticated current database COMPLETE receipt, verified retention completion, independent authentication/configuration custody and retained application/backup keys. The prepared snapshot-export worker is the current database design; PITR is an optional additional or alternative paid service only after selection and approval. A daily export cannot satisfy the fifteen-minute target. Before launch, demonstrate a usable database recovery point consistent with the file interval, actual cycle timing, delivered alerts and intake/checkout holds. All three proofs warn at ten minutes and block new intake/checkout at twelve minutes of source-watermark age; missing or mismatched proof cannot appear healthy. Provider project destruction is a separate, unproven loss scenario.
 
 ## Initial archive before migration
 
@@ -26,7 +27,7 @@ Run only after verifying writer controls and the protected database/provider rec
 
 Supply exactly one JSON object containing `supabaseKey` through a private process pipe from existing sealed provider storage. Never place the value in command arguments, an evidence file, chat or logs. The input is bounded and held only in memory. The fixed source is `spjaaxndiduhrcleazwb`; arbitrary projects, REST tables/columns, RPCs, mutations, redirects and cookies are rejected. A missing historical schema fails rather than silently producing an incomplete archive.
 
-The result is `BOOTSTRAP_ARCHIVED_WITHOUT_APPLICATION_CHECKPOINT`, with `applicationCheckpointCompleted=false`. Its operator receipt cannot authenticate to the server completion route. Preserve its exact manifest digest/VersionId with the protected database and custody evidence. Existing DPAPI safeguards remain useful local migration checks, but do not establish recovery after losing this computer or its credentials.
+The result is `BOOTSTRAP_ARCHIVED_WITHOUT_APPLICATION_CHECKPOINT`, with `applicationCheckpointCompleted=false`. Its operator receipt cannot authenticate to the server completion route. Preserve its exact manifest digest/VersionId with the protected database and custody evidence. Bootstrap refuses lifecycle-enabled configuration. Before enabling the lifecycle, stop old jobs and retire all prior archive-writer credentials so an older deployment cannot bypass the durable registration fence. Existing DPAPI safeguards remain useful local migration checks, but do not establish recovery after losing this computer or its credentials.
 
 ## Registered isolated restore
 
@@ -44,6 +45,6 @@ The command returns `FILES_RESTORED_ACCESS_LOCKED` with restored/excluded counts
 
 ## Retention boundary
 
-Source copies must follow their actual deletion deadlines and legal holds; historical active deliveries must not expire merely because seven days elapsed. Versioned S3 delete markers do not erase prior bytes. The read-only exact-version retention planner and its approval boundary are documented in [PROTECTED_RECOVERY_RETENTION_APPROVAL.md](PROTECTED_RECOVERY_RETENTION_APPROVAL.md). Archive deletion execution is not implemented or authorized by that planner. Until the deletion operation is authorized, implemented and provider-tested, this remains a launch gate and the new privacy deletion behavior must not be claimed operational.
+Source copies must follow their actual deletion deadlines and legal holds; historical active deliveries must not expire merely because seven days elapsed. Versioned S3 delete markers do not erase prior bytes. The read-only planner remains separate from the locally implemented scoped executor in [PROTECTED_RECOVERY_RETENTION_APPROVAL.md](PROTECTED_RECOVERY_RETENTION_APPROVAL.md). Local implementation/testing/Git publication are approved; hosted deletion remains unapproved and unverified. The executor requires a durable source/hold fence, authenticated complete archive history, exact scoped dispatch and independently observed absence. Unknown operations never release the fence automatically. Database archives are not deletion targets and keep their referenced file versions pinned; canceled plans preserve orphan bytes, so current scope does not establish bounded storage growth.
 
-Required hosted proof remains: paid-resource approval/provisioning, independent credential custody, complete real inventory, PITR/file-point consistency, actual successful cycles and delivered alerts, exact archive checksum/version semantics, retention execution, and the measured full recovery drill. Offline fixtures exercise failure behavior only.
+Required hosted proof remains: paid-resource approval/provisioning, independent credential custody, complete real inventory, selected database/file-point consistency, actual successful file/database/retention cycles and delivered alerts, exact archive checksum/version semantics, retention execution, and the measured full recovery drill. Offline fixtures exercise failure behavior only.

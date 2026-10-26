@@ -259,6 +259,8 @@ export async function recordMaintenanceDiagnosis(admin: AdminClient, before: Ope
   );
   await updateFailureEvidence(admin, {
     schemaVersion: 2,
+    environment: before.environment,
+    releaseSha: before.releaseSha,
     phase: "DIAGNOSED",
     beforeCodes: diagnostic.codes,
     actions: [],
@@ -322,6 +324,8 @@ export async function recordMaintenanceFailure(
   await reconcileMaintenanceAlerts(admin, unresolvedCodes, environment, releaseSha, nowIso, preserveCodes);
   await updateFailureEvidence(admin, {
     schemaVersion: 2,
+    environment,
+    releaseSha,
     phase: "FAILED",
     beforeCodes: beforeDiagnostic.codes,
     actions: actions.map((action) => ({ code: action.code, status: action.status })),
@@ -364,7 +368,7 @@ export async function recordMaintenanceOutcome(
   // Alert reconciliation must succeed before a success heartbeat can be refreshed.
   await reconcileMaintenanceAlerts(admin, outcome.unresolvedCodes, after.environment, after.releaseSha, nowIso);
   if (outcome.unresolvedCodes.length || !maintenanceActionsSucceeded(actions, allowedSkippedActions)) {
-    await updateFailureEvidence(admin, { schemaVersion: 2, phase: "FAILED", ...outcome }, nowIso);
+    await updateFailureEvidence(admin, { schemaVersion: 2, environment: after.environment, releaseSha: after.releaseSha, phase: "FAILED", ...outcome }, nowIso);
     return { ...outcome, recoveryEmail: "not_needed" as const };
   }
 
@@ -372,7 +376,7 @@ export async function recordMaintenanceOutcome(
     task_name: "maintenance",
     last_succeeded_at: nowIso,
     updated_at: nowIso,
-    summary: { schemaVersion: 2, phase: "VERIFIED", ...outcome },
+    summary: { schemaVersion: 2, environment: after.environment, releaseSha: after.releaseSha, phase: "VERIFIED", ...outcome },
   }, { onConflict: "task_name" });
   if (heartbeat.error) throw new Error("MAINTENANCE_HEARTBEAT_WRITE_FAILED");
 

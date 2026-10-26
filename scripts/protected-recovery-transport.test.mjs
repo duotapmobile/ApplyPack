@@ -6,6 +6,7 @@ import { createBootstrapReadOnlyFetch, createOperatorBootstrapSource } from "./l
 import { RECOVERY_BUCKETS, RECOVERY_TABLES, recoveryInventoryDigest } from "./lib/protected-recovery-protocol.mjs";
 import { recoverySourceColumns } from "./lib/protected-recovery-source.mjs";
 import { runProtectedRecovery, sanitizedRecoveryFailure } from "./run-protected-recovery.mjs";
+import { fictionalArchiveLifecycle } from "./archive-writer-test-fixture.mjs";
 import { runBootstrapRecovery, readBootstrapCredential } from "./bootstrap-protected-recovery.mjs";
 
 const SYNTHETIC_PROVIDER_KEY = "SYNTHETIC_PROVIDER_KEY_FOR_OFFLINE_TESTS_ONLY";
@@ -148,13 +149,15 @@ test("bootstrap JSON input is bounded and never accepts additional credential fi
 test("continuous runner reports only sanitized counters and closes destination", async () => {
   let closed = false;
   const report = await runProtectedRecovery(environment(), { createTransport: () => ({ source: {}, completion: {}, releaseSha: RELEASE }),
+    createLifecycle: () => fictionalArchiveLifecycle(RELEASE, "FILE"),
     createDestination: () => ({ archive: {}, readPreviousManifest: async () => null, close: () => { closed = true; } }),
-    copy: async () => ({ manifest: { watermark: "2026-10-23T22:00:00Z", entries: [{ key: "private/person.docx" }], inventory: { references: [], tombstones: [] } }, manifestDigest: "f".repeat(64) }) });
+    copy: async () => ({ manifest: { watermark: "2026-10-23T22:00:00Z", entries: [{ key: "private/person.docx" }], inventory: { references: [], tombstones: [] } }, manifestDigest: "f".repeat(64), manifestVersionId: "fictional-v1" }) });
   assert.equal(report.status, "COMPLETED"); assert.equal(closed, true); assert.equal(JSON.stringify(report).includes("private/person"), false);
 });
 test("continuous runner closes destination after failure and never reports completed", async () => {
   let closed = false;
   await assert.rejects(runProtectedRecovery(environment(), { createTransport: () => ({ source: {}, completion: {}, releaseSha: RELEASE }),
+    createLifecycle: () => fictionalArchiveLifecycle(RELEASE, "FILE"),
     createDestination: () => ({ archive: {}, readPreviousManifest: async () => null, close: () => { closed = true; } }),
     copy: async () => { throw new Error("SYNTHETIC_FAILURE"); } }), /SYNTHETIC_FAILURE/u);
   assert.equal(closed, true);
@@ -177,4 +180,18 @@ test("operator bootstrap archive cannot masquerade as an application completion"
 });
 test("bootstrap fails before opening credentials or provider adapters without locked-writer/database evidence binding", async () => {
   await assert.rejects(runBootstrapRecovery({ environment: {}, dependencies: { createDestination: () => { throw new Error("SHOULD_NOT_RUN"); } } }), /BOOTSTRAP_PRECONDITIONS/u);
+});
+
+test("legacy bootstrap refuses lifecycle mode before credentials or provider access", async () => {
+  await assert.rejects(runBootstrapRecovery({ environment: { APP_ARCHIVE_LIFECYCLE_ENABLED: "true" },
+    dependencies: { createDestination: () => { throw new Error("must not open"); } } }), /LEGACY_WRITER_RETIRED/u);
+});
+
+test("file writer is registered and dispatched before reading previous archives", async () => {
+  const calls = []; const lifecycle = fictionalArchiveLifecycle(RELEASE, "FILE", calls);
+  await runProtectedRecovery(environment(), { createTransport: () => ({ source: {}, completion: {}, releaseSha: RELEASE }), createLifecycle: () => lifecycle,
+    createDestination: () => ({ archive: {}, readPreviousManifest: async () => { calls.push("readPrevious"); return null; }, close: () => {} }),
+    copy: async () => { calls.push("copy"); return { manifest: { watermark: "2026-10-23T22:00:00Z", entries: [], inventory: { references: [], tombstones: [] } },
+      manifestDigest: "f".repeat(64), manifestVersionId: "fictional-v1" }; } });
+  assert.deepEqual(calls, ["lifecycle.begin", "lifecycle.dispatch", "readPrevious", "copy", "lifecycle.complete"]);
 });

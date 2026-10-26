@@ -21,6 +21,8 @@
     "test:reference-draft-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-095",
     "test:service-error-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-096",
     "test:draft-change-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-097",
+    "test:archive-lifecycle-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-098",
+    "test:archive-lifecycle": "node --test scripts/archive-verifier.test.mjs scripts/recovery-archive-history.test.mjs scripts/recovery-archive-evidence.test.mjs scripts/archive-writer-completion.test.mjs scripts/recovery-archive-execution.test.mjs scripts/archive-lifecycle-service.test.mjs scripts/archive-lifecycle-transport.test.mjs scripts/archive-writer-run.test.mjs scripts/archive-lifecycle-integration.test.mjs",
     "test:rehearsal-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-085",
     "test:staging-schema084-backup": "node scripts/run-windows-release-self-test.mjs staging-084-backup",
     "test:production-migration": "node scripts/run-windows-release-self-test.mjs production-migration",
