@@ -29,7 +29,8 @@ test("current PG17 inputs include the request fixture before independently conne
   const input = loadRetentionPostgresInputs();
   assert.equal(input.migrationCount, 103);
   const fixtures = input.hashes.filter((entry) => entry.kind === "fixture").map((entry) => entry.name);
-  assert.equal(fixtures.length, 14);
+  assert.equal(fixtures.length, 15);
+  assert(fixtures.includes("protected-archive-limited-role.sql"));
   assert(fixtures.includes("material-draft-change-requests.sql"));
   assert(fixtures.indexOf("material-draft-change-requests.sql") < fixtures.indexOf("service-retention-races.sql"));
   assert(input.sql.includes("exhausted configured policy invalidated the approved current version"));

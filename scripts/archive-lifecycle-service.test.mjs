@@ -80,6 +80,33 @@ test("worker kinds cannot borrow each other's mutations or retention capability"
   await assert.rejects(f.execute("WRITER_DISPATCH", {}, "DATABASE_WRITER"), /WRITER_KIND/u);
   assert.deepEqual(f.state.calls, ["writerBegin"]);
 });
+test("writer completion verifies its target without scanning history or granting retention authority", async () => {
+  const f = fixture();
+  f.state.writer = { id: runId, kind: "FILE", release_sha: releaseSha, state: "OPEN", provider_dispatched: true,
+    started_at: new Date(now - 7000).toISOString() };
+  f.store.writerFinish = async (id, digest, cancel, receipt) => {
+    assert.equal(id, runId); assert.equal(cancel, false); assert.equal(digest, canonicalSha256(receipt));
+    f.state.writer = { ...f.state.writer, state: "COMPLETE", completion_receipt: receipt }; return f.state.writer;
+  };
+  const result = await f.execute("WRITER_COMPLETE", { manifestSha256: f.currentFile.digest,
+    manifestVersionId: f.currentFile.versionId }, "FILE_WRITER");
+  assert.equal(result.state, "COMPLETE");
+  assert.equal(result.completion_receipt.manifestSha256, f.currentFile.digest);
+  assert.equal(f.calls.filter((c) => c.constructor.name === "GetObjectCommand").length, 1);
+  assert.equal(f.calls.filter((c) => c.constructor.name === "ListObjectVersionsCommand").length, 0);
+  const count = f.calls.length;
+  await f.execute("WRITER_COMPLETE", { manifestSha256: f.currentFile.digest, manifestVersionId: f.currentFile.versionId }, "FILE_WRITER");
+  assert.equal(f.calls.length, count, "exact completion replay never refreshes verification");
+});
+test("a single writer proof cannot replace full-history deletion planning", async () => {
+  const f = fixture();
+  const proof = await f.evidenceReader.readWriter({ kind: "FILE", manifestSha256: f.currentFile.digest,
+    manifestVersionId: f.currentFile.versionId, signal: AbortSignal.timeout(2000) });
+  const service = createArchiveLifecycleService({ store: f.store, configuration: f.config, now: () => now,
+    evidenceReader: { read: async () => proof }, readInventory: async () => f.first, readCheckpoint: async () => f.checkpoint });
+  await assert.rejects(service.execute({ action: "RETENTION_PREPARE", runId }, { capability: "RETENTION", signal: AbortSignal.timeout(2000) }), /FULL_HISTORY_PROOF_REQUIRED/u);
+  assert.deepEqual(f.state.calls, []);
+});
 test("unknown fields, database deletion scope and disabled configuration fail before store mutation", async () => {
   const f = fixture();
   await assert.rejects(f.execute("RETENTION_BEGIN", { verified: true }), /REQUEST_INVALID/u);

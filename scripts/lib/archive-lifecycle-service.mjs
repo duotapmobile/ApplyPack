@@ -92,7 +92,8 @@ export function createArchiveLifecycleService({ store, readInventory, readCheckp
         requireValue(run.completion_receipt?.manifestSha256 === request.manifestSha256 && run.completion_receipt?.manifestVersionId === request.manifestVersionId, "WRITER_REPLAY_MISMATCH");
         return run; // Observed immutable completion; never refresh its time.
       }
-      const proof = await evidenceReader.read({ signal });
+      const proof = await evidenceReader.readWriter({ kind, manifestSha256: request.manifestSha256,
+        manifestVersionId: request.manifestVersionId, signal });
       const verified = verifyArchiveWriterCompletion({ proof, run, manifestSha256: request.manifestSha256, manifestVersionId: request.manifestVersionId,
         checkpoint: await checkpoint(signal), expectedSchemaVersion: configuration.schemaVersion, now: now() });
       return store.writerFinish(request.runId, verified.sha256, false, verified.receipt, signal);

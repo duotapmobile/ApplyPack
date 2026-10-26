@@ -27,7 +27,9 @@ export const archiveWriterCompletionSchema = z.object({
  * application checkpoint must be read from the application's durable record by
  * the authenticated completion boundary, never accepted from worker JSON. */
 export function verifyArchiveWriterCompletion({ proof, run, manifestSha256, manifestVersionId, checkpoint, expectedSchemaVersion, now = Date.now() }) {
-  const evidence = authenticatedArchiveEvidence(proof);
+  const evidence = authenticatedArchiveEvidence(proof, { purpose: "WRITER" });
+  if (evidence.scope === "WRITER_POINT") requireValue(evidence.writerTarget.kind === run?.kind
+    && evidence.writerTarget.manifestSha256 === manifestSha256 && evidence.writerTarget.manifestVersionId === manifestVersionId, "WRITER_PROOF_TARGET");
   requireValue(run?.state === "OPEN" && run.provider_dispatched === true && z.uuid().safeParse(run.id).success
     && ["FILE", "DATABASE"].includes(run.kind) && release.safeParse(run.release_sha).success, "WRITER_IDENTITY");
   requireValue(databaseFileCheckpointSchema.safeParse(checkpoint).success && checkpoint.releaseSha === run.release_sha, "APPLICATION_CHECKPOINT");

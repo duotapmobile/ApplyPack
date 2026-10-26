@@ -1,5 +1,10 @@
 -- Fictional local maintenance state only. No S3/provider operations.
 begin;
+-- Rollback-only fixture models the Storage API's delete transaction context.
+-- Supabase's provider-owned statement guard otherwise rejects before our row
+-- fence can run. No deployed trigger/role is altered by this setting.
+-- https://github.com/supabase/storage/blob/master/migrations/tenant/0055-prevent-direct-deletes.sql
+set local storage.allow_delete_query='true';
 do $$ declare r jsonb; receipt jsonb; checked_at timestamptz; relation record; blocked boolean; original_helper text; writer uuid:='f9800000-0000-4000-8000-000000000001';
  run_id uuid:='f9800000-0000-4000-8000-000000000002'; key text:='objects/customer-source-documents/'||repeat('b',64);
 begin

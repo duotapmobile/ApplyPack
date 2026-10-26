@@ -64,6 +64,68 @@ export function createArchiveEvidenceReader({ s3, sts, archive, identity = "oper
     return identity;
   };
   return Object.freeze({
+   /** Completion verifies one newly written recovery point. It is deliberately
+    * not evidence of complete archive history and cannot authorize retention. */
+   async readWriter({ kind, manifestSha256, manifestVersionId, signal }) {
+    active(signal);
+    requireValue(["FILE", "DATABASE"].includes(kind) && /^[a-f0-9]{64}$/u.test(manifestSha256 || "")
+      && version(manifestVersionId), "WRITER_TARGET");
+    const startedAt = now(); const identity = await authenticate(signal);
+    const versions = []; const fileManifests = []; const databaseManifests = [];
+    const metadata = (response, target) => {
+      requireValue(response.LastModified instanceof Date && Number.isFinite(response.LastModified.getTime())
+        && response.LastModified.getTime() <= now(), "VERSION_TIME");
+      return { key: target.key, versionId: target.versionId, size: target.size, lastModified: response.LastModified.toISOString() };
+    };
+    const readManifest = async (key, versionId, digest) => {
+      requireValue(/^(?:database\/)?manifests\/[a-f0-9]{64}\.json$/u.test(key) && version(versionId)
+        && key.endsWith(`/${digest}.json`), "WRITER_TARGET");
+      const response = await wait(() => s3.send(new GetObjectCommand({ Bucket: bucket, ExpectedBucketOwner: account,
+        Key: key, VersionId: versionId, ChecksumMode: "ENABLED" }), { abortSignal: signal }), signal);
+      let bytes;
+      try {
+        const target = { key, versionId, size: response.ContentLength };
+        assertResponse(response, target, bound, digest);
+        bytes = await collect(response, key.startsWith("database/") ? 64 * 1024 : 16 * 1024 * 1024, signal);
+        const parsed = readHistoricalArchiveManifest({ bytes, ...target, expectedSize: target.size, expectedSha256: digest });
+        requireValue(canonicalSha256(parsed.manifest.archive) === canonicalSha256(bound), "MANIFEST_ARCHIVE");
+        versions.push(metadata(response, target));
+        (parsed.kind === "file" ? fileManifests : databaseManifests).push(parsed);
+        return parsed;
+      } finally { bytes?.fill(0); response.Body?.destroy?.(); }
+    };
+    const target = await readManifest(`${kind === "DATABASE" ? "database/" : ""}manifests/${manifestSha256}.json`, manifestVersionId, manifestSha256);
+    if (kind === "DATABASE") {
+      const paired = target.manifest.fileManifest;
+      await readManifest(paired.key, paired.versionId, paired.sha256);
+    }
+    const claims = new Map();
+    const add = (item) => {
+      requireValue(validKey(item.key) && version(item.versionId), "WRITER_REFERENCE");
+      const id = archiveVersionIdentity(item); const prior = claims.get(id);
+      requireValue(!prior || canonicalSha256(prior) === canonicalSha256(item), "VERSION_CONTENT_CONFLICT");
+      claims.set(id, item);
+      requireValue(claims.size <= 49998, "WRITER_REFERENCE_LIMIT");
+    };
+    for (const file of fileManifests) for (const entry of file.manifest.entries) add({ key: entry.archiveKey,
+      versionId: entry.archiveVersionId, size: entry.size, sha256: entry.sha256 });
+    for (const database of databaseManifests) for (const entry of [database.manifest.dump, database.manifest.roles])
+      add({ key: entry.key, versionId: entry.versionId, size: entry.size, sha256: entry.sha256 });
+    for (const item of claims.values()) {
+      const response = await wait(() => s3.send(new HeadObjectCommand({ Bucket: bucket, ExpectedBucketOwner: account,
+        Key: item.key, VersionId: item.versionId, ChecksumMode: "ENABLED" }), { abortSignal: signal }), signal);
+      assertResponse(response, item, bound, item.sha256);
+      versions.push(metadata(response, item));
+    }
+    const graph = mapDatabaseArchivePins({ databaseManifests, fileManifests, versions });
+    active(signal);
+    const detail = { scope: "WRITER_POINT", writerTarget: { kind, manifestSha256, manifestVersionId },
+      archive: bound, startedAt, completedAt: now(), versions, fileManifests, databaseManifests, pins: graph.pins,
+      readerIdentity: identity.Arn, manifestBytesVerified: true, referencedProviderChecksumsVerified: true,
+      privateContentRead: false, applicationCheckpointVerified: false, hostedRestoreVerified: false };
+    const token = Object.freeze({ schemaVersion: "applypack-authenticated-writer-evidence-v1", digest: canonicalSha256(detail) });
+    proofs.set(token, detail); return token;
+   },
    async observeAbsence({ key, versionId, signal }) {
     requireValue(/^(?:objects\/(?:customer-source-documents|customer-deliveries|operator-drafts|operator-render-previews)\/[a-f0-9]{64}|manifests\/[a-f0-9]{64}\.json)$/u.test(key || "") && version(versionId), "ABSENCE_SCOPE");
     await authenticate(signal);
@@ -140,8 +202,10 @@ export function createArchiveEvidenceReader({ s3, sts, archive, identity = "oper
   } });
 }
 
-export function authenticatedArchiveEvidence(token) {
+export function authenticatedArchiveEvidence(token, { purpose = "RETENTION" } = {}) {
   const detail = proofs.get(token); requireValue(detail && token.digest === canonicalSha256(detail), "AUTHENTICATED_PROOF_REQUIRED");
+  requireValue(["WRITER", "RETENTION"].includes(purpose)
+    && (detail.scope !== "WRITER_POINT" || purpose === "WRITER"), "FULL_HISTORY_PROOF_REQUIRED");
   // The consumer receives an isolated copy; mutating it never changes the proof.
   return structuredClone(detail);
 }

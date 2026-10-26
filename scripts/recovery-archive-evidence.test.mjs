@@ -22,7 +22,7 @@ function transport(change = () => {}) {
       const id = `${command.input.Key}\u0000${command.input.VersionId}`; const m = manifests.get(id); const listed = f.versions.find((v) => v.key === command.input.Key && v.versionId === command.input.VersionId);
       const digest = m?.digest ?? claims.get(id);
       assert(listed && digest);
-      value = { VersionId: listed.versionId, ContentLength: listed.size, ServerSideEncryption: "aws:kms", SSEKMSKeyId: f.file.manifest.archive.kmsKeyArn,
+      value = { VersionId: listed.versionId, ContentLength: listed.size, LastModified: new Date(now - 500), ServerSideEncryption: "aws:kms", SSEKMSKeyId: f.file.manifest.archive.kmsKeyArn,
         ChecksumSHA256: Buffer.from(digest, "hex").toString("base64"), ChecksumType: "FULL_OBJECT", ...(m ? { Body: canonicalBytes(m.manifest) } : {}) };
     }
     change(command, value); return value;
@@ -62,4 +62,53 @@ test("a stalled provider read respects the caller hard deadline", async () => {
   const { f } = transport(); const reader = createArchiveEvidenceReader({ archive: f.file.manifest.archive, s3: {}, sts: { send: () => new Promise(() => {}) } });
   const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 20);
   try { await assert.rejects(reader.read({ signal: controller.signal }), /ABORTED/u); } finally { clearTimeout(timer); }
+});
+
+for (const kind of ["FILE", "DATABASE"]) test(`bounded ${kind} writer proof reads only its exact point and cannot authorize retention`, async () => {
+  const { f, reader, calls } = transport((command) => {
+    // The presence, age or size of unrelated history cannot trigger a full scan.
+    if (command.constructor.name === "ListObjectVersionsCommand") throw new Error("whole history must not be requested");
+  });
+  const source = kind === "FILE" ? f.file : f.database;
+  const proof = await reader.readWriter({ kind, manifestSha256: source.digest, manifestVersionId: source.versionId, signal: AbortSignal.timeout(2000) });
+  const detail = authenticatedArchiveEvidence(proof, { purpose: "WRITER" });
+  assert.equal(detail.scope, "WRITER_POINT");
+  assert.equal(detail.fileManifests.length, 1); assert.equal(detail.databaseManifests.length, kind === "DATABASE" ? 1 : 0);
+  assert.equal(calls.filter((c) => c.constructor.name === "GetObjectCommand").length, kind === "DATABASE" ? 2 : 1);
+  assert.equal(calls.filter((c) => c.constructor.name === "HeadObjectCommand").length, kind === "DATABASE" ? 3 : 1);
+  assert(calls.every((c) => !/Put|Delete|List/u.test(c.constructor.name)));
+  assert.throws(() => authenticatedArchiveEvidence(proof), /FULL_HISTORY_PROOF_REQUIRED/u);
+  assert.throws(() => authenticatedArchiveEvidence(structuredClone(proof), { purpose: "WRITER" }), /AUTHENTICATED_PROOF_REQUIRED/u);
+});
+for (const [name, change] of [
+  ["wrong account", (c, r) => { if (c.constructor.name === "GetCallerIdentityCommand") r.Account = "000000000000"; }],
+  ["wrong role", (c, r) => { if (c.constructor.name === "GetCallerIdentityCommand") r.Arn = "arn:aws:sts::838445019912:assumed-role/applypack-production-recovery-retention/test"; }],
+  ["wrong version", (c, r) => { if (c.constructor.name === "GetObjectCommand") r.VersionId = "other"; }],
+  ["wrong key", (c, r) => { if (c.constructor.name === "GetObjectCommand") r.SSEKMSKeyId = "wrong"; }],
+  ["tampered bytes", (c, r) => { if (c.constructor.name === "GetObjectCommand") r.Body[0] = 32; }],
+  ["missing upload time", (c, r) => { if (c.constructor.name === "GetObjectCommand") delete r.LastModified; }],
+  ["future upload time", (c, r) => { if (c.constructor.name === "HeadObjectCommand") r.LastModified = new Date(now + 1); }],
+  ["wrong referenced checksum", (c, r) => { if (c.constructor.name === "HeadObjectCommand") r.ChecksumSHA256 = Buffer.alloc(32).toString("base64"); }],
+  ["wrong referenced size", (c, r) => { if (c.constructor.name === "HeadObjectCommand") r.ContentLength++; }],
+  ["deleted reference", (c, r) => { if (c.constructor.name === "HeadObjectCommand") r.DeleteMarker = true; }],
+]) test(`single writer verification rejects ${name}`, async () => {
+  const { f, reader } = transport(change);
+  await assert.rejects(reader.readWriter({ kind: "DATABASE", manifestSha256: f.database.digest,
+    manifestVersionId: f.database.versionId, signal: AbortSignal.timeout(2000) }));
+});
+test("invalid writer target is rejected before any provider request", async () => {
+  const { reader, calls } = transport();
+  await assert.rejects(reader.readWriter({ kind: "DATABASE", manifestSha256: "bad", manifestVersionId: "null", signal: AbortSignal.timeout(2000) }), /WRITER_TARGET/u);
+  assert.equal(calls.length, 0);
+});
+test("a stalled writer verification aborts without retry or a proof", async () => {
+  const { f } = transport(); let attempts = 0;
+  const reader = createArchiveEvidenceReader({ archive: f.file.manifest.archive, s3: {},
+    sts: { send: () => { attempts++; return new Promise(() => {}); } } });
+  const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 20);
+  try {
+    await assert.rejects(reader.readWriter({ kind: "FILE", manifestSha256: f.file.digest,
+      manifestVersionId: f.file.versionId, signal: controller.signal }), /ABORTED/u);
+    assert.equal(attempts, 1);
+  } finally { clearTimeout(timer); }
 });

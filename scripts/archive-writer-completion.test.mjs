@@ -7,7 +7,7 @@ import { verifyArchiveWriterCompletion, inspectDatabaseArchiveCompletion, readDa
 
 const now = Date.parse("2026-10-24T00:00:06.000Z");
 const id = "f9800000-0000-4000-8000-000000000001";
-async function fixture(kind = "DATABASE") {
+async function fixture(kind = "DATABASE", targeted = false) {
   const f = archiveHistoryFixture();
   const sources = [f.file, f.database];
   const s3 = { async send(command) {
@@ -17,13 +17,14 @@ async function fixture(kind = "DATABASE") {
     const stored = f.versions.find((v) => v.key === input.Key && v.versionId === input.VersionId); assert(stored);
     const source = sources.find((v) => v.key === input.Key && v.versionId === input.VersionId);
     const digest = source?.digest ?? (input.Key.startsWith("objects/") ? f.file.manifest.entries[0].sha256 : f.database.manifest.dump.sha256);
-    return { VersionId: stored.versionId, ContentLength: stored.size, ServerSideEncryption: "aws:kms", SSEKMSKeyId: f.file.manifest.archive.kmsKeyArn,
+    return { VersionId: stored.versionId, ContentLength: stored.size, LastModified: new Date(now - 500), ServerSideEncryption: "aws:kms", SSEKMSKeyId: f.file.manifest.archive.kmsKeyArn,
       ChecksumSHA256: Buffer.from(digest, "hex").toString("base64"), ChecksumType: "FULL_OBJECT", ...(source ? { Body: canonicalBytes(source.manifest) } : {}) };
   } };
   const reader = createArchiveEvidenceReader({ s3, archive: f.file.manifest.archive, now: () => now,
     sts: { async send() { return { Account: "838445019912", Arn: "arn:aws:sts::838445019912:assumed-role/applypack-production-recovery-reader/fixture" }; } } });
-  const proof = await reader.read({ signal: AbortSignal.timeout(2000) });
   const source = kind === "DATABASE" ? f.database : f.file;
+  const proof = targeted ? await reader.readWriter({ kind, manifestSha256: source.digest, manifestVersionId: source.versionId,
+    signal: AbortSignal.timeout(2000) }) : await reader.read({ signal: AbortSignal.timeout(2000) });
   const input = { proof, run: { id, kind, state: "OPEN", provider_dispatched: true, release_sha: "a".repeat(40),
     started_at: kind === "DATABASE" ? "2026-10-24T00:00:03.500Z" : "2026-10-23T23:59:59.000Z" },
     manifestSha256: source.digest, manifestVersionId: source.versionId, checkpoint: f.database.manifest.fileCheckpoint, expectedSchemaVersion: "202610250093", now };
@@ -49,6 +50,13 @@ test("file completion uses its own source and cannot masquerade as a database ch
   const input = await fixture("FILE"); const row = completedRow(input);
   assert.equal(row.completion_receipt.databaseSnapshotAt, null);
   assert.equal(inspectDatabaseArchiveCompletion(row, options).state, "UNKNOWN");
+});
+for (const kind of ["FILE", "DATABASE"]) test(`${kind} targeted proof creates only its exact completion receipt`, async () => {
+  const input = await fixture(kind, true); const row = completedRow(input);
+  assert.equal(row.completion_receipt.kind, kind);
+  assert.equal(row.completion_receipt.manifestSha256, input.manifestSha256);
+  assert.throws(() => verifyArchiveWriterCompletion({ ...input, manifestVersionId: "other" }), /WRITER_PROOF_TARGET/u);
+  assert.throws(() => verifyArchiveWriterCompletion({ ...input, run: { ...input.run, kind: kind === "FILE" ? "DATABASE" : "FILE" } }), /WRITER_PROOF_TARGET/u);
 });
 for (const [name, mutate] of [
   ["imported provider flag", (x) => { x.proof = { ...x.proof, verified: true }; }],

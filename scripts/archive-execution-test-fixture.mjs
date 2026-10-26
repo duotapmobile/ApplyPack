@@ -50,7 +50,7 @@ export function archiveExecutionFixture(options = {}) {
       const stored = versions.find((v) => v.key === input.Key && v.versionId === input.VersionId); assert(stored);
       const source = [...files, ...databases].find((v) => v.key === input.Key && v.versionId === input.VersionId);
       const digest = source?.digest ?? (input.Key.startsWith("objects/") ? f.file.manifest.entries[0].sha256 : f.database.manifest.dump.sha256);
-      result = { VersionId: stored.versionId, ContentLength: stored.size, ServerSideEncryption: "aws:kms", SSEKMSKeyId: current.archive.kmsKeyArn,
+      result = { VersionId: stored.versionId, ContentLength: stored.size, LastModified: new Date(stored.lastModified), ServerSideEncryption: "aws:kms", SSEKMSKeyId: current.archive.kmsKeyArn,
         ChecksumSHA256: Buffer.from(digest, "hex").toString("base64"), ...(source ? { Body: canonicalBytes(source.manifest) } : {}) };
     }
     changes(command, result); return result;
