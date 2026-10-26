@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { z } from "zod";
+import { loadDraftReferenceMetadata } from "./draft-owner-references";
 import { materialRuleEvidenceProjectionSchema, materialRuleProjectionForPacket } from "./material-rule-evidence";
 import { buildDraftingEvidencePacket, draftingEvidenceExpectationSchema, DraftingEvidenceError,
   type DraftingEvidenceExpectation, type DraftingEvidencePacket } from "./drafting-evidence";
@@ -104,6 +105,15 @@ async function readRecords(admin: Admin, expected: DraftingEvidenceExpectation, 
   const referencePermissions = referencePermissionIds.length ? await result(admin.from("ap_reference_permissions")
     .select("id,customer_id,delivered_release_id,job_snapshot_id,job_snapshot_hash,reference_record_version_id,revoked_at,contact_version_changed_at")
     .in("id", referencePermissionIds).limit(21).abortSignal(signal)) : [];
+  const referenceEvidence = referencePermissionIds.length ? await (async () => {
+    const [referenceMetadata, filenameRule] = await Promise.all([
+      loadDraftReferenceMetadata(admin, referencePermissionIds, signal),
+      result(admin.from("ap_employer_submission_rules").select("id,content_sha256,reference_filename_instruction")
+        .eq("id", rule.id).abortSignal(signal).single()),
+    ]);
+    if (filenameRule.id !== rule.id || filenameRule.content_sha256 !== rule.content_sha256) fail("READ_CHANGED");
+    return { referenceMetadata, referenceFilenameInstruction: filenameRule.reference_filename_instruction };
+  })() : {};
   // Only the service092 projection can establish rule revalidation. It is read
   // between current-context checks, never reconstructed from browser evidence.
   const rawRuleEvidence = await result(admin.rpc("ap_material_draft_rule_evidence", { p_job_id: draftJob.id }).abortSignal(signal));
@@ -117,6 +127,7 @@ async function readRecords(admin: Admin, expected: DraftingEvidenceExpectation, 
   if (await readContext() !== initialContext || JSON.stringify(await readManagedJob()) !== JSON.stringify(draftJob)) fail("READ_CHANGED");
   return { contextSha256: initialContext, jobFence: draftJob, records: { line, purchase, payment, revision, snapshot, draft, sourcePayload, intent, contact, contactFact, item, job, rule, listingCheck,
     draftJobId: draftJob.id, ruleEvidence,
+    ...referenceEvidence,
     facts, sourceFacts, documents, factReviews, requirements, reviews, questionSourceNodes, questionSourceAuthority, referencePermissions, referencePermissionIds,
     ownsSnapshot, verifiedJobSnapshotIds: verified.map((row) => row.id), successorJobIds: successors.map((row) => row.id), refundIds: refunds.map((row) => row.id) } };
 }

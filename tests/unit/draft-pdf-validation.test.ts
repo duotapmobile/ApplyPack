@@ -4,6 +4,7 @@ import { prepareDraftDocx } from "@/lib/documents/draft-docx";
 import { assertDraftPdfExpectation, draftPdfExpectation, validateDraftPdfEvidence, type DraftPdfExpectation } from "@/lib/documents/draft-pdf-validation";
 import { DOCUMENT_GENERATOR_VERSION } from "@/lib/documents/requirements";
 import { draftDocumentFixture, draftFixtureNow } from "../fixtures/draft-document";
+import { draftReferenceFixture } from "../fixtures/draft-reference";
 vi.mock("server-only", () => ({}));
 const escape = (value: string) => value.replace(/&/gu, "&amp;").replace(/</gu, "&lt;").replace(/"/gu, "&quot;");
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -30,6 +31,20 @@ async function fixture(education = false) {
   return { prepared, expectation: await draftPdfExpectation(prepared.resume.buffer, "RESUME", source.renderSourceSha256) };
 }
 describe("new draft PDF source-aware semantic and link validation", () => {
+  it("binds each reference paragraph, exact zero-list scope and five contact links", async () => {
+    const fixture = draftReferenceFixture(3), source = fixture.build(), prepared = await prepareDraftDocx({ source, packet: fixture.input.packet }, draftFixtureNow);
+    const expectation = await draftPdfExpectation(prepared.referenceSheet!.buffer, "REFERENCE_SHEET", source.renderSourceSha256);
+    expect(validateDraftPdfEvidence(expectation, reports(expectation))).toMatchObject({ artifact: "REFERENCE_SHEET", listItemCount: 0, linkCount: 5 });
+    const changed = structuredClone(expectation), index = changed.paragraphs.findIndex((row) => row.text === "Morgan Reference 1");
+    changed.paragraphs[index].text = "Morgan Reference 2";
+    expect(() => validateDraftPdfEvidence(expectation, reports(changed))).toThrow();
+    const evidence = reports(expectation);
+    evidence.linkXml = evidence.linkXml.replace("mailto:reference1@example.test", "TEMP").replace("mailto:reference2@example.test", "mailto:reference1@example.test").replace("TEMP", "mailto:reference2@example.test");
+    expect(() => validateDraftPdfEvidence(expectation, evidence)).toThrow();
+    changed.paragraphs[index].kind = "BULLET";
+    const { expectationSha256: _old, ...body } = changed; void _old; changed.expectationSha256 = hash(JSON.stringify(body));
+    expect(() => assertDraftPdfExpectation(changed, prepared.referenceSheet!.buffer, "REFERENCE_SHEET")).toThrow();
+  });
   it("derives exact semantic expectations from inspected DOCX and returns only hashes/counts", async () => {
     const { expectation } = await fixture();
     const receipt = validateDraftPdfEvidence(expectation, reports(expectation));

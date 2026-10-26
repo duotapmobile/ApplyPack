@@ -30,19 +30,19 @@ function assertResult(result: DocumentRenderResult, expectation: DraftPdfExpecta
     || ![receipt.structureTextSha256, receipt.linkXmlSha256, result.structureTreeSha256].every((value) => /^[a-f0-9]{64}$/u.test(value))) fail();
 }
 
-/** Prepares two inspected, rendered artifacts for later atomic registration.
+/** Prepares the complete selected set for later atomic registration.
  * No approval, registration, upload, provider drafting, or delivery occurs here. */
 export async function prepareDraftRender(callerInput: Input, ports: Ports = {}) {
   const input = structuredClone(callerInput), clock = ports.now ?? (() => new Date()), render = ports.render ?? renderDocumentForQa;
-  if (input.packet.binding.referencePermissions.length) throw new Error("draft_render_reference_sheet_requires_separate_generator");
   const prepared = await prepareDraftDocx(input, clock());
-  const owned = [prepared.resume.buffer, prepared.coverLetter.buffer];
+  const artifacts = [prepared.resume, prepared.coverLetter, ...(prepared.referenceSheet ? [prepared.referenceSheet] : [])];
+  const owned = artifacts.map((artifact) => artifact.buffer);
   const fresh = () => { if (!Number.isFinite(clock().getTime()) || Date.parse(input.source.validUntil) <= clock().getTime()) throw new Error("draft_render_evidence_expired"); };
   try {
     const pair = [];
-    for (const artifact of [prepared.resume, prepared.coverLetter]) {
+    for (const artifact of artifacts) {
       fresh();
-      const expectation = await draftPdfExpectation(artifact.buffer, artifact.provenance.artifact as "RESUME" | "COVER_LETTER", prepared.renderSourceSha256);
+      const expectation = await draftPdfExpectation(artifact.buffer, artifact.provenance.artifact, prepared.renderSourceSha256);
       const renderInput: DocumentRenderInput = { docx: Buffer.from(artifact.buffer), expectedPages: artifact.expectedPageCount,
         expectedExtractedTextSha256: artifact.inspection.extractedTextSha256, artifactType: artifact.provenance.artifact,
         expectedMetadata: structuredClone(artifact.metadata), draftPdf: expectation };
@@ -64,7 +64,7 @@ export async function prepareDraftRender(callerInput: Input, ports: Ports = {}) 
         qa: { packageQaSha256: artifact.inspection.packageQaSha256, pdf: result.draftPdf!, generatorVersion: prepared.generatorVersion },
         state: "OWNER_REVIEW_REQUIRED" as const, deliveryAuthorized: false as const });
     }
-    return { resume: pair[0], coverLetter: pair[1], generatorVersion: prepared.generatorVersion, renderSourceSha256: prepared.renderSourceSha256,
+    return { resume: pair[0], coverLetter: pair[1], ...(pair[2] ? { referenceSheet: pair[2] } : {}), generatorVersion: prepared.generatorVersion, renderSourceSha256: prepared.renderSourceSha256,
       state: "OWNER_REVIEW_REQUIRED" as const, deliveryAuthorized: false as const };
   } catch (error) { owned.forEach((buffer) => buffer.fill(0)); throw error; }
 }

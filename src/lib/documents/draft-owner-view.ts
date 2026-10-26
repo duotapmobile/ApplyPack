@@ -10,6 +10,8 @@ import { validateDraftOutput, serializeDraftProposal, draftOutputSchema } from "
 import { readStoredDraftRenderSource } from "./draft-render-source-storage";
 import { supportedDocumentFontFamily } from "./requirements";
 import { readConfirmedDraftContact } from "./draft-owner-contact";
+import { draftReferenceRequest, readConfirmedDraftReferences } from "./draft-owner-references";
+import { readDraftReferenceSources, validateDraftReferenceSource, type DraftReferenceInput } from "./draft-reference-source";
 import { materialContactSchema } from "@/lib/materials/server";
 import { createMaterialRuleOwnerServer } from "./material-rule-owner-server";
 import type { materialRuleBasisSchema } from "./material-rule-evidence";
@@ -51,6 +53,8 @@ export type DraftOwnerDetail = {
   kind: "PROPOSAL" | "RENDER_SOURCE"; company: string; title: string; applicationUrl: string | null;
   documents: DraftOwnerDocument[]; claims: DraftOwnerClaim[]; facts: { id: string; label: string; disposition: string; fields: { label: string; value: string }[]; provenance: { kind: string; verification: string; locator: string; confirmedAt: string | null; document: { kind: string; version: number } | null } }[];
   instructions: { emphasis: string; doNotMention: string; saved: SavedDraftInstructions };
+  references?: { permissionId: string; version: number; confirmedAt: string; fields: { label: string; value: string }[] }[];
+  referenceFilenameInstruction?: string | null;
   questions: { status: string; verification: string; issues: string[]; items: { id: string; prompt: string; required: boolean | null; wordLimit: number | null; characterLimit: number | null; sourceUrl: string | null; observedAt: string; eligible: boolean }[] };
   requiredFileTypes: string[]; files: { type: string; filename: string; fileVersionId: string; checksumSha256: string; previewUrl: string | null }[];
   wordingReviewed: boolean; canPromote: boolean; canReviewWording: boolean; canApprove: boolean; canSend: boolean;
@@ -210,12 +214,16 @@ export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedRev
         const revision = parse(revisionSchema, await data(admin.from("ap_material_line_revisions").select("id,line_id,source_snapshot_id,version,binding_sha256,due_at,superseded_at").eq("id", current.line_revision_id).abortSignal(child).single(), child));
         ensure(revision.id === current.line_revision_id && revision.line_id === current.material_line_id && revision.source_snapshot_id === current.source_snapshot_id && !revision.superseded_at && Date.parse(revision.due_at) > now().getTime(), "REFRESH_REQUIRED");
         let context: unknown;
-        try { context = await data(admin.rpc("ap_material_draft_context_sha256", { p_job_id: jobId }).abortSignal(child), child); }
-        catch { throw new ViewError("REFRESH_REQUIRED"); }
+        try {
+          ensure(!child.aborted); const receipt = await admin.rpc("ap_material_draft_context_sha256", { p_job_id: jobId }).abortSignal(child);
+          ensure(!child.aborted);
+          if (receipt.error?.message === "required_reference_clarification") throw new ViewError("REFERENCE_CLARIFICATION");
+          ensure(!receipt.error, "REFRESH_REQUIRED"); context = receipt.data;
+        } catch (error) { if (error instanceof ViewError && error.code === "REFERENCE_CLARIFICATION") throw error; throw new ViewError("REFRESH_REQUIRED"); }
         ensure(context === v.context_sha256, "REFRESH_REQUIRED");
         let packet: DraftingEvidencePacket;
         try { packet = await loadDraftingEvidencePacket(admin, { customerId: current.customer_id, materialLineId: current.material_line_id, revisionId: revision.id, revisionVersion: revision.version, bindingSha256: revision.binding_sha256 }, { signal: child, now }); }
-        catch { throw new ViewError("REFRESH_REQUIRED"); }
+        catch (error) { if (error instanceof Error && error.message === "DRAFTING_EVIDENCE_REQUIRED_REFERENCE_CLARIFICATION") throw new ViewError("REFERENCE_CLARIFICATION"); throw new ViewError("REFRESH_REQUIRED"); }
         const savedPacket = await readPayload(current, v.packet_encrypted_payload_id, v.packet_sha256, "MATERIAL_DRAFT_PACKET", child);
         ensure(packet.packetSha256 === v.packet_sha256 && serializeDraftingEvidencePacket(packet) === savedPacket.body && packet.binding.snapshotId === current.source_snapshot_id && packet.binding.dueAt === revision.due_at, "REFRESH_REQUIRED");
         if (!v.encrypted_payload_id || !v.source_sha256) return { status: "PENDING", jobId, message: "Evidence is saved, but a complete document proposal has not been recorded. No approval is available." };
@@ -226,10 +234,21 @@ export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedRev
             provenance: { kind: fact.source_kind, verification: fact.verification, locator: fact.source_locator, confirmedAt: fact.confirmed_or_corrected_at, document: document ? { kind: document.kind, version: document.version } : null } };
         });
         const sourceEnvelope = z.object({ schemaVersion: z.literal("applypack-draft-render-source-v1") }).passthrough().safeParse(saved.value);
+        const storedSource = sourceEnvelope.success ? readStoredDraftRenderSource(saved, v.source_sha256, packet, now) : undefined;
+        const references = await (async () => {
+          const request = draftReferenceRequest(packet); if (!request) return [];
+          let bytes: DraftReferenceInput[] = [];
+          try {
+            bytes = await readConfirmedDraftReferences(admin, request, child, { now });
+            if (storedSource) validateDraftReferenceSource(storedSource.referenceSheet, packet.ownerEvidence.referenceBindings, bytes, now());
+            return readDraftReferenceSources(request.bindings, bytes, now()).map(({ binding, fields }) => ({ permissionId: binding.permissionId,
+              version: binding.recordVersion, confirmedAt: binding.permissionConfirmedAt, fields: fields.map((field) => ({ label: label(field.field), value: field.value })) }));
+          } finally { bytes.forEach((value) => value.plaintext.fill(0)); }
+        })();
         const documents: DraftOwnerDocument[] = [], claims: DraftOwnerClaim[] = [];
         let kind: "PROPOSAL" | "RENDER_SOURCE" = "PROPOSAL";
-        if (sourceEnvelope.success) {
-          const source = readStoredDraftRenderSource(saved, v.source_sha256, packet, now); kind = "RENDER_SOURCE";
+        if (storedSource) {
+          const source = storedSource; kind = "RENDER_SOURCE";
           let contactBytes: Buffer | undefined;
           const confirmedContact = await (async () => {
             try {
@@ -245,13 +264,19 @@ export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedRev
             { text: source.coverLetter.date, claimId: null, bullet: false }, ...lines([source.coverLetter.recipient, source.coverLetter.subject]), { text: source.coverLetter.salutation, claimId: null, bullet: false },
             ...lines([source.coverLetter.introduction]), ...source.coverLetter.body.map((paragraph) => ({ text: paragraph.map((item) => item.text).join(" "), claimId: null, bullet: false })),
             ...lines([source.coverLetter.closing]), { text: source.coverLetter.signoff, claimId: null, bullet: false }, ...lines([source.coverLetter.signature])] }] });
+          if (source.referenceSheet) documents.push({ title: "Reference sheet", sections: [{ heading: "Contact", lines: lines(source.referenceSheet.header) },
+            ...source.referenceSheet.records.map((record, index) => ({ heading: `Reference ${index + 1}`, lines: lines(record.fields) }))] });
           for (const claim of source.ownerReviewClaims) claims.push({ id: claim.claimId, wordingSha256: claim.wordingSha256, text: claim.text, placement: label(claim.placement), qualification: label(claim.qualification),
             sources: claim.contactBinding ? claim.contactBinding.fields.map((field) => {
               ensure(claim.origin === "LOCAL_CONTACT" && claim.contactBinding?.fields.length === 1 && claim.contactBinding.payloadId === packet.binding.contactPayloadId && claim.contactBinding.contentSha256 === packet.binding.contactSha256
                 && ["displayName", "email", "phone", "cityState", "linkedInOrPortfolio"].includes(field));
               const value = confirmedContact[field as keyof typeof confirmedContact]; ensure(typeof value === "string" && claim.text === value);
               return { label: `Confirmed checkout ${label(field)}`, value };
-            }) : claim.factRefs.map((ref) => {
+            }) : claim.referenceBinding ? (() => {
+              const reference = references.find((value) => value.permissionId === claim.referenceBinding?.permissionId);
+              const field = reference?.fields.find((value) => value.label === label(claim.referenceBinding!.field));
+              ensure(field && claim.origin === "LOCAL_REFERENCE"); return [{ label: `Confirmed reference ${field.label}`, value: field.value }];
+            })() : claim.factRefs.map((ref) => {
               const fact = packet.ownerEvidence.facts.find((item) => item.id === ref.factId); const value = ref.field.split(".").reduce<unknown>((parent, key) => parent && typeof parent === "object" ? (parent as Record<string, unknown>)[key] : undefined, fact?.typed_value);
               ensure(fact && value !== undefined && sha(Buffer.from(JSON.stringify(value))) === ref.valueSha256); return { label: `${fact.customer_display_label || label(fact.value_kind)} · ${label(ref.field)}`, value: display(value) };
             }), jobEvidence: claim.jobEvidenceIds.map((id) => packet.ownerEvidence.requirements.find((node) => node.id === id)?.source_excerpt ?? "Source unavailable"), questionIds: claim.questionInsights.map((item) => item.questionId) });
@@ -280,6 +305,7 @@ export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedRev
         return { status: "AVAILABLE", jobId, state: current.state, versionId: v.id, version: v.version, lineId: current.material_line_id, revisionId: revision.id, packetSha256: v.packet_sha256, sourceSha256: v.source_sha256,
           ruleSha256: packet.binding.ruleSha256, memberSetSha256: v.member_set_sha256, approvalSha256: v.approval_sha256, dueAt: revision.due_at, validUntil: packet.validUntil, kind,
           company: packet.ownerEvidence.targetJob.company, title: packet.ownerEvidence.targetJob.exactTitle, applicationUrl: safeUrl(packet.ownerEvidence.targetJob.canonicalApplicationUrl), documents, claims, facts,
+          ...(references.length ? { references, referenceFilenameInstruction: packet.ownerEvidence.referenceFilenameInstruction ?? null } : {}),
           instructions: { emphasis: packet.ownerEvidence.customerInstructions.emphasis_note ?? "", doNotMention: packet.ownerEvidence.customerInstructions.do_not_mention_note ?? "", saved: savedInstructions(packet.ownerEvidence.employerInstructions) },
           questions: { status: packet.employerQuestionInsights.status, verification: packet.employerQuestionInsights.verification, issues: packet.employerQuestionInsights.issues.map((item) => item.code), items: packet.employerQuestionInsights.questions.map((question) => ({ id: question.id, prompt: question.prompt, required: question.required, wordLimit: question.wordLimit, characterLimit: question.characterLimit, sourceUrl: safeUrl(question.sourceUrl), observedAt: question.sourceObservedAt, eligible: question.providerEligible })) }, requiredFileTypes: expectedTypes, files,
           wordingReviewed: !!v.claim_review_sha256 && !!v.claims_reviewed_at, canPromote: kind === "PROPOSAL" && current.state === "SOURCE_READY" && !v.claim_review_sha256,
@@ -287,6 +313,8 @@ export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedRev
           canApprove: kind === "RENDER_SOURCE" && current.state === "REVIEW_READY" && complete && !!v.claim_review_sha256 && !!v.claims_reviewed_at,
           canSend: kind === "RENDER_SOURCE" && current.state === "APPROVED" && complete && !!v.approval_sha256 && !!v.approved_at };
       }); } catch (error) { const status = error instanceof ViewError && error.code === "REFRESH_REQUIRED" ? "REFRESH_REQUIRED" : "UNAVAILABLE";
+        if (error instanceof ViewError && error.code === "REFERENCE_CLARIFICATION") return { status: "UNAVAILABLE", jobId,
+          message: "The employer requires more references than this paid document set includes. Clarify the reference selection with the customer before preparing, approving, or sending it. No extra references have been added." };
         if (status === "REFRESH_REQUIRED") {
           try { const inspected = await run(signal, (child) => recovery(jobId, child));
             return { status, jobId, recovery: inspected, message: "The saved draft evidence is not current. Review the original employer instructions below before recording any new check. These steps do not generate, approve, or send documents." }; }

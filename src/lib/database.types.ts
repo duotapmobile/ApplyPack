@@ -13269,6 +13269,10 @@ export type Database = {
         Args: { p_limit?: number; p_owner: string }
         Returns: Json
       }
+      ap_claim_material_draft_stage: {
+        Args: { p_limit?: number; p_stage: string; p_worker_id: string }
+        Returns: Json
+      }
       ap_claim_material_entitlement: {
         Args: { p_entitlement_history_id: string }
         Returns: boolean
@@ -14040,6 +14044,10 @@ export type Database = {
       ap_material_draft_rule_evidence: {
         Args: { p_job_id: string }
         Returns: Json
+      }
+      ap_material_draft_stage_claiming_schema_installed: {
+        Args: never
+        Returns: boolean
       }
       ap_material_retention_deadline: {
         Args: { p_line_id: string }

@@ -8,7 +8,7 @@ export const DRAFT_PDF_SCHEMA = "applypack-reviewed-draft-pdf-v1" as const;
 type Link = { text: string; target: string };
 type Paragraph = { text: string; kind: "P" | "H1" | "BULLET"; links: Link[] };
 export type DraftPdfExpectation = {
-  schemaVersion: typeof DRAFT_PDF_SCHEMA; generatorVersion: string; artifact: "RESUME" | "COVER_LETTER";
+  schemaVersion: typeof DRAFT_PDF_SCHEMA; generatorVersion: string; artifact: "RESUME" | "COVER_LETTER" | "REFERENCE_SHEET";
   renderSourceSha256: string; docxSha256: string; paragraphs: Paragraph[]; expectationSha256: string;
 };
 export type DraftPdfReceipt = Omit<DraftPdfExpectation, "paragraphs"> & {
@@ -74,7 +74,7 @@ export async function draftPdfExpectation(docx: Buffer, artifact: DraftPdfExpect
 export function assertDraftPdfExpectation(value: DraftPdfExpectation, docx: Buffer, artifact: string): void {
   const { expectationSha256, ...body } = value;
   if (value.schemaVersion !== DRAFT_PDF_SCHEMA || value.generatorVersion !== DRAFT_DOCX_GENERATOR_VERSION
-    || !["RESUME", "COVER_LETTER"].includes(artifact) || value.artifact !== artifact
+    || !["RESUME", "COVER_LETTER", "REFERENCE_SHEET"].includes(artifact) || value.artifact !== artifact
     || !SHA.test(value.renderSourceSha256) || value.docxSha256 !== hash(docx)
     || expectationSha256 !== hash(JSON.stringify(body)) || !Array.isArray(value.paragraphs)
     || value.paragraphs.length < 2 || value.paragraphs.length > 250) fail();
@@ -88,6 +88,7 @@ export function assertDraftPdfExpectation(value: DraftPdfExpectation, docx: Buff
   }
   const links = value.paragraphs.flatMap((paragraph) => paragraph.links);
   if (!links.length || links.length > 5 || (artifact === "COVER_LETTER" && value.paragraphs.some((paragraph) => paragraph.kind !== "P"))) fail();
+  if (artifact === "REFERENCE_SHEET" && value.paragraphs.some((paragraph) => paragraph.kind === "BULLET")) fail();
 }
 
 type Node = { tag: string; indent: number; children: Node[]; chunks: Array<string | Node> };

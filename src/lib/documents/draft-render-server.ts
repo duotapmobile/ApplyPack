@@ -12,6 +12,8 @@ import { serializeDraftingEvidencePacket } from "./drafting-evidence";
 import { readStoredDraftRenderSource, renderClaimSchema } from "./draft-render-source-storage";
 import { prepareDraftClaimReview } from "./draft-claim-review";
 import { readConfirmedDraftContact } from "./draft-owner-contact";
+import { draftReferenceRequest, readConfirmedDraftReferences } from "./draft-owner-references";
+import { validateDraftReferenceSource, type DraftReferenceInput } from "./draft-reference-source";
 import { prepareDraftRender } from "./draft-render";
 import { draftRenderClaimSchema, draftRenderStateSchema, clearDraftRenderedPair, type DraftRenderServices, type DraftRenderState,
   type DraftRenderClaim, type DraftRenderRegistration } from "./draft-render-worker";
@@ -29,7 +31,7 @@ const revisionSchema = z.object({ id: uuid, line_id: uuid, source_snapshot_id: u
   version: z.number().int().positive(), binding_sha256: hash, due_at: time, superseded_at: z.null() }).strict();
 const savedReviewSchema = z.object({ schemaVersion: z.literal("applypack-owner-wording-review-v1"), versionId: uuid, packetSha256: hash, sourceSha256: hash,
   reviewerId: uuid, reviewedAt: time, claims: z.array(renderClaimSchema.extend({ decision: z.literal("APPROVED") }).strict()).min(1).max(250) }).strict();
-const memberSchema = z.object({ customer_id: uuid, material_line_id: uuid, draft_version_id: uuid, artifact_type: z.enum(["RESUME", "COVER_LETTER"]),
+const memberSchema = z.object({ customer_id: uuid, material_line_id: uuid, draft_version_id: uuid, artifact_type: z.enum(["RESUME", "COVER_LETTER", "REFERENCE_SHEET"]),
   artifact_id: uuid, file_version_id: uuid, file_sha256: hash, preview_sha256: hash, source_sha256: hash, editable_source_sha256: hash, editable_source_path_sha256: hash }).strict();
 const exact = (value: unknown): string => {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -88,9 +90,9 @@ export function createDraftRenderServer(admin: SupabaseClient<Database>, options
         .eq("material_line_id", j.material_line_id).abortSignal(signal).maybeSingle(), signal));
     ensure(!request || request.customer_id === j.customer_id && request.material_line_id === j.material_line_id && Date.parse(request.recorded_at) <= now().getTime());
     const existing = parse(z.array(z.object({ id: uuid, customer_id: uuid, material_line_id: uuid, source_line_revision_id: uuid,
-      source_snapshot_id: uuid, job_snapshot_id: uuid, artifact_type: z.enum(["RESUME", "COVER_LETTER"]) }).strict()).max(2),
+      source_snapshot_id: uuid, job_snapshot_id: uuid, artifact_type: z.enum(["RESUME", "COVER_LETTER", "REFERENCE_SHEET"]) }).strict()).max(3),
       await data(admin.from("ap_generated_artifacts").select("id,customer_id,material_line_id,source_line_revision_id,source_snapshot_id,job_snapshot_id,artifact_type")
-        .eq("material_line_id", j.material_line_id).eq("source_line_revision_id", r.id).in("artifact_type", ["RESUME", "COVER_LETTER"]).abortSignal(signal), signal));
+        .eq("material_line_id", j.material_line_id).eq("source_line_revision_id", r.id).in("artifact_type", ["RESUME", "COVER_LETTER", "REFERENCE_SHEET"]).abortSignal(signal), signal));
     ensure(new Set(existing.map((row) => row.artifact_type)).size === existing.length && new Set(existing.map((row) => row.id)).size === existing.length
       && existing.every((row) => row.customer_id === j.customer_id && row.material_line_id === j.material_line_id && row.source_line_revision_id === r.id
         && row.source_snapshot_id === r.source_snapshot_id && row.job_snapshot_id === r.job_snapshot_id));
@@ -105,7 +107,8 @@ export function createDraftRenderServer(admin: SupabaseClient<Database>, options
       packetPayloadId: v.packet_encrypted_payload_id, packetSha256: v.packet_sha256, contextSha256: v.context_sha256, sourcePayloadId: v.encrypted_payload_id, sourceSha256: v.source_sha256,
       reviewPayloadId: v.claim_review_encrypted_payload_id, reviewSha256: v.claim_review_sha256, reviewerId: v.claims_reviewed_by, reviewedAt: v.claims_reviewed_at,
       selectedReferenceSheet: line.selected_reference_sheet, rendererIdentity: configuration.document_renderer_identity,
-      existingArtifactIds: { RESUME: existing.find((row) => row.artifact_type === "RESUME")?.id ?? null, COVER_LETTER: existing.find((row) => row.artifact_type === "COVER_LETTER")?.id ?? null },
+      existingArtifactIds: { RESUME: existing.find((row) => row.artifact_type === "RESUME")?.id ?? null, COVER_LETTER: existing.find((row) => row.artifact_type === "COVER_LETTER")?.id ?? null,
+        REFERENCE_SHEET: existing.find((row) => row.artifact_type === "REFERENCE_SHEET")?.id ?? null },
       delivery: { ...decision, employerRuleId: rule.id, applicantRequestId: request?.id ?? null, requestReferenceSha256: request?.request_reference_sha256 ?? null } });
   }
   async function same(expected: DraftRenderState, signal: AbortSignal) {
@@ -150,7 +153,7 @@ export function createDraftRenderServer(admin: SupabaseClient<Database>, options
           claims: review.claims.map((claim) => ({ claimId: claim.claimId, wordingSha256: claim.wordingSha256, decision: claim.decision })) } }, new Date(review.reviewedAt));
       const v = await version(s.versionId, child);
       ensure(rebuilt.body === reviewBytes.body && rebuilt.reviewSha256 === s.reviewSha256 && exact(rebuilt.metadata) === exact(v.claim_review_metadata));
-      let contactBytes: Buffer | undefined;
+      let contactBytes: Buffer | undefined; let references: DraftReferenceInput[] = [];
       try {
         contactBytes = await readConfirmedDraftContact(admin, { customerId: s.customerId, payloadId: packet.binding.contactPayloadId, sha256: packet.binding.contactSha256 }, child);
         ensure(!child.aborted); const contact = materialContactSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(contactBytes)));
@@ -158,7 +161,12 @@ export function createDraftRenderServer(admin: SupabaseClient<Database>, options
           ensure(claim.contactBinding?.payloadId === packet.binding.contactPayloadId && claim.contactBinding.contentSha256 === packet.binding.contactSha256 && claim.contactBinding.fields.length === 1);
           const field = claim.contactBinding.fields[0]; ensure(Object.hasOwn(contact, field) && claim.text === contact[field as keyof typeof contact]);
         }
-      } finally { contactBytes?.fill(0); }
+        const request = draftReferenceRequest(packet);
+        ensure(Boolean(request) === s.selectedReferenceSheet && Boolean(source.referenceSheet) === s.selectedReferenceSheet);
+        if (request) references = await readConfirmedDraftReferences(admin, request, child, { now });
+        ensure(!child.aborted);
+        validateDraftReferenceSource(source.referenceSheet, packet.ownerEvidence.referenceBindings, references, now());
+      } finally { contactBytes?.fill(0); references.forEach((reference) => reference.plaintext.fill(0)); }
       await same(s, child); return { source, packet };
     }),
     render: async (input, signal) => {
@@ -166,8 +174,8 @@ export function createDraftRenderServer(admin: SupabaseClient<Database>, options
       if (signal.aborted || !enabled()) { clearDraftRenderedPair(pair); throw new Error("DRAFT_RENDER_INTERRUPTED"); } return pair;
     },
     persistUploadIntents: (raw, signal) => bounded(signal, async (child) => {
-      const uploads = parse(z.array(z.object({ bucket: z.enum(["operator-drafts", "operator-render-previews", "customer-deliveries"]), path: z.string().min(1).max(600) }).strict()).length(6), raw);
-      ensure(new Set(uploads.map((item) => `${item.bucket}/${item.path}`)).size === 6);
+      const uploads = parse(z.array(z.object({ bucket: z.enum(["operator-drafts", "operator-render-previews", "customer-deliveries"]), path: z.string().min(1).max(600) }).strict()).refine((items) => items.length === 6 || items.length === 9), raw);
+      ensure(new Set(uploads.map((item) => `${item.bucket}/${item.path}`)).size === uploads.length);
       await data(admin.from("storage_cleanup_queue").upsert(uploads.map((upload) => ({ bucket: upload.bucket, storage_path: upload.path,
         reason: "material_sensitive_upload_intent", attempts: 0, last_error: null, last_attempt_at: null, not_before: new Date(now().getTime() + 3_600_000).toISOString() })), { onConflict: "bucket,storage_path" }).abortSignal(child), child);
     }),
@@ -194,10 +202,14 @@ export function createDraftRenderServer(admin: SupabaseClient<Database>, options
         && v.packet_encrypted_payload_id === s.packetPayloadId && v.packet_sha256 === s.packetSha256 && v.context_sha256 === s.contextSha256
         && v.encrypted_payload_id === s.sourcePayloadId && v.source_sha256 === s.sourceSha256 && v.claim_review_encrypted_payload_id === s.reviewPayloadId
         && v.claim_review_sha256 === s.reviewSha256 && v.claims_reviewed_by === s.reviewerId && v.claims_reviewed_at === s.reviewedAt && v.member_set_sha256 && !v.invalidated_at);
-      const members = parse(z.array(memberSchema).length(2), await data(admin.from("ap_material_draft_members")
+      const expectedTypes = ["RESUME", "COVER_LETTER", ...(s.selectedReferenceSheet ? ["REFERENCE_SHEET"] : [])].sort();
+      const members = parse(z.array(memberSchema).length(expectedTypes.length), await data(admin.from("ap_material_draft_members")
         .select("customer_id,material_line_id,draft_version_id,artifact_type,artifact_id,file_version_id,file_sha256,preview_sha256,source_sha256,editable_source_sha256,editable_source_path_sha256")
         .eq("draft_version_id", s.versionId).abortSignal(child), child));
-      ensure(registrations.length === 2 && new Set(members.map((member) => member.artifact_type)).size === 2);
+      ensure(exact(registrations.map((registration) => registration.p_artifact_type).sort()) === exact(expectedTypes)
+        && exact(members.map((member) => member.artifact_type).sort()) === exact(expectedTypes)
+        && new Set(members.map((member) => member.artifact_id)).size === expectedTypes.length
+        && new Set(members.map((member) => member.file_version_id)).size === expectedTypes.length);
       for (const registration of registrations) await verifyMember(s, registration, members, child);
       ensure(await context(s.jobId, child) === s.contextSha256 && exact(await version(v.id, child)) === exact(v) && exact(await job(j.id, child)) === exact(j));
       return { jobId: s.jobId, versionId: v.id, packetSha256: v.packet_sha256, sourceSha256: v.source_sha256, reviewSha256: v.claim_review_sha256,

@@ -16,7 +16,7 @@ export const draftRenderStateSchema = draftRenderClaimSchema.extend({ customerId
   packetSha256: hashSchema, contextSha256: hashSchema, sourcePayloadId: uuid, sourceSha256: hashSchema,
   reviewPayloadId: uuid, reviewSha256: hashSchema, reviewerId: uuid, reviewedAt: time,
   selectedReferenceSheet: z.boolean(), rendererIdentity: z.string().min(1).max(255),
-  existingArtifactIds: z.object({ RESUME: uuid.nullable(), COVER_LETTER: uuid.nullable() }).strict(),
+  existingArtifactIds: z.object({ RESUME: uuid.nullable(), COVER_LETTER: uuid.nullable(), REFERENCE_SHEET: uuid.nullable() }).strict(),
   delivery: z.object({ format: z.enum(["PDF", "DOCX"]), reason: z.enum(["DEFAULT_PDF", "EMPLOYER_REQUIREMENT", "APPLICANT_REQUEST"]),
     employerRuleId: uuid, applicantRequestId: uuid.nullable(), requestReferenceSha256: hashSchema.nullable() }).strict(),
 }).strict();
@@ -53,7 +53,7 @@ const exact = (value: unknown): string => {
   return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, entry]) => `${JSON.stringify(key)}:${exact(entry)}`).join(",")}}`;
 };
 export function clearDraftRenderedPair(pair: DraftRenderedPair) {
-  for (const artifact of [pair.resume, pair.coverLetter]) {
+  for (const artifact of [pair.resume, pair.coverLetter, ...(pair.referenceSheet ? [pair.referenceSheet] : [])]) {
     artifact.buffer.fill(0); artifact.render.searchablePdf.fill(0); artifact.render.pageImages.forEach((page) => page.bytes.fill(0));
   }
 }
@@ -64,7 +64,10 @@ function planPair(state: DraftRenderState, input: { source: DraftRenderSource; p
   const person = input.source.resume.header.find((claim) => claim.placement === "resume.contact.displayName")?.text;
   ensure(person, "RENDER_FAILED");
   const target = input.packet.ownerEvidence.targetJob, rules = input.packet.ownerEvidence.employerInstructions;
-  for (const [kind, artifact] of [["RESUME", pair.resume], ["COVER_LETTER", pair.coverLetter]] as const) {
+  ensure(Boolean(pair.referenceSheet) === state.selectedReferenceSheet, "RENDER_FAILED");
+  const artifacts: Array<["RESUME" | "COVER_LETTER" | "REFERENCE_SHEET", DraftRenderedPair["resume"]]> = [["RESUME", pair.resume], ["COVER_LETTER", pair.coverLetter]];
+  if (pair.referenceSheet) artifacts.push(["REFERENCE_SHEET", pair.referenceSheet]);
+  for (const [kind, artifact] of artifacts) {
     const { inspection, render } = artifact;
     const checks: Record<string, boolean> = inspection.checks;
     ensure(inspection.passed && render.rendererIdentity === state.rendererIdentity && artifact.provenance.artifact === kind
@@ -72,8 +75,9 @@ function planPair(state: DraftRenderState, input: { source: DraftRenderSource; p
       && artifact.provenance.draftSource.packetSha256 === state.packetSha256 && artifact.provenance.draftSource.proposalSourceSha256 === input.source.proposalSourceSha256
       && render.draftPdf?.docxSha256 === hash(artifact.buffer) && render.searchablePdfSha256 === hash(render.searchablePdf), "RENDER_FAILED");
     const extension = state.delivery.format === "PDF" ? "pdf" : "docx", bytes = extension === "pdf" ? render.searchablePdf : artifact.buffer;
-    const filename = materialFilename({ displayName: person, artifact: kind === "RESUME" ? "Resume" : "Cover_Letter", company: target.company,
-      position: target.exactTitle, extension, employerInstruction: kind === "RESUME" ? rules.resume_filename_instruction : rules.cover_letter_filename_instruction });
+    const filename = materialFilename({ displayName: person, artifact: kind === "RESUME" ? "Resume" : kind === "COVER_LETTER" ? "Cover_Letter" : "References", company: target.company,
+      position: target.exactTitle, extension, employerInstruction: kind === "RESUME" ? rules.resume_filename_instruction : kind === "COVER_LETTER"
+        ? rules.cover_letter_filename_instruction : input.packet.ownerEvidence.referenceFilenameInstruction ?? null });
     ensure(safeFilename(filename) && safeFilename(artifact.filename), "FORMAT_UNAVAILABLE");
     const artifactId = state.existingArtifactIds[kind] ?? deterministicUuid(`chunk5-artifact:${state.materialLineId}:${state.revisionId}:${kind}`), fileId = randomUUID();
     const prefix = `${state.customerId}/materials/${state.materialLineId}/${fileId}`;
@@ -94,6 +98,15 @@ function planPair(state: DraftRenderState, input: { source: DraftRenderSource; p
       metadataValid: checks.metadataPresent && checks.languageMetadata && checks.keywordsEmpty && checks.editorIdentityEmpty && render.metadataVerified,
       taggedPdf: render.taggedPdf, pdfStructureValid: Boolean(render.draftPdf) };
     const provenance = artifact.provenance;
+    const referencePermissionIds = kind === "REFERENCE_SHEET" ? input.packet.binding.referencePermissions.map((permission) => permission.id).sort() : [];
+    ensure(exact([...provenance.sourceBinding.referencePermissionIds].sort()) === exact(referencePermissionIds)
+      && (kind === "REFERENCE_SHEET" || provenance.claims.every((claim) => !claim.referencePermissionIds.length)), "RENDER_FAILED");
+    ensure(kind === "REFERENCE_SHEET" ? exact(provenance.referenceBindings) === exact(input.packet.ownerEvidence.referenceBindings)
+      && provenance.claims.filter((claim) => claim.kind === "REFERENCE_PERMISSION").every((claim) => {
+        const reviewed = input.source.ownerReviewClaims.find((entry) => entry.placement === claim.placement);
+        return reviewed?.kind === "REFERENCE_PERMISSION" && exact(claim.referenceBinding) === exact(reviewed.referenceBinding)
+          && claim.visibleTextSha256 === reviewed.wordingSha256;
+      }) : provenance.referenceBindings === undefined, "RENDER_FAILED");
     const provenanceChecks = { factsBound: provenance.sourceBinding.candidateFactIds.length > 0, jobEvidenceBound: provenance.sourceBinding.jobEvidenceIds.length > 0,
       narrativeTyped: provenance.claims.filter((claim) => claim.kind === "NARRATIVE").every((claim) => !claim.candidateFactIds.length && !claim.jobEvidenceIds.length),
       historicalTitlesPreserved: checks.exactReviewedText, injectionReviewed: checks.noPlaceholdersOrPromptArtifacts,
@@ -107,7 +120,7 @@ function planPair(state: DraftRenderState, input: { source: DraftRenderSource; p
     ensure(Object.values(packageChecks).every((value) => value === true), "RENDER_FAILED");
     registrations.push({ p_artifact_id: artifactId, p_file_version_id: fileId, p_material_line_id: state.materialLineId, p_reviewer_id: null,
       p_artifact_type: kind, p_source_snapshot_id: state.snapshotId, p_source_line_revision_id: state.revisionId, p_job_snapshot_id: state.jobSnapshotId,
-      p_reference_regeneration_id: null, p_reference_permission_ids: [], p_generator_version: pair.generatorVersion,
+      p_reference_regeneration_id: null, p_reference_permission_ids: referencePermissionIds, p_generator_version: pair.generatorVersion,
       p_claim_provenance: { ...provenance, documentFontAttestation: { family: render.documentFontFamily, version: render.documentFontVersion,
         manifestSha256: render.documentFontManifestSha256, styleSha256: render.documentFontStyleSha256 }, editableSource: editable,
         uploadCleanup: currentUploads.map((upload) => ({ storageBucket: upload.bucket, storagePath: upload.path })), deliveryFormatDecision: state.delivery,
@@ -144,7 +157,6 @@ export async function renderDraftForClaim(services: DraftRenderServices, raw: Dr
     const parsedState = draftRenderStateSchema.safeParse(await call(() => services.readState(claim, signal))); ensure(parsedState.success, "CLAIM_STALE"); const state = parsedState.data;
     ensure(state.jobId === claim.jobId && state.ownerId === claim.ownerId && state.leaseToken === claim.leaseToken
       && Date.parse(state.leaseExpiresAt) > now().getTime() && Date.parse(state.dueAt) > now().getTime(), "CLAIM_STALE");
-    ensure(!state.selectedReferenceSheet, "REFERENCE_GENERATOR_REQUIRED");
     const input = structuredClone(await call(() => services.loadEvidence(state, signal)));
     ensure(hash(serializeDraftingEvidencePacket(input.packet)) === state.packetSha256 && input.packet.packetSha256 === state.packetSha256
       && hash(serializeDraftRenderSource(input.source)) === state.sourceSha256 && input.source.packetSha256 === state.packetSha256
@@ -153,7 +165,14 @@ export async function renderDraftForClaim(services: DraftRenderServices, raw: Dr
       && input.source.expected.bindingSha256 === state.bindingSha256 && input.packet.binding.snapshotId === state.snapshotId
       && input.packet.binding.jobSnapshotId === state.jobSnapshotId && input.packet.binding.ruleId === state.ruleId
       && input.packet.binding.dueAt === state.dueAt && Date.parse(input.source.validUntil) > now().getTime(), "EVIDENCE_STALE");
-    ensure(!input.packet.binding.referencePermissions.length, "REFERENCE_GENERATOR_REQUIRED");
+    const references = input.packet.binding.referencePermissions, referenceRecords = input.source.referenceSheet?.records;
+    ensure(state.selectedReferenceSheet
+      ? references.length >= 1 && references.length <= 3 && referenceRecords?.length === references.length
+        && new Set(referenceRecords.map((row) => row.permissionId)).size === references.length
+        && exact(referenceRecords.map((row) => row.permissionId).sort()) === exact(references.map((row) => row.id).sort())
+        && input.packet.ownerEvidence.referenceBindings?.length === references.length
+      : references.length === 0 && !input.source.referenceSheet && !input.packet.ownerEvidence.referenceBindings?.length,
+    "REFERENCE_GENERATOR_REQUIRED");
     const fresh = () => ensure(Date.parse(input.source.validUntil) > now().getTime() && Date.parse(state.dueAt) > now().getTime(), "EVIDENCE_STALE");
     const renew = async () => { const lease = time.safeParse(await call(() => services.renewLease(claim, signal))); ensure(lease.success && Date.parse(lease.data) > now().getTime(), "CLAIM_STALE"); };
     await renew(); ensure(await call(() => services.recheck(state, signal)) === true, "CLAIM_STALE"); fresh();

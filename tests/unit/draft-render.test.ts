@@ -4,6 +4,7 @@ import { prepareDraftRender } from "@/lib/documents/draft-render";
 import { DOCUMENT_FONT_CONTRACT } from "@/lib/documents/requirements";
 import type { DocumentRenderInput, DocumentRenderResult } from "@/lib/documents/renderer";
 import { draftDocumentFixture, draftFixtureNow } from "../fixtures/draft-document";
+import { draftReferenceFixture } from "../fixtures/draft-reference";
 vi.mock("server-only", () => ({}));
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 // Boundary unit double only. Actual DOCX→PDF proof is tests/render/draft-document-render.test.ts.
@@ -20,13 +21,30 @@ function rendered(input: DocumentRenderInput): DocumentRenderResult {
       listItemCount: paragraphs.filter((row) => row.kind === "BULLET").length, linkCount: paragraphs.flatMap((row) => row.links).length } };
 }
 describe("draft pair render preparation boundary", () => {
-  it("holds selected reference-sheet scope before rendering instead of silently dropping the third member", async () => {
+  it("rejects forged selected reference scope before rendering", async () => {
     const fixture = draftDocumentFixture(), packet = structuredClone(fixture.input.packet), render = vi.fn();
     packet.binding.referencePermissions.push({ id: "78000000-0000-4000-8000-000000000099", customer_id: packet.expected.customerId,
       delivered_release_id: "78000000-0000-4000-8000-000000000013", job_snapshot_id: packet.binding.jobSnapshotId,
       job_snapshot_hash: packet.binding.jobSha256, reference_record_version_id: "78000000-0000-4000-8000-000000000098", revoked_at: null, contact_version_changed_at: null });
-    await expect(prepareDraftRender({ source: fixture.build(), packet }, { now: () => draftFixtureNow, render })).rejects.toThrow(/reference_sheet/);
+    await expect(prepareDraftRender({ source: fixture.build(), packet }, { now: () => draftFixtureNow, render })).rejects.toThrow(/DIGEST_INVALID/);
     expect(render).not.toHaveBeenCalled();
+  });
+  it("renders all three members for selected references and binds exact zero-list reference evidence", async () => {
+    const fixture = draftReferenceFixture(3), seen: DocumentRenderInput[] = [];
+    const result = await prepareDraftRender({ source: fixture.build(), packet: fixture.input.packet }, { now: () => draftFixtureNow, render: async (input) => { seen.push(input); return rendered(input); } });
+    expect(seen.map((input) => input.artifactType)).toEqual(["RESUME", "COVER_LETTER", "REFERENCE_SHEET"]);
+    expect(result.referenceSheet?.render.draftPdf).toMatchObject({ artifact: "REFERENCE_SHEET", listItemCount: 0, linkCount: 5 });
+    expect(result.referenceSheet?.provenance.sourceBinding.referencePermissionIds).toEqual(fixture.references.map((input) => input.permissionId));
+    expect(result.referenceSheet?.state).toBe("OWNER_REVIEW_REQUIRED"); expect(result.referenceSheet?.deliveryAuthorized).toBe(false);
+  });
+  it("fails the complete set and clears transferred originals when the third render fails", async () => {
+    const fixture = draftReferenceFixture(), returned: DocumentRenderResult[] = [];
+    await expect(prepareDraftRender({ source: fixture.build(), packet: fixture.input.packet }, { now: () => draftFixtureNow, render: async (input) => {
+      if (input.artifactType === "REFERENCE_SHEET") throw new Error("reference render failed");
+      const output = rendered(input); returned.push(output); return output;
+    } })).rejects.toThrow("reference render failed");
+    expect(returned).toHaveLength(2);
+    expect(returned.every((output) => output.searchablePdf.every((byte) => byte === 0) && output.pageImages[0].bytes.every((byte) => byte === 0))).toBe(true);
   });
   it("binds both DOCX and PDF evidence to exact source and leaves approval/delivery pending", async () => {
     const fixture = draftDocumentFixture(), source = fixture.build(), seen: DocumentRenderInput[] = [];

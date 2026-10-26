@@ -199,7 +199,7 @@ def _render_docx(data, event, limits):
         raise ValueError("render_contract")
     profile = event.get("renderProfile")
     if profile is not None and (profile != DRAFT_RENDER_PROFILE
-                                or event.get("artifactType") not in ("RESUME", "COVER_LETTER")):
+                                or event.get("artifactType") not in ("RESUME", "COVER_LETTER", "REFERENCE_SHEET")):
         raise ValueError("render_profile")
     deadline = time.monotonic() + min(limits["milliseconds"], 28_000) / 1000
 

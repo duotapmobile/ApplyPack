@@ -10,13 +10,16 @@ import { documentWith, majorHeading, packCleanDocument, paragraph } from "./docx
 import { inspectDocxPackage, type ArtifactProvenance, type ClaimProvenanceEntry, type DocumentMetadata, type RequirementMapping } from "./generate";
 import { DOCUMENT_REQUIREMENTS } from "./requirements";
 import { DRAFT_DOCX_GENERATOR_VERSION, DRAFT_DOCX_VERSIONS } from "./draft-format";
+import type { DraftReferenceSourceBinding } from "./draft-reference-source";
 export { DRAFT_DOCX_GENERATOR_VERSION, DRAFT_DOCX_VERSIONS } from "./draft-format";
 
 const MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document" as const;
-type ArtifactType = "RESUME" | "COVER_LETTER";
+type ArtifactType = "RESUME" | "COVER_LETTER" | "REFERENCE_SHEET";
 type Input = { source: DraftRenderSource; packet: DraftingEvidencePacket };
-type Row = { text: string; claims: DraftRenderText[]; heading?: boolean; bullet?: boolean; role?: "NAME" | "CONTACT" | "LINK" | "TITLE" | "SUBJECT" | "SIGNOFF"; before?: number; after?: number };
-type DraftProvenance = Omit<ArtifactProvenance, "versions"> & { versions: typeof DRAFT_DOCX_VERSIONS;
+type Row = { text: string; claims: DraftRenderText[]; heading?: boolean; bullet?: boolean; role?: "NAME" | "CONTACT" | "LINK" | "TITLE" | "SUBJECT" | "SIGNOFF" | "REFERENCE_EMAIL"; before?: number; after?: number };
+type DraftClaimProvenance = ClaimProvenanceEntry & { referenceBinding?: DraftRenderText["referenceBinding"] };
+type DraftProvenance = Omit<ArtifactProvenance, "versions" | "claims"> & { versions: typeof DRAFT_DOCX_VERSIONS; claims: DraftClaimProvenance[];
+  referenceBindings?: DraftReferenceSourceBinding[];
   draftSource: { renderSourceSha256: string; proposalSourceSha256: string; packetSha256: string } };
 export type PreparedDraftDocxArtifact = {
   buffer: Buffer; filename: string; mimeType: typeof MIME; metadata: DocumentMetadata;
@@ -25,7 +28,7 @@ export type PreparedDraftDocxArtifact = {
   state: "OWNER_REVIEW_REQUIRED"; deliveryAuthorized: false;
 };
 export class DraftDocxError extends Error { constructor(code: string) { super(`DRAFT_DOCX_${code}`); this.name = "DraftDocxError"; } }
-const ensure = (value: unknown, code: string): void => { if (!value) throw new DraftDocxError(code); };
+function ensure(value: unknown, code: string): asserts value { if (!value) throw new DraftDocxError(code); }
 const hash = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
 const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const unique = (values: string[]) => [...new Set(values)].sort();
@@ -41,12 +44,12 @@ const paragraphText = (xml: string) => text([...xml.matchAll(/<w:t(?:\s[^>]*)?>(
   .map((match) => decodeXmlText(match[1])).join(""));
 const expectedRowLinks = (entry: Row) => entry.claims.flatMap((claim) => entry.role === "LINK"
   ? [{ text: text(claim.text), target: claim.text }]
-  : entry.role === "CONTACT" && claim.placement.endsWith(".email") ? [{ text: text(claim.text), target: `mailto:${claim.text}` }] : []);
+  : (entry.role === "CONTACT" || entry.role === "REFERENCE_EMAIL") && claim.placement.endsWith(".email") ? [{ text: text(claim.text), target: `mailto:${claim.text}` }] : []);
 
 function metadataForDraft(input: Input, artifact: ArtifactType): DocumentMetadata {
   const applicant = input.source.resume.header.find((claim) => claim.placement.endsWith(".displayName"))!.text;
   const target = input.packet.ownerEvidence.targetJob;
-  return { title: `${applicant} ${artifact === "RESUME" ? "Resume" : "Cover Letter"} - ${target.company}`, author: applicant,
+  return { title: `${applicant} ${artifact === "RESUME" ? "Resume" : artifact === "COVER_LETTER" ? "Cover Letter" : "Professional References"} - ${target.company}`, author: applicant,
     subject: `Application for ${target.exactTitle} at ${target.company}`, language: input.source.language, keywords: "" };
 }
 
@@ -112,9 +115,29 @@ function sourcePlans(input: Input) {
     ...(letter.body.length === 3 ? [] : [row([letter.closing], " ", { after: DOCUMENT_REQUIREMENTS.spacingTwips.coverParagraphAfter })]),
     literal(letter.signoff, { role: "SIGNOFF", before: DOCUMENT_REQUIREMENTS.spacingTwips.signoffBefore, after: DOCUMENT_REQUIREMENTS.spacingTwips.signoffAfter }),
     row([letter.signature])];
+  ensure(Boolean(source.referenceSheet) === Boolean(packet.binding.referencePermissions.length), "REFERENCE_SCOPE_INVALID");
+  let referenceSheet: Row[] | undefined;
+  if (source.referenceSheet) {
+    const records = source.referenceSheet.records, permissions = packet.binding.referencePermissions;
+    ensure(records.length >= 1 && records.length <= 3 && records.length === permissions.length
+      && new Set(records.map((entry) => entry.permissionId)).size === records.length
+      && records.every((entry) => permissions.some((permission) => permission.id === entry.permissionId
+        && permission.reference_record_version_id === entry.recordVersionId)), "REFERENCE_SCOPE_INVALID");
+    referenceSheet = [...contact(source.referenceSheet.header, "referenceSheet"), literal("PROFESSIONAL REFERENCES", { heading: true })];
+    for (const reference of records) {
+      const field = (name: string) => reference.fields.find((claim) => claim.referenceBinding?.field === name);
+      ensure(reference.fields.length >= 6 && reference.fields.length <= 7
+        && reference.fields.every((claim) => claim.origin === "LOCAL_REFERENCE" && claim.referenceBinding?.permissionId === reference.permissionId), "REFERENCE_FIELDS_INVALID");
+      const name = field("name"), title = field("title"), organization = field("organization"), relationship = field("relationship"), email = field("email"), phone = field("phone"), context = field("approvedContextLine");
+      ensure(name && title && organization && relationship && email && phone, "REFERENCE_FIELDS_INVALID");
+      referenceSheet.push(row([name!], " ", { after: 40 }), row([title!, organization!], ", ", { after: 40 }),
+        row([relationship!], " ", { after: 40 }), row([email!], " ", { role: "REFERENCE_EMAIL", after: 40 }), row([phone!], " ", { after: context ? 40 : 200 }),
+        ...(context ? [row([context], " ", { after: 200 })] : []));
+    }
+  }
   ensure(emitted.length === byId.size && new Set(emitted.map((claim) => claim.claimId)).size === byId.size, "CLAIM_SET_INCOMPLETE");
   ensure([letter.introduction.text, ...letter.body.flat().map((claim) => claim.text), letter.closing.text].join(" ").split(/\s+/u).length <= DOCUMENT_REQUIREMENTS.coverLetter.supportedWordMaximum, "LETTER_REFIT_REQUIRED");
-  return { RESUME: resume, COVER_LETTER: coverLetter };
+  return { RESUME: resume, COVER_LETTER: coverLetter, ...(referenceSheet ? { REFERENCE_SHEET: referenceSheet } : {}) };
 }
 
 function documentRows(rows: Row[], artifact: ArtifactType): Paragraph[] {
@@ -122,6 +145,9 @@ function documentRows(rows: Row[], artifact: ArtifactType): Paragraph[] {
     if (entry.heading) return majorHeading(entry.text, entry.before ?? 0);
     if (entry.bullet) return new Paragraph({ numbering: { reference: "resume-bullets", level: 0 }, keepLines: true,
       spacing: { line: DOCUMENT_REQUIREMENTS.lineSpacingTwips.bullets, after: 0 }, children: [new TextRun({ text: entry.text, font: DOCUMENT_REQUIREMENTS.font, size: 20 })] });
+    if (entry.role === "REFERENCE_EMAIL") return new Paragraph({ alignment: AlignmentType.LEFT, keepLines: true,
+      spacing: { after: entry.after ?? 40, line: DOCUMENT_REQUIREMENTS.lineSpacingTwips.summary },
+      children: [new ExternalHyperlink({ link: `mailto:${entry.text}`, children: [new TextRun({ text: entry.text, font: DOCUMENT_REQUIREMENTS.font, size: 21, color: "000000" })] })] });
     if (entry.role === "CONTACT" || entry.role === "LINK") {
       const children = entry.claims.flatMap((claim, index) => {
         const value = claim.text, link = claim.placement.endsWith(".email") ? `mailto:${value}` : entry.role === "LINK" ? value : null;
@@ -146,11 +172,12 @@ function documentRows(rows: Row[], artifact: ArtifactType): Paragraph[] {
 export async function inspectDraftDocx(callerBuffer: Buffer, callerInput: Input, artifact: ArtifactType) {
   const input = structuredClone(callerInput), rows = sourcePlans(input)[artifact], buffer = Buffer.from(callerBuffer);
   try {
+    ensure(rows, "ARTIFACT_SCOPE_INVALID");
     const legacy = await inspectDocxPackage(buffer, artifact);
     const zip = await JSZip.loadAsync(buffer), xml = await zip.file("word/document.xml")?.async("string") ?? "";
     const core = await zip.file("docProps/core.xml")?.async("string") ?? "", relationships = await zip.file("word/_rels/document.xml.rels")?.async("string") ?? "";
     const paragraphs = [...xml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/gu)].map((match) => match[0]);
-    const expectedLinks = rows.flatMap(expectedRowLinks).map((link) => link.target).sort();
+    const expectedLinks = rows!.flatMap(expectedRowLinks).map((link) => link.target).sort();
     const relations = [...relationships.matchAll(/<Relationship\b([^>]+)\/?\s*>/gu)].map((match) => ({
       id: /\bId="([^"]+)"/u.exec(match[1])?.[1] ?? "", external: /\bTargetMode="External"/u.test(match[1]),
       hyperlink: /\bType="http:\/\/schemas.openxmlformats.org\/officeDocument\/2006\/relationships\/hyperlink"/u.test(match[1]),
@@ -213,8 +240,10 @@ export async function prepareDraftDocx(callerInput: Input, now = new Date()) {
   const buffers: Buffer[] = [];
   try {
     const result = {} as Record<ArtifactType, PreparedDraftDocxArtifact>;
-    for (const artifact of ["RESUME", "COVER_LETTER"] as const) {
+    const artifactTypes: ArtifactType[] = ["RESUME", "COVER_LETTER", ...(plans.REFERENCE_SHEET ? ["REFERENCE_SHEET" as const] : [])];
+    for (const artifact of artifactTypes) {
       const rows = plans[artifact];
+      ensure(rows, "ARTIFACT_SCOPE_INVALID");
       const units = rows.reduce((total, entry) => total + Math.max(1, Math.ceil(entry.text.length / 85)) + (entry.heading ? 2 : entry.role === "NAME" ? 3 : 0), 6);
       ensure(artifact !== "RESUME" || units <= 150, "RESUME_REFIT_REQUIRED");
       const expectedPageCount: 1 | 2 = artifact === "RESUME" && units > 65 ? 2 : 1;
@@ -224,23 +253,27 @@ export async function prepareDraftDocx(callerInput: Input, now = new Date()) {
       const inspection = await inspectDraftDocx(buffer, input, artifact);
       ensure(inspection.passed, "PACKAGE_INSPECTION_FAILED");
       const ownerReviewClaims = structuredClone(rows.flatMap((entry) => entry.claims));
-      const claims: ClaimProvenanceEntry[] = ownerReviewClaims.map((claim) => ({ placement: claim.placement, kind: claim.kind,
+      const claims: DraftClaimProvenance[] = ownerReviewClaims.map((claim) => ({ placement: claim.placement, kind: claim.kind,
         candidateFactIds: unique(claim.factRefs.map((ref) => ref.factId)), jobEvidenceIds: [...claim.jobEvidenceIds],
-        referencePermissionIds: [...claim.referencePermissionIds], visibleTextSha256: claim.wordingSha256 }));
+        referencePermissionIds: [...claim.referencePermissionIds], visibleTextSha256: claim.wordingSha256,
+        ...(claim.kind === "REFERENCE_PERMISSION" ? { referenceBinding: structuredClone(claim.referenceBinding) } : {}) }));
       const sourceBinding = { candidateFactIds: unique(claims.flatMap((claim) => claim.candidateFactIds)),
-        jobEvidenceIds: unique(packet.ownerEvidence.requirements.map((node) => node.id)), referencePermissionIds: [] };
+        jobEvidenceIds: unique(packet.ownerEvidence.requirements.map((node) => node.id)), referencePermissionIds: unique(claims.flatMap((claim) => claim.referencePermissionIds)) };
       const provenance: DraftProvenance = { schemaVersion: "applypack-claim-provenance-v1", artifact, generatorVersion: DRAFT_DOCX_GENERATOR_VERSION,
+        ...(artifact === "REFERENCE_SHEET" ? { referenceBindings: structuredClone(packet.ownerEvidence.referenceBindings!) } : {}),
         sourceBinding, claims, fitActions: ["preserved_reviewed_source_order", ...(expectedPageCount === 2 ? ["substantive_two_page_resume"] : [])], requirementMappings: mapping,
         matchingReviewIds: packet.ownerEvidence.matchReviews.map((review) => review.id), postingContentSha256: packet.binding.jobSha256,
         jobBinding: { canonicalApplicationUrl: target.canonicalApplicationUrl, retrievedAt: target.retrievedAt, postedOn: null },
         cacheIdentitySha256: hash(JSON.stringify({ artifact, source: source.renderSourceSha256, packet: packet.packetSha256, versions: DRAFT_DOCX_VERSIONS })),
         versions: DRAFT_DOCX_VERSIONS, draftSource: { renderSourceSha256: source.renderSourceSha256, proposalSourceSha256: source.proposalSourceSha256, packetSha256: packet.packetSha256 } };
-      result[artifact] = { buffer, filename: materialFilename({ displayName: applicant, artifact: artifact === "RESUME" ? "Resume" : "Cover_Letter", company: target.company,
-        position: target.exactTitle, extension: "docx", employerInstruction: artifact === "RESUME" ? packet.ownerEvidence.employerInstructions.resume_filename_instruction : packet.ownerEvidence.employerInstructions.cover_letter_filename_instruction }),
+      const referenceFilename = "referenceFilenameInstruction" in packet.ownerEvidence ? packet.ownerEvidence.referenceFilenameInstruction : null;
+      result[artifact] = { buffer, filename: materialFilename({ displayName: applicant, artifact: artifact === "RESUME" ? "Resume" : artifact === "COVER_LETTER" ? "Cover_Letter" : "References", company: target.company,
+        position: target.exactTitle, extension: "docx", employerInstruction: artifact === "RESUME" ? packet.ownerEvidence.employerInstructions.resume_filename_instruction
+          : artifact === "COVER_LETTER" ? packet.ownerEvidence.employerInstructions.cover_letter_filename_instruction : typeof referenceFilename === "string" ? referenceFilename : null }),
         mimeType: MIME, metadata, provenance, expectedPageCount, versions: DRAFT_DOCX_VERSIONS, ownerReviewClaims,
         inspection, state: "OWNER_REVIEW_REQUIRED", deliveryAuthorized: false };
     }
-    return { resume: result.RESUME, coverLetter: result.COVER_LETTER, generatorVersion: DRAFT_DOCX_GENERATOR_VERSION, renderSourceSha256: source.renderSourceSha256,
+    return { resume: result.RESUME, coverLetter: result.COVER_LETTER, ...(result.REFERENCE_SHEET ? { referenceSheet: result.REFERENCE_SHEET } : {}), generatorVersion: DRAFT_DOCX_GENERATOR_VERSION, renderSourceSha256: source.renderSourceSha256,
       state: "OWNER_REVIEW_REQUIRED" as const, deliveryAuthorized: false as const };
   } catch (error) { buffers.forEach((buffer) => buffer.fill(0)); throw error; }
 }

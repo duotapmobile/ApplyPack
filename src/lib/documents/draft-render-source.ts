@@ -7,17 +7,19 @@ import { assertDeliverableText } from "@/lib/materials/contract";
 import { materialContactSchema } from "@/lib/materials/server";
 import { serializeDraftingEvidencePacket, type DraftingEvidencePacket } from "./drafting-evidence";
 import { serializeDraftProposal, validateDraftOutput, type ValidatedDraftProposal } from "./draft-output";
+import { draftReferenceBindingSchema, readDraftReferenceSources, type DraftReferenceInput, type DraftReferenceField } from "./draft-reference-source";
 
 export const DRAFT_RENDER_SOURCE_VERSION = "applypack-draft-render-source-v1";
 type Fact = DraftingEvidencePacket["ownerEvidence"]["facts"][number];
 export type DraftRenderFactRef = { factId: string; field: string; valueSha256: string; attributionFactId: string };
 export type DraftRenderText = {
   claimId: string; placement: string; text: string; wordingSha256: string;
-  kind: "CANDIDATE_FACT" | "JOB_EVIDENCE" | "MIXED" | "NARRATIVE";
-  origin: "MODEL_PROPOSAL" | "LOCAL_FACT" | "LOCAL_JOB" | "LOCAL_CONTACT" | "CUSTOMER_PRESENTATION" | "FIXED_PRESENTATION";
+  kind: "CANDIDATE_FACT" | "JOB_EVIDENCE" | "MIXED" | "NARRATIVE" | "REFERENCE_PERMISSION";
+  origin: "MODEL_PROPOSAL" | "LOCAL_FACT" | "LOCAL_JOB" | "LOCAL_CONTACT" | "CUSTOMER_PRESENTATION" | "FIXED_PRESENTATION" | "LOCAL_REFERENCE";
   qualification: "EXACT" | "QUALIFIED_TRANSFER" | "NONFACTUAL";
   factRefs: DraftRenderFactRef[]; jobEvidenceIds: string[]; referencePermissionIds: string[];
   contactBinding: { payloadId: string; contentSha256: string; fields: string[] } | null;
+  referenceBinding?: { permissionId: string; recordVersionId: string; payloadId: string; contentSha256: string; field: DraftReferenceField };
   questionInsights: ValidatedDraftProposal["reviews"][number]["questionInsights"];
   state: "OWNER_REVIEW_REQUIRED";
 };
@@ -58,6 +60,7 @@ export function buildDraftRenderSource(input: {
   packet: DraftingEvidencePacket; proposal: ValidatedDraftProposal;
   contact: { payloadId: string; plaintext: Uint8Array }; finalVersionAt: string;
   careerBreakFactId?: string;
+  references?: readonly DraftReferenceInput[];
 }, now = new Date()) {
   let ownedContact: Buffer | null = null;
   try {
@@ -231,11 +234,37 @@ export function buildDraftRenderSource(input: {
       introduction: jobText("coverLetter.introduction", `I am applying for the ${targetJob.exactTitle} position at ${targetJob.company}.`),
       body: verified.output.coverLetter.body.map((paragraph, index) => paragraph.sentences.map((_, item) => prose(`coverLetter.body.${index}.sentences.${item}`))),
       closing: fixed("coverLetter.closing", "Thank you for your consideration."), signoff: "Sincerely,", signature: contactText("coverLetter.signature", "displayName") };
+    let referenceSheet: { header: DraftRenderText[]; records: Array<{ permissionId: string; recordVersionId: string; payloadId: string; contentSha256: string; fields: DraftRenderText[] }> } | undefined;
+    const permissionBindings = packet.binding.referencePermissions;
+    const rawReferenceBindings = "referenceBindings" in packet.ownerEvidence ? packet.ownerEvidence.referenceBindings : undefined;
+    if (permissionBindings.length) {
+      requireThat(permissionBindings.length <= 3, "REFERENCE_COUNT_UNSUPPORTED");
+      const bindings = z.array(draftReferenceBindingSchema).min(1).max(3).parse(rawReferenceBindings);
+      requireThat(bindings.length === permissionBindings.length && bindings.every((binding) => {
+        const permission = permissionBindings.find((entry) => entry.id === binding.permissionId);
+        return permission && permission.reference_record_version_id === binding.recordVersionId && permission.delivered_release_id === binding.deliveredReleaseId
+          && permission.job_snapshot_id === binding.jobSnapshotId && permission.job_snapshot_hash === binding.jobSha256
+          && binding.jobSnapshotId === packet.binding.jobSnapshotId && binding.jobSha256 === packet.binding.jobSha256;
+      }), "REFERENCE_SCOPE_INVALID");
+      const records = readDraftReferenceSources(bindings, input.references ?? [], now);
+      referenceSheet = { header: contactHeader("referenceSheet"), records: records.map(({ binding, fields }, index) => ({
+        permissionId: binding.permissionId, recordVersionId: binding.recordVersionId, payloadId: binding.payloadId, contentSha256: binding.contentSha256,
+        fields: fields.map(({ field, value }) => {
+          const text = visible(value), placement = `referenceSheet.records.${index}.${field}`;
+          requireThat(text === value, "REFERENCE_TEXT_INVALID");
+          const claim: DraftRenderText = { claimId: claimId(proposal.sourceSha256, placement), placement, text, wordingSha256: digest(text), kind: "REFERENCE_PERMISSION",
+            origin: "LOCAL_REFERENCE", qualification: "EXACT", factRefs: [], jobEvidenceIds: [], referencePermissionIds: [binding.permissionId], contactBinding: null,
+            referenceBinding: { permissionId: binding.permissionId, recordVersionId: binding.recordVersionId, payloadId: binding.payloadId, contentSha256: binding.contentSha256, field },
+            questionInsights: [], state: "OWNER_REVIEW_REQUIRED" };
+          claims.push(claim); return claim;
+        }),
+      })) };
+    } else requireThat(!input.references?.length && rawReferenceBindings === undefined, "REFERENCE_SCOPE_NOT_SELECTED");
     requireThat(claims.length <= 250 && new Set(claims.map((claim) => claim.claimId)).size === claims.length, "CLAIM_BOUND_EXCEEDED");
     const source = { schemaVersion: DRAFT_RENDER_SOURCE_VERSION, expected: packet.expected, packetSha256: packet.packetSha256,
       proposalSourceSha256: proposal.sourceSha256, contactPayloadId: packet.binding.contactPayloadId, contactSha256: packet.binding.contactSha256,
       finalVersionAt: input.finalVersionAt, validUntil: packet.validUntil, language: "en-US" as const,
-      outputRules: packet.providerView.outputRules, resume, coverLetter, ownerReviewClaims: claims,
+      outputRules: packet.providerView.outputRules, resume, coverLetter, ...(referenceSheet ? { referenceSheet } : {}), ownerReviewClaims: claims,
       state: "OWNER_REVIEW_REQUIRED" as const, deliveryAuthorized: false as const };
     return immutable({ ...source, renderSourceSha256: digest(exactJson(source)) });
   } catch (error) {

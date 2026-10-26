@@ -12,6 +12,7 @@ import { processServiceRetention } from "@/lib/files/service-retention";
 import { processAwsTemporaryCleanup } from "@/lib/files/aws-temporary-cleanup";
 import { processPendingFeasibilityRequests } from "@/lib/matching/supabase-feasibility-store";
 import { processChunk4Workers } from "@/lib/commerce/workers";
+import { processMaterialDraftQueue } from "@/lib/documents/draft-queue-server";
 import { reconcileBoardSubscriptions } from "@/lib/job-board/stripe-events";
 import { reconcileCheckoutInitiations } from "@/lib/commerce/checkout-initiation";
 import { createStripeOperationalClient } from "@/lib/stripe/server";
@@ -360,6 +361,15 @@ export async function POST(request: Request) {
   if (unpaidSourceRetention && unpaidSourceRetention.failed > 0) queueStages.unpaidSourceRetention = "FAILED";
   if (serviceRetention && serviceRetention.failed > 0) queueStages.serviceRetention = "FAILED";
   const workflow = await processQueue("workflow", encryptionReady && sourcesReady, () => processWorkflowTasks(admin, 2));
+  // Optional drafting stays dormant by default. When enabled, it processes one
+  // bounded stage of an already-paid obligation, never approval or Send.
+  let materialDrafts;
+  if (process.env.APP_MATERIAL_DRAFT_QUEUE_ENABLED === "true") {
+    materialDrafts = await processQueue("materialDrafts", fileReady && encryptionReady && sourcesReady,
+      () => processMaterialDraftQueue(admin, { signal: request.signal,
+        uploadClientFactory: (signal) => createSupabaseAdminClient({ signal }) }));
+    if (materialDrafts && materialDrafts.status !== "COMPLETE") queueStages.materialDrafts = materialDrafts.status === "DISABLED" ? "SKIPPED" : "FAILED";
+  }
   const emailRetries = await processQueue("email", encryptionReady && emailReady, () => retryFailedEmails(admin, 10));
   const chunk4 = await processQueue("commerce", encryptionReady, () => processChunk4Workers(admin, 20));
   if (chunk4 && chunk4.status !== "enabled") queueStages.commerce = "FAILED";
@@ -417,6 +427,7 @@ export async function POST(request: Request) {
     alerts,
     protectedRecoveryAlert: beforeDiagnostic.protectedRecoveryAlert,
     workflow,
+    materialDrafts,
     feasibility,
     fileScans,
     documentExtractions,

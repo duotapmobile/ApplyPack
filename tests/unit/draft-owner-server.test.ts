@@ -7,6 +7,7 @@ import { validateDraftOutput, type DraftOutput, type DraftProseClaim } from "@/l
 import { buildDraftRenderSource } from "@/lib/documents/draft-render-source";
 import { captureRawSourceEvidence } from "@/lib/jobs/raw-source-evidence";
 import { questionResponseSha256 } from "@/lib/jobs/application-question-evidence";
+import { draftReferenceFixture } from "../fixtures/draft-reference";
 
 vi.mock("server-only", () => ({}));
 const id = (n: number) => `78000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -79,7 +80,8 @@ import type { Database } from "@/lib/database.types";
 import { serializeDraftingEvidencePacket } from "@/lib/documents/drafting-evidence";
 import { serializeDraftProposal } from "@/lib/documents/draft-output";
 import { serializeDraftRenderSource } from "@/lib/documents/draft-render-source";
-const dependency = vi.hoisted(() => ({ read: vi.fn(), store: vi.fn(), load: vi.fn(), decrypt: vi.fn() }));
+const dependency = vi.hoisted(() => ({ read: vi.fn(), store: vi.fn(), load: vi.fn(), decrypt: vi.fn(), references: vi.fn() }));
+vi.mock("@/lib/documents/draft-owner-references", async (original) => ({ ...await original<typeof import("@/lib/documents/draft-owner-references")>(), readConfirmedDraftReferences: dependency.references }));
 vi.mock("@/lib/documents/draft-packet-worker", async (original) => ({ ...await original<typeof import("@/lib/documents/draft-packet-worker")>(),
   readEncryptedDraftPayload: dependency.read, storeEncryptedDraftPayload: dependency.store }));
 vi.mock("@/lib/documents/drafting-evidence-server", () => ({ loadDraftingEvidencePacket: dependency.load }));
@@ -166,6 +168,28 @@ beforeEach(() => { vi.clearAllMocks(); });
 afterEach(() => { vi.useRealTimers(); });
 
 describe("owner source promotion and exact wording review", () => {
+  it("promotes confirmed references locally, then verifies them again before recording exact wording decisions", async () => {
+    const reference = draftReferenceFixture(), d = database(reference), buffers: Uint8Array[] = [];
+    dependency.references.mockImplementation(async () => reference.references.map((record) => { const plaintext = Buffer.from(record.plaintext); buffers.push(plaintext); return { ...record, plaintext }; }));
+    await d.promote(); const source = JSON.parse(d.bodies.get(d.current().encrypted_payload_id)!);
+    expect(source.referenceSheet.records[0].fields[0].text).toBe("Morgan Reference 1"); expect(source).not.toHaveProperty("sharedWorkContext");
+    expect(dependency.references.mock.calls[0][1]).toEqual({ customerId: reference.r.purchase.customer_id, materialLineId: reference.r.line.id,
+      revisionId: reference.r.revision.id, deliveredReleaseId: reference.r.intent.delivered_release_id, jobSnapshotId: reference.r.job.id,
+      jobSha256: reference.r.job.content_sha256, bindings: reference.referenceBindings });
+    await d.review(); expect(dependency.references).toHaveBeenCalledTimes(2);
+    expect(buffers.every((bytes) => bytes.every((byte) => byte === 0))).toBe(true);
+    const review = d.calls.find((call) => call.name === "ap_record_material_draft_claim_review")!;
+    expect((review.args!.p_claims as { kind: string; referenceBinding?: unknown }[]).filter((claim) => claim.kind === "REFERENCE_PERMISSION").every((claim) => !!claim.referenceBinding)).toBe(true);
+    expect(d.calls.some((call) => /approve|send|release/.test(call.name))).toBe(false);
+  });
+  it("does not record wording review if current reference bytes no longer match the saved source", async () => {
+    const reference = draftReferenceFixture(), d = database(reference);
+    dependency.references.mockImplementation(async () => reference.references.map((record) => ({ ...record, plaintext: Buffer.from(record.plaintext) })));
+    await d.promote(); const bad = Buffer.from("PRIVATE CHANGED REFERENCE");
+    dependency.references.mockResolvedValueOnce([{ ...reference.references[0], plaintext: bad }]);
+    await expect(d.review()).rejects.toThrow("DRAFT_OWNER_UNCONFIRMED"); expect(bad.every((byte) => byte === 0)).toBe(true);
+    expect(d.calls.some((call) => call.name === "ap_record_material_draft_claim_review")).toBe(false);
+  });
   it("does no I/O on construction and rejects browser reviewer/payload additions before reading", async () => {
     const f = database(); expect(f.calls).toEqual([]);
     await expect(f.promote({ reviewerId: id(98) })).rejects.toThrow("INPUT_INVALID"); expect(f.calls).toEqual([]);

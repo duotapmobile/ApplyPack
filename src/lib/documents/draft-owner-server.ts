@@ -4,6 +4,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database } from "@/lib/database.types";
 import { readConfirmedDraftContact, DraftOwnerContactError } from "./draft-owner-contact";
+import { draftReferenceRequest, readConfirmedDraftReferences } from "./draft-owner-references";
+import { validateDraftReferenceSource, type DraftReferenceInput } from "./draft-reference-source";
 import { draftClaimReviewRequestSchema, prepareDraftClaimReview } from "./draft-claim-review";
 import { readEncryptedDraftPayload, storeEncryptedDraftPayload } from "./draft-packet-worker";
 import { serializeDraftingEvidencePacket, type DraftingEvidencePacket } from "./drafting-evidence";
@@ -130,10 +132,13 @@ export function createDraftOwnerServer(admin: Admin, trustedReviewerId: string, 
       const envelope = parse(z.object({ schemaVersion: z.literal("applypack-draft-proposal-v1"), output: draftOutputSchema }).passthrough(), saved.value, "PROPOSAL_REQUIRED");
       const proposal = validateDraftOutput(envelope.output, packet, now());
       ensure(proposal.sourceSha256 === current.version.source_sha256 && serializeDraftProposal(proposal) === saved.body, "PROPOSAL_CHANGED");
-      let contact: Buffer | undefined;
+      let contact: Buffer | undefined; let references: DraftReferenceInput[] = [];
       try {
         contact = await contactFor(current, packet, child);
+        const referenceRequest = draftReferenceRequest(packet);
+        if (referenceRequest) references = await readConfirmedDraftReferences(admin, referenceRequest, child, { now });
         const source = buildDraftRenderSource({ packet, proposal, contact: { payloadId: packet.binding.contactPayloadId, plaintext: contact },
+          ...(references.length ? { references } : {}),
           finalVersionAt: now().toISOString(), ...(request.careerBreakFactId ? { careerBreakFactId: request.careerBreakFactId } : {}) }, now());
         contact.fill(0); contact = undefined;
         const body = serializeDraftRenderSource(source), payloadId = randomUUID();
@@ -157,7 +162,7 @@ export function createDraftOwnerServer(admin: Admin, trustedReviewerId: string, 
         await state(job.id, next.id, next.source_sha256, child);
         return { jobId: job.id, versionId: next.id, packetSha256: next.packet_sha256, sourceSha256: next.source_sha256,
           state: "OWNER_REVIEW_REQUIRED" as const, reconciled: reported === null, deliveryAuthorized: false as const };
-      } finally { contact?.fill(0); }
+      } finally { contact?.fill(0); references.forEach((reference) => reference.plaintext.fill(0)); }
     }),
     recordWordingReview: (raw: unknown, signal: AbortSignal) => bounded(signal, async (child) => {
       const { jobId, request } = parse(reviewSchema, raw, "INPUT_INVALID"); await authorize(child);
@@ -165,6 +170,13 @@ export function createDraftOwnerServer(admin: Admin, trustedReviewerId: string, 
       const saved = await payload(current, current.version.encrypted_payload_id, current.version.source_sha256, "MATERIAL_DRAFT_SOURCE", child);
       const source = readSource(saved, current, packet), binding = { versionId: current.version.id, packetSha256: current.version.packet_sha256,
         sourceSha256: current.version.source_sha256, customerId: current.job.customer_id, materialLineId: current.job.material_line_id, revisionId: current.revision.id };
+      const referenceRequest = draftReferenceRequest(packet);
+      if (referenceRequest) {
+        let references: DraftReferenceInput[] = [];
+        try { references = await readConfirmedDraftReferences(admin, referenceRequest, child, { now });
+          validateDraftReferenceSource(source.referenceSheet, packet.ownerEvidence.referenceBindings, references, now()); }
+        finally { references.forEach((reference) => reference.plaintext.fill(0)); }
+      }
       const review = prepareDraftClaimReview({ source, binding, reviewerId, request }, now());
       if (current.version.claim_review_sha256 !== null) {
         ensure(current.version.claim_review_encrypted_payload_id && current.version.claims_reviewed_by === reviewerId && current.version.claims_reviewed_at, "REVIEW_CONFLICT");

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { draftingEvidenceExpectationSchema, type DraftingEvidencePacket } from "./drafting-evidence";
 import { serializeDraftRenderSource } from "./draft-render-source";
+import { DRAFT_REFERENCE_FIELDS, draftReferenceBindingSchema } from "./draft-reference-source";
 const uuid = z.uuid(), hash = z.string().regex(/^[a-f0-9]{64}$/), time = z.iso.datetime({ offset: true });
 const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
 export class DraftRenderSourceStorageError extends Error {
@@ -12,10 +13,11 @@ function ensure(value: unknown, code: string): asserts value { if (!value) throw
 function parse<T>(schema: z.ZodType<T>, value: unknown, code: string): T { const result = schema.safeParse(value); ensure(result.success, code); return result.data; }
 const factRefSchema = z.object({ factId: uuid, field: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,59}(\.[0-9]{1,3})?$/), valueSha256: hash, attributionFactId: uuid }).strict();
 export const renderClaimSchema = z.object({ claimId: uuid, placement: z.string().min(1).max(180), text: z.string().min(1).max(3000), wordingSha256: hash,
-  kind: z.enum(["CANDIDATE_FACT", "JOB_EVIDENCE", "MIXED", "NARRATIVE"]),
-  origin: z.enum(["MODEL_PROPOSAL", "LOCAL_FACT", "LOCAL_JOB", "LOCAL_CONTACT", "CUSTOMER_PRESENTATION", "FIXED_PRESENTATION"]),
+  kind: z.enum(["CANDIDATE_FACT", "JOB_EVIDENCE", "MIXED", "NARRATIVE", "REFERENCE_PERMISSION"]),
+  origin: z.enum(["MODEL_PROPOSAL", "LOCAL_FACT", "LOCAL_JOB", "LOCAL_CONTACT", "CUSTOMER_PRESENTATION", "FIXED_PRESENTATION", "LOCAL_REFERENCE"]),
   qualification: z.enum(["EXACT", "QUALIFIED_TRANSFER", "NONFACTUAL"]), factRefs: z.array(factRefSchema).max(40), jobEvidenceIds: z.array(uuid).max(40), referencePermissionIds: z.array(uuid).max(3),
   contactBinding: z.object({ payloadId: uuid, contentSha256: hash, fields: z.array(z.string().min(1).max(60)).max(6) }).strict().nullable(),
+  referenceBinding: z.object({ permissionId: uuid, recordVersionId: uuid, payloadId: uuid, contentSha256: hash, field: z.enum(DRAFT_REFERENCE_FIELDS) }).strict().optional(),
   questionInsights: z.array(z.object({ questionId: uuid, observationId: uuid, promptSha256: hash,
     interpretation: z.literal("POTENTIAL_EMPLOYER_PRIORITY_NOT_A_CANDIDATE_QUALIFICATION") }).strict()).max(8), state: z.literal("OWNER_REVIEW_REQUIRED") }).strict();
 const claims = z.array(renderClaimSchema).max(250);
@@ -28,6 +30,8 @@ const renderSourceSchema = z.object({ schemaVersion: z.literal("applypack-draft-
     careerBreak: z.object({ choice: z.string().min(1).max(60), sourceFactId: uuid, selection: z.enum(["OWNER_SELECTED", "UNIQUE_CONFIRMED_SOURCE"]), label: renderClaimSchema, dates: renderClaimSchema }).strict().nullable() }).strict(),
   coverLetter: z.object({ header: claims, date: z.string().min(1).max(80), recipient: renderClaimSchema, subject: renderClaimSchema, salutation: z.literal("Dear Hiring Team,"),
     introduction: renderClaimSchema, body: z.array(claims).min(1).max(3), closing: renderClaimSchema, signoff: z.literal("Sincerely,"), signature: renderClaimSchema }).strict(),
+  referenceSheet: z.object({ header: claims, records: z.array(z.object({ permissionId: uuid, recordVersionId: uuid, payloadId: uuid, contentSha256: hash,
+    fields: z.array(renderClaimSchema).min(6).max(7) }).strict()).min(1).max(3) }).strict().optional(),
   ownerReviewClaims: claims, state: z.literal("OWNER_REVIEW_REQUIRED"), deliveryAuthorized: z.literal(false) }).strict();
 function exact(value: unknown): string {
   if (value === null || typeof value === "string" || typeof value === "boolean" || typeof value === "number" && Number.isFinite(value)) return JSON.stringify(value);
@@ -47,11 +51,37 @@ export function readStoredDraftRenderSource(saved: { body: string; value: unknow
       && source.packetSha256 === packet.packetSha256 && source.contactPayloadId === packet.binding.contactPayloadId && source.contactSha256 === packet.binding.contactSha256
       && exact(source.outputRules) === exact(packet.providerView.outputRules) && Date.parse(source.validUntil) === Date.parse(packet.validUntil)
       && Date.parse(source.validUntil) > now().getTime() && Date.parse(source.finalVersionAt) <= now().getTime(), "SOURCE_STALE");
+    const permissions = packet.binding.referencePermissions;
+    ensure(Boolean(source.referenceSheet) === Boolean(permissions.length), "REFERENCE_SCOPE_INVALID");
+    if (source.referenceSheet) {
+      const rawBindings = "referenceBindings" in packet.ownerEvidence ? packet.ownerEvidence.referenceBindings : undefined;
+      const bindings = parse(z.array(draftReferenceBindingSchema).min(1).max(3), rawBindings, "REFERENCE_BINDING_INVALID");
+      ensure(bindings.length === permissions.length && source.referenceSheet.records.length === bindings.length
+        && new Set(source.referenceSheet.records.map((row) => row.permissionId)).size === bindings.length
+        && source.referenceSheet.header.every((claim) => claim.origin === "LOCAL_CONTACT" && !claim.referenceBinding), "REFERENCE_SCOPE_INVALID");
+      source.referenceSheet.records.forEach((row, index) => {
+        const binding = bindings.find((entry) => entry.permissionId === row.permissionId), permission = permissions.find((entry) => entry.id === row.permissionId);
+        ensure(binding && permission && permission.reference_record_version_id === binding.recordVersionId
+          && binding.recordVersionId === row.recordVersionId && binding.payloadId === row.payloadId && binding.contentSha256 === row.contentSha256
+          && binding.deliveredReleaseId === permission.delivered_release_id && binding.jobSnapshotId === packet.binding.jobSnapshotId
+          && binding.jobSha256 === packet.binding.jobSha256 && Date.parse(binding.permissionConfirmedAt) <= now().getTime(), "REFERENCE_BINDING_INVALID");
+        const fields = row.fields.map((claim) => claim.referenceBinding?.field);
+        ensure(exact(fields) === exact(DRAFT_REFERENCE_FIELDS.slice(0, fields.length)), "REFERENCE_FIELDS_INVALID");
+        ensure(row.fields.every((claim) => claim.kind === "REFERENCE_PERMISSION" && claim.origin === "LOCAL_REFERENCE" && claim.qualification === "EXACT"
+          && claim.factRefs.length === 0 && claim.jobEvidenceIds.length === 0 && claim.contactBinding === null && claim.questionInsights.length === 0
+          && exact(claim.referencePermissionIds) === exact([row.permissionId]) && claim.referenceBinding?.permissionId === row.permissionId
+          && claim.referenceBinding.recordVersionId === row.recordVersionId && claim.referenceBinding.payloadId === row.payloadId
+          && claim.referenceBinding.contentSha256 === row.contentSha256 && claim.placement === `referenceSheet.records.${index}.${claim.referenceBinding.field}`), "REFERENCE_CLAIM_INVALID");
+      });
+    }
     const visibleClaims = [...source.resume.header, ...source.resume.summary, ...source.resume.skills, ...source.resume.sections.flatMap((section) => [...section.header, ...section.bullets]),
       ...source.resume.education.flatMap((section) => section.header), ...(source.resume.careerBreak ? [source.resume.careerBreak.label, source.resume.careerBreak.dates] : []),
-      ...source.coverLetter.header, source.coverLetter.recipient, source.coverLetter.subject, source.coverLetter.introduction, ...source.coverLetter.body.flat(), source.coverLetter.closing, source.coverLetter.signature];
+      ...source.coverLetter.header, source.coverLetter.recipient, source.coverLetter.subject, source.coverLetter.introduction, ...source.coverLetter.body.flat(), source.coverLetter.closing, source.coverLetter.signature,
+      ...(source.referenceSheet ? [...source.referenceSheet.header, ...source.referenceSheet.records.flatMap((row) => row.fields)] : [])];
     const byId = new Map(source.ownerReviewClaims.map((claim) => [claim.claimId, claim]));
     ensure(byId.size === source.ownerReviewClaims.length && visibleClaims.length === byId.size && new Set(visibleClaims.map((claim) => claim.claimId)).size === byId.size
       && visibleClaims.every((claim) => exact(claim) === exact(byId.get(claim.claimId)) && digest(claim.text) === claim.wordingSha256), "CLAIM_SET_INVALID");
+    ensure(source.ownerReviewClaims.every((claim) => Boolean(claim.referenceBinding) === (claim.origin === "LOCAL_REFERENCE")
+      && (claim.origin === "LOCAL_REFERENCE" || claim.kind !== "REFERENCE_PERMISSION" && claim.referencePermissionIds.length === 0)), "REFERENCE_CLAIM_INVALID");
     return source;
   }

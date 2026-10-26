@@ -42,6 +42,17 @@ test("complete verified response succeeds using counts only", () => {
   assert.equal(result.report.status, "SUCCEEDED");
   assert.doesNotMatch(JSON.stringify(result), /private|recipient/);
 });
+test("the runner shares one bounded five-minute signal across preflight and maintenance", async (context) => {
+  const controller = new AbortController(), timeout = context.mock.method(AbortSignal, "timeout", () => controller.signal);
+  const seen = [];
+  const result = await runMaintenanceOnce(environment, async (url, options) => {
+    seen.push(options.signal);
+    return url.pathname === "/api/health" ? new Response(JSON.stringify({ releaseSha, checks: { releaseSha: true } }))
+      : new Response(JSON.stringify(blocked), { status: 503 });
+  });
+  assert.equal(result.report.status, "BLOCKED"); assert.equal(timeout.mock.callCount(), 1);
+  assert.deepEqual(timeout.mock.calls[0].arguments, [300_000]); assert.deepEqual(seen, [controller.signal, controller.signal]);
+});
 test("URL allowlist rejects redirects, alternate paths, credentials, queries and foreign origins before send", async () => {
   for (const url of ["http://applypack.work/api/cron/maintenance", "https://evil.invalid/api/cron/maintenance",
     "https://applypack.work/api/cron/maintenance?token=private", "https://user:password@applypack.work/api/cron/maintenance",

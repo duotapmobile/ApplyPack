@@ -81,7 +81,9 @@ export async function runMaintenanceOnce(environment = process.env, fetcher = fe
       || url.username || url.password || url.search || url.hash || !environment.CRON_SECRET?.trim()) {
       throw new Error("configuration");
     }
-    const signal = AbortSignal.timeout(120_000);
+    // One draft stage may use150 seconds. Keep the whole invocation bounded
+    // while leaving time for preceding queues and the final diagnosis.
+    const signal = AbortSignal.timeout(300_000);
     // An older deployed handler cannot enforce the new request headers. Check its
     // revision without credentials before posting; the route guard closes deploy races.
     const versionResponse = await fetcher(new URL("/api/health", url.origin), {

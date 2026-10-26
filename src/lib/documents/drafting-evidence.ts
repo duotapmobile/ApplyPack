@@ -7,6 +7,7 @@ import { MATCHING_RULES_VERSION } from "@/lib/matching/evaluation-engine";
 import { buildEmployerQuestionInsights } from "./employer-question-evidence";
 import { getEmployerSource } from "@/lib/jobs/source-registry";
 import { materialRulePacketEvidenceSchema, validateMaterialRulePacketEvidence } from "./material-rule-evidence";
+import { bindDraftReferenceMetadata, draftReferenceMetadataSchema } from "./drafting-evidence-references";
 
 export const DRAFTING_EVIDENCE_VERSION = "applypack-drafting-evidence-v1";
 export const DRAFTING_EVIDENCE_LIMITS = { facts: 500, requirements: 200, reviews: 400, sources: 500, bytes: 2_000_000 } as const;
@@ -32,6 +33,8 @@ const factSchema = z.object({ id: uuid, snapshot_id: uuid.nullable(), customer_i
 
 // These are finite persisted projections, not client-supplied authorization evidence.
 export const draftingEvidenceRecordsSchema = z.object({
+  referenceMetadata: draftReferenceMetadataSchema.optional(),
+  referenceFilenameInstruction: text(2000).nullable().optional(),
   draftJobId: uuid.optional(),
   ruleEvidence: materialRulePacketEvidenceSchema.optional(),
   line: z.object({ id: uuid, purchase_id: uuid, payment_attempt_id: uuid, delivered_order_id: uuid, delivered_match_id: uuid,
@@ -301,6 +304,19 @@ export function buildDraftingEvidencePacket(raw: unknown, expectedRaw: DraftingE
       r.referencePermissions.every((permission) => r.referencePermissionIds.includes(permission.id) && permission.customer_id === expected.customerId &&
         permission.delivered_release_id === r.intent.delivered_release_id && permission.job_snapshot_id === r.job.id && permission.job_snapshot_hash === r.job.content_sha256), "REFERENCE_SCOPE_INVALID");
     requireThat(r.line.selected_reference_sheet ? r.referencePermissionIds.length > 0 : !r.referencePermissionIds.length && r.rule.reference_timing !== "REQUIRED_NOW", "REFERENCE_SCOPE_INVALID");
+    requireThat(r.line.selected_reference_sheet ? r.referenceMetadata !== undefined && r.referenceFilenameInstruction !== undefined
+      : r.referenceMetadata === undefined && r.referenceFilenameInstruction === undefined, "REFERENCE_METADATA_REQUIRED");
+    requireThat(!r.line.selected_reference_sheet || r.rule.reference_timing !== "PROHIBITED_NOW" && r.referencePermissionIds.length <= Math.min(3, r.rule.reference_count ?? 3), "REFERENCE_SCOPE_INVALID");
+    requireThat(r.rule.reference_timing !== "REQUIRED_NOW" || r.rule.reference_count === null || r.referencePermissionIds.length === r.rule.reference_count,
+      "REQUIRED_REFERENCE_CLARIFICATION");
+    const referenceBindings = r.line.selected_reference_sheet ? bindDraftReferenceMetadata(r.referenceMetadata, {
+      customerId: expected.customerId, deliveredReleaseId: r.intent.delivered_release_id, jobSnapshotId: r.job.id,
+      jobSha256: r.job.content_sha256, permissionIds: r.referencePermissionIds,
+    }, now) : undefined;
+    if (r.referenceMetadata) requireThat(r.referenceMetadata.permissions.every(({ attested_at: _attested, ...permission }) => {
+      void _attested; const existing = r.referencePermissions.find((candidate) => candidate.id === permission.id);
+      return existing && exactPacketJson(existing) === exactPacketJson(permission);
+    }), "REFERENCE_SCOPE_INVALID");
 
     const source = getEmployerSource(r.job.discovery_source), questionAuthority = r.questionSourceAuthority;
     const captureBinding = questionAuthority && source?.adapterKind === "greenhouse" && source.adapterKey && r.job.external_job_id &&
@@ -368,6 +384,7 @@ export function buildDraftingEvidencePacket(raw: unknown, expectedRaw: DraftingE
         contactPayloadId: r.contact.id, contactSha256: r.contact.content_sha256, referencePermissions: sorted(r.referencePermissions) },
       employerQuestionInsights,
       ownerEvidence: { contactFact: r.contactFact, facts: sorted(r.facts), sourceFacts: sorted(r.sourceFacts), sourceReviews: sorted(r.factReviews), documents: sorted(r.documents),
+        ...(referenceBindings ? { referenceBindings, referenceFilenameInstruction: r.referenceFilenameInstruction ?? null } : {}),
         ...(ruleEvidence ? { ruleEvidence } : {}),
         matchReviews: sorted(r.reviews), requirements: sorted(r.requirements), employerInstructions: r.rule, customerInstructions: r.item,
         targetJob: { id: r.job.id, company: r.job.company, exactTitle: r.job.exact_title, canonicalApplicationUrl: r.job.canonical_application_url,

@@ -85,6 +85,16 @@ class DocumentWorkerProfileTests(unittest.TestCase):
                 run.assert_not_called()
                 storage.put_object.assert_not_called()
 
+    def test_exact_draft_reference_profile_reaches_isolated_conversion(self):
+        event = {"mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                 "expectedPages": 1, "artifactType": "REFERENCE_SHEET", "renderProfile": handler.DRAFT_RENDER_PROFILE}
+        with patch.object(handler.subprocess, "run", side_effect=subprocess.CalledProcessError(77, "synthetic")) as run, \
+                patch.object(handler, "s3", Mock()) as storage:
+            with self.assertRaises(subprocess.CalledProcessError):
+                handler._render_docx(b"synthetic", event, {"milliseconds": 30_000})
+            run.assert_called_once()
+            storage.put_object.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

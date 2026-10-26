@@ -5,7 +5,7 @@ vi.mock("server-only", () => ({}));
 const dependencies = vi.hoisted(() => Object.fromEntries([
   "adminClient", "collectOperationsSummary", "recordMaintenanceDiagnosis", "recordMaintenanceFailure", "recordMaintenanceOutcome", "maintenanceActionsSucceeded",
   "processUnpaidSourceRetention", "processServiceRetention", "processPendingFileScans", "processPendingDocumentExtractions", "processPendingFeasibilityRequests", "processWorkflowTasks",
-  "retryFailedEmails", "processChunk4Workers", "reconcileBoardSubscriptions", "reconcileCheckoutInitiations", "processAwsTemporaryCleanup", "stripeClient", "sendTransactionalEmail",
+  "retryFailedEmails", "processChunk4Workers", "processMaterialDraftQueue", "reconcileBoardSubscriptions", "reconcileCheckoutInitiations", "processAwsTemporaryCleanup", "stripeClient", "sendTransactionalEmail",
 ].map(name => [name, vi.fn()])) as Record<string, ReturnType<typeof vi.fn>>);
 vi.mock("@/lib/supabase/admin", () => ({ createSupabaseAdminClient: dependencies.adminClient }));
 vi.mock("@/lib/operations/summary", async (importOriginal) => ({
@@ -26,6 +26,7 @@ vi.mock("@/lib/matching/supabase-feasibility-store", () => ({ processPendingFeas
 vi.mock("@/lib/workflow/process", () => ({ processWorkflowTasks: dependencies.processWorkflowTasks }));
 vi.mock("@/lib/email/retry", () => ({ retryFailedEmails: dependencies.retryFailedEmails }));
 vi.mock("@/lib/commerce/workers", () => ({ processChunk4Workers: dependencies.processChunk4Workers }));
+vi.mock("@/lib/documents/draft-queue-server", () => ({ processMaterialDraftQueue: dependencies.processMaterialDraftQueue }));
 vi.mock("@/lib/commerce/checkout-initiation", () => ({ reconcileCheckoutInitiations: dependencies.reconcileCheckoutInitiations }));
 vi.mock("@/lib/job-board/stripe-events", () => ({ reconcileBoardSubscriptions: dependencies.reconcileBoardSubscriptions }));
 vi.mock("@/lib/stripe/server", () => ({ createStripeOperationalClient: dependencies.stripeClient }));
@@ -54,6 +55,7 @@ describe("maintenance authorization and independent queues", () => {
     vi.stubEnv("APP_ADMIN_ALERT_EMAIL", "");
     vi.stubEnv("APP_LEGACY_BOARD_MAINTENANCE_ENABLED", "true");
     vi.stubEnv("APP_SERVICE_RETENTION_ENABLED", "true");
+    vi.stubEnv("APP_MATERIAL_DRAFT_QUEUE_ENABLED", "false");
     Object.values(dependencies).forEach(mock => mock.mockReset());
     dependencies.adminClient.mockReturnValue({ from: vi.fn(query), rpc: vi.fn().mockResolvedValue({ data: 0, error: null }),
       storage: { from: vi.fn(() => ({ remove: vi.fn().mockResolvedValue({ error: null }) })) } });
@@ -79,6 +81,7 @@ describe("maintenance authorization and independent queues", () => {
     dependencies.processWorkflowTasks.mockResolvedValue({ processed: 0 });
     dependencies.retryFailedEmails.mockResolvedValue({ processed: 0 });
     dependencies.processChunk4Workers.mockResolvedValue({ status: "enabled", processed: 0 });
+    dependencies.processMaterialDraftQueue.mockResolvedValue({ status: "COMPLETE", claimed: 0, prepared: 0, generated: 0, rendered: 0, held: 0, unknown: 0, failed: 0 });
     dependencies.reconcileCheckoutInitiations.mockResolvedValue({ processed: 0, unresolved: 0 });
     dependencies.processAwsTemporaryCleanup.mockResolvedValue({ processed: 0, recovered: 0, failed: 0, deadLetter: false, overdue: false });
     dependencies.stripeClient.mockReturnValue({});
@@ -197,6 +200,31 @@ describe("maintenance authorization and independent queues", () => {
     expect(dependencies.processPendingDocumentExtractions).toHaveBeenCalledOnce();
     expect(dependencies.reconcileBoardSubscriptions).toHaveBeenCalledOnce();
     expect(dependencies.recordMaintenanceOutcome).toHaveBeenCalledOnce();
+  });
+  it("keeps the new draft queue dormant unless separately enabled", async () => {
+    expect((await POST(request())).status).toBe(200); expect(dependencies.processMaterialDraftQueue).not.toHaveBeenCalled();
+  });
+  it("continues bounded paid document work during a purchasing hold and passes request cancellation", async () => {
+    vi.stubEnv("APP_MATERIAL_DRAFT_QUEUE_ENABLED", "true");
+    dependencies.recordMaintenanceDiagnosis.mockResolvedValue({ codes: ["PAYMENT_INTEGRITY_NOT_READY"], failClosedCodes: ["PAYMENT_INTEGRITY_NOT_READY"], repairableCodes: [] });
+    const req = request(), response = await POST(req); expect(response.status).toBe(200);
+    expect(dependencies.processMaterialDraftQueue).toHaveBeenCalledOnce();
+    const options = dependencies.processMaterialDraftQueue.mock.calls[0][1]; expect(options.signal).toBe(req.signal);
+    const signal = new AbortController().signal; options.uploadClientFactory(signal);
+    expect(dependencies.adminClient).toHaveBeenLastCalledWith({ signal });
+    expect(await response.json()).toMatchObject({ materialDrafts: { status: "COMPLETE", claimed: 0 }, queueStages: { materialDrafts: "SUCCEEDED" } });
+  });
+  it.each(["FILE_SAFETY_NOT_READY", "ENCRYPTION_NOT_READY", "SOURCE_PERMISSION_COVERAGE_MISSING"])("blocks enabled drafting for %s without invoking its ports", async (code) => {
+    vi.stubEnv("APP_MATERIAL_DRAFT_QUEUE_ENABLED", "true");
+    dependencies.recordMaintenanceDiagnosis.mockResolvedValue({ codes: [code], failClosedCodes: [code], repairableCodes: [] });
+    const response = await POST(request()); expect(response.status).toBe(503);
+    expect(dependencies.processMaterialDraftQueue).not.toHaveBeenCalled(); expect(await response.json()).toMatchObject({ queueStages: { materialDrafts: "SKIPPED" } });
+  });
+  it.each(["RESULT_UNKNOWN", "HELD", "FAILED"])("records %s draft work as incomplete while other maintenance proceeds", async (status) => {
+    vi.stubEnv("APP_MATERIAL_DRAFT_QUEUE_ENABLED", "true");
+    dependencies.processMaterialDraftQueue.mockResolvedValue({ status, claimed: 1, prepared: 0, generated: 0, rendered: 0, held: Number(status === "HELD"), unknown: Number(status === "RESULT_UNKNOWN"), failed: Number(status === "FAILED") });
+    const response = await POST(request()); expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ queueStages: { materialDrafts: "FAILED" } }); expect(dependencies.retryFailedEmails).toHaveBeenCalledOnce();
   });
   it("retains unpaid cleanup during an encryption hold without parsing documents", async () => {
     dependencies.recordMaintenanceDiagnosis.mockResolvedValue({ codes: ["ENCRYPTION_NOT_READY"], failClosedCodes: ["ENCRYPTION_NOT_READY"], repairableCodes: [] });

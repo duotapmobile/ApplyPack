@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { draftReferenceFixture } from "../fixtures/draft-reference";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CANONICALIZATION_VERSION, canonicalSha256 } from "@/lib/domain/foundation";
 import { buildFourStepSnapshot, emptyFourStepDraft, normalizedFourStepDraft } from "@/lib/intake/four-step";
@@ -93,7 +94,8 @@ import { readConfirmedDraftContact } from "@/lib/documents/draft-owner-contact";
 
 type Call = { name: string; args?: Record<string, unknown>; columns?: string; filters: [string, unknown][]; signal?: AbortSignal; limit?: number; orders: string[]; cursor?: string; single?: boolean };
 function database(mode: "proposal" | "source" = "proposal", withQuestions = false, withReferences = false) {
-  const base = fixture("VOLUNTEER", "Completed", withQuestions, "YEAR", "OMIT_ENTRY", withReferences), packet = base.input.packet;
+  const referenceFixture = withReferences ? draftReferenceFixture() : null;
+  const base = referenceFixture ?? fixture("VOLUNTEER", "Completed", withQuestions), packet = base.input.packet;
   const source = mode === "source" ? base.build() : base.input.proposal;
   const sourceBody = mode === "source" ? serializeDraftRenderSource(base.build()) : serializeDraftProposal(base.input.proposal);
   const job = { id: id(91), customer_id: id(10), material_line_id: id(1), line_revision_id: id(4), source_snapshot_id: id(5), state: "SOURCE_READY", active_version_id: id(92) as string | null, error_code: null, created_at: before, updated_at: fresh };
@@ -107,18 +109,24 @@ function database(mode: "proposal" | "source" = "proposal", withQuestions = fals
   tables.ap_source_authorizations = base.r.questionSourceAuthority ? [{ ...base.r.questionSourceAuthority.authorization }] : [];
   tables.ap_source_authorization_heads = base.r.questionSourceAuthority ? [{ ...base.r.questionSourceAuthority.head }] : [];
   tables.ap_sensitive_payloads = [{ ...base.r.contact, encryption_context_hash: "f".repeat(64), encryption_algorithm: "AES-256-GCM", ciphertext: "\\x01", encrypted_data_key: "\\x02", nonce: "\\x" + "03".repeat(12), authentication_tag: "\\x" + "04".repeat(16), kms_key_identity: "fixture-key", kms_key_version: "1" }];
+  if (base.r.referenceMetadata) {
+    tables.ap_material_lines = [{ ...base.r.line }]; tables.ap_material_purchases = [{ ...base.r.purchase }]; tables.ap_material_checkout_intents = [{ ...base.r.intent }];
+    tables.ap_material_checkout_items = [{ ...base.r.item }]; tables.ap_material_checkout_references = base.r.referencePermissionIds.map((reference_permission_id) => ({ checkout_item_id: base.r.item.id, reference_permission_id }));
+    tables.ap_reference_permissions = structuredClone(base.r.referenceMetadata.permissions); tables.ap_reference_record_versions = structuredClone(base.r.referenceMetadata.versions); tables.ap_reference_records = structuredClone(base.r.referenceMetadata.records);
+    tables.ap_sensitive_payloads.push(...base.r.referenceMetadata.payloads.map((row) => ({ ...row, encryption_algorithm: "AES-256-GCM", ciphertext: "\\x01", encrypted_data_key: "\\x02", nonce: "\\x" + "03".repeat(12), authentication_tag: "\\x" + "04".repeat(16), kms_key_identity: "fixture-key", kms_key_version: "1" })));
+  }
   let context = version.context_sha256;
   const overrides = new Map<string, (call: Call) => unknown | Promise<unknown>>();
   const query = (call: Call) => {
     const builder = {
       select: (columns: string) => { call.columns = columns; return builder; }, eq: (name: string, value: unknown) => { call.filters.push([name, value]); return builder; },
-      in: () => builder, order: (name: string) => { call.orders.push(name); return builder; }, limit: (value: number) => { call.limit = value; return builder; },
+      in: (name: string, values: unknown[]) => { call.filters.push([name, values]); return builder; }, order: (name: string) => { call.orders.push(name); return builder; }, limit: (value: number) => { call.limit = value; return builder; },
       or: (value: string) => { call.cursor = value; return builder; }, abortSignal: (signal: AbortSignal) => { call.signal = signal; return builder; }, single: () => { call.single = true; return builder; },
       then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve().then(async () => {
         calls.push(call); if (overrides.has(call.name)) return overrides.get(call.name)!(call);
         if (call.name === "ap_require_material_reviewer") return { data: null, error: null };
         if (call.name === "ap_material_draft_context_sha256") return { data: context, error: null };
-        const rows = (tables[call.name] ?? []).filter((row) => call.filters.every(([name, value]) => row[name] === value)).map((row) => Object.fromEntries(call.columns!.split(",").map((key) => [key, row[key]])));
+        const rows = (tables[call.name] ?? []).filter((row) => call.filters.every(([name, value]) => Array.isArray(value) ? value.includes(row[name]) : row[name] === value)).map((row) => Object.fromEntries(call.columns!.split(",").map((key) => [key, row[key]])));
         return { data: call.single ? rows[0] ?? null : rows, error: null };
       }).then(resolve, reject),
     }; return builder;
@@ -126,7 +134,8 @@ function database(mode: "proposal" | "source" = "proposal", withQuestions = fals
   const admin = { from: (name: string) => query({ name, filters: [], orders: [] }), rpc: (name: string, args: Record<string, unknown>) => query({ name, args, filters: [], orders: [] }) } as unknown as SupabaseClient<Database>;
   dependencies.load.mockImplementation(async () => packet);
   dependencies.read.mockImplementation(async (_admin, binding) => { const bytes = Buffer.from(bodies.get(binding.payloadId)!); buffers.push(bytes); return bytes; });
-  dependencies.decrypt.mockImplementation(async () => { const bytes = Buffer.from(base.input.contact.plaintext); buffers.push(bytes); return bytes; });
+  dependencies.decrypt.mockImplementation(async ({ context }) => { const reference = referenceFixture?.references.find((value) => value.payloadId === context.payloadId);
+    const bytes = Buffer.from(reference?.plaintext ?? base.input.contact.plaintext); buffers.push(bytes); return bytes; });
   const view = createDraftOwnerView(admin, id(90), { now: () => now });
   function pair() {
     version.member_set_sha256 = "a".repeat(64); version.claim_review_sha256 = "b".repeat(64); version.claims_reviewed_at = fresh; job.state = "REVIEW_READY";
@@ -189,6 +198,27 @@ describe("private owner draft read model", () => {
     expect(result.instructions.saved).toEqual({ checkedAt: fresh, resumeRequirement: "REQUIRED", letterRequirement: "OPTIONAL", resumeFilename: null, letterFilename: null, referenceTiming: "LATER_OR_UNKNOWN", referenceCount: null, formats: ["PDF"], resumePageLimit: 1, letterPageLimit: 1 });
     expect(d.buffers.every((buffer) => buffer.every((byte) => byte === 0))).toBe(true);
     expect(result.questions.items[0]).toMatchObject({ prompt: "Describe how you prioritize competing requests.", required: true, wordLimit: null, eligible: true });
+  });
+  it("shows verified local reference fields beside the exact reference-sheet wording and clears plaintext", async () => {
+    const d = database("source", false, true), result = await d.detail();
+    expect(result.status).toBe("AVAILABLE"); if (result.status !== "AVAILABLE") return;
+    expect(result.references?.[0].fields).toContainEqual({ label: "name", value: "Morgan Reference 1" });
+    expect(result.documents.find((document) => document.title === "Reference sheet")?.sections[1].lines[0].text).toBe("Morgan Reference 1");
+    expect(result.claims.filter((claim) => claim.placement.startsWith("referenceSheet records")).every((claim) => claim.sources.length === 1)).toBe(true);
+    expect(JSON.stringify(result)).not.toContain("Private internal context"); expect(JSON.stringify(result)).not.toContain("Private capability notes");
+    expect(d.buffers.every((buffer) => buffer.every((byte) => byte === 0))).toBe(true);
+  });
+  it("withholds a reference view after revoked consent and shows a specific required-count hold", async () => {
+    const d = database("source", false, true); d.tables.ap_reference_permissions[0].revoked_at = now.toISOString();
+    expect((await d.detail()).status).toBe("UNAVAILABLE");
+    dependencies.load.mockRejectedValueOnce(new Error("DRAFTING_EVIDENCE_REQUIRED_REFERENCE_CLARIFICATION"));
+    const held = await d.detail(); expect(held.status).toBe("UNAVAILABLE"); if (held.status !== "AVAILABLE") expect(held.message).toContain("employer requires more references");
+  });
+  it("shows the database reference-count clarification before decrypting instead of an evidence-refresh loop", async () => {
+    const d = database("source", false, true);
+    d.overrides.set("ap_material_draft_context_sha256", () => ({ data: null, error: { message: "required_reference_clarification" } }));
+    const held = await d.detail(); expect(held.status).toBe("UNAVAILABLE"); if (held.status !== "AVAILABLE") expect(held.message).toContain("Clarify the reference selection");
+    expect(dependencies.read).not.toHaveBeenCalled(); expect(dependencies.decrypt).not.toHaveBeenCalled(); expect(dependencies.inspect).not.toHaveBeenCalled();
   });
   it.each(["customer", "hash", "retired", "plaintext"])("withholds private review when confirmed contact has a mismatched %s", async (mode) => {
     const d = database("source"), contact = d.tables.ap_sensitive_payloads[0];

@@ -5,6 +5,7 @@ import { prepareDraftRender } from "@/lib/documents/draft-render";
 import { DOCUMENT_FONT_CONTRACT } from "@/lib/documents/requirements";
 import type { DocumentRenderInput, DocumentRenderResult } from "@/lib/documents/renderer";
 import { draftDocumentFixture, draftFixtureNow } from "../fixtures/draft-document";
+import { draftReferenceFixture } from "../fixtures/draft-reference";
 vi.mock("server-only", () => ({}));
 const id = (n: number) => `77000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
@@ -19,15 +20,15 @@ function rendered(input: DocumentRenderInput): DocumentRenderResult {
     draftPdf: { ...identity, searchablePdfSha256: hash(searchablePdf), structureTextSha256: "b".repeat(64), linkXmlSha256: "c".repeat(64), paragraphCount: paragraphs.length,
       listItemCount: paragraphs.filter((row) => row.kind === "BULLET").length, linkCount: paragraphs.flatMap((row) => row.links).length } };
 }
-function fixture() {
-  const f = draftDocumentFixture(), source = f.build(), packet = f.input.packet, claim = { jobId: id(1), ownerId: id(2), leaseToken: id(3) };
+function fixture(referenceCount?: 1 | 2 | 3) {
+  const f = referenceCount ? draftReferenceFixture(referenceCount) : draftDocumentFixture(), source = f.build(), packet = f.input.packet, claim = { jobId: id(1), ownerId: id(2), leaseToken: id(3) };
   const state: DraftRenderState = { ...claim, customerId: packet.expected.customerId, materialLineId: packet.expected.materialLineId,
     revisionId: packet.expected.revisionId, revisionVersion: packet.expected.revisionVersion, bindingSha256: packet.expected.bindingSha256,
     snapshotId: packet.binding.snapshotId, jobSnapshotId: packet.binding.jobSnapshotId, ruleId: packet.binding.ruleId, dueAt: packet.binding.dueAt,
     leaseGeneration: 1, leaseExpiresAt: new Date(draftFixtureNow.getTime() + 300_000).toISOString(), versionId: id(4), packetPayloadId: id(5),
     packetSha256: packet.packetSha256, contextSha256: "d".repeat(64), sourcePayloadId: id(6), sourceSha256: source.renderSourceSha256,
-    reviewPayloadId: id(7), reviewSha256: "e".repeat(64), reviewerId: id(8), reviewedAt: draftFixtureNow.toISOString(), selectedReferenceSheet: false,
-    rendererIdentity: "fixture-renderer", existingArtifactIds: { RESUME: null, COVER_LETTER: null }, delivery: { format: "PDF", reason: "DEFAULT_PDF", employerRuleId: packet.binding.ruleId, applicantRequestId: null, requestReferenceSha256: null } };
+    reviewPayloadId: id(7), reviewSha256: "e".repeat(64), reviewerId: id(8), reviewedAt: draftFixtureNow.toISOString(), selectedReferenceSheet: Boolean(referenceCount),
+    rendererIdentity: "fixture-renderer", existingArtifactIds: { RESUME: null, COVER_LETTER: null, REFERENCE_SHEET: null }, delivery: { format: "PDF", reason: "DEFAULT_PDF", employerRuleId: packet.binding.ruleId, applicantRequestId: null, requestReferenceSha256: null } };
   let clock = draftFixtureNow, pair: DraftRenderedPair | undefined;
   const events: string[] = [];
   const services = { enabled: vi.fn(() => true), readState: vi.fn(async () => structuredClone(state)), loadEvidence: vi.fn(async () => ({ source, packet })),
@@ -68,7 +69,7 @@ describe("claimed reviewed-pair render registration worker", () => {
     expect(next.map((row) => row.p_file_version_id)).not.toEqual(original.map((row) => row.p_file_version_id));
   });
   it("retains arbitrary previously registered artifact IDs rather than imposing generated IDs on history", async () => {
-    const f = fixture(); f.state.existingArtifactIds = { RESUME: id(87), COVER_LETTER: id(88) };
+    const f = fixture(); f.state.existingArtifactIds = { RESUME: id(87), COVER_LETTER: id(88), REFERENCE_SHEET: null };
     expect(await f.run()).toMatchObject({ status: "REVIEW_READY" });
     expect(f.services.commit.mock.calls[0][1].map((row) => row.p_artifact_id)).toEqual([id(87), id(88)]);
   });
@@ -116,5 +117,45 @@ describe("claimed reviewed-pair render registration worker", () => {
     const controller = new AbortController(), pending = f.run({ signal: controller.signal }); await vi.waitFor(() => expect(f.services.render).toHaveBeenCalled());
     controller.abort(); expect(await pending).toEqual({ status: "HELD", code: "INTERRUPTED" }); finish(prepared);
     await vi.waitFor(() => expect(prepared.resume.buffer.every((byte) => byte === 0)).toBe(true)); expect(f.services.upload).not.toHaveBeenCalled();
+  });
+  it.each([1, 2, 3] as const)("registers all three selected artifacts for %i confirmed references and clears every buffer", async (count) => {
+    const f = fixture(count); f.state.existingArtifactIds.REFERENCE_SHEET = id(89);
+    expect(await f.run()).toMatchObject({ status: "REVIEW_READY", ownerReviewRequired: true, deliveryAuthorized: false });
+    expect(f.services.persistUploadIntents.mock.calls[0][0]).toHaveLength(9); expect(f.services.upload).toHaveBeenCalledTimes(9);
+    expect(f.events.indexOf("intents")).toBeLessThan(f.events.indexOf("upload:operator-drafts"));
+    const registrations = f.services.commit.mock.calls[0][1]; expect(registrations.map((row) => row.p_artifact_type)).toEqual(["RESUME", "COVER_LETTER", "REFERENCE_SHEET"]);
+    expect(registrations[2].p_artifact_id).toBe(id(89)); expect(registrations[2].p_reference_permission_ids).toEqual(f.packet.binding.referencePermissions.map((row) => row.id).sort());
+    expect(registrations.slice(0, 2).every((row) => row.p_reference_permission_ids?.length === 0)).toBe(true);
+    expect(JSON.stringify(registrations)).not.toContain("Private internal context"); expect(JSON.stringify(registrations)).not.toContain("Private capability notes");
+    for (const artifact of [f.pair().resume, f.pair().coverLetter, f.pair().referenceSheet!]) {
+      expect([artifact.buffer, artifact.render.searchablePdf, ...artifact.render.pageImages.map((page) => page.bytes)].every((bytes) => bytes.every((byte) => byte === 0))).toBe(true);
+    }
+  });
+  it("does not accept an unselected reference source", async () => {
+    const f = fixture(1); f.state.selectedReferenceSheet = false;
+    expect(await f.run()).toEqual({ status: "HELD", code: "REFERENCE_GENERATOR_REQUIRED" }); expect(f.services.render).not.toHaveBeenCalled();
+  });
+  it("rejects a missing selected third render before any upload intent", async () => {
+    const f = fixture(1), render = f.services.render.getMockImplementation()!;
+    f.services.render.mockImplementation(async (input) => { const result = await render(input);
+      const reference = result.referenceSheet!; reference.buffer.fill(0); reference.render.searchablePdf.fill(0); reference.render.pageImages.forEach((page) => page.bytes.fill(0));
+      delete result.referenceSheet; return result; });
+    expect(await f.run()).toEqual({ status: "HELD", code: "RENDER_FAILED" }); expect(f.services.persistUploadIntents).not.toHaveBeenCalled();
+  });
+  it("preserves all nine upload intents after an uncertain three-member commit", async () => {
+    const f = fixture(3); f.services.commit.mockRejectedValue(new Error("lost response")); f.services.readCommitted.mockRejectedValue(new Error("unavailable"));
+    expect(await f.run()).toEqual({ status: "RESULT_UNKNOWN", code: "REGISTRATION_UNCONFIRMED" });
+    expect(f.services.persistUploadIntents.mock.calls[0][0]).toHaveLength(9); expect(f.services.commit).toHaveBeenCalledOnce();
+  });
+  it.each(["selected set", "field binding", "permission set"])("rejects changed reference %s in generated provenance before uploading", async (mode) => {
+    const f = fixture(1), render = f.services.render.getMockImplementation()!;
+    f.services.render.mockImplementation(async (input) => { const result = await render(input), provenance = result.referenceSheet!.provenance;
+      if (mode === "selected set") provenance.referenceBindings![0].payloadId = id(999);
+      if (mode === "field binding") provenance.claims.find((claim) => claim.kind === "REFERENCE_PERMISSION")!.referenceBinding!.field = "phone";
+      if (mode === "permission set") provenance.sourceBinding.referencePermissionIds = [id(999)];
+      return result;
+    });
+    expect(await f.run()).toEqual({ status: "HELD", code: "RENDER_FAILED" }); expect(f.services.persistUploadIntents).not.toHaveBeenCalled();
+    expect(f.pair().referenceSheet!.buffer.every((byte) => byte === 0)).toBe(true);
   });
 });

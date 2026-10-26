@@ -6,6 +6,7 @@ import { buildDraftingEvidencePacket, serializeDraftingEvidencePacket, type Draf
 import { loadDraftingEvidencePacket } from "@/lib/documents/drafting-evidence-server";
 import { captureRawSourceEvidence } from "@/lib/jobs/raw-source-evidence";
 import { questionResponseSha256, validateGreenhouseQuestionCapture, type GreenhouseQuestionCapture } from "@/lib/jobs/application-question-evidence";
+import { draftReferenceFixture } from "../fixtures/draft-reference";
 
 vi.mock("server-only", () => ({}));
 const id = (number: number) => `00000000-0000-4000-8000-${number.toString().padStart(12, "0")}`;
@@ -81,6 +82,16 @@ function fixture() {
   return { r, expected, seal, build: () => buildDraftingEvidencePacket(r, expected, now) };
 }
 type Fixture = ReturnType<typeof fixture>;
+function selectedReference(f: Fixture) {
+  const reference = draftReferenceFixture(), metadata = structuredClone(reference.r.referenceMetadata!);
+  for (const permission of metadata.permissions) Object.assign(permission, { customer_id: f.expected.customerId, delivered_release_id: f.r.intent.delivered_release_id,
+    job_snapshot_id: f.r.job.id, job_snapshot_hash: f.r.job.content_sha256 });
+  for (const record of metadata.records) record.customer_id = f.expected.customerId;
+  for (const payload of metadata.payloads) payload.customer_id = f.expected.customerId;
+  f.r.referenceMetadata = metadata; f.r.referenceFilenameInstruction = "Surname_References.pdf"; f.r.line.selected_reference_sheet = true;
+  f.r.referencePermissionIds = metadata.permissions.map((permission) => permission.id);
+  f.r.referencePermissions = metadata.permissions.map(({ attested_at: _attested, ...permission }) => { void _attested; return permission; });
+}
 function apiQuestions(f: Fixture, prompt = "Tell us how you organize competing priorities.") {
   const capture: GreenhouseQuestionCapture = { schemaVersion: "applypack-greenhouse-question-capture-v1", sourceId: "duolingo", boardToken: "duolingo",
     externalJobId: "123", sourceUrl: "https://boards-api.greenhouse.io/v1/boards/duolingo/jobs/123?questions=true", capturedAt: before,
@@ -340,11 +351,13 @@ function fakeAdmin(f: Fixture, onRead?: (table: string, count: number) => void) 
   const tables: Record<string, unknown[]> = {
     ap_material_draft_jobs: [managedJob],
     ap_material_lines: [r.line], ap_material_purchases: [r.purchase], ap_payment_attempts: [r.payment], ap_material_line_revisions: [r.revision],
-    ap_intake_snapshots: [r.snapshot], ap_anonymous_drafts: [r.draft], ap_sensitive_payloads: [r.sourcePayload, r.contact], ap_material_checkout_intents: [r.intent],
+    ap_intake_snapshots: [r.snapshot], ap_anonymous_drafts: [r.draft], ap_sensitive_payloads: [r.sourcePayload, r.contact, ...(r.referenceMetadata?.payloads ?? [])], ap_material_checkout_intents: [r.intent],
     ap_material_checkout_items: [r.item], ap_job_snapshots: [r.job], ap_employer_submission_rules: [r.rule], ap_material_listing_checks: [r.listingCheck],
     ap_candidate_facts: [...r.facts, ...r.sourceFacts, r.contactFact], ap_document_versions: r.documents.map((doc) => ({ ...doc, sha256: doc.content_sha256, is_current: true })),
-    ap_fact_review_history: r.factReviews, ap_requirement_nodes: r.requirements, ap_human_review_records: r.reviews, ap_material_checkout_references: [],
-    ap_reference_permissions: r.referencePermissions, ap_refund_operations: [],
+    ap_fact_review_history: r.factReviews, ap_requirement_nodes: r.requirements, ap_human_review_records: r.reviews,
+    ap_material_checkout_references: r.referencePermissionIds.map((reference_permission_id) => ({ checkout_item_id: r.item.id, reference_permission_id })),
+    ap_reference_permissions: r.referenceMetadata?.permissions ?? r.referencePermissions,
+    ap_reference_record_versions: r.referenceMetadata?.versions ?? [], ap_reference_records: r.referenceMetadata?.records ?? [], ap_refund_operations: [],
     job_source_runs: r.questionSourceAuthority ? [r.questionSourceAuthority.run] : [],
     ap_source_authorizations: r.questionSourceAuthority ? [r.questionSourceAuthority.authorization] : [],
     ap_source_authorization_heads: r.questionSourceAuthority ? [r.questionSourceAuthority.head] : [],
@@ -365,7 +378,7 @@ function fakeAdmin(f: Fixture, onRead?: (table: string, count: number) => void) 
           counts[table] = (counts[table] ?? 0) + 1; onRead?.(table, counts[table]);
           const rows = (tables[table] ?? []).filter((row) => filters.every((filter) => filter(row as Record<string, unknown>))).slice(0, limit).map((raw) => {
             const row = raw as Record<string, unknown>;
-            return Object.fromEntries(columns.split(",").map((column) => { const [alias, key = alias] = column.split(":"); return [alias, row[key]]; }));
+            return Object.fromEntries(columns.split(",").map((column) => { const [alias, key = alias] = column.split(":"); return [alias, table === "ap_employer_submission_rules" && key === "reference_filename_instruction" ? r.referenceFilenameInstruction ?? null : row[key]]; }));
           });
           return { data: one ? rows[0] ?? null : rows, error: null };
         }).then(resolve, reject);
@@ -383,6 +396,24 @@ function fakeAdmin(f: Fixture, onRead?: (table: string, count: number) => void) 
   return { admin: { from, rpc } as unknown as Parameters<typeof loadDraftingEvidencePacket>[0], from, rpc, counts, selections, tables, managedJob, authority };
 }
 describe("connected drafting evidence loader", () => {
+  it("reads exact selected reference versions and filename instruction into owner-only packet metadata", async () => {
+    const f = fixture(); selectedReference(f); const db = fakeAdmin(f);
+    const packet = await loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now });
+    expect(packet.ownerEvidence.referenceBindings?.[0]).toMatchObject({ permissionId: f.r.referencePermissionIds[0], payloadId: f.r.referenceMetadata!.payloads[0].id, jobSnapshotId: f.r.job.id });
+    expect(packet.ownerEvidence.referenceFilenameInstruction).toBe("Surname_References.pdf");
+    expect(packet.providerView).not.toHaveProperty("referenceBindings");
+    expect(db.counts.ap_reference_records).toBe(2); expect(db.selections).toContain("id,content_sha256,reference_filename_instruction");
+  });
+  it("rejects a valid-looking reference consent change between complete packet reads", async () => {
+    const f = fixture(); selectedReference(f);
+    const db = fakeAdmin(f, (table, count) => { if (table === "ap_reference_permissions" && count === 3) f.r.referenceMetadata!.permissions[0].attested_at = fresh; });
+    await expect(loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now })).rejects.toThrow("READ_CHANGED");
+  });
+  it("does not read or add reference metadata keys for an unselected sheet", async () => {
+    const f = fixture(), db = fakeAdmin(f), packet = await loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now });
+    expect(packet.ownerEvidence).not.toHaveProperty("referenceBindings"); expect(packet.ownerEvidence).not.toHaveProperty("referenceFilenameInstruction");
+    expect(db.counts.ap_reference_records).toBeUndefined(); expect(db.counts.ap_reference_record_versions).toBeUndefined();
+  });
   it("uses service092 rule evidence between current-context checks and keeps mutable job fences outside the packet", async () => {
     const f = fixture(), db = fakeAdmin(f);
     const packet = await loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now });

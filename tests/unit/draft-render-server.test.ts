@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { draftDocumentFixture, draftFixtureNow } from "../fixtures/draft-document";
+import { draftReferenceFixture } from "../fixtures/draft-reference";
 import { serializeDraftingEvidencePacket } from "@/lib/documents/drafting-evidence";
 import { serializeDraftRenderSource } from "@/lib/documents/draft-render-source";
 import { readStoredDraftRenderSource } from "@/lib/documents/draft-render-source-storage";
@@ -12,10 +13,13 @@ import { renderDraftForClaim, type DraftRenderRegistration, type DraftRenderStat
 import { DOCUMENT_FONT_CONTRACT } from "@/lib/documents/requirements";
 import type { DocumentRenderInput, DocumentRenderResult } from "@/lib/documents/renderer";
 vi.mock("server-only", () => ({}));
-const dependency = vi.hoisted(() => ({ read: vi.fn(), load: vi.fn(), contact: vi.fn(), ready: vi.fn() }));
+const dependency = vi.hoisted(() => ({ read: vi.fn(), load: vi.fn(), contact: vi.fn(), ready: vi.fn(), references: vi.fn() }));
 vi.mock("@/lib/documents/draft-packet-worker", () => ({ readEncryptedDraftPayload: dependency.read }));
 vi.mock("@/lib/documents/drafting-evidence-server", () => ({ loadDraftingEvidencePacket: dependency.load }));
 vi.mock("@/lib/documents/draft-owner-contact", () => ({ readConfirmedDraftContact: dependency.contact }));
+vi.mock("@/lib/documents/draft-owner-references", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/documents/draft-owner-references")>(), readConfirmedDraftReferences: dependency.references,
+}));
 vi.mock("@/lib/operations/renderer-readiness", () => ({ checkDocumentRendererReadiness: dependency.ready }));
 import { createDraftRenderServer } from "@/lib/documents/draft-render-server";
 const id = (n: number) => `79000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -35,8 +39,9 @@ function rendered(input: DocumentRenderInput): DocumentRenderResult {
     draftPdf: { ...identity, searchablePdfSha256: digest(searchablePdf), structureTextSha256: "b".repeat(64), linkXmlSha256: "c".repeat(64), paragraphCount: paragraphs.length,
       listItemCount: paragraphs.filter((row) => row.kind === "BULLET").length, linkCount: paragraphs.flatMap((row) => row.links).length } };
 }
-function database() {
-  const base = draftDocumentFixture(), packet = base.input.packet, built = base.build(), body = serializeDraftRenderSource(built);
+function database(referenceCount?: 1 | 2 | 3) {
+  const referenceFixture = referenceCount ? draftReferenceFixture(referenceCount) : null;
+  const base = referenceFixture ?? draftDocumentFixture(), packet = base.input.packet, built = base.build(), body = serializeDraftRenderSource(built);
   const source = readStoredDraftRenderSource({ body, value: JSON.parse(body) }, built.renderSourceSha256, packet, () => draftFixtureNow);
   const claim = { jobId: id(1), ownerId: id(2), leaseToken: id(3) }, versionId = id(4), reviewerId = id(8);
   const review = prepareDraftClaimReview({ source, reviewerId, binding: { ...source.expected, versionId, packetSha256: packet.packetSha256, sourceSha256: source.renderSourceSha256 },
@@ -112,6 +117,9 @@ function database() {
   dependency.ready.mockResolvedValue(true); dependency.load.mockImplementation(async () => structuredClone(packet));
   dependency.read.mockImplementation(async (_admin, binding: { payloadId: string }) => { const bytes = Buffer.from(bodies.get(binding.payloadId)!); buffers.push(bytes); return bytes; });
   dependency.contact.mockImplementation(async () => { const bytes = Buffer.from(base.input.contact.plaintext); buffers.push(bytes); return bytes; });
+  dependency.references.mockImplementation(async () => (referenceFixture?.references ?? []).map((reference) => {
+    const plaintext = Buffer.from(reference.plaintext); buffers.push(plaintext); return { ...reference, plaintext };
+  }));
   const uploadSignals: AbortSignal[] = [];
   const services = createDraftRenderServer(admin, { now: () => draftFixtureNow, uploadClientFactory: (child) => { uploadSignals.push(child); return admin; } });
   services.render = async (input) => prepareDraftRender(input, { now: () => draftFixtureNow, render: async (value) => rendered(value) });
@@ -195,6 +203,38 @@ describe("actual reviewed rendering database/storage ports", () => {
   it("reconciles a lost actual commit response with exact immutable/current records only once", async () => {
     const f = database(); f.loseCommit(); expect(await f.run()).toMatchObject({ status: "REVIEW_READY", reconciled: true });
     expect(f.calls.filter((call) => call.name === "ap_commit_material_draft_pair")).toHaveLength(1);
+  });
+  it("registers exactly three members after rereading reference permissions and clears the private buffers", async () => {
+    const f = database(3); f.loseCommit(); expect(await f.run()).toMatchObject({ status: "REVIEW_READY", reconciled: true });
+    expect(f.uploads).toHaveLength(9); expect(f.tables.storage_cleanup_queue).toHaveLength(9);
+    expect(f.tables.ap_material_draft_members.map((row) => row.artifact_type)).toEqual(["RESUME", "COVER_LETTER", "REFERENCE_SHEET"]);
+    expect(dependency.references).toHaveBeenCalledOnce(); expect(dependency.references.mock.calls[0][1]).toMatchObject({
+      customerId: f.packet.expected.customerId, materialLineId: f.packet.expected.materialLineId, bindings: f.packet.ownerEvidence.referenceBindings,
+    });
+    expect(f.buffers).toHaveLength(7); expect(f.buffers.every((bytes) => bytes.every((byte) => byte === 0))).toBe(true);
+    expect(f.calls.filter((call) => call.name === "ap_commit_material_draft_pair")).toHaveLength(1);
+  });
+  it.each(["changed bytes", "missing permission", "revoked permission"])("holds %s before reference rendering and clears all returned bytes", async (mode) => {
+    const f = database(1), original = dependency.references.getMockImplementation()!;
+    dependency.references.mockImplementation(async (...args) => {
+      const values = await original(...args);
+      if (mode === "changed bytes") values[0].plaintext[0] ^= 1;
+      if (mode === "missing permission") values[0].permissionId = id(999);
+      if (mode === "revoked permission") { values.forEach((entry: { plaintext: Buffer }) => entry.plaintext.fill(0)); throw new Error("permission revoked"); }
+      return values;
+    });
+    expect(await f.run()).toMatchObject({ status: "HELD" }); expect(f.uploads).toHaveLength(0);
+    expect(f.buffers.every((bytes) => bytes.every((byte) => byte === 0))).toBe(true);
+  });
+  it("does not accept a two-member readback for a selected reference sheet", async () => {
+    const f = database(1);
+    f.overrides.set("ap_material_draft_members", [() => ({ data: f.tables.ap_material_draft_members.filter((row) => row.artifact_type !== "REFERENCE_SHEET"), error: null })]);
+    expect(await f.run()).toEqual({ status: "RESULT_UNKNOWN", code: "REGISTRATION_UNCONFIRMED" });
+    expect(f.uploads).toHaveLength(9); expect(f.tables.storage_cleanup_queue).toHaveLength(9);
+  });
+  it.each([7, 8])("rejects an incomplete %i-object cleanup intent set", async (count) => {
+    const f = database(); await expect(f.services.persistUploadIntents(Array.from({ length: count }, (_, index) => ({ bucket: "operator-drafts", path: `fixture/${index}.docx` })), signal())).rejects.toThrow();
+    expect(f.tables.storage_cleanup_queue).toHaveLength(0);
   });
   it("cannot register a late upload after timeout; preserves delayed cleanup intents and clears render buffers", async () => {
     const f = database(), pair = await prepareDraftRender({ source: f.source, packet: f.packet }, { now: () => draftFixtureNow, render: async (input) => rendered(input) });
