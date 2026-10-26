@@ -8,13 +8,13 @@ import { fileURLToPath } from "node:url";
 // Test-only server image. Never import this image into a deployed worker: its
 // server/tooling packages have a separate vulnerability profile from runtime.
 export const RETENTION_POSTGRES_IMAGE = "postgres:17-trixie@sha256:3518071376d0b6156b02e1db2747a78511b5b9dc3763cc79c506ebe2dc2ee71c";
-const schema = "202610250095";
+const schema = "202610250096";
 const version = "17.11";
 const fixtureLabel = "service-retention-postgres17";
 const bin = "/usr/lib/postgresql/17/bin/";
 const directory = "/tmp/applypack-retention";
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
-const fixtureNames = Object.freeze(["one-off-service-retention.sql", "service-retention-cleanup.sql", "confirmed-intake.sql", "reviewed-commute.sql", "material-draft-pair-workflow.sql", "material-rule-revalidation.sql", "source-aware-document-acceptance.sql", "reference-aware-draft-delivery.sql", "service-retention-races.sql", "material-draft-stage-claiming.sql"]);
+const fixtureNames = Object.freeze(["one-off-service-retention.sql", "service-retention-cleanup.sql", "confirmed-intake.sql", "reviewed-commute.sql", "material-draft-pair-workflow.sql", "material-rule-revalidation.sql", "source-aware-document-acceptance.sql", "reference-aware-draft-delivery.sql", "service-error-contract-and-triage.sql", "service-retention-races.sql", "material-draft-stage-claiming.sql"]);
 const fixtureMarkers = Object.freeze(fixtureNames.map((_, index) => `RETENTION_PG17_FIXTURE_${index + 1}_COMPLETE`));
 
 export function loadRetentionPostgresInputs() {

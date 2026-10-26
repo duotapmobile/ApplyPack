@@ -26,6 +26,13 @@ create table storage.buckets (
  id text primary key, name text not null, public boolean not null default false,
  file_size_limit bigint, allowed_mime_types text[]
 );
+-- Finite Storage catalog compatibility for archive source-mutation fencing.
+-- This does not emulate Storage HTTP authorization or object bytes.
+create table storage.objects (
+ id uuid primary key default extensions.gen_random_uuid(), bucket_id text not null references storage.buckets(id),
+ name text not null, owner uuid, created_at timestamptz default now(), updated_at timestamptz default now(),
+ metadata jsonb, unique(bucket_id,name)
+);
 grant usage on schema auth, storage, extensions to anon, authenticated, service_role;
 grant execute on all functions in schema auth to anon, authenticated, service_role;
 -- Match Supabase's public-schema defaults so migrations must revoke broad rights.

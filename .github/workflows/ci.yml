@@ -34,7 +34,7 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run validate:aws-document-worker
       - run: node --test scripts/report-staging-readiness.test.mjs scripts/assert-required-test-results.test.mjs
-      - run: node --test scripts/check-launch-recovery-strategy.test.mjs scripts/check-database-types.test.mjs scripts/run-windows-release-self-test.test.mjs scripts/production-aws-foundation.test.mjs scripts/source-aware-document-integration.test.mjs scripts/material-draft-stage-integration.test.mjs scripts/reference-draft-integration.test.mjs
+      - run: node --test scripts/check-launch-recovery-strategy.test.mjs scripts/check-database-types.test.mjs scripts/run-windows-release-self-test.test.mjs scripts/production-aws-foundation.test.mjs scripts/source-aware-document-integration.test.mjs scripts/material-draft-stage-integration.test.mjs scripts/reference-draft-integration.test.mjs scripts/service-error-integration.test.mjs
       - run: node --test scripts/verify-sandbox-launch-evidence.test.mjs
       - name: Protected recovery credentials, copy, bootstrap, source, archive and read-only retention contracts
         run: npm run test:protected-recovery
@@ -111,6 +111,9 @@ jobs:
       - name: Validate095 reference-aware drafting controls
         shell: pwsh
         run: npm run test:reference-draft-migration
+      - name: Validate096 inactive service-error reporting controls
+        shell: pwsh
+        run: npm run test:service-error-migration
       - run: npm run test:staging-schema084-backup
       - run: npm run test:production-migration
       - run: npm run test:production-backup

@@ -17,9 +17,9 @@ do $$ begin
     perform pg_temp.retention_error($q$select public.ap_record_manual_launch_activation('PUBLIC',repeat('a',40),'{}',gen_random_uuid())$q$,
       'service_retention_cleanup_unavailable');
   else
-    perform pg_temp.assert_retention((select max(version) from supabase_migrations.schema_migrations) in ('202610250091','202610250092','202610250093','202610250094','202610250095'),'exact current schema');
+    perform pg_temp.assert_retention((select max(version) from supabase_migrations.schema_migrations) in ('202610250091','202610250092','202610250093','202610250094','202610250095','202610250096'),'exact current schema');
     perform pg_temp.assert_retention(public.ap_one_off_retention_schema_installed(),'current cleanup installed');
-    perform pg_temp.assert_retention((public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion') in ('202610250091','202610250092','202610250093','202610250094','202610250095'),'current schema floor');
+    perform pg_temp.assert_retention((public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion') in ('202610250091','202610250092','202610250093','202610250094','202610250095','202610250096'),'current schema floor');
     perform pg_temp.assert_retention((public.ap_manual_launch_schema_readiness()->>'ready')::boolean,'current schema controls installed');
     perform pg_temp.assert_retention(exists(select 1 from public.ap_checkout_mode_configuration where singleton and mode='LOCKED'),'checkout stays locked');
     perform pg_temp.assert_retention(exists(select 1 from public.ap_commerce_configuration where singleton and not checkout_enabled),'purchasing stays disabled');

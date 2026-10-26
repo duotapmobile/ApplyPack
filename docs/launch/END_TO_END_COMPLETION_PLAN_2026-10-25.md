@@ -76,12 +76,13 @@ For every stage below, define actor, input, output, durable state, authorized tr
 4. Replace the incomplete delivered-document correction path with contract-aware service-error review/repair. Test customer-input error denial separately from an ApplyPack-transcription defect and repeated failed repair.
 5. Complete the separately authorized operations/recovery/retention work, accurate live copy, provider configuration and hosted acceptance before go-live. Documentation publication alone closes none of these runtime gates.
 
-## Decisions still required before their dependent implementation
+## Remaining provider and launch decisions
 
 - Drafting provider/model, actual customer-data handling and bounded cost; source coverage/cadence and reliable commute evidence.
-- Owner editing interaction and whether approve-and-deliver is one action or separate explicit release; no customer release without owner authorization.
 - Internal service-error response/escalation target; preserve the existing reporting window without inventing a new delivery promise.
-- Approved recovery approach and consolidated incremental quote, plus outstanding narrowly scoped implementation/execution approvals recorded in existing runbooks.
+- Consolidated incremental quote and hosted configuration/execution approval for the proposed recovery and independent-monitoring resources. Local implementation/testing/publication approval is already recorded; it is not a pending question.
+
+Owner wording edits now use labelled controls and confirmed source choices. Review and approval bind exact versions, and Send remains a separate explicit action. Those controls have published source and local/CI evidence in the progress ledger; request-change integration and hosted owner acceptance remain incomplete. Locked forward recovery remains the approved recovery strategy. These settled choices should not be presented as unanswered preflight questions.
 
 The owner has already decided the system does research and drafting, supports no-resume/outdated/career-change intake, requires complete editable pre-submit review, and offers only service-error remedies for new bound orders. Do not reopen those decisions as unanswered questions.
 
@@ -100,4 +101,4 @@ This is an observed source map at the audit baseline, not an implementation patc
 | Incomplete post-delivery owner repair workflow | `src/components/admin/admin-operations.tsx`; `src/lib/materials/admin.ts`; material-line prepare/generate/release routes and approvals | Owner-readable report/evidence, scoped linked revision, complete pair, explicit checks/approval, atomic redelivery and true resolution |
 | Regression evidence | `tests/unit/four-step-intake.test.ts`; `tests/e2e/chunk2-remediation.spec.ts`; `tests/e2e/chunk5-evidence.spec.ts`; `tests/integration/chunk5-materials-delivery.sql`; legal acceptance and retention fixtures | Actual connected route/data behavior; both fault origins; ambiguous parsing, all affected artifacts, failed repair, mixed historical contracts and accessible review |
 
-Public runtime copy still describes the prior behavior. Do not label the application or public policies aligned until this map, the remaining stages and affected verification are completed. The current commit updates requirements and operating documents only.
+Public runtime copy still describes the prior behavior. Do not label the application or public policies aligned until this map, the remaining stages and affected verification are completed. This plan began as a requirements baseline; implementation has since advanced through the published revisions listed in the progress ledger. New prospective legal terms remain inactive until their complete contract, runtime and repair workflow is verified.

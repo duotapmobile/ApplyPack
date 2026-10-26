@@ -8,7 +8,7 @@ begin
     or configuration.terms_content_sha256 is distinct from 'bac56f51e78cd099c8676efcfca5616d2fbdaeb9fc40c8aa0d5053ff968a3428'
     or configuration.privacy_version is distinct from 'privacy-2026-10-24-v3'
     or configuration.privacy_content_sha256 is distinct from '2d7a8f194c8246775f1bb9803378596bf8bf60fb2a72cb34bf3c009adaa6e311'
-    or (select max(version) from supabase_migrations.schema_migrations) not in ('202610240087','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095')
+    or (select max(version) from supabase_migrations.schema_migrations) not in ('202610240087','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096')
     then raise exception 'one_off_legal_binding_missing'; end if;
   if not exists(select 1 from public.retention_legal_upgrade_preservation_fixture)
     or exists(select 1 from public.retention_legal_upgrade_preservation_fixture fixture

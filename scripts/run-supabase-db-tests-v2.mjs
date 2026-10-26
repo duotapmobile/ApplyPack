@@ -10,10 +10,11 @@ const historical091 = process.argv.length === 3 && process.argv[2] === "--histor
 const historical092 = process.argv.length === 3 && process.argv[2] === "--historical-092";
 const historical093 = process.argv.length === 3 && process.argv[2] === "--historical-093";
 const historical094 = process.argv.length === 3 && process.argv[2] === "--historical-094";
-if (process.argv.length > 3 || (process.argv.length === 3 && !historical085 && !historical086 && !historical087 && !historical091 && !historical092 && !historical093 && !historical094)) {
+const historical095 = process.argv.length === 3 && process.argv[2] === "--historical-095";
+if (process.argv.length > 3 || (process.argv.length === 3 && !historical085 && !historical086 && !historical087 && !historical091 && !historical092 && !historical093 && !historical094 && !historical095)) {
   throw new Error("DATABASE_FIXTURE_PHASE_INVALID");
 }
-const requiredSchemaVersion = historical085 ? "202610220085" : historical086 ? "202610230086" : historical087 ? "202610240087" : historical091 ? "202610250091" : historical092 ? "202610250092" : historical093 ? "202610250093" : historical094 ? "202610250094" : "202610250095";
+const requiredSchemaVersion = historical085 ? "202610220085" : historical086 ? "202610230086" : historical087 ? "202610240087" : historical091 ? "202610250091" : historical092 ? "202610250092" : historical093 ? "202610250093" : historical094 ? "202610250094" : historical095 ? "202610250095" : "202610250096";
 const phaseProbe = spawnSync("docker", ["exec", "-i", "supabase_db_applypack", "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"], {
   encoding: "utf8", input: `do $$ begin
     if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '${requiredSchemaVersion}'
@@ -23,7 +24,7 @@ const phaseProbe = spawnSync("docker", ["exec", "-i", "supabase_db_applypack", "
 if (phaseProbe.error || phaseProbe.status !== 0) throw new Error("DATABASE_FIXTURE_SCHEMA_PHASE_MISMATCH");
 const fixtures = !historical085 && !historical086 ? [
   "../tests/integration/one-off-service-retention.sql",
-  ...(!historical087 ? ["../tests/integration/service-retention-cleanup.sql", "../tests/integration/confirmed-intake.sql", "../tests/integration/reviewed-commute.sql", "../tests/integration/material-draft-pair-workflow.sql", "../tests/integration/chunk5-materials-delivery.sql", ...(!historical091 ? ["../tests/integration/material-rule-revalidation.sql", ...(!historical092 ? ["../tests/integration/source-aware-document-acceptance.sql", ...(!historical093 ? ["../tests/integration/material-draft-stage-claiming.sql", ...(!historical094 ? ["../tests/integration/reference-aware-draft-delivery.sql"] : [])] : [])] : [])] : [])] : []),
+  ...(!historical087 ? ["../tests/integration/service-retention-cleanup.sql", "../tests/integration/confirmed-intake.sql", "../tests/integration/reviewed-commute.sql", "../tests/integration/material-draft-pair-workflow.sql", "../tests/integration/chunk5-materials-delivery.sql", ...(!historical091 ? ["../tests/integration/material-rule-revalidation.sql", ...(!historical092 ? ["../tests/integration/source-aware-document-acceptance.sql", ...(!historical093 ? ["../tests/integration/material-draft-stage-claiming.sql", ...(!historical094 ? ["../tests/integration/reference-aware-draft-delivery.sql", ...(!historical095 ? ["../tests/integration/service-error-contract-and-triage.sql"] : [])] : [])] : [])] : [])] : [])] : []),
 ] : [
   "../tests/integration/unpaid-source-retention.sql",
   "../tests/integration/chunk1-foundation.sql",
