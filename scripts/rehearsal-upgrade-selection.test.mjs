@@ -64,6 +64,18 @@ test("the existing database required check cannot succeed without every partitio
   assert(gate.includes('&& test "$RESEARCH_RESULT" = success'));
 });
 
+test("the actual research journey is isolated from generic integration and remains a required CI gate", () => {
+  const generic = read("../vitest.integration.config.mts");
+  assert.match(generic, /exclude:\s*\[\s*\/\/[^\n]*\n\s*"tests\/integration\/research-preparation-journey\.test\.ts",/u);
+  const isolated = read("../vitest.research-container.config.mjs");
+  assert(isolated.includes("include:['tests/integration/research-preparation-journey.test.ts']"));
+  const research = job("research-route-journey");
+  assert(research.includes("node scripts/run-research-postgres17.mjs"));
+  assert(!research.includes("continue-on-error") && !/^    if:/mu.test(research));
+  const runner = read("./run-research-postgres17.mjs");
+  assert(runner.includes("for(const scenario of ['QUALIFIED','LIMITED'])"));
+});
+
 test("selection stays outside upgrade assertions and all local cleanup and concurrency checks remain", () => {
   const source = read("./run-supabase-rehearsal-upgrade-test.mjs");
   assert(source.indexOf("selectRehearsalPredecessors(process.argv.slice(2))") < source.indexOf("let failure;"));

@@ -90,6 +90,8 @@ test('source preparation archives only committed allowlisted bytes and excludes 
   const extracted=readFileSync(join(prepared.workspace,'src/example.ts')),blob=git(['show','HEAD:src/example.ts']);
   assert(extracted.equals(blob),JSON.stringify({extractedHex:extracted.toString('hex'),blobHex:blob.toString('hex')}));assert(!extracted.toString('utf8').includes('uncommitted'));assert(!readdirSync(prepared.workspace).includes('.env.local'));
   assert.equal(prepared.migrationCount,1);assert.match(prepared.sql,/schema_migrations/u);assert(prepared.inputHashes.every(value=>/^[a-f0-9]{64}$/u.test(value.sha256)));
+  assert.deepEqual(readdirSync(join(prepared.workspace,'node_modules')),[]);
+  assert(!prepared.inputHashes.some(value=>value.path.startsWith('node_modules/')));
  }finally {
   const target=resolve(directory);assert(target.startsWith(base+sep)&&target.slice(base.length+1).startsWith('applypack-research-input-'));rmSync(target,{recursive:true,force:true});
  }

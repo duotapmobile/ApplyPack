@@ -64,6 +64,9 @@ export function prepareResearchPostgresInputs({execute=execFileSync, environment
   assert(Buffer.byteLength(sql)<16*1024*1024,'RESEARCH_SCHEMA_SIZE');
   const dependencies=realpathSync(join(root,'node_modules'));
   assert(statSync(dependencies).isDirectory(),'RESEARCH_DEPENDENCIES_MISSING');
+  // Docker cannot create a nested bind target inside the read-only source
+  // mount. Reserve an empty target after verifying every committed file.
+  mkdirSync(join(workspace,'node_modules'));
   const metadata={commit,schemaVersion:schema,migrationCount:migrationNames.length,sourceArchiveSha256:digest(readFileSync(archive)),inputHashes:hashes};
   writeFileSync(join(directory,'inputs.json'),JSON.stringify(metadata,null,2)+'\n');
   return {workspace,dependencies,directory,sql,...metadata};

@@ -8,7 +8,11 @@ export default defineConfig({
     include: ["tests/integration/**/*.test.ts"],
     // The approved launch uses structural validation, not an antivirus claim.
     // ClamAV is a separate explicit provider integration, never a skipped gate.
-    exclude: process.env.SCANNER_INTEGRATION === "true" ? [] : ["tests/integration/clamav.integration.test.ts"],
+    exclude: [
+      // Runs in the required isolated PostgreSQL job with both route scenarios.
+      "tests/integration/research-preparation-journey.test.ts",
+      ...(process.env.SCANNER_INTEGRATION === "true" ? [] : ["tests/integration/clamav.integration.test.ts"]),
+    ],
     setupFiles: ["./tests/setup.ts"],
   },
 });
