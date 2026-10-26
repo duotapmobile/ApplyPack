@@ -11,6 +11,7 @@ import { inspectDocxPackage, type ArtifactProvenance, type ClaimProvenanceEntry,
 import { DOCUMENT_REQUIREMENTS } from "./requirements";
 import { DRAFT_DOCX_GENERATOR_VERSION, DRAFT_DOCX_VERSIONS } from "./draft-format";
 import type { DraftReferenceSourceBinding } from "./draft-reference-source";
+import { assertBoundServiceRepairMember, type ServiceRepairBoundMember } from "./service-repair-source";
 export { DRAFT_DOCX_GENERATOR_VERSION, DRAFT_DOCX_VERSIONS } from "./draft-format";
 
 const MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document" as const;
@@ -233,14 +234,30 @@ function mappings(packet: DraftingEvidencePacket): RequirementMapping[] {
  * Callers must load these inputs from their exact encrypted server records. */
 export async function prepareDraftDocx(callerInput: Input, now = new Date()) {
   const input = structuredClone(callerInput);
+  ensure(Number.isFinite(now.getTime()) && Date.parse(input.source.validUntil) > now.getTime(), "EVIDENCE_EXPIRED");
+  return prepareBoundDocx(input);
+}
+
+/** The repair boundary proves the entire accepted union and explicit099 wording
+ * review. It does not make the original paid packet current. Only this selected
+ * artifact is constructed; unrelated DOCX/PDF/reference bytes are not generated. */
+export async function prepareServiceRepairDocx(member: ServiceRepairBoundMember) {
+  assertBoundServiceRepairMember(member);
+  const prepared = await prepareBoundDocx({ source: member.source, packet: member.packet }, [member.artifactType]);
+  const artifact = member.artifactType === "RESUME" ? prepared.resume : member.artifactType === "COVER_LETTER" ? prepared.coverLetter : prepared.referenceSheet;
+  ensure(artifact, "ARTIFACT_SCOPE_INVALID");
+  return { ...artifact, provenance: { ...artifact.provenance, serviceRepair: structuredClone(member.serviceRepair) } };
+}
+
+async function prepareBoundDocx(callerInput: Input, selected?: ArtifactType[]) {
+  const input = structuredClone(callerInput);
   const plans = sourcePlans(input), { source, packet } = input;
-  ensure(Number.isFinite(now.getTime()) && Date.parse(source.validUntil) > now.getTime(), "EVIDENCE_EXPIRED");
   const mapping = mappings(packet), target = packet.ownerEvidence.targetJob;
   const applicant = source.resume.header.find((claim) => claim.placement.endsWith(".displayName"))!.text;
   const buffers: Buffer[] = [];
   try {
     const result = {} as Record<ArtifactType, PreparedDraftDocxArtifact>;
-    const artifactTypes: ArtifactType[] = ["RESUME", "COVER_LETTER", ...(plans.REFERENCE_SHEET ? ["REFERENCE_SHEET" as const] : [])];
+    const artifactTypes: ArtifactType[] = selected ?? ["RESUME", "COVER_LETTER", ...(plans.REFERENCE_SHEET ? ["REFERENCE_SHEET" as const] : [])];
     for (const artifact of artifactTypes) {
       const rows = plans[artifact];
       ensure(rows, "ARTIFACT_SCOPE_INVALID");

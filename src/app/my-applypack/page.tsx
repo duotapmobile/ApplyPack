@@ -13,6 +13,7 @@ import { loadDeliveredMatchGroups, loadMaterialDeliveries } from "@/lib/material
 import { loadCustomerRetentionAccess } from "@/lib/materials/retention-access-server";
 import { PRIVATE_ACCESS_EXPIRED_MESSAGE, privateAccessExpired } from "@/lib/materials/retention-access";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const metadata: Metadata = { title: "My ApplyPack", robots: { index: false, follow: false } };
 
@@ -102,7 +103,7 @@ export default async function PortalPage() {
     if (!retention) throw new Error("customer_retention_access_unavailable");
     [releasePortal, materialDeliveries] = await Promise.all([
       loadDeliveredMatchGroups({ supabase, releases: releases || [], services: services || [], retention }),
-      loadMaterialDeliveries({ supabase, customerId: authData.user.id, retention }),
+      loadMaterialDeliveries({ supabase, customerId: authData.user.id, retention, admin: createSupabaseAdminClient() }),
     ]);
   } catch {
     portalDataUnavailable = true;

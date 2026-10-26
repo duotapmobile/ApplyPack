@@ -2,7 +2,7 @@
 
 Date: 2026-10-25
 
-Status: **PLANNED PRODUCT AND OPERATOR PROTOCOL — NOT IMPLEMENTED OR DEPLOYED.** This document defines the intended workflow. It does not establish that the current forms, database, generation pipeline, public terms, or support routes enforce it. Purchasing remains subject to the existing launch gates.
+Status: **SOURCE IMPLEMENTATION IN PROGRESS — NOT HOSTED-VERIFIED OR LAUNCH-READY.** This document defines the intended workflow. Implemented source components and their local checks are recorded in the [progress ledger](../launch/IMPLEMENTATION_PROGRESS_2026-10-25.md); they do not establish that the deployed forms, database, generation pipeline, public terms, or support routes enforce this complete protocol. Purchasing remains subject to the existing launch gates.
 
 Authority: [October 25 confirmed-intake and service-error amendment](../applypack/19_OCTOBER_25_CONFIRMED_INTAKE_AND_SERVICE_ERROR_AMENDMENT.md). Preserve the [one-off retention amendment](../applypack/18_OCTOBER_24_ONE_OFF_RETENTION_AMENDMENT.md), historical accepted terms, payment obligations, truth rules, and human approval requirements.
 
@@ -124,6 +124,8 @@ After confirmation, a requested fact change creates a new draft/version. Explain
 
 Generate private drafts only from the bound confirmed facts, current approved target-job evidence and approved instructions. Every substantive claim must be traceable to that evidence. Tailoring may select, order and accurately phrase relevant facts; it may not invent credentials, convert limited exposure into expertise, or change the customer's history to match a job.
 
+Use accessible employer application questions as additional job-specific evidence under the [employer-question protocol](EMPLOYER_APPLICATION_QUESTIONS.md). A question about handling competing deadlines can guide selection of the customer's confirmed scheduling experience. It does not establish that the customer has that experience or turn a question into a mandatory qualification. Record the exact job, question, source and any access limitation; never imply an unseen application was fully inspected. The owner reviews how these clues shaped the resume and cover letter before approval.
+
 The owner checks factual accuracy, appropriate coverage, job alignment, readability and the rendered document before delivery. A source upload or generated draft is not an approved deliverable. Preserve the approved model, artifact/revision identifiers, job target, confirmation version and approval record. Customer delivery occurs only after the required human approval; retrying generation must not bypass review or publish a new revision automatically.
 
 ## 6. Service-error triage
@@ -144,7 +146,7 @@ The customer identifies the delivered item, the incorrect passage/detail and the
 | The confirmed source is missing, ambiguous or conflicts with the artifact | Keep the case unresolved for evidence review. Do not invent an audit trail, automatically blame the customer, or label it a proven service error without support |
 | An attempted repair still contains the accepted service error | Reopen/continue the same case and correct the failed repair before declaring it resolved |
 
-Keep triage classifications clear: confirmed service error, customer-input/new-information change, editorial request, historical-contract remedy, or evidence investigation. The exact implementation schema remains to be designed. Record the reason and evidence references without putting resume content into routine logs or analytics. Explain the outcome plainly and without accusatory language.
+Keep triage classifications clear: confirmed service error, customer-input/new-information change, editorial request, historical-contract remedy, or evidence investigation. Forward096 supplies reporting and decision records; forward099 supplies scoped repair versions and immutable releases. Their presence does not activate the new terms or establish hosted acceptance. Record the reason and evidence references without putting resume content into routine logs or analytics. Explain the outcome plainly and without accusatory language.
 
 An account contact update for future communication is distinct from altering the confirmed content of a past paid pack. Receiving a customer report must not automatically change all stored facts, regenerate files, trigger delivery or create a refund.
 
@@ -189,4 +191,18 @@ Before marking this workflow implemented, demonstrate:
 - Historical terms and prospective terms coexist correctly; customer ownership, private access, retained evidence and minimal financial history are preserved.
 - Keyboard, screen-reader, zoom/reflow and physical-phone checks cover the full adaptive intake, review edits and error-report flow.
 
-Record source implementation, local/CI evidence, hosted sandbox end-to-end evidence and human operator acceptance separately. Until those stages are completed, the status remains **planned, not implemented**.
+Record source implementation, local/CI evidence, hosted sandbox end-to-end evidence and human operator acceptance separately. Until those stages are completed, the status remains **incomplete and not launch-ready**.
+
+## 10. Connected repair controls in the source candidate
+
+The source candidate connects the following owner steps. These are instructions for acceptance testing, not a claim that the deployed service is ready:
+
+1. Inspect the reported issue against the original confirmed evidence and delivered file. Record which original files actually contain a confirmed ApplyPack error.
+2. Open the accepted repair for the affected pack. The saved version binds the accepted scope and current evidence; it does not authorize file creation or delivery.
+3. Save corrected content for the selected files, or retain the original content when only rendering needs repair. Keep unrelated content and original customer facts unchanged.
+4. Review every statement and its evidence. Changes require a new version and fresh checks. A saved correction alone does not approve its wording.
+5. Explicitly create the corrected files after wording review. Only the selected files are prepared. If a response is uncertain, use the saved-result check; absence of a registration receipt does not establish that an upload never happened.
+6. Preview the prepared files, record visual approval, and choose the separate Send action. A successful earlier step never automatically approves or sends a file. Check uncertain approval or Send results against their exact saved request.
+7. Verify that the customer's portal shows the released replacement for each affected original, with its own access deadline. Unaffected files remain available under their existing rights. An expired replacement is unavailable individually and does not restore the defective original or hide an active companion file. An already delivered repair remains available while a later repair is being prepared, subject to current access and consent.
+
+Customer feedback on a failed repair and owner case resolution are a separate unfinished connection. Resolution must cover the complete accepted affected set and must not overwrite feedback received since the owner last reviewed the case. The pending forward102 check addresses that race. Keep the case open until that connection and the full delivery journey are verified. New v4 terms remain inactive.

@@ -9,6 +9,7 @@ import { decryptSensitivePayload, sensitivePayloadConfiguration, sensitivePayloa
 import { draftReferenceBindingSchema, readDraftReferenceSources, type DraftReferenceInput } from "./draft-reference-source";
 import { bindDraftReferenceMetadata, draftReferenceMetadataSchema, type DraftReferenceMetadata } from "./drafting-evidence-references";
 import type { DraftingEvidencePacket } from "./drafting-evidence";
+import { assertBoundServiceRepairMember, assertServiceRepairReviewMember, type ServiceRepairBoundMember, type ServiceRepairReviewMember } from "./service-repair-source";
 
 type Admin = SupabaseClient<Database>;
 const uuid = z.uuid(), hash = z.string().regex(/^[a-f0-9]{64}$/), time = z.iso.datetime({ offset: true });
@@ -60,6 +61,30 @@ export async function loadDraftReferenceMetadata(admin: Admin, rawIds: readonly 
  * and must clear each in finally. Optimistic re-reads do not replace the DB CAS. */
 export async function readConfirmedDraftReferences(admin: Admin, raw: DraftReferenceReadRequest, external: AbortSignal,
   options: { now?: () => Date } = {}): Promise<DraftReferenceInput[]> {
+  return readReferences(admin, raw, external, options);
+}
+
+/** Only a member bound by the complete current099 repair inspection can use
+ * historical paid scope. Consent, record version and ACTIVE payload checks are
+ * still current; the repair caller rechecks its DB context around this read. */
+export async function readServiceRepairReferences(admin: Admin, member: ServiceRepairBoundMember, external: AbortSignal,
+  options: { now?: () => Date } = {}): Promise<DraftReferenceInput[]> {
+  assertBoundServiceRepairMember(member); ensure(member.artifactType === "REFERENCE_SHEET", "REPAIR_SCOPE_INVALID");
+  const request = draftReferenceRequest(member.packet); ensure(request, "REPAIR_SCOPE_INVALID");
+  return readReferences(admin, request, external, options, { kind: "RENDER", member });
+}
+
+/** Private owner review uses a distinct read-only capability. It cannot grant
+ * the lease or recorded wording review required by the rendering reader. */
+export async function readServiceRepairReviewReferences(admin: Admin, member: ServiceRepairReviewMember, external: AbortSignal,
+  options: { now?: () => Date } = {}): Promise<DraftReferenceInput[]> {
+  assertServiceRepairReviewMember(member); ensure(member.artifactType === "REFERENCE_SHEET", "REPAIR_SCOPE_INVALID");
+  const request = draftReferenceRequest(member.packet); ensure(request, "REPAIR_SCOPE_INVALID");
+  return readReferences(admin, request, external, options, { kind: "REVIEW", member });
+}
+
+async function readReferences(admin: Admin, raw: DraftReferenceReadRequest, external: AbortSignal,
+  options: { now?: () => Date }, repair?: { kind: "RENDER"; member: ServiceRepairBoundMember } | { kind: "REVIEW"; member: ServiceRepairReviewMember }): Promise<DraftReferenceInput[]> {
   const request = parse(requestedSchema, raw), now = options.now ?? (() => new Date());
   const ids = request.bindings.map((binding) => binding.permissionId);
   ensure(new Set(ids).size === ids.length, "INVALID");
@@ -71,6 +96,14 @@ export async function readConfirmedDraftReferences(admin: Admin, raw: DraftRefer
   const timer = setTimeout(abort, 45_000), signal = controller.signal;
   const data = <T,>(query: PromiseLike<{ data: T; error: unknown }>) => result(query, signal);
   async function scope() {
+    if (repair) {
+      if (repair.kind === "RENDER") {
+        assertBoundServiceRepairMember(repair.member);
+        return { repair: repair.member.serviceRepair, original: repair.member.original, request };
+      }
+      assertServiceRepairReviewMember(repair.member);
+      return { repair: repair.member.reviewBinding, original: repair.member.original, request };
+    }
     const line = parse(z.object({ id: uuid, purchase_id: uuid, active_revision: z.number().int().positive(), selected_reference_sheet: z.literal(true),
       fulfillment: z.enum(["PAID", "GENERATING", "HUMAN_REVIEW", "READY_TO_RELEASE"]) }).strict(),
     await data(admin.from("ap_material_lines").select("id,purchase_id,active_revision,selected_reference_sheet,fulfillment").eq("id", request.materialLineId).abortSignal(signal).single()));

@@ -7,6 +7,9 @@ import { publicMaterialState } from "@/lib/materials/contract";
 import { isSupportedDocumentGeneratorVersion } from "@/lib/documents/requirements";
 import { privateAccessExpired, searchActionsExpired, type CustomerRetentionAccess } from "./retention-access";
 import type { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database.types";
+import { overlayCustomerRepairDeliveries } from "./customer-repair-portal";
 
 type Supabase = NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>;
 
@@ -112,7 +115,7 @@ export async function loadDeliveredMatchGroups(input: {
   return { groups, jobs };
 }
 
-export async function loadMaterialDeliveries(input: { supabase: Supabase; customerId: string; retention: CustomerRetentionAccess }) {
+export async function loadMaterialDeliveries(input: { supabase: Supabase; customerId: string; retention: CustomerRetentionAccess; admin?: SupabaseClient<Database> | null }) {
   const purchasesResult = await input.supabase.from("ap_material_purchases")
     .select("id").eq("customer_id", input.customerId).order("created_at", { ascending: false });
   if (purchasesResult.error) throw new Error("material_purchases_unavailable");
@@ -177,7 +180,7 @@ export async function loadMaterialDeliveries(input: { supabase: Supabase; custom
     const job = Array.isArray(match.job) ? match.job[0] : match.job;
     return [match.id, job];
   }));
-  return [...activeLines.map((line) => {
+  const deliveries = [...activeLines.map((line) => {
     const revision = currentRevisions.find((candidate) => candidate.line_id === line.id && Number(candidate.version) === Number(line.active_revision));
     const snapshot = revision?.job_snapshot_id ? snapshots.get(revision.job_snapshot_id) : null;
     const legacyJob = legacyMatches.get(line.delivered_match_id);
@@ -234,6 +237,9 @@ export async function loadMaterialDeliveries(input: { supabase: Supabase; custom
       artifacts: lineArtifacts,
     } as MaterialDeliveryView;
   }), ...expiredLines];
+  if (!deliveries.some((line) => line.artifacts.length)) return deliveries;
+  if (!input.admin) throw new Error("customer_material_delivery_unavailable");
+  return overlayCustomerRepairDeliveries(input.admin, input.customerId, deliveries);
 }
 
 function jsonObject(value: unknown): Record<string, unknown> {

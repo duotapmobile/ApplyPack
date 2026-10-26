@@ -11,7 +11,9 @@ const mocks = vi.hoisted(() => ({ decrypt: vi.fn() }));
 vi.mock("@/lib/security/remote-kms", () => ({ remoteKmsAdapter: () => ({}) }));
 vi.mock("@/lib/security/sensitive-payload", () => ({ decryptSensitivePayload: mocks.decrypt,
   sensitivePayloadConfiguration: () => ({ enabled: true }), sensitivePayloadEncryptionReady: () => true }));
-import { draftReferenceRequest, readConfirmedDraftReferences } from "@/lib/documents/draft-owner-references";
+import { draftReferenceRequest, readConfirmedDraftReferences, readServiceRepairReferences, readServiceRepairReviewReferences } from "@/lib/documents/draft-owner-references";
+import { bindServiceRepairRenderSource, readServiceRepairSourceForReview, type ServiceRepairBoundMember } from "@/lib/documents/service-repair-source";
+import { repairFixtureNow, serviceRepairRenderFixture } from "../fixtures/service-repair-render";
 const other = "79000000-0000-4000-8000-000000009999";
 type Call = { table: string; columns: string; signal?: AbortSignal; single: boolean; predicates: ((row: Record<string, unknown>) => boolean)[]; limit: number };
 function database(count: 1 | 2 | 3 = 1) {
@@ -45,6 +47,65 @@ function database(count: 1 | 2 | 3 = 1) {
   return { f, tables, calls, buffers, overrides, admin, request, read };
 }
 beforeEach(() => vi.clearAllMocks()); afterEach(() => vi.useRealTimers());
+function repairReferenceMember() {
+  const f = serviceRepairRenderFixture("SOURCE_PRESERVING_RERENDER"); f.original.artifactType = "REFERENCE_SHEET";
+  f.inspection.version.claim_review_metadata = [{ originalFileVersionId: f.original.fileVersionId, renderSourceSha256: f.prior.renderSourceSha256,
+    claims: f.prior.ownerReviewClaims.filter((claim) => claim.placement.startsWith("referenceSheet.")).map((claim) => ({
+      claimId: claim.claimId, placement: claim.placement, wordingSha256: claim.wordingSha256, decision: "APPROVED", kind: claim.kind,
+      qualification: claim.qualification, factRefs: claim.factRefs, jobEvidenceIds: claim.jobEvidenceIds, referencePermissionIds: claim.referencePermissionIds,
+      ...(claim.kind === "REFERENCE_PERMISSION" ? { referenceBinding: claim.referenceBinding } : {}),
+    })) }];
+  return bindServiceRepairRenderSource({ ...f.identity, inspection: f.inspection, ...f.evidence() }, repairFixtureNow).members[0];
+}
+describe("099 historical selected reference scope", () => {
+  it("reads current reference consent with review-only authority without granting render authority", async () => {
+    const d = database(3), f = serviceRepairRenderFixture("SOURCE_PRESERVING_RERENDER"); f.original.artifactType = "REFERENCE_SHEET";
+    Object.assign(f.inspection.version, { claim_review_encrypted_payload_id: null, claim_review_sha256: null,
+      claim_review_metadata: null, claims_reviewed_by: null, claims_reviewed_at: null });
+    const member = readServiceRepairSourceForReview({ ...f.identity, inspection: f.inspection, ...f.evidence() }, repairFixtureNow).members[0];
+    await expect(readServiceRepairReferences(d.admin, member as unknown as ServiceRepairBoundMember, new AbortController().signal)).rejects.toThrow("MEMBER_UNBOUND");
+    await expect(readServiceRepairReviewReferences(d.admin, structuredClone(member), new AbortController().signal)).rejects.toThrow("REVIEW_MEMBER_UNBOUND");
+    const values = await readServiceRepairReviewReferences(d.admin, member, new AbortController().signal, { now: () => repairFixtureNow });
+    expect(values).toHaveLength(3); values.forEach(value => value.plaintext.fill(0));
+    d.tables.ap_reference_permissions[0].revoked_at = repairFixtureNow.toISOString(); mocks.decrypt.mockClear();
+    await expect(readServiceRepairReviewReferences(d.admin, member, new AbortController().signal, { now: () => repairFixtureNow })).rejects.toThrow();
+    expect(mocks.decrypt).not.toHaveBeenCalled();
+  });
+  it("keeps ordinary expired paid scope closed while a genuinely bound repair reads exact still-consented references", async () => {
+    const d = database(3), member = repairReferenceMember();
+    await expect(readConfirmedDraftReferences(d.admin, d.request, new AbortController().signal, { now: () => repairFixtureNow })).rejects.toThrow("SCOPE_MISMATCH");
+    expect(mocks.decrypt).not.toHaveBeenCalled(); d.calls.length = 0;
+    const values = await readServiceRepairReferences(d.admin, member, new AbortController().signal, { now: () => repairFixtureNow });
+    expect(values.map((row) => row.permissionId)).toEqual(d.request.bindings.map((row) => row.permissionId));
+    expect(d.calls.some((call) => call.table.startsWith("ap_material_"))).toBe(false);
+    expect(d.calls.filter((call) => call.table === "ap_reference_permissions")).toHaveLength(2);
+    values.forEach((value) => value.plaintext.fill(0));
+  });
+  it("does not permit a cloned authority or an unaffected cover letter to decrypt references", async () => {
+    const d = database(3), member = repairReferenceMember();
+    await expect(readServiceRepairReferences(d.admin, structuredClone(member), new AbortController().signal)).rejects.toThrow("MEMBER_UNBOUND");
+    const f = serviceRepairRenderFixture("SOURCE_PRESERVING_RERENDER"), letter = bindServiceRepairRenderSource({ ...f.identity, inspection: f.inspection, ...f.evidence() }, repairFixtureNow).members[0];
+    await expect(readServiceRepairReferences(d.admin, letter, new AbortController().signal)).rejects.toThrow("REPAIR_SCOPE_INVALID");
+    expect(d.calls).toHaveLength(0); expect(mocks.decrypt).not.toHaveBeenCalled();
+  });
+  it("still denies revoked permission and a replaced reference version before decrypt", async () => {
+    for (const table of ["ap_reference_permissions", "ap_reference_records"]) {
+      const d = database(3), member = repairReferenceMember();
+      d.tables[table][0][table === "ap_reference_permissions" ? "revoked_at" : "current_version"] = table === "ap_reference_permissions" ? repairFixtureNow.toISOString() : 2;
+      await expect(readServiceRepairReferences(d.admin, member, new AbortController().signal, { now: () => repairFixtureNow })).rejects.toThrow();
+    }
+    expect(mocks.decrypt).not.toHaveBeenCalled();
+  });
+  it("clears all plaintext when repair consent changes during KMS", async () => {
+    const d = database(3), member = repairReferenceMember(); let finish!: (bytes: Buffer) => void;
+    mocks.decrypt.mockImplementationOnce(() => new Promise<Buffer>((resolve) => { finish = resolve; }));
+    const pending = readServiceRepairReferences(d.admin, member, new AbortController().signal, { now: () => repairFixtureNow });
+    await vi.waitFor(() => expect(mocks.decrypt).toHaveBeenCalledOnce()); d.tables.ap_reference_permissions[0].revoked_at = repairFixtureNow.toISOString();
+    const first = Buffer.from(d.f.references[0].plaintext); finish(first);
+    await expect(pending).rejects.toThrow("DRAFT_OWNER_REFERENCES_INVALID"); expect(first.every((value) => value === 0)).toBe(true);
+    expect(d.buffers.every((bytes) => bytes.every((value) => value === 0))).toBe(true);
+  });
+});
 describe("private reference records for the exact paid draft", () => {
   it.each([1, 2, 3] as const)("reads exactly %s selected references with current consent and purpose-bound encryption", async (count) => {
     const d = database(count), records = await d.read();

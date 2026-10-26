@@ -4,6 +4,7 @@ import type { createOwnerServiceErrors } from "@/lib/materials/service-error-ser
 import type { createServiceErrorEvidenceReader } from "@/lib/materials/service-error-evidence";
 import type { ServiceErrorDecision } from "@/lib/materials/service-error-contract";
 import { matchesServiceErrorDecision } from "@/lib/materials/service-error-client";
+import { ServiceRepairWorkspace } from "./service-repair-workspace";
 import styles from "./draft-owner-workspace.module.css";
 type Inspection = Awaited<ReturnType<ReturnType<typeof createOwnerServiceErrors>["inspect"]>>;
 type File = Awaited<ReturnType<ReturnType<typeof createServiceErrorEvidenceReader>>>;
@@ -80,6 +81,11 @@ export function ServiceErrorReview({ caseId }: { caseId: string }) {
         {classification === "CONFIRMED_SERVICE_ERROR" && <label><input type="checkbox" checked={affected.includes(file.fileVersionId)} disabled={busy || Boolean(pending) || acceptedIds.has(file.fileVersionId)} onChange={() => setAffected(toggle(affected, file.fileVersionId))} />{acceptedIds.has(file.fileVersionId) ? "This file already has an unfinished accepted repair" : "This file is actually affected and needs repair"}</label>}
       </section>)}
       {detail.inspection.decisionBodies.map(({ receipt, decision }) => <section className={styles.section} key={receipt.decisionId}><h3>Recorded decision</h3><p>{labels[decision.classification as Classification] ?? "Original contract remedy"}</p><p>{decision.explanation}</p></section>)}
+      {[...new Set(detail.files.filter(file => acceptedIds.has(file.fileVersionId)).map(file => file.materialLineId))].filter(Boolean).map(materialLineId => {
+        const file = detail.files.find(file => file.materialLineId === materialLineId)!;
+        return <ServiceRepairWorkspace key={materialLineId} caseId={caseId} materialLineId={materialLineId}
+          title={`${file.evidence.targetJob.company} — ${file.evidence.targetJob.title}`} />;
+      })}
       {report?.state === "OPEN" && <form onSubmit={(event) => { event.preventDefault(); if (busy || pending) return;
         const evidence = detail.files.map((file) => { const selected = facts[file.fileVersionId] ?? []; return { artifactId: file.artifactId, fileVersionId: file.fileVersionId, releaseId: file.releaseId,
           sourceSnapshotId: file.evidence.snapshotId, sourceFactIds: selected, documentVersionIds: [...new Set(file.evidence.facts.filter((fact) => selected.includes(fact.id)).flatMap((fact) => fact.document_version_id ? [fact.document_version_id] : []))] }; });

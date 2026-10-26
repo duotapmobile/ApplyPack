@@ -12,7 +12,7 @@ function fail(): never { throw new Error("draft_render_evidence_invalid"); }
 type Input = { source: DraftRenderSource; packet: DraftingEvidencePacket };
 type Ports = { render?: (input: DocumentRenderInput) => Promise<DocumentRenderResult>; now?: () => Date };
 
-function assertResult(result: DocumentRenderResult, expectation: DraftPdfExpectation, input: DocumentRenderInput) {
+export function assertDraftRenderResult(result: DocumentRenderResult, expectation: DraftPdfExpectation, input: DocumentRenderInput) {
   const receipt = result.draftPdf;
   if (!receipt || !result.searchablePdf.subarray(0, 5).equals(Buffer.from("%PDF-"))
     || result.searchablePdfSha256 !== hash(result.searchablePdf) || receipt.searchablePdfSha256 !== result.searchablePdfSha256
@@ -59,7 +59,7 @@ export async function prepareDraftRender(callerInput: Input, ports: Ports = {}) 
           result = { ...metadata, searchablePdf, pageImages };
         } finally { transferred.forEach((buffer) => buffer.fill(0)); }
       } finally { renderInput.docx.fill(0); }
-      fresh(); assertResult(result, expectation, renderInput);
+      fresh(); assertDraftRenderResult(result, expectation, renderInput);
       pair.push({ ...artifact, render: result, pdfFilename: artifact.filename.replace(/\.docx$/u, ".pdf"),
         qa: { packageQaSha256: artifact.inspection.packageQaSha256, pdf: result.draftPdf!, generatorVersion: prepared.generatorVersion },
         state: "OWNER_REVIEW_REQUIRED" as const, deliveryAuthorized: false as const });

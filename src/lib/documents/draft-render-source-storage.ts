@@ -50,12 +50,12 @@ function exact(value: unknown): string {
 
 
 /** Strict decoding shared by owner actions and the private read model. A digest alone is never a shape or factual approval. */
-export function readStoredDraftRenderSource(saved: { body: string; value: unknown }, sourceSha256: string, packet: DraftingEvidencePacket, now: () => Date) {
+export function readBoundDraftRenderEvidence(saved: { body: string; value: unknown }, sourceSha256: string, packet: DraftingEvidencePacket, now: () => Date) {
     const source = { ...parse(renderSourceSchema, saved.value, "SOURCE_INVALID"), renderSourceSha256: sourceSha256 };
     ensure(serializeDraftRenderSource(source) === saved.body && exact(source.expected) === exact(packet.expected)
       && source.packetSha256 === packet.packetSha256 && source.contactPayloadId === packet.binding.contactPayloadId && source.contactSha256 === packet.binding.contactSha256
       && exact(source.outputRules) === exact(packet.providerView.outputRules) && Date.parse(source.validUntil) === Date.parse(packet.validUntil)
-      && Date.parse(source.validUntil) > now().getTime() && Date.parse(source.finalVersionAt) <= now().getTime(), "SOURCE_STALE");
+      && Number.isFinite(now().getTime()) && Date.parse(source.finalVersionAt) <= now().getTime(), "SOURCE_STALE");
     const permissions = packet.binding.referencePermissions;
     ensure(!source.ownerReviewClaims.some((claim) => claim.origin === "OWNER_EDIT") || source.ownerEdit, "OWNER_EDIT_LINEAGE_MISSING");
     if (source.ownerEdit) ensure(source.ownerEdit.originalProposalSourceSha256 === source.proposalSourceSha256
@@ -96,3 +96,11 @@ export function readStoredDraftRenderSource(saved: { body: string; value: unknow
       && (claim.origin === "LOCAL_REFERENCE" || claim.kind !== "REFERENCE_PERMISSION" && claim.referencePermissionIds.length === 0)), "REFERENCE_CLAIM_INVALID");
     return source;
   }
+
+/** Ordinary paid drafting keeps its wall-clock freshness gate. Historical
+ * decoding alone never grants permission to render, upload, approve or send. */
+export function readStoredDraftRenderSource(saved: { body: string; value: unknown }, sourceSha256: string, packet: DraftingEvidencePacket, now: () => Date) {
+  const source = readBoundDraftRenderEvidence(saved, sourceSha256, packet, now);
+  ensure(Date.parse(source.validUntil) > now().getTime(), "SOURCE_STALE");
+  return source;
+}

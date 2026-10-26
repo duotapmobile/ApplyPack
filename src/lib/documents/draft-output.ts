@@ -69,13 +69,25 @@ function anchored(fact: ProviderDraftingFact) {
  * The exact wording and field-level evidence require a separate owner review
  * bound to this packet/source digest before the pair can be approved or sent. */
 export function validateDraftOutput(raw: unknown, evidence: DraftOutputEvidence, now = new Date(), changeRequest?: DraftChangeLineage) {
+  return validateOutput(raw, evidence, now, changeRequest, true);
+}
+
+/** Content validation against immutable historical evidence only. This does not
+ * refresh the packet or authorize generation. Scoped repairs separately require
+ * the current accepted099 scope, exact original bytes, review and worker lease. */
+export function validateRecordedDraftOutput(raw: unknown, evidence: DraftOutputEvidence, now = new Date(), changeRequest?: DraftChangeLineage) {
+  return validateOutput(raw, evidence, now, changeRequest, false);
+}
+
+function validateOutput(raw: unknown, evidence: DraftOutputEvidence, now: Date, changeRequest: DraftChangeLineage | undefined, requireCurrent: boolean) {
   try {
     ensure(Buffer.byteLength(JSON.stringify(raw), "utf8") <= 180_000, "TOO_LARGE");
     const parsed = draftOutputSchema.safeParse(raw);
     if (!parsed.success) throw new DraftOutputError("SHAPE_INVALID");
     ensure(hash.safeParse(evidence.packetSha256).success
       && canonicalSha256(evidence.providerView) === evidence.providerViewSha256, "EVIDENCE_BINDING_INVALID");
-    ensure(Number.isFinite(now.getTime()) && Date.parse(evidence.validUntil) > now.getTime(), "EVIDENCE_EXPIRED");
+    ensure(Number.isFinite(now.getTime()) && Number.isFinite(Date.parse(evidence.validUntil))
+      && (!requireCurrent || Date.parse(evidence.validUntil) > now.getTime()), "EVIDENCE_EXPIRED");
     const draft = parsed.data;
     const facts = new Map(evidence.providerView.facts.map((fact) => [fact.id, fact]));
     const atoms = new Map(evidence.providerView.facts.flatMap((fact) => fact.atoms.map((atom) => [atom.id, { atom, fact }] as const)));

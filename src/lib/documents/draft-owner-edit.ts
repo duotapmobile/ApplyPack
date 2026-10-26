@@ -32,6 +32,17 @@ const isProse = (claim: DraftRenderText) => claim.origin === "MODEL_PROPOSAL" ||
  * dates, education credentials, contact or reference fields. Source pointers are
  * still not factual approval; the entire successor needs a new wording review. */
 export function buildDraftOwnerEditModel(source: DraftRenderSource, packet: DraftingEvidencePacket, now = new Date()): DraftOwnerEditModel {
+  return buildEditModel(source, packet, now, true);
+}
+
+/** Displays original recorded wording for a scoped repair. Historical wording
+ * may itself contain the error being investigated; new wording must pass the
+ * full content validator before storage. This grants no repair authority. */
+export function buildRecordedDraftOwnerEditModel(source: DraftRenderSource, packet: DraftingEvidencePacket): DraftOwnerEditModel {
+  return buildEditModel(source, packet, new Date(), false);
+}
+
+function buildEditModel(source: DraftRenderSource, packet: DraftingEvidencePacket, now: Date, requireCurrent: boolean): DraftOwnerEditModel {
   serializeDraftRenderSource(source); serializeDraftingEvidencePacket(packet);
   ensure(source.packetSha256 === packet.packetSha256 && exactOwnerEditJson(source.expected) === exactOwnerEditJson(packet.expected), "PACKET_MISMATCH");
   const facts = packet.providerView.facts, atoms = facts.flatMap((fact) => fact.atoms.map((atom) => ({ fact, atom })));
@@ -55,7 +66,8 @@ export function buildDraftOwnerEditModel(source: DraftRenderSource, packet: Draf
     sections: source.resume.sections.map((section) => ({ anchorFactId: section.anchorFactId, bullets: section.bullets.map(convert) })),
     educationFactIds: source.resume.education.map((section) => section.anchorFactId),
   }, coverLetter: { body: source.coverLetter.body.map((sentences) => ({ sentences: sentences.map(convert) })) } };
-  validateDraftOutput(output, packet, now);
+  if (requireCurrent) validateDraftOutput(output, packet, now);
+  else draftOutputSchema.parse(output);
   return { output, sections: source.resume.sections.map((section) => ({ anchorFactId: section.anchorFactId, label: section.header.map((part) => part.text).join(" · ") })),
     sources: atoms.filter(({ atom }) => typeof atom.value === "string" && atom.value.trim()).map(({ fact, atom }) => ({ id: atom.id,
       factId: fact.id, parentFactId: fact.parentFactId, label: `${label(fact.kind)} · ${label(field(atom.path))}`, value: String(atom.value),
