@@ -194,6 +194,167 @@ export type Database = {
           },
         ]
       }
+      ap_archive_fence_function_contracts: {
+        Row: {
+          definition_sha256: string
+          signature: string
+        }
+        Insert: {
+          definition_sha256: string
+          signature: string
+        }
+        Update: {
+          definition_sha256?: string
+          signature?: string
+        }
+        Relationships: []
+      }
+      ap_archive_fence_relations: {
+        Row: {
+          schema_name: unknown
+          table_name: unknown
+        }
+        Insert: {
+          schema_name: unknown
+          table_name: unknown
+        }
+        Update: {
+          schema_name?: unknown
+          table_name?: unknown
+        }
+        Relationships: []
+      }
+      ap_archive_lifecycle_configuration: {
+        Row: {
+          enabled: boolean
+          singleton: boolean
+          writer_protocol: string
+        }
+        Insert: {
+          enabled?: boolean
+          singleton?: boolean
+          writer_protocol?: string
+        }
+        Update: {
+          enabled?: boolean
+          singleton?: boolean
+          writer_protocol?: string
+        }
+        Relationships: []
+      }
+      ap_archive_retention_runs: {
+        Row: {
+          completion_receipt: Json | null
+          finished_at: string | null
+          id: string
+          inventory_sha256: string | null
+          plan_sha256: string | null
+          proof_sha256: string | null
+          release_sha: string
+          started_at: string
+          state: string
+        }
+        Insert: {
+          completion_receipt?: Json | null
+          finished_at?: string | null
+          id: string
+          inventory_sha256?: string | null
+          plan_sha256?: string | null
+          proof_sha256?: string | null
+          release_sha: string
+          started_at?: string
+          state?: string
+        }
+        Update: {
+          completion_receipt?: Json | null
+          finished_at?: string | null
+          id?: string
+          inventory_sha256?: string | null
+          plan_sha256?: string | null
+          proof_sha256?: string | null
+          release_sha?: string
+          started_at?: string
+          state?: string
+        }
+        Relationships: []
+      }
+      ap_archive_retention_versions: {
+        Row: {
+          archive_key: string
+          dispatched_at: string | null
+          identity_sha256: string
+          observation_sha256: string | null
+          observed_at: string | null
+          run_id: string
+          state: string
+          version_id: string
+        }
+        Insert: {
+          archive_key: string
+          dispatched_at?: string | null
+          identity_sha256: string
+          observation_sha256?: string | null
+          observed_at?: string | null
+          run_id: string
+          state?: string
+          version_id: string
+        }
+        Update: {
+          archive_key?: string
+          dispatched_at?: string | null
+          identity_sha256?: string
+          observation_sha256?: string | null
+          observed_at?: string | null
+          run_id?: string
+          state?: string
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_archive_retention_versions_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "ap_archive_retention_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_archive_writer_runs: {
+        Row: {
+          completion_receipt: Json | null
+          finished_at: string | null
+          id: string
+          kind: string
+          provider_dispatched: boolean
+          release_sha: string
+          result_sha256: string | null
+          started_at: string
+          state: string
+        }
+        Insert: {
+          completion_receipt?: Json | null
+          finished_at?: string | null
+          id: string
+          kind: string
+          provider_dispatched?: boolean
+          release_sha: string
+          result_sha256?: string | null
+          started_at?: string
+          state?: string
+        }
+        Update: {
+          completion_receipt?: Json | null
+          finished_at?: string | null
+          id?: string
+          kind?: string
+          provider_dispatched?: boolean
+          release_sha?: string
+          result_sha256?: string | null
+          started_at?: string
+          state?: string
+        }
+        Relationships: []
+      }
       ap_artifact_quality_reviews: {
         Row: {
           arial_font_sha256: string | null
@@ -13241,10 +13402,19 @@ export type Database = {
         }
         Returns: string
       }
+      ap_archive_fence_active: { Args: never; Returns: boolean }
+      ap_archive_fence_coverage_current: { Args: never; Returns: boolean }
+      ap_archive_retention_status: { Args: { p_id: string }; Returns: Json }
       ap_archive_source_attempt: {
         Args: { p_adapter_version: string; p_postings: Json; p_run_id: string }
         Returns: undefined
       }
+      ap_archive_writer_receipt_sha256: {
+        Args: { p_receipt: Json }
+        Returns: string
+      }
+      ap_archive_writer_status: { Args: { p_id: string }; Returns: Json }
+      ap_assert_archive_lifecycle: { Args: never; Returns: undefined }
       ap_assert_checkout_initiation_authorized: {
         Args: {
           p_authorization_id: string
@@ -13391,6 +13561,14 @@ export type Database = {
       }
       ap_authorize_unpaid_source_delete: {
         Args: { p_document_id: string; p_lease_token: string }
+        Returns: Json
+      }
+      ap_begin_archive_retention: {
+        Args: { p_id: string; p_release_sha: string }
+        Returns: Json
+      }
+      ap_begin_archive_writer: {
+        Args: { p_id: string; p_kind: string; p_release_sha: string }
         Returns: Json
       }
       ap_begin_authorized_material_checkout: {
@@ -14159,6 +14337,16 @@ export type Database = {
         }
         Returns: string
       }
+      ap_dispatch_archive_retention_version: {
+        Args: {
+          p_id: string
+          p_key: string
+          p_plan_sha256: string
+          p_version_id: string
+        }
+        Returns: Json
+      }
+      ap_dispatch_archive_writer: { Args: { p_id: string }; Returns: Json }
       ap_enqueue_board_job_recompute: {
         Args: { p_change_key: string; p_job_id: string; p_reason_code: string }
         Returns: string
@@ -14345,6 +14533,24 @@ export type Database = {
         Args: { p_email: string }
         Returns: string
       }
+      ap_finish_archive_retention: {
+        Args: {
+          p_cancel?: boolean
+          p_completion_receipt?: Json
+          p_id: string
+          p_plan_sha256: string
+        }
+        Returns: Json
+      }
+      ap_finish_archive_writer: {
+        Args: {
+          p_cancel?: boolean
+          p_completion_receipt?: Json
+          p_id: string
+          p_result_sha256: string
+        }
+        Returns: Json
+      }
       ap_finish_board_recompute_job: {
         Args: {
           p_error_code?: string
@@ -14445,6 +14651,7 @@ export type Database = {
         }
         Returns: string
       }
+      ap_latest_verified_database_archive: { Args: never; Returns: Json }
       ap_legacy_board_has_access: {
         Args: { p_customer_id: string; p_now?: string }
         Returns: boolean
@@ -14577,6 +14784,15 @@ export type Database = {
         Args: { p_customer_id: string; p_material_line_id: string }
         Returns: Json
       }
+      ap_observe_archive_retention_absence: {
+        Args: {
+          p_id: string
+          p_key: string
+          p_observation_sha256: string
+          p_version_id: string
+        }
+        Returns: Json
+      }
       ap_observe_material_draft_response: {
         Args: {
           p_input_tokens: number
@@ -14657,6 +14873,16 @@ export type Database = {
           p_stable_normalized_job_id: string
         }
         Returns: string
+      }
+      ap_plan_archive_retention: {
+        Args: {
+          p_id: string
+          p_inventory_sha256: string
+          p_plan_sha256: string
+          p_proof_sha256: string
+          p_versions: Json
+        }
+        Returns: Json
       }
       ap_prepare_intake_confirmation: {
         Args: {
@@ -14739,6 +14965,7 @@ export type Database = {
         }
         Returns: string
       }
+      ap_protected_archive_schema_installed: { Args: never; Returns: boolean }
       ap_queue_manual_launch_canary_refund:
         | {
             Args: {
