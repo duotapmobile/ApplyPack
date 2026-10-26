@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database.types";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { isSameOriginRequest } from "@/lib/security/origin";
@@ -37,7 +39,7 @@ async function readInput(request: Request): Promise<unknown> {
 }
 function boundedClient(request: Request) {
   const signal = AbortSignal.any([request.signal, AbortSignal.timeout(30_000)]);
-  const admin = createSupabaseAdminClient({ signal }); if (!admin) throw new Error("research_unavailable");
+  const admin: SupabaseClient<Database> | null = createSupabaseAdminClient({ signal }); if (!admin) throw new Error("research_unavailable");
   return { admin, signal };
 }
 export async function GET(request: Request) {

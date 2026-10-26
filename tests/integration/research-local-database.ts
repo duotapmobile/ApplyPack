@@ -2,6 +2,7 @@
 // disposable native PostgreSQL cluster. This is not hosted PostgREST proof.
 import { createClient } from "@supabase/supabase-js";
 import { researchLocalSql } from "./research-local-postgres";
+import { researchFixtureIdentity } from "../../scripts/lib/research-fixture-identity.mjs";
 const tables = new Set(["profiles", "ap_intake_snapshots", "ap_candidate_facts", "ap_feasibility_requests", "ap_research_preparations",
   "ap_research_preparation_sources", "ap_research_preparation_configuration", "ap_source_authorization_heads", "ap_source_authorizations",
   "ap_feasibility_source_configurations", "ap_feasibility_coverage_plans", "ap_feasibility_coverage_cells", "ap_inventory_versions", "ap_inventory_members",
@@ -57,11 +58,7 @@ function predicate(params: URLSearchParams) {
   return clauses.length ? ` where ${clauses.join(" and ")}` : "";
 }
 export async function createResearchLocalDatabase() {
-  const port = process.env.AP_RESEARCH_TEST_PORT, binary = process.env.AP_RESEARCH_TEST_PSQL, marker = process.env.AP_RESEARCH_TEST_MARKER;
-  if (!port || !/^[1-9][0-9]{3,4}$/u.test(port) || Number(port) > 65535 || !binary?.endsWith("psql.exe") || !marker || !/^[a-f0-9]{32}$/u.test(marker)
-    || Object.keys(process.env).some(key => /^(PGHOST|PGPORT|PGSERVICE|PGDATABASE|PGUSER|PGPASSWORD|DATABASE_URL|SUPABASE_.*|NEXT_PUBLIC_SUPABASE_.*)$/u.test(key) && process.env[key])) {
-    throw new Error("local_research_database_environment_rejected");
-  }
+  const { port, marker } = researchFixtureIdentity(process.env, process.platform);
   async function sql(statement: string, privileged = false) {
     const command = `begin; set local statement_timeout='10s'; set local lock_timeout='2s'; ${privileged ? "" : "set local role service_role;"} ${statement}; commit;`;
     const rows = await researchLocalSql(Number(port), command);

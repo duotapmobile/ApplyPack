@@ -1,12 +1,13 @@
 import "server-only";
 import { z } from "zod";
-import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database.types";
 import { normalizeJob } from "@/lib/jobs/normalize";
 import type { RawJobPosting } from "@/lib/jobs/types";
 import { preparationStates } from "./research-preparation";
 import { parseListingRequirements } from "./listing-parser";
 
-type Admin = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
+type Admin = SupabaseClient<Database>;
 export type PreparedListing = { projectionId: string; company: string; title: string; listingUrl: string;
   applicationUrl: string; capturedText: string; observedAt: string; admitted: boolean; parserReviewRequired: boolean };
 export const preparedSourceStates = ["WAITING", "COMPLETE", "EMPTY", "PARTIAL", "FAILED", "RATE_LIMITED", "STALE", "SOURCE_CHANGED", "DISABLED"] as const;
@@ -65,6 +66,7 @@ export async function loadPreparationReview(admin: Admin, snapshotId: string, si
     ensure(!recheck.error && recheck.data === true); signal?.throwIfAborted();
     return { preparationId: prep.id, state: prep.state, reason: prep.reason, current: true, listings: [], sources: progress };
   }
+  ensure(prep.plan_id);
   const [projections, observations, plan] = await Promise.all([
     admin.from("job_source_listing_projections").select("id,run_id,listing_key").in("run_id", runIds).order("id").limit(101),
     admin.from("job_source_run_listings").select("run_id,listing_key,captured_listing,observed_at").in("run_id", runIds).limit(101),
@@ -80,7 +82,7 @@ export async function loadPreparationReview(admin: Admin, snapshotId: string, si
   const listings = projections.data.map(projection => {
     const observation = observations.data.find(row => row.run_id === projection.run_id && row.listing_key === projection.listing_key);
     ensure(observation);
-    const posting = observation.captured_listing as RawJobPosting, job = normalizeJob(posting);
+    const posting = observation.captured_listing as unknown as RawJobPosting, job = normalizeJob(posting);
     // Matching normalization deliberately flattens whitespace for hashing. The
     // reviewed source keeps its real line boundaries for evidence and parsing.
     const capturedText = typeof posting.description === "string" ? posting.description.normalize("NFKC").replace(/\0/gu, "").trim() : "";

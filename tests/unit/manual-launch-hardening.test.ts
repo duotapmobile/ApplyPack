@@ -277,6 +277,14 @@ describe("October 2 manual-launch hardening", () => {
         requiredMigrations: REQUIRED_LAUNCH_MIGRATIONS.filter((version) => version !== missing),
       })).toBe(false);
     }
+    // This predecessor is independent of the shared roster: a skipped099 must
+    // not pass merely because a future floor is present in the receipt.
+    expect(REQUIRED_LAUNCH_MIGRATIONS).toContain("202610250099");
+    expect(launchSchemaReadinessIsCurrent({
+      ready: true,
+      requiredSchemaVersion: REQUIRED_LAUNCH_SCHEMA_VERSION,
+      requiredMigrations: REQUIRED_LAUNCH_MIGRATIONS.filter((version) => version !== "202610250099"),
+    })).toBe(false);
 
     const priorMigration = source("supabase/migrations/202610040079_runtime_launch_schema_readiness.sql");
     const migration = source("supabase/migrations/202610040080_persistent_inventory_identity_guard.sql");

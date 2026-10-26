@@ -56,10 +56,12 @@ test("core retains every non-rehearsal database gate and actual current-schema f
 
 test("the existing database required check cannot succeed without every partition", () => {
   const gate = job("database");
-  assert(gate.includes("if: always()")); assert(gate.includes("needs: [database-core, database-upgrade]"));
+  assert(gate.includes("if: always()")); assert(gate.includes("needs: [database-core, database-upgrade, research-route-journey]"));
   assert(gate.includes("CORE_RESULT: ${{ needs.database-core.result }}"));
   assert(gate.includes("UPGRADE_RESULT: ${{ needs.database-upgrade.result }}"));
+  assert(gate.includes("RESEARCH_RESULT: ${{ needs.research-route-journey.result }}"));
   assert(gate.includes('test "$CORE_RESULT" = success && test "$UPGRADE_RESULT" = success'));
+  assert(gate.includes('&& test "$RESEARCH_RESULT" = success'));
 });
 
 test("selection stays outside upgrade assertions and all local cleanup and concurrency checks remain", () => {

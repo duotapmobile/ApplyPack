@@ -322,19 +322,51 @@ jobs:
           path: evidence/database-upgrade
           if-no-files-found: error
 
+  research-route-journey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Verify isolated route harness boundaries
+        run: node --test scripts/run-research-postgres17.test.mjs
+      - name: Actual qualified and limited research route journeys
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker --host unix:///var/run/docker.sock pull postgres:17-trixie@sha256:3518071376d0b6156b02e1db2747a78511b5b9dc3763cc79c506ebe2dc2ee71c
+          docker --host unix:///var/run/docker.sock pull node:22-bookworm-slim@sha256:ea11b74b986d520137cdef9a5346e447a00f275ecc4abc0055b7151226231e09
+          mkdir -p evidence/research-route-postgres17
+          git rev-parse HEAD > evidence/research-route-postgres17/commit.txt
+          node scripts/run-research-postgres17.mjs > evidence/research-route-postgres17/receipt.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: isolated-postgres17-research-routes
+          path: |
+            evidence/research-route-postgres17
+            evidence/research-route-pg17-*/inputs.json
+            evidence/research-route-pg17-*/*.log
+          if-no-files-found: warn
+
   # Retain the established required check name. A failed, skipped or cancelled
   # partition must never be hidden behind a successful current-schema job.
   database:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     if: always()
-    needs: [database-core, database-upgrade]
+    needs: [database-core, database-upgrade, research-route-journey]
     steps:
       - name: Require current schema and every historical upgrade
         env:
           CORE_RESULT: ${{ needs.database-core.result }}
           UPGRADE_RESULT: ${{ needs.database-upgrade.result }}
-        run: test "$CORE_RESULT" = success && test "$UPGRADE_RESULT" = success
+          RESEARCH_RESULT: ${{ needs.research-route-journey.result }}
+        run: test "$CORE_RESULT" = success && test "$UPGRADE_RESULT" = success && test "$RESEARCH_RESULT" = success
 
   document-render:
     runs-on: windows-latest

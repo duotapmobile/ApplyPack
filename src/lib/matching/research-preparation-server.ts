@@ -1,21 +1,23 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database.types";
 import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { projectSourceRun } from "@/lib/jobs/source-projection";
 import { processResearchPreparation, type PreparationPort, type PreparationClaim } from "./research-preparation";
 
-type Admin = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
+type Admin = SupabaseClient<Database>;
 const sourceSchema = z.object({ id: z.uuid(), schedule_id: z.uuid(), source_authorization_id: z.uuid(),
   authorization_head_revision: z.number().int().positive(), source_run_id: z.uuid().nullable() }).passthrough();
 function ensure(value: unknown): asserts value { if (!value) throw new Error("research_preparation_unconfirmed"); }
 
 export function createResearchPreparationPort(admin: Admin): PreparationPort {
-  async function rpc(name: string, args: Record<string, unknown>, signal: AbortSignal) {
-    signal.throwIfAborted(); const result = await admin.rpc(name, args).abortSignal(signal);
+  async function data(signal: AbortSignal, query: () => PromiseLike<{ data: unknown; error: unknown }>) {
+    signal.throwIfAborted(); const result = await query();
     signal.throwIfAborted(); ensure(!result.error); return result.data;
   }
   return {
-    claim: signal => rpc("ap_claim_research_preparation", {}, signal),
+    claim: signal => data(signal, () => admin.rpc("ap_claim_research_preparation").abortSignal(signal)),
     async load(claim, signal) {
       const [snapshot, facts] = await Promise.all([
         admin.from("ap_intake_snapshots").select("*").eq("id", claim.snapshot_id).abortSignal(signal).maybeSingle(),
@@ -25,9 +27,9 @@ export function createResearchPreparationPort(admin: Admin): PreparationPort {
       return { snapshot: snapshot.data, facts: facts.data };
     },
     async prepare(claim, families, signal) {
-      z.uuid().parse(await rpc("ap_prepare_automatic_research", {
+      z.uuid().parse(await data(signal, () => admin.rpc("ap_prepare_automatic_research", {
         p_preparation_id: claim.id, p_lease_token: claim.lease_token, p_families: families,
-      }, signal));
+      }).abortSignal(signal)));
     },
     async collect(claim, signal) {
       const rows = await admin.from("ap_research_preparation_sources").select("id,schedule_id,source_authorization_id,authorization_head_revision,source_run_id")
@@ -50,14 +52,14 @@ export function createResearchPreparationPort(admin: Admin): PreparationPort {
         // Projection remains inactive/unverified. Only the owner can promote it.
         await projectSourceRun(admin, runId, { signal, maximumResults: 100 });
         signal.throwIfAborted();
-        const bound = z.uuid().parse(await rpc("ap_bind_prepared_research_run", {
+        const bound = z.uuid().parse(await data(signal, () => admin.rpc("ap_bind_prepared_research_run", {
           p_preparation_id: claim.id, p_lease_token: claim.lease_token, p_source_id: source.id, p_run_id: runId,
-        }, signal));
+        }).abortSignal(signal)));
         ensure(bound === runId);
       }
-      z.enum(["COLLECTING", "OWNER_REVIEW", "READY", "COMPLETE"]).parse(await rpc("ap_finish_research_preparation_check", {
+      z.enum(["COLLECTING", "OWNER_REVIEW", "READY", "COMPLETE"]).parse(await data(signal, () => admin.rpc("ap_finish_research_preparation_check", {
         p_preparation_id: claim.id, p_lease_token: claim.lease_token,
-      }, signal));
+      }).abortSignal(signal)));
     },
   };
 }

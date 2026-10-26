@@ -1,5 +1,6 @@
 import {describe,it,expect,vi} from "vitest";
 import {createSupabaseFeasibilityStore} from "@/lib/matching/supabase-feasibility-store";
+vi.mock("server-only", () => ({}));
 function fixture(){
  const tables:Record<string,Record<string,unknown>[]>={
  ap_intake_snapshots:[{id:"criteria",content_sha256:"hash"}],

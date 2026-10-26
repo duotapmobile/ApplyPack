@@ -8236,6 +8236,219 @@ export type Database = {
           },
         ]
       }
+      ap_research_preparation_configuration: {
+        Row: {
+          approved_by: string | null
+          configuration_ids: string[]
+          enabled: boolean
+          revision: number
+          singleton: boolean
+          updated_at: string
+        }
+        Insert: {
+          approved_by?: string | null
+          configuration_ids?: string[]
+          enabled?: boolean
+          revision?: number
+          singleton?: boolean
+          updated_at?: string
+        }
+        Update: {
+          approved_by?: string | null
+          configuration_ids?: string[]
+          enabled?: boolean
+          revision?: number
+          singleton?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_research_preparation_configuration_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_research_preparation_sources: {
+        Row: {
+          authorization_head_revision: number
+          configuration_id: string
+          created_at: string
+          customer_id: string | null
+          draft_id: string
+          id: string
+          preparation_id: string
+          schedule_id: string
+          snapshot_id: string
+          source_authorization_id: string
+          source_run_id: string | null
+        }
+        Insert: {
+          authorization_head_revision: number
+          configuration_id: string
+          created_at?: string
+          customer_id?: string | null
+          draft_id: string
+          id?: string
+          preparation_id: string
+          schedule_id: string
+          snapshot_id: string
+          source_authorization_id: string
+          source_run_id?: string | null
+        }
+        Update: {
+          authorization_head_revision?: number
+          configuration_id?: string
+          created_at?: string
+          customer_id?: string | null
+          draft_id?: string
+          id?: string
+          preparation_id?: string
+          schedule_id?: string
+          snapshot_id?: string
+          source_authorization_id?: string
+          source_run_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_research_preparation_sources_configuration_id_fkey"
+            columns: ["configuration_id"]
+            isOneToOne: false
+            referencedRelation: "ap_feasibility_source_configurations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_research_preparation_sources_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_research_preparation_sources_preparation_id_fkey"
+            columns: ["preparation_id"]
+            isOneToOne: false
+            referencedRelation: "ap_research_preparations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_research_preparation_sources_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "job_source_schedules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_research_preparation_sources_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_research_preparation_sources_source_authorization_id_fkey"
+            columns: ["source_authorization_id"]
+            isOneToOne: false
+            referencedRelation: "ap_source_authorizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_research_preparation_sources_source_run_id_fkey"
+            columns: ["source_run_id"]
+            isOneToOne: false
+            referencedRelation: "job_source_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_research_preparations: {
+        Row: {
+          created_at: string
+          customer_id: string | null
+          draft_id: string
+          id: string
+          lease_token: string | null
+          lease_until: string | null
+          next_check_at: string
+          plan_id: string | null
+          policy_revision: number | null
+          preparation_attempts: number
+          reason: string | null
+          request_id: string
+          snapshot_id: string
+          snapshot_sha256: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id?: string | null
+          draft_id: string
+          id?: string
+          lease_token?: string | null
+          lease_until?: string | null
+          next_check_at?: string
+          plan_id?: string | null
+          policy_revision?: number | null
+          preparation_attempts?: number
+          reason?: string | null
+          request_id: string
+          snapshot_id: string
+          snapshot_sha256: string
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string | null
+          draft_id?: string
+          id?: string
+          lease_token?: string | null
+          lease_until?: string | null
+          next_check_at?: string
+          plan_id?: string | null
+          policy_revision?: number | null
+          preparation_attempts?: number
+          reason?: string | null
+          request_id?: string
+          snapshot_id?: string
+          snapshot_sha256?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_research_preparations_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_research_preparations_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "ap_feasibility_coverage_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_research_preparations_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: true
+            referencedRelation: "ap_feasibility_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_research_preparations_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: true
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_research_rounds: {
         Row: {
           created_at: string
@@ -14024,6 +14237,10 @@ export type Database = {
       ap_archive_fence_active: { Args: never; Returns: boolean }
       ap_archive_fence_coverage_current: { Args: never; Returns: boolean }
       ap_archive_retention_status: { Args: { p_id: string }; Returns: Json }
+      ap_archive_snapshot_schema_supported: {
+        Args: { p_schema: string }
+        Returns: boolean
+      }
       ap_archive_source_attempt: {
         Args: { p_adapter_version: string; p_postings: Json; p_run_id: string }
         Returns: undefined
@@ -14088,6 +14305,10 @@ export type Database = {
           p_job_id: string
           p_provenance: Json
         }
+        Returns: undefined
+      }
+      ap_assert_research_snapshot_current: {
+        Args: { p_snapshot_id: string }
         Returns: undefined
       }
       ap_assert_service_repair_claims: {
@@ -14242,6 +14463,7 @@ export type Database = {
         Args: { p_document_id: string; p_lease_token: string }
         Returns: Json
       }
+      ap_automatic_research_schema_installed: { Args: never; Returns: boolean }
       ap_begin_archive_retention: {
         Args: { p_id: string; p_release_sha: string }
         Returns: Json
@@ -14483,6 +14705,15 @@ export type Database = {
         Args: { p_payment_attempt_id: string; p_release_sha: string }
         Returns: string
       }
+      ap_bind_prepared_research_run: {
+        Args: {
+          p_lease_token: string
+          p_preparation_id: string
+          p_run_id: string
+          p_source_id: string
+        }
+        Returns: string
+      }
       ap_board_has_access: {
         Args: { p_customer_id: string; p_now?: string }
         Returns: boolean
@@ -14662,6 +14893,33 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "ap_outbox_messages"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      ap_claim_research_preparation: {
+        Args: never
+        Returns: {
+          created_at: string
+          customer_id: string | null
+          draft_id: string
+          id: string
+          lease_token: string | null
+          lease_until: string | null
+          next_check_at: string
+          plan_id: string | null
+          policy_revision: number | null
+          preparation_attempts: number
+          reason: string | null
+          request_id: string
+          snapshot_id: string
+          snapshot_sha256: string
+          state: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "ap_research_preparations"
           isOneToOne: false
           isSetofReturn: true
         }
@@ -14858,6 +15116,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_complete_prepared_research_review: {
+        Args: { p_actor_id: string; p_notes: string; p_preparation_id: string }
+        Returns: boolean
+      }
       ap_complete_research_cell: {
         Args: {
           p_actor_id: string
@@ -14866,6 +15128,15 @@ export type Database = {
           p_run_id: string
         }
         Returns: undefined
+      }
+      ap_configure_research_preparation: {
+        Args: {
+          p_actor_id: string
+          p_configuration_ids: string[]
+          p_enabled: boolean
+          p_expected_revision: number
+        }
+        Returns: number
       }
       ap_confirm_reference_version: {
         Args: { p_customer_id: string; p_reference_version_id: string }
@@ -15054,6 +15325,10 @@ export type Database = {
       }
       ap_enqueue_job_source_sync: {
         Args: { p_request_key: string; p_schedule_id: string }
+        Returns: string
+      }
+      ap_enqueue_research_preparation: {
+        Args: { p_request_id: string }
         Returns: string
       }
       ap_ensure_manual_launch_capacity_rollover: {
@@ -15247,6 +15522,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_finish_research_preparation_check: {
+        Args: { p_lease_token: string; p_preparation_id: string }
+        Returns: string
+      }
       ap_finish_service_retention_claim: {
         Args: { p_claim_id: string }
         Returns: boolean
@@ -15397,6 +15676,33 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "ap_material_draft_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      ap_lock_research_preparation: {
+        Args: { p_preparation_id: string; p_skip_locked?: boolean }
+        Returns: {
+          created_at: string
+          customer_id: string | null
+          draft_id: string
+          id: string
+          lease_token: string | null
+          lease_until: string | null
+          next_check_at: string
+          plan_id: string | null
+          policy_revision: number | null
+          preparation_attempts: number
+          reason: string | null
+          request_id: string
+          snapshot_id: string
+          snapshot_sha256: string
+          state: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ap_research_preparations"
           isOneToOne: true
           isSetofReturn: false
         }
@@ -15599,6 +15905,14 @@ export type Database = {
         }
         Returns: Json
       }
+      ap_prepare_automatic_research: {
+        Args: {
+          p_families: Json
+          p_lease_token: string
+          p_preparation_id: string
+        }
+        Returns: string
+      }
       ap_prepare_intake_confirmation: {
         Args: {
           p_answers_sha256: string
@@ -15627,6 +15941,21 @@ export type Database = {
           p_provider_session_id: string
         }
         Returns: boolean
+      }
+      ap_promote_prepared_research_observation: {
+        Args: {
+          p_actor_id: string
+          p_criteria_snapshot_id: string
+          p_inventory_version_id: string
+          p_job_snapshot: Json
+          p_normalized: Json
+          p_preparation_id: string
+          p_projection_id: string
+          p_requirement_nodes: Json
+          p_review: Json
+          p_stable_job_id: string
+        }
+        Returns: string
       }
       ap_promote_search_checkout: {
         Args: {
@@ -16209,6 +16538,14 @@ export type Database = {
       }
       ap_require_material_reviewer: {
         Args: { p_reviewer_id: string }
+        Returns: boolean
+      }
+      ap_research_preparation_ready: {
+        Args: { p_request_id: string }
+        Returns: boolean
+      }
+      ap_research_snapshot_current: {
+        Args: { p_snapshot_id: string }
         Returns: boolean
       }
       ap_reserve_capacity: {
