@@ -33,7 +33,9 @@ test("current PG17 proof executes actual archive races before subsequent retaine
   const input = loadRetentionPostgresInputs();
   assert.equal(input.migrationCount, 103);
   const fixtures = input.hashes.filter((item) => item.kind === "fixture").map((item) => item.name);
-  assert.equal(fixtures.length, 14);
+  assert.equal(fixtures.length, 15);
+  for (const name of ["protected-archive-limited-role.sql", "protected-archive-lifecycle.sql", "protected-archive-races.sql", "service-retention-races.sql"])
+    assert(fixtures.includes(name), name);
   assert(fixtures.indexOf("protected-archive-lifecycle.sql") < fixtures.indexOf("protected-archive-races.sql"));
   assert(fixtures.indexOf("protected-archive-races.sql") < fixtures.indexOf("service-retention-races.sql"));
   assert(input.sql.includes("ap_archive_fence_coverage_current()"));
