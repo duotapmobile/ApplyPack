@@ -13,10 +13,11 @@ const historical094 = process.argv.length === 3 && process.argv[2] === "--histor
 const historical095 = process.argv.length === 3 && process.argv[2] === "--historical-095";
 const historical096 = process.argv.length === 3 && process.argv[2] === "--historical-096";
 const historical097 = process.argv.length === 3 && process.argv[2] === "--historical-097";
-if (process.argv.length > 3 || (process.argv.length === 3 && !historical085 && !historical086 && !historical087 && !historical091 && !historical092 && !historical093 && !historical094 && !historical095 && !historical096 && !historical097)) {
+const historical098 = process.argv.length === 3 && process.argv[2] === "--historical-098";
+if (process.argv.length > 3 || (process.argv.length === 3 && !historical085 && !historical086 && !historical087 && !historical091 && !historical092 && !historical093 && !historical094 && !historical095 && !historical096 && !historical097 && !historical098)) {
   throw new Error("DATABASE_FIXTURE_PHASE_INVALID");
 }
-const requiredSchemaVersion = historical085 ? "202610220085" : historical086 ? "202610230086" : historical087 ? "202610240087" : historical091 ? "202610250091" : historical092 ? "202610250092" : historical093 ? "202610250093" : historical094 ? "202610250094" : historical095 ? "202610250095" : historical096 ? "202610250096" : historical097 ? "202610250097" : "202610250098";
+const requiredSchemaVersion = historical085 ? "202610220085" : historical086 ? "202610230086" : historical087 ? "202610240087" : historical091 ? "202610250091" : historical092 ? "202610250092" : historical093 ? "202610250093" : historical094 ? "202610250094" : historical095 ? "202610250095" : historical096 ? "202610250096" : historical097 ? "202610250097" : historical098 ? "202610250098" : "202610250099";
 const phaseProbe = spawnSync("docker", ["exec", "-i", "supabase_db_applypack", "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"], {
   encoding: "utf8", input: `do $$ begin
     if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '${requiredSchemaVersion}'
@@ -34,6 +35,7 @@ const fixtures = !historical085 && !historical086 ? [
   ...(requiredSchemaVersion >= "202610250096" ? ["../tests/integration/service-error-contract-and-triage.sql"] : []),
   ...(requiredSchemaVersion >= "202610250097" ? ["../tests/integration/material-draft-change-requests.sql"] : []),
   ...(requiredSchemaVersion >= "202610250098" ? ["../tests/integration/protected-archive-lifecycle.sql"] : []),
+  ...(requiredSchemaVersion >= "202610250099" ? ["../tests/integration/scoped-service-error-repairs.sql"] : []),
 ] : [
   "../tests/integration/unpaid-source-retention.sql",
   "../tests/integration/chunk1-foundation.sql",

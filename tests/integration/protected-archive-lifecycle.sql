@@ -5,11 +5,15 @@ begin;
 -- fence can run. No deployed trigger/role is altered by this setting.
 -- https://github.com/supabase/storage/blob/master/migrations/tenant/0055-prevent-direct-deletes.sql
 set local storage.allow_delete_query='true';
-do $$ declare r jsonb; receipt jsonb; checked_at timestamptz; relation record; blocked boolean; original_helper text; writer uuid:='f9800000-0000-4000-8000-000000000001';
+do $$ declare r jsonb; receipt jsonb; original_heartbeat jsonb; checked_at timestamptz; relation record; blocked boolean; original_helper text; writer uuid:='f9800000-0000-4000-8000-000000000001';
  run_id uuid:='f9800000-0000-4000-8000-000000000002'; key text:='objects/customer-source-documents/'||repeat('b',64);
 begin
+ -- Upgrade rehearsals retain prior successful heartbeats. Cancellation must
+ -- neither create success nor alter that historical evidence.
+ select to_jsonb(heartbeat) into original_heartbeat from public.operational_heartbeats heartbeat
+  where task_name='protected_recovery_retention';
  if not public.ap_protected_archive_schema_installed()
-  or public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'<>'202610250098'
+  or public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' not in ('202610250098','202610250099')
   or not (public.ap_manual_launch_schema_readiness()->'requiredMigrations' @> '["202610250096","202610250097","202610250098"]'::jsonb)
  then raise exception 'archive schema checkpoint not installed'; end if;
  if not public.ap_archive_fence_coverage_current() then raise exception 'archive fence coverage missing'; end if;
@@ -97,7 +101,8 @@ begin
  exception when serialization_failure then if sqlerrm<>'archive_payment_reconciliation_required' then raise; end if; end;
  if not exists(select 1 from public.webhook_events where provider_event_id='evt_archive_fixture_late' and processed_at is null) then raise exception 'late event lost'; end if;
  perform public.ap_finish_archive_retention(run_id,repeat('b',64),true);
- if exists(select 1 from public.operational_heartbeats where task_name='protected_recovery_retention') then raise exception 'canceled cleanup reported success'; end if;
+ if (select to_jsonb(heartbeat) from public.operational_heartbeats heartbeat where task_name='protected_recovery_retention')
+  is distinct from original_heartbeat then raise exception 'canceled cleanup changed success evidence'; end if;
  if public.ap_archive_fence_active() then raise exception 'undispatched canceled fence remained'; end if;
  -- Once source writes resume, the ordinary verified payment handler can retry.
  update public.webhook_events set processed_at=clock_timestamp() where provider_event_id='evt_archive_fixture_late';

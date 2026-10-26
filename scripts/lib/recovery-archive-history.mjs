@@ -11,12 +11,13 @@ import { databaseManifestSchema, databaseSnapshotSchema, DATABASE_RECOVERY_LIMIT
 // arbitrary future versions just because their number sorts after this list.
 export const ARCHIVE_DATABASE_READ_VERSIONS = Object.freeze([
   "202610250090", "202610250091", "202610250092", "202610250093", "202610250094", "202610250095",
-  "202610250096", "202610250097", "202610250098",
+  "202610250096", "202610250097", "202610250098", "202610250099",
 ]);
 export const ARCHIVE_FILE_READ_TABLES = Object.freeze([
   "ap_document_versions", "ap_generated_file_versions", "ap_generated_artifacts", "ap_artifact_quality_reviews",
   "source_documents", "intakes", "intake_drafts", "apply_pack_items", "apply_pack_delivery_revisions", "ap_unpaid_source_cleanup",
 ]);
+export const ARCHIVE_REPAIR_FILE_READ_TABLES = Object.freeze([...ARCHIVE_FILE_READ_TABLES, "ap_service_repair_files"]);
 const fail = (code) => { throw new Error(`RECOVERY_ARCHIVE_HISTORY_${code}`); };
 const requireValue = (condition, code) => { if (!condition) fail(code); };
 const hex = z.string().regex(/^[a-f0-9]{64}$/u);
@@ -36,8 +37,18 @@ const inventoryBase = z.object({
       ARCHIVE_FILE_READ_TABLES.map((name) => [name, z.number().int().min(0).max(RECOVERY_LIMITS.references)]))).strict() }).strict(),
   receipt: z.string().min(64).max(4096),
 }).strict();
-const fileInventorySchema = z.discriminatedUnion("schemaVersion", [inventoryBase,
-  inventoryBase.extend({ schemaVersion: z.literal("applypack-protected-recovery-inventory-v2"), serviceRetention: serviceRetentionOverlaySchema }).strict()]);
+const repairTables = z.enum(ARCHIVE_REPAIR_FILE_READ_TABLES);
+const repairInventoryBase = inventoryBase.extend({
+  references: z.array(recoveryReferenceSchema.extend({ table: repairTables })).max(RECOVERY_LIMITS.references),
+  tombstones: z.array(recoveryTombstoneSchema.extend({ table: repairTables })).max(RECOVERY_LIMITS.references),
+  counts: inventoryBase.shape.counts.extend({ tables: inventoryBase.shape.counts.shape.tables.extend({
+    ap_service_repair_files: z.number().int().min(0).max(RECOVERY_LIMITS.references),
+  }).strict() }).strict(),
+}).strict();
+// Exact old ten-table and new eleven-table profiles; never insert missing
+// counts or rewrite an immutable old manifest into a current one.
+const fileInventorySchema = z.union([inventoryBase, repairInventoryBase].map((base) => z.discriminatedUnion("schemaVersion", [base,
+  base.extend({ schemaVersion: z.literal("applypack-protected-recovery-inventory-v2"), serviceRetention: serviceRetentionOverlaySchema }).strict()])));
 const archiveSchema = databaseManifestSchema.shape.archive;
 const fileManifestSchema = z.object({ schemaVersion: z.literal("applypack-protected-recovery-manifest-v1"),
   archive: archiveSchema, inventory: fileInventorySchema, secondInventoryReceipt: z.string().min(1).max(4096),

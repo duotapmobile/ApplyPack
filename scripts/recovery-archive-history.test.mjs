@@ -19,7 +19,7 @@ test("finite legacy file roster is read without adding current table rows or ove
   assert.equal(parsed.manifest.inventory.schemaVersion, "applypack-protected-recovery-inventory-v1");
   assert.equal(parsed.manifest.inventory.serviceRetention, undefined); assert.deepEqual(canonicalBytes(parsed.manifest), bytes);
 });
-for (const value of ["202610240087", "202610250099", "202610250999", "202610250093extra"])
+for (const value of ["202610240087", "202610250100", "202610250999", "202610250093extra"])
   test(`unknown database read profile ${value} fails closed`, () => {
     const f = archiveHistoryFixture(value); assert.throws(() => validateHistoricalDatabaseManifest(f.database.manifest, f.database.digest), /SHAPE_OR_DIGEST/u);
   });
@@ -39,6 +39,36 @@ test("each retained database archive pins its exact file manifest and every refe
   assert.equal(graph.databaseDeletionAuthorized, false); assert.equal(graph.authenticity, "UNVERIFIED");
   assert.deepEqual(graph.pins.map((v) => v.versionId).sort(), ["dump-v1", "manifest-v1", "object-v1", "roles-v1"]);
   assert(graph.pins.every((v) => v.databaseManifests[0].versionId === f.database.versionId));
+});
+
+test("099 repair-reference manifests retain exact eleven-table bytes and pin the exact repair version", () => {
+  const f = archiveHistoryFixture("202610250099"), inventory = f.file.manifest.inventory;
+  inventory.schemaVersion = "applypack-protected-recovery-inventory-v2";
+  inventory.serviceRetention = { schemaVersion: "applypack-service-retention-overlay-v1", policyVersion: "one_off_30d_v1",
+    sourceWatermark: inventory.startedAt, orders: [], holds: [], objectTombstones: [], objectPolicies: [] };
+  const object = inventory.objects[0]; object.bucket = "customer-deliveries"; object.key = "private/repair.pdf";
+  inventory.references = [{ table: "ap_service_repair_files", id: "11111111-1111-4111-8111-111111111111", field: "storage_path",
+    bucket: object.bucket, key: object.key, expectedSha256: object.expectedSha256, retentionExpiresAt: object.retentionExpiresAt }];
+  inventory.counts.references = 1; inventory.counts.tables.ap_service_repair_files = 1;
+  inventory.inventoryDigest = recoveryInventoryDigest(inventory);
+  Object.assign(f.file.manifest.entries[0], { bucket: object.bucket, key: object.key,
+    archiveKey: `objects/${object.bucket}/${sha256(`${object.bucket}\u0000${object.key}\u0000${object.sourceVersion}`)}` });
+  f.file.digest = canonicalSha256(f.file.manifest); f.file.key = `manifests/${f.file.digest}.json`;
+  Object.assign(f.database.manifest.fileCheckpoint, { inventoryDigest: inventory.inventoryDigest, manifestSha256: f.file.digest, referenceCount: 1 });
+  Object.assign(f.database.manifest.fileManifest, { key: f.file.key, sha256: f.file.digest });
+  f.database.manifest.inventoryDigest = inventory.inventoryDigest;
+  f.database.digest = canonicalSha256(f.database.manifest); f.database.key = `database/manifests/${f.database.digest}.json`;
+  f.versions[0] = { key: f.file.key, versionId: f.file.versionId, size: canonicalBytes(f.file.manifest).length };
+  f.versions[1] = { key: f.database.key, versionId: f.database.versionId, size: canonicalBytes(f.database.manifest).length };
+  f.versions[2] = { key: f.file.manifest.entries[0].archiveKey, versionId: "object-v1", size: object.size };
+  const bytes = canonicalBytes(f.file.manifest);
+  const parsed = readHistoricalArchiveManifest({ bytes, key: f.file.key, versionId: f.file.versionId, expectedSize: bytes.length, expectedSha256: f.file.digest });
+  assert.deepEqual(canonicalBytes(parsed.manifest), bytes);
+  assert.equal(parsed.manifest.inventory.references[0].table, "ap_service_repair_files");
+  assert(mapDatabaseArchivePins(f).pins.some((pin) => pin.key === f.file.manifest.entries[0].archiveKey && pin.versionId === "object-v1"));
+  delete inventory.counts.tables.ap_service_repair_files;
+  inventory.inventoryDigest = recoveryInventoryDigest(inventory);
+  assert.throws(() => validateHistoricalFileManifest(f.file.manifest, canonicalSha256(f.file.manifest)), /FILE_SHAPE_OR_DIGEST/u);
 });
 for (const [label, mutate] of [
   ["missing database history", (f) => { f.databaseManifests = []; }],

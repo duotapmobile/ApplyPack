@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { RECOVERY_BUCKETS, RECOVERY_TABLES, recoveryInventoryDigest, recoverySha256, validateServiceRetentionOverlay } from "./lib/protected-recovery-protocol.mjs";
+import { RECOVERY_BUCKETS, RECOVERY_TABLES, recoveryInventorySchema, recoveryInventoryDigest, recoverySha256, validateServiceRetentionOverlay } from "./lib/protected-recovery-protocol.mjs";
 import { authorizeRecoveryRequest, boundedRecoveryOperation, buildRecoveryInventory, createSupabaseRecoveryReader, normalizeRecoveryObjectInfo,
   persistRecoveryCompletion, readRecoveryObject, recoverySourceConfiguration, recoverySourceColumns,
   signRecoveryReceipt, validateRecoveryCompletion, validateRecoveryRetentionCompletion, verifyRecoveryReceipt } from "./lib/protected-recovery-source.mjs";
@@ -203,6 +203,70 @@ test("render previews follow the exact historical file version and artifact expi
   assert.equal(result.counts.tables.ap_artifact_quality_reviews, 1);
   tables.ap_artifact_quality_reviews[0].file_version_id = "00000000-0000-4000-8000-000000000002";
   await assert.rejects(build(reader), /PREVIEW_VERSION_UNRESOLVED/);
+});
+
+function repairFixture() {
+  const f = fixture(); f.tables.ap_document_versions = [];
+  f.tables.ap_generated_artifacts.push({ id, retention_due_at: new Date(start - 1000).toISOString(), retention_state: "ACTIVE" });
+  f.tables.ap_service_repair_files.push({ id, artifact_id: id, storage_bucket: "customer-deliveries", storage_path: "repair.pdf",
+    checksum_sha256: "c".repeat(64), preview_bucket: "operator-render-previews", preview_path: "repair.png", preview_sha256: "d".repeat(64),
+    editable_bucket: "operator-drafts", editable_path: "repair.docx", editable_sha256: "e".repeat(64) });
+  const objects = [{ bucket: "customer-deliveries", key: "repair.pdf" }, { bucket: "operator-drafts", key: "repair.docx" },
+    { bucket: "operator-render-previews", key: "repair.png" }];
+  const overlay = retentionOverlay();
+  overlay.objectPolicies = objects.map(({ bucket, key }) => ({ bucket, pathSha256: recoverySha256(key), protected: false,
+    retentionExpiresAt: new Date(start + 720 * 3600_000).toISOString() }));
+  f.reader.retentionOverlay = async () => okay(overlay);
+  f.reader.listObjects = async (bucket) => okay(objects.filter((v) => v.bucket === bucket).map((v) => ({ name: v.key, id, metadata: { size: 4 } })));
+  f.reader.objectInfo = async (bucket, key) => okay({ ...info(key), bucketId: bucket });
+  return { ...f, overlay };
+}
+test("repair files bind delivery, editable and preview checksums to current extended retention", async () => {
+  const f = repairFixture(); const result = await build(f.reader);
+  assert.equal(result.counts.tables.ap_service_repair_files, 1);
+  assert.equal(result.references.length, 3); assert.equal(result.objects.length, 3); assert.equal(result.tombstones.length, 0);
+  assert.deepEqual(result.references.map((r) => r.expectedSha256).sort(), ["c".repeat(64), "d".repeat(64), "e".repeat(64)]);
+  assert(result.references.every((r) => r.table === "ap_service_repair_files" && r.retentionExpiresAt === new Date(start + 720 * 3600_000).toISOString()));
+  assert.equal(f.tables.ap_generated_artifacts[0].retention_due_at, new Date(start - 1000).toISOString());
+});
+test("repair retention must cover every path and the original artifact must resolve", async () => {
+  const f = repairFixture(); f.overlay.objectPolicies.pop();
+  await assert.rejects(build(f.reader), /REPAIR_RETENTION_POLICY_MISSING/u);
+  const missing = repairFixture(); missing.tables.ap_generated_artifacts = [];
+  await assert.rejects(build(missing.reader), /REPAIR_ARTIFACT_UNRESOLVED/u);
+});
+test("repair references cannot claim the historical inventory profile by omitting their table count", async () => {
+  const result = await build(repairFixture().reader);
+  delete result.counts.tables.ap_service_repair_files; result.inventoryDigest = recoveryInventoryDigest(result);
+  assert.equal(recoveryInventorySchema.safeParse(result).success, false);
+});
+test("expired repair bytes are excluded, a current hold preserves them, and terminal deletion wins", async () => {
+  const f = repairFixture();
+  for (const policy of f.overlay.objectPolicies) policy.retentionExpiresAt = new Date(start - 100).toISOString();
+  f.reader.objectInfo = () => assert.fail("expired repair must not be opened");
+  const expired = await build(f.reader); assert.equal(expired.objects.length, 0); assert.equal(expired.tombstones.length, 3);
+  const held = repairFixture();
+  for (const policy of held.overlay.objectPolicies) { policy.protected = true; policy.retentionExpiresAt = null; }
+  assert((await build(held.reader)).objects.every((o) => o.retentionExpiresAt === null));
+  held.overlay.objectTombstones = held.overlay.objectPolicies.map(({ bucket, pathSha256 }) => ({ bucket, pathSha256, deletedAt: held.overlay.sourceWatermark }));
+  held.reader.objectInfo = () => assert.fail("deleted repair must not be opened");
+  assert.equal((await build(held.reader)).objects.length, 0);
+});
+test("redacted repair rows emit no invented object references", async () => {
+  const f = repairFixture();
+  Object.assign(f.tables.ap_service_repair_files[0], { storage_path: null, editable_path: null, preview_path: null });
+  f.reader.listObjects = async () => okay([]);
+  const result = await build(f.reader); assert.equal(result.references.length, 0); assert.equal(result.counts.tables.ap_service_repair_files, 1);
+});
+test("historical inventories preserve exact pre-repair table counts without inventing defaults", async () => {
+  const result = await build(fixture().reader);
+  delete result.counts.tables.ap_service_repair_files;
+  result.inventoryDigest = recoveryInventoryDigest(result);
+  assert.deepEqual(recoveryInventorySchema.parse(result), result);
+  assert.equal(Object.hasOwn(recoveryInventorySchema.parse(result).counts.tables, "ap_service_repair_files"), false);
+  const legacy = structuredClone(result); legacy.schemaVersion = "applypack-protected-recovery-inventory-v1"; delete legacy.serviceRetention;
+  legacy.inventoryDigest = recoveryInventoryDigest(legacy);
+  assert.deepEqual(recoveryInventorySchema.parse(legacy), legacy);
 });
 test("provider pagination follows every recursive prefix and exact table cursor", async () => {
   const { tables, reader } = fixture(); tables.ap_document_versions = [];

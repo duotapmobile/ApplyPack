@@ -11,6 +11,7 @@ param(
   [switch]$ServiceErrorUpgrade,
   [switch]$DraftChangeUpgrade,
   [switch]$ArchiveLifecycleUpgrade,
+  [switch]$ServiceRepairUpgrade,
   [switch]$LegalReceiptUpgrade,
   [string[]]$FixtureNames,
   [string]$MaximumMigrationVersion
@@ -150,6 +151,14 @@ if ($ArchiveLifecycleUpgrade) {
   if (-not $FixtureNames) { $fixtures = @() }
   $fixtures += @('archive-lifecycle-upgrade-seed.sql','archive-lifecycle-upgrade-verify.sql')
 }
+if ($ServiceRepairUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $LegalReceiptUpgrade -or
+      $MaximumMigrationVersion -cne '202610250099' -or $migrationFiles[-1].Name -cne '202610250099_scoped_service_error_repairs.sql') {
+    throw 'Service repair upgrade requires the exact isolated098-to099 preservation sequence.'
+  }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('service-repair-upgrade-seed.sql','service-repair-upgrade-verify.sql')
+}
 $inputs = @([pscustomobject]@{Kind='bootstrap'; Name='bootstrap.sql'; Path=$bootstrapPath})
 foreach ($migration in $migrationFiles) {
   $copy = Join-Path $inputPath $migration.Name
@@ -223,6 +232,14 @@ if ($ArchiveLifecycleUpgrade) {
     @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250098' }) +
     @($inputs | Where-Object Name -eq 'archive-lifecycle-upgrade-verify.sql') +
     @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('archive-lifecycle-upgrade-seed.sql','archive-lifecycle-upgrade-verify.sql') })
+}
+if ($ServiceRepairUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250098' }) +
+    @($inputs | Where-Object Name -eq 'service-repair-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250099' }) +
+    @($inputs | Where-Object Name -eq 'service-repair-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('service-repair-upgrade-seed.sql','service-repair-upgrade-verify.sql') })
 }
 if ($LegalReceiptUpgrade) {
   $bindingPath = Join-Path $repoRoot 'scripts/launch-legal-contract.mjs'

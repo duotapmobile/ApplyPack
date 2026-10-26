@@ -14,7 +14,7 @@ const heartbeat = () => ({ task_name: "maintenance", last_succeeded_at: at(60), 
   summary: { schemaVersion: 2, environment: "production", releaseSha: release, phase: "VERIFIED", unresolvedCodes: [] as string[] } });
 const database = () => ({ schemaVersion: "applypack-database-archive-status-v1", state: "VERIFIED", reason: null,
   runId: "11111111-1111-4111-8111-111111111111", releaseSha: release, providerVerificationSha256: "d".repeat(64),
-  sourceProjectRef: "spjaaxndiduhrcleazwb", schemaVersionOfSnapshot: "202610250098", sourceWatermark: at(60), databaseSnapshotAt: at(45), verifiedAt: at(30), evidenceExpiresAt: at(-840) });
+  sourceProjectRef: "spjaaxndiduhrcleazwb", schemaVersionOfSnapshot: "202610250099", sourceWatermark: at(60), databaseSnapshotAt: at(45), verifiedAt: at(30), evidenceExpiresAt: at(-840) });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("independent readonly operations monitor", () => {
@@ -50,11 +50,11 @@ describe("independent readonly operations monitor", () => {
     expect(assessMonitorMaintenance(row, config, now).state).toBe("FAILED");
   });
   it("uses the source watermark, exact schema, and authenticated completion rather than upload time", () => {
-    expect(assessMonitorDatabase(database(), config, "202610250098", now)).toEqual({ state: "HEALTHY", ageSeconds: 60 });
-    expect(assessMonitorDatabase({ ...database(), sourceWatermark: at(600), evidenceExpiresAt: at(-300) }, config, "202610250098", now).state).toBe("STALE");
+    expect(assessMonitorDatabase(database(), config, "202610250099", now)).toEqual({ state: "HEALTHY", ageSeconds: 60 });
+    expect(assessMonitorDatabase({ ...database(), sourceWatermark: at(600), evidenceExpiresAt: at(-300) }, config, "202610250099", now).state).toBe("STALE");
     for (const patch of [{ state: "OPEN" }, { schemaVersionOfSnapshot: "202610250095" }, { sourceProjectRef: "wrong" },
       { sourceWatermark: at(-1) }, { evidenceExpiresAt: at(0) }]) {
-      expect(assessMonitorDatabase({ ...database(), ...patch }, config, "202610250098", now).state).toBe("UNKNOWN");
+      expect(assessMonitorDatabase({ ...database(), ...patch }, config, "202610250099", now).state).toBe("UNKNOWN");
     }
   });
   it("outputs only coarse fixed checks and nonce; missing and duplicate evidence is unknown", () => {

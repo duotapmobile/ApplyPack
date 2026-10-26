@@ -10,10 +10,10 @@ import { DATABASE_RECOVERY_REQUIRED_TABLES } from "./lib/database-recovery-sourc
 
 test("snapshot inspection requires the database-only workflow tables separately from file aliases", () => {
   const sql = databaseSnapshotQuery("inspect");
-  assert.equal(DATABASE_RECOVERY_REQUIRED_TABLES.length, 21);
-  assert.equal(new Set(DATABASE_RECOVERY_REQUIRED_TABLES).size, 21);
+  assert.equal(DATABASE_RECOVERY_REQUIRED_TABLES.length, 27);
+  assert.equal(new Set(DATABASE_RECOVERY_REQUIRED_TABLES).size, 27);
   for (const table of ["ap_service_error_contracts", "ap_service_error_reports", "ap_service_error_decisions",
-    "ap_service_error_affected_members", "ap_material_draft_change_requests", "ap_archive_writer_runs", "ap_archive_retention_runs", "ap_archive_retention_versions", "ap_archive_lifecycle_configuration", "ap_archive_fence_relations", "ap_archive_fence_function_contracts"]) assert(DATABASE_RECOVERY_REQUIRED_TABLES.includes(table));
+    "ap_service_error_affected_members", "ap_material_draft_change_requests", "ap_archive_writer_runs", "ap_archive_retention_runs", "ap_archive_retention_versions", "ap_archive_lifecycle_configuration", "ap_archive_fence_relations", "ap_archive_fence_function_contracts", "ap_service_repair_jobs", "ap_service_repair_versions", "ap_service_repair_files", "ap_service_repair_releases", "ap_service_repair_case_events", "ap_service_repair_feedback"]) assert(DATABASE_RECOVERY_REQUIRED_TABLES.includes(table));
   for (const table of DATABASE_RECOVERY_REQUIRED_TABLES) assert(sql.includes(`'${table}'`));
   assert.match(sql, /'missingRequiredTables'/u);
   assert.match(sql, /n\.nspname='public' and c\.relname=name and c\.relkind in \('r','p'\)/u);

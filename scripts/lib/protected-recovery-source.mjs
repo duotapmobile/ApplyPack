@@ -19,6 +19,9 @@ const TABLES = {
   ap_generated_artifacts: row({ retention_due_at: timestamp.nullable(), retention_state: retentionState }),
   ap_artifact_quality_reviews: row({ file_version_id: z.uuid(), render_preview_bucket: z.literal("operator-render-previews"),
     render_preview_path: recoveryKeySchema, render_preview_sha256: hash, invalidated_at: timestamp.nullable() }),
+  ap_service_repair_files: row({ artifact_id: z.uuid(), storage_bucket: z.literal("customer-deliveries"), storage_path: nullablePath,
+    checksum_sha256: hash, preview_bucket: z.literal("operator-render-previews"), preview_path: nullablePath, preview_sha256: hash,
+    editable_bucket: z.literal("operator-drafts"), editable_path: nullablePath, editable_sha256: hash }),
   source_documents: row({ storage_path: recoveryKeySchema, sha256: hash, size_bytes: z.number().int().positive(), deleted_at: timestamp.nullable() }),
   intakes: row({ resume_path: nullablePath, cover_letter_path: nullablePath,
     source_deleted_at: timestamp.nullable(), source_retention_due_at: timestamp.nullable() }),
@@ -161,6 +164,20 @@ export async function buildRecoveryInventory({ reader, releaseSha, signReceipt, 
     add("ap_artifact_quality_reviews", value, "render_preview_path", value.render_preview_bucket, value.render_preview_path, value.render_preview_sha256,
       artifact.retention_state === "LEGAL_HOLD" ? null : artifact.retention_due_at,
       deleted ? artifact.retention_due_at : null, value.invalidated_at || version.downloads_revoked_at, artifact.retention_state === "LEGAL_HOLD");
+  }
+  for (const value of tables.ap_service_repair_files) {
+    const artifact = artifacts.get(value.artifact_id); requireValue(artifact, "REPAIR_ARTIFACT_UNRESOLVED");
+    for (const [field, bucketField, hashField] of [["storage_path", "storage_bucket", "checksum_sha256"],
+      ["preview_path", "preview_bucket", "preview_sha256"], ["editable_path", "editable_bucket", "editable_sha256"]]) {
+      const key = value[field]; if (key === null) continue;
+      // Repair access can extend beyond the original artifact's deadline. The
+      // current database overlay, including unfinished work and legal holds,
+      // is the authority; missing coverage must not silently become unlimited.
+      requireValue(policies.has(policyIdentity(value[bucketField], key)) || terminal.has(policyIdentity(value[bucketField], key)),
+        "REPAIR_RETENTION_POLICY_MISSING");
+      add("ap_service_repair_files", value, field, value[bucketField], key, value[hashField], null, null, null,
+        artifact.retention_state === "LEGAL_HOLD");
+    }
   }
   for (const value of tables.source_documents) add("source_documents", value, "storage_path", RECOVERY_BUCKETS[0], value.storage_path, value.sha256, null, value.deleted_at);
   for (const value of tables.intakes) for (const field of ["resume_path", "cover_letter_path"])

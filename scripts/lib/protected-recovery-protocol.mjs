@@ -3,7 +3,8 @@ import { z } from "zod";
 
 export const RECOVERY_PROJECT = "spjaaxndiduhrcleazwb";
 export const RECOVERY_BUCKETS = ["customer-source-documents", "customer-deliveries", "operator-drafts", "operator-render-previews"];
-export const RECOVERY_TABLES = ["ap_document_versions", "ap_generated_file_versions", "ap_generated_artifacts", "ap_artifact_quality_reviews", "source_documents", "intakes", "intake_drafts", "apply_pack_items", "apply_pack_delivery_revisions", "ap_unpaid_source_cleanup"];
+const HISTORICAL_RECOVERY_TABLES = ["ap_document_versions", "ap_generated_file_versions", "ap_generated_artifacts", "ap_artifact_quality_reviews", "source_documents", "intakes", "intake_drafts", "apply_pack_items", "apply_pack_delivery_revisions", "ap_unpaid_source_cleanup"];
+export const RECOVERY_TABLES = [...HISTORICAL_RECOVERY_TABLES, "ap_service_repair_files"];
 export const RECOVERY_LIMITS = Object.freeze({ objects: 10000, references: 40000, inventoryBytes: 8 * 1024 * 1024, objectBytes: 32 * 1024 * 1024, runMilliseconds: 5 * 60 * 1000 });
 const sha = z.string().regex(/^[a-f0-9]{64}$/u);
 const timestamp = z.iso.datetime();
@@ -77,13 +78,20 @@ export const historicalRecoveryInventorySchema = z.object({ schemaVersion: z.lit
   objects: z.array(recoveryObjectSchema).max(RECOVERY_LIMITS.objects), references: z.array(recoveryReferenceSchema).max(RECOVERY_LIMITS.references),
   tombstones: z.array(recoveryTombstoneSchema).max(RECOVERY_LIMITS.references),
   counts: z.object({ objects: z.number().int().nonnegative(), references: z.number().int().nonnegative(), tombstones: z.number().int().nonnegative(),
-    tables: z.object(Object.fromEntries(RECOVERY_TABLES.map((table) => [table, z.number().int().nonnegative()]))).strict() }).strict(),
+    // Earlier immutable inventories predate repair files. Accept their exact
+    // bytes without inserting a default count; every new source scan reads the
+    // complete RECOVERY_TABLES roster and emits the new count explicitly.
+    tables: z.object({ ...Object.fromEntries(HISTORICAL_RECOVERY_TABLES.map((table) => [table, z.number().int().nonnegative()])),
+      ap_service_repair_files: z.number().int().nonnegative().optional() }).strict() }).strict(),
   receipt: z.string().min(64).max(4096),
 }).strict();
 export const currentRecoveryInventorySchema = historicalRecoveryInventorySchema.extend({
   schemaVersion: z.literal("applypack-protected-recovery-inventory-v2"), serviceRetention: serviceRetentionOverlaySchema,
 }).strict();
-export const recoveryInventorySchema = z.discriminatedUnion("schemaVersion", [historicalRecoveryInventorySchema, currentRecoveryInventorySchema]);
+export const recoveryInventorySchema = z.discriminatedUnion("schemaVersion", [historicalRecoveryInventorySchema, currentRecoveryInventorySchema])
+  .refine((inventory) => inventory.counts.tables.ap_service_repair_files !== undefined
+    || ![...inventory.references, ...inventory.tombstones].some((entry) => entry.table === "ap_service_repair_files"),
+  "Repair references require their explicit table count");
 export const recoveryCompletionSchema = z.object({ schemaVersion: z.literal("applypack-protected-recovery-completion-v1"),
   firstReceipt: z.string().min(64).max(4096), secondReceipt: z.string().min(64).max(4096),
   manifestSha256: sha, manifestVersionId: z.string().min(1).max(1024).regex(/^[A-Za-z0-9._~+\/=:-]+$/u),

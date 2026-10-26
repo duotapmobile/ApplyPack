@@ -29,7 +29,7 @@ $script:DatabaseName = 'postgres'
 $script:LoginUser = 'postgres.zzzzzzzzzzzzzzzzzzzz'
 $script:CurrentUser = 'postgres'
 $script:PreSchemaVersion = '202610190084'
-$script:PostSchemaVersion = '202610250098'
+$script:PostSchemaVersion = '202610250099'
 $script:CaSha256 = '700723581420DD1AC98FD7E9AC529F0EF210EADCAF87FC868A3AD7D114C2F3B7'
 $script:PostgresImageDigest = 'public.ecr.aws/supabase/postgres@sha256:b3bfedb107413abb3b8cb0d0874b0414a1dceb3d55bc0c778de6ad22d1f7dc86'
 $script:DockerCliReviewedPath = 'C:\Program Files\Docker\Docker\resources\bin\docker.exe'
@@ -204,6 +204,15 @@ $script:MigrationPlan = @(
         predecessor = '202610250097'
         predecessorCheckpoint = 'MATERIAL_DRAFT_CHANGE_REQUESTS'
         marker = 'PRODUCTION_MIGRATION_202610250098_APPLIED'
+    },
+    [ordered]@{
+        version = '202610250099'
+        name = 'scoped_service_error_repairs'
+        relativePath = 'supabase/migrations/202610250099_scoped_service_error_repairs.sql'
+        checkpoint = 'SCOPED_SERVICE_ERROR_REPAIRS'
+        predecessor = '202610250098'
+        predecessorCheckpoint = 'PROTECTED_ARCHIVE_LIFECYCLE'
+        marker = 'PRODUCTION_MIGRATION_202610250099_APPLIED'
     }
 )
 $script:PublishedPredecessorPaths = @(
@@ -1488,6 +1497,7 @@ function Invoke-Apply {
                 migration096Rows = [int]($script:PostSchemaVersion -cge '202610250096')
                 migration097Rows = [int]($script:PostSchemaVersion -cge '202610250097')
                 migration098Rows = [int]($script:PostSchemaVersion -cge '202610250098')
+                migration099Rows = [int]($script:PostSchemaVersion -cge '202610250099')
                 requiredSchemaVersion = $script:PostSchemaVersion
                 ready = ($script:PostSchemaVersion -cne '202610240087')
                 invalidPublicIndexes = 0

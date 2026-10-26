@@ -119,6 +119,11 @@ jobs:
       - name: Validate097 owner request-change controls
         shell: pwsh
         run: npm run test:draft-change-migration
+      - name: Validate099 scoped service repair controls
+        shell: pwsh
+        run: npm run test:service-repair-migration
+      - name: Verify099 historical phases and recovery coverage
+        run: npm run test:service-repair-integration
       - name: Validate098 default-disabled protected archive lifecycle controls
         shell: pwsh
         run: npm run test:archive-lifecycle-migration
