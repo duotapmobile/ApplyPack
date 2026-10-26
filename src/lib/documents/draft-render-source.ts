@@ -15,7 +15,7 @@ export type DraftRenderFactRef = { factId: string; field: string; valueSha256: s
 export type DraftRenderText = {
   claimId: string; placement: string; text: string; wordingSha256: string;
   kind: "CANDIDATE_FACT" | "JOB_EVIDENCE" | "MIXED" | "NARRATIVE" | "REFERENCE_PERMISSION";
-  origin: "MODEL_PROPOSAL" | "LOCAL_FACT" | "LOCAL_JOB" | "LOCAL_CONTACT" | "CUSTOMER_PRESENTATION" | "FIXED_PRESENTATION" | "LOCAL_REFERENCE";
+  origin: "MODEL_PROPOSAL" | "OWNER_EDIT" | "LOCAL_FACT" | "LOCAL_JOB" | "LOCAL_CONTACT" | "CUSTOMER_PRESENTATION" | "FIXED_PRESENTATION" | "LOCAL_REFERENCE";
   qualification: "EXACT" | "QUALIFIED_TRANSFER" | "NONFACTUAL";
   factRefs: DraftRenderFactRef[]; jobEvidenceIds: string[]; referencePermissionIds: string[];
   contactBinding: { payloadId: string; contentSha256: string; fields: string[] } | null;
@@ -272,7 +272,12 @@ export function buildDraftRenderSource(input: {
     throw new DraftRenderSourceError("INVALID");
   } finally { ownedContact?.fill(0); }
 }
-export type DraftRenderSource = ReturnType<typeof buildDraftRenderSource>;
+export type DraftOwnerEditLineage = {
+  schemaVersion: "applypack-owner-draft-edit-v1"; requestId: string; requestSha256: string;
+  priorVersionId: string; priorSourceSha256: string; originalProposalSourceSha256: string;
+  reviewerId: string; editedAt: string; validatedOutputSha256: string; changedPlacements: string[];
+};
+export type DraftRenderSource = ReturnType<typeof buildDraftRenderSource> & { ownerEdit?: DraftOwnerEditLineage };
 
 export function serializeDraftRenderSource(source: DraftRenderSource) {
   const { renderSourceSha256, ...body } = source, serialized = exactJson(body);

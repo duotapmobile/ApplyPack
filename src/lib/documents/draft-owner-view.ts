@@ -17,6 +17,7 @@ import { createMaterialRuleOwnerServer } from "./material-rule-owner-server";
 import type { materialRuleBasisSchema } from "./material-rule-evidence";
 import { buildEmployerQuestionInsights } from "./employer-question-evidence";
 import { getEmployerSource } from "@/lib/jobs/source-registry";
+import { buildDraftOwnerEditModel, type DraftOwnerEditModel } from "./draft-owner-edit";
 
 const uuid = z.uuid(), hash = z.string().regex(/^[a-f0-9]{64}$/), time = z.iso.datetime({ offset: true });
 const states = ["EVIDENCE_PENDING", "PREPARING", "READY", "DRAFTING", "SOURCE_READY", "RENDERING", "REVIEW_READY", "APPROVED", "RELEASED", "RESULT_UNKNOWN", "OWNER_EXCEPTION", "SUPERSEDED", "CANCELED"] as const;
@@ -55,6 +56,7 @@ export type DraftOwnerDetail = {
   instructions: { emphasis: string; doNotMention: string; saved: SavedDraftInstructions };
   references?: { permissionId: string; version: number; confirmedAt: string; fields: { label: string; value: string }[] }[];
   referenceFilenameInstruction?: string | null;
+  editing?: DraftOwnerEditModel;
   questions: { status: string; verification: string; issues: string[]; items: { id: string; prompt: string; required: boolean | null; wordLimit: number | null; characterLimit: number | null; sourceUrl: string | null; observedAt: string; eligible: boolean }[] };
   requiredFileTypes: string[]; files: { type: string; filename: string; fileVersionId: string; checksumSha256: string; previewUrl: string | null }[];
   wordingReviewed: boolean; canPromote: boolean; canReviewWording: boolean; canApprove: boolean; canSend: boolean;
@@ -306,6 +308,7 @@ export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedRev
           ruleSha256: packet.binding.ruleSha256, memberSetSha256: v.member_set_sha256, approvalSha256: v.approval_sha256, dueAt: revision.due_at, validUntil: packet.validUntil, kind,
           company: packet.ownerEvidence.targetJob.company, title: packet.ownerEvidence.targetJob.exactTitle, applicationUrl: safeUrl(packet.ownerEvidence.targetJob.canonicalApplicationUrl), documents, claims, facts,
           ...(references.length ? { references, referenceFilenameInstruction: packet.ownerEvidence.referenceFilenameInstruction ?? null } : {}),
+          ...(storedSource && ["SOURCE_READY", "REVIEW_READY", "APPROVED"].includes(current.state) ? { editing: buildDraftOwnerEditModel(storedSource, packet, now()) } : {}),
           instructions: { emphasis: packet.ownerEvidence.customerInstructions.emphasis_note ?? "", doNotMention: packet.ownerEvidence.customerInstructions.do_not_mention_note ?? "", saved: savedInstructions(packet.ownerEvidence.employerInstructions) },
           questions: { status: packet.employerQuestionInsights.status, verification: packet.employerQuestionInsights.verification, issues: packet.employerQuestionInsights.issues.map((item) => item.code), items: packet.employerQuestionInsights.questions.map((question) => ({ id: question.id, prompt: question.prompt, required: question.required, wordLimit: question.wordLimit, characterLimit: question.characterLimit, sourceUrl: safeUrl(question.sourceUrl), observedAt: question.sourceObservedAt, eligible: question.providerEligible })) }, requiredFileTypes: expectedTypes, files,
           wordingReviewed: !!v.claim_review_sha256 && !!v.claims_reviewed_at, canPromote: kind === "PROPOSAL" && current.state === "SOURCE_READY" && !v.claim_review_sha256,

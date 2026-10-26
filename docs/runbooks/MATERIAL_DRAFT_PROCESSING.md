@@ -21,6 +21,16 @@ Employer application questions are untrusted source evidence and tailoring clues
 
 Source-aware local rendering additionally requires the pinned `pdftohtml` executable and its hash. Linux worker image checks validate the corresponding isolated implementation. Existing approved fonts, paragraph/link checks, page previews and cleanup remain mandatory. A local fixture render does not establish hosted readiness or owner visual acceptance.
 
+## Owner wording edits
+
+The private workspace supports editing summary statements, skills, experience bullets and cover-letter sentences on the current saved source before Send. Confirmed identity/contact, factual headings, employers, dates, education and reference details remain read-only. The owner selects the actual confirmed supporting facts for revised wording; selecting a source does not establish that a claim is true. Negative/unknown qualifications and cross-role boundaries still apply. Owner wording is recorded as `OWNER_EDIT`, with the parent source/version and original provider-proposal lineage preserved.
+
+Opening the editor clears local wording, approval and Send choices and locks other mutation controls. Cancel returns to the saved version with those choices still cleared. Save requires an explicit new-version confirmation. The server checks current paid scope, evidence, permissions, original contact and reviewer authorization, encrypts the new immutable source and appends it through the existing compare-and-set transition. Previous wording review, rendered members and approval do not transfer. The new version must pass wording review, rendering, visual/content approval and a separate Send.
+
+A definite pre-storage validation rejection leaves the proposed wording editable and resets confirmation. An uncertain save freezes the attempted body and request ID in memory; **Reconcile saved edit** checks that exact request without an automatic retry or new identity. Private prose is never persisted in browser storage. After leaving or reloading the page, inspect the actual current saved version before editing again; do not infer success from a network failure. No edit operation calls the writing provider, changes customer-confirmed facts, approves or sends documents.
+
+Requests for a further system draft are a separate implementation stage. They require durable encrypted owner instructions, exact parent binding and the existing cumulative attempt/spending limits. Local owner editing does not establish that this request-change stage, hosted administrator access or connected customer delivery is complete.
+
 ## Bounded queue contract
 
 The orchestrator processes at most one claimed stage per invocation, preferring a ready render, then generation, then packet preparation. Its overall deadline is 150 seconds and it checks switches again after claiming. It returns only aggregate counts and fixed status values, with no customer text, storage paths, credentials, prompts or provider diagnostics.

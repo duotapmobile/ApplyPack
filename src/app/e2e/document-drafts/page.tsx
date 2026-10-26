@@ -35,6 +35,12 @@ export default async function DocumentDraftEvidencePage({ searchParams }: { sear
       instructions: { emphasis: "Organization and helpful communication", doNotMention: "", saved: instructions },
       questions: { status: "OBSERVED", verification: "BOUND_SOURCE_EVIDENCE", issues: [], items: [{ ...question, sourceUrl: "https://example.invalid/apply", observedAt: fresh, eligible: true }] },
       requiredFileTypes: ["RESUME", "COVER_LETTER"], files: complete ? ["RESUME", "COVER_LETTER"].map((type, index) => ({ type, filename: `${type}.pdf`, fileVersionId: id(40 + index), checksumSha256: sha(String(index + 3)), previewUrl: `https://example.invalid/preview/${index}` })) : [],
+      editing: { output: { schemaVersion: "applypack-draft-proposal-v1", language: "en-US",
+        resume: { summary: [], skills: [], sections: [{ anchorFactId: id(30), bullets: [{ text: "Organized schedules for community activities.", sourceAtomIds: [sha("4")], jobEvidenceIds: [], questionIds: [id(70)], relation: "DIRECT" }] }], educationFactIds: [] },
+        coverLetter: { body: [{ sentences: [{ text: "I gained experience organizing community event schedules.", sourceAtomIds: [sha("4")], jobEvidenceIds: [], questionIds: [], relation: "DIRECT" }] }] } },
+        sections: [{ anchorFactId: id(30), label: "Volunteer coordinator · Synthetic community center" }],
+        sources: [{ id: sha("4"), factId: id(30), parentFactId: null, label: "Confirmed responsibilities", value: "Organized event schedules", disposition: "CONFIRMED", localOnly: false },
+          { id: sha("5"), factId: id(30), parentFactId: null, label: "Confirmed organization", value: "Synthetic community center", disposition: "CONFIRMED", localOnly: true }] },
       wordingReviewed: complete, canPromote: false, canReviewWording: !complete, canApprove: state === "approve", canSend: state === "send" };
   }
   return <main id="main-content" className="portal-page"><div className="page-frame"><header><p className="eyebrow">Synthetic component evidence</p><h1>Owner document review</h1>

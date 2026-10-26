@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ auth: vi.fn(), origin: vi.fn(), from: vi.fn(), rpc: vi.fn(), factory: vi.fn(), promote: vi.fn(), review: vi.fn(), ruleFactory: vi.fn(), revalidate: vi.fn(), refresh: vi.fn() }));
+import { draftDocumentFixture } from "../fixtures/draft-document";
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), origin: vi.fn(), from: vi.fn(), rpc: vi.fn(), factory: vi.fn(), promote: vi.fn(), review: vi.fn(), ruleFactory: vi.fn(), revalidate: vi.fn(), refresh: vi.fn(), editFactory: vi.fn(), saveEdit: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/auth/require-admin", () => ({ requireAdmin: mocks.auth }));
 vi.mock("@/lib/security/origin", () => ({ isSameOriginRequest: mocks.origin }));
 vi.mock("@/lib/documents/draft-owner-server", () => ({ createDraftOwnerServer: mocks.factory }));
+vi.mock("@/lib/documents/draft-owner-edit-server", () => ({ createDraftOwnerEditServer: mocks.editFactory,
+  DraftOwnerEditServerError: class extends Error { constructor(readonly code: string) { super(code); } } }));
 vi.mock("@/lib/documents/material-rule-owner-server", () => ({ createMaterialRuleOwnerServer: mocks.ruleFactory }));
 import { POST } from "@/app/api/admin/material-draft-jobs/[id]/route";
+import { DraftOwnerEditServerError } from "@/lib/documents/draft-owner-edit-server";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const job = id(1), version = id(2), reviewer = id(3), release = id(4), outbox = id(5);
@@ -23,6 +27,8 @@ const ruleBasis = { lineRevisionId: id(11), sourceSnapshotId: id(12), jobSnapsho
 const ruleReview = { action: "REVALIDATE_RULE", expectedVersionId: version, receiptId: id(15), expectedBasis: ruleBasis,
   checklist: { applicationAccessReviewed: true, liveListingOpened: true, submissionInstructionsCompared: true, unchangedRuleConfirmed: true } };
 const refresh = { action: "REFRESH_PACKET", expectedVersionId: version, expectedPacketSha256: binding.packetSha256, expectedContextSha256: "f".repeat(64), requestId: id(16) };
+const edit = { action: "SAVE_OWNER_EDIT", expectedVersionId: version, expectedSourceSha256: binding.sourceSha256,
+  requestId: id(18), output: draftDocumentFixture().draft };
 let versionResult: { data: unknown; error: unknown };
 let jobResult: { data: unknown; error: unknown };
 let rpcResult: { data: unknown; error: unknown };
@@ -54,9 +60,53 @@ beforeEach(() => {
   mocks.ruleFactory.mockReturnValue({ revalidate: mocks.revalidate, refreshPacket: mocks.refresh });
   mocks.revalidate.mockResolvedValue({ jobId: job, receiptId: ruleReview.receiptId, recorded: true, current: true, deliveryAuthorized: false });
   mocks.refresh.mockResolvedValue({ jobId: job, versionId: id(17), priorVersionId: version, recorded: true, current: true, deliveryAuthorized: false });
+  mocks.editFactory.mockReturnValue({ saveEdit: mocks.saveEdit });
+  mocks.saveEdit.mockResolvedValue({ jobId: job, versionId: id(19), requestId: edit.requestId, packetSha256: binding.packetSha256,
+    sourceSha256: "f".repeat(64), state: "OWNER_REVIEW_REQUIRED", reconciled: false, deliveryAuthorized: false });
 });
 
 describe("owner document HTTP actions", () => {
+  it("saves only the exact owner edit through the authenticated reviewer, leaving approval and Send separate", async () => {
+    const result = await invoke(edit); expect(result.status).toBe(200); privateHeaders(result);
+    expect(mocks.editFactory).toHaveBeenCalledWith(admin, reviewer);
+    expect(mocks.saveEdit).toHaveBeenCalledWith({ jobId: job, expectedVersionId: version, expectedSourceSha256: edit.expectedSourceSha256,
+      requestId: edit.requestId, output: edit.output }, expect.any(AbortSignal));
+    expect(mocks.from).not.toHaveBeenCalled(); expect(mocks.rpc).not.toHaveBeenCalled(); expect(mocks.promote).not.toHaveBeenCalled();
+    expect(await result.json()).toMatchObject({ action: "SAVE_OWNER_EDIT", result: { state: "OWNER_REVIEW_REQUIRED", deliveryAuthorized: false } });
+  });
+  it.each([
+    { ...edit, expectedVersionId: null }, { ...edit, expectedSourceSha256: "wrong" }, { ...edit, requestId: undefined },
+    { ...edit, jobId: id(99) }, { ...edit, reviewerId: id(99) }, { ...edit, editedAt: "2026-10-25T12:00:00Z" },
+    { ...edit, output: {} }, { ...edit, output: { ...edit.output, contact: { name: "Forged identity" } } },
+    { ...edit, approvalSha256: "a".repeat(64) }, { ...edit, copyApproval: true },
+  ])("rejects incomplete or expanded edit input before data access: %#", async (body) => {
+    expect((await invoke(body)).status).toBe(400); expect(mocks.editFactory).not.toHaveBeenCalled();
+    expect(mocks.from).not.toHaveBeenCalled(); expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+  it("leaves exact owner edit reconciliation to the adapter after an uncertain result", async () => {
+    mocks.saveEdit.mockRejectedValueOnce(new Error("PRIVATE_EDIT_STORAGE_DETAIL"));
+    const first = await invoke(edit); expect(first.status).toBe(409); expect(await first.text()).not.toContain("PRIVATE_EDIT");
+    versionResult = { data: null, error: null };
+    mocks.saveEdit.mockResolvedValueOnce({ jobId: job, versionId: id(19), requestId: edit.requestId, packetSha256: binding.packetSha256,
+      sourceSha256: "f".repeat(64), state: "OWNER_REVIEW_REQUIRED", reconciled: true, deliveryAuthorized: false });
+    expect((await invoke(edit)).status).toBe(200); expect(mocks.saveEdit).toHaveBeenCalledTimes(2);
+    expect(mocks.saveEdit.mock.calls[0][0]).toEqual(mocks.saveEdit.mock.calls[1][0]); expect(mocks.from).not.toHaveBeenCalled();
+  });
+  it.each([401, 403, 503])("rejects owner editing without the existing fresh-MFA authorization: %s", async (status) => {
+    mocks.auth.mockResolvedValue({ ok: false, response: Response.json({ error: "Authorization unavailable" }, { status }) });
+    const result = await invoke(edit); expect(result.status).toBe(status); privateHeaders(result); expect(mocks.editFactory).not.toHaveBeenCalled();
+  });
+  it("identifies only a definite pre-storage edit validation rejection as safe to correct", async () => {
+    mocks.saveEdit.mockRejectedValueOnce(new DraftOwnerEditServerError("EDIT_INVALID"));
+    const result = await invoke(edit); expect(result.status).toBe(422); privateHeaders(result);
+    expect(await result.json()).toEqual({ error: "The edited wording could not be validated against the confirmed sources. Review the wording and source selections.", editRejected: true });
+    expect(mocks.rpc).not.toHaveBeenCalled(); expect(mocks.from).not.toHaveBeenCalled();
+  });
+  it.each([new Error("EDIT_INVALID"), new DraftOwnerEditServerError("COMMIT_UNCONFIRMED"), new DraftOwnerEditServerError("CONTEXT_STALE")])("does not mislabel ambiguous edit outcomes as rejected: %#", async (error) => {
+    mocks.saveEdit.mockRejectedValueOnce(error);
+    const result = await invoke(edit); expect(result.status).toBe(409); privateHeaders(result);
+    expect(await result.json()).not.toHaveProperty("editRejected");
+  });
   it("delegates exact rule review to the authenticated reviewer without inventing a timestamp or changing its checklist", async () => {
     const result = await invoke(ruleReview);
     expect(result.status).toBe(200); privateHeaders(result);

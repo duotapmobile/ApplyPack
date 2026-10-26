@@ -5,6 +5,8 @@ import type { Database } from "@/lib/database.types";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { draftClaimReviewRequestSchema } from "@/lib/documents/draft-claim-review";
 import { createDraftOwnerServer } from "@/lib/documents/draft-owner-server";
+import { draftOwnerEditRequestSchema } from "@/lib/documents/draft-owner-edit";
+import { createDraftOwnerEditServer, DraftOwnerEditServerError } from "@/lib/documents/draft-owner-edit-server";
 import { createMaterialRuleOwnerServer } from "@/lib/documents/material-rule-owner-server";
 import { materialRuleBasisSchema, materialRuleReviewChecklistSchema } from "@/lib/documents/material-rule-evidence";
 import { isSameOriginRequest } from "@/lib/security/origin";
@@ -14,6 +16,7 @@ const binding = { versionId: uuid, packetSha256: hash, sourceSha256: hash, membe
 const checklist = z.object({ contentReviewed: z.literal(true), visualReviewed: z.literal(true), listingRechecked: z.literal(true),
   instructionsReparsed: z.literal(true), linksRechecked: z.literal(true), provenanceReviewed: z.literal(true), secureFilesConfirmed: z.literal(true) }).strict();
 const inputSchema = z.discriminatedUnion("action", [
+  draftOwnerEditRequestSchema.omit({ jobId: true }).extend({ action: z.literal("SAVE_OWNER_EDIT") }).strict(),
   z.object({ action: z.literal("PROMOTE_SOURCE"), expectedVersionId: uuid, expectedSourceSha256: hash, careerBreakFactId: uuid.optional() }).strict(),
   z.object({ action: z.literal("REVIEW_WORDING"), review: draftClaimReviewRequestSchema }).strict(),
   z.object({ action: z.literal("REVALIDATE_RULE"), expectedVersionId: uuid.nullable(), receiptId: uuid,
@@ -84,6 +87,23 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
         expectedContextSha256: value.expectedContextSha256, requestId: value.requestId }, signal);
       return response({ action: value.action, result });
     }
+    if (value.action === "SAVE_OWNER_EDIT") {
+      // Reconcile the exact saved successor after a lost response. The adapter
+      // verifies both parent/job ownership and immutable request lineage.
+      try {
+        const result = await createDraftOwnerEditServer(admin, auth.user.id).saveEdit({ jobId: jobId.data,
+          expectedVersionId: value.expectedVersionId, expectedSourceSha256: value.expectedSourceSha256,
+          requestId: value.requestId, output: value.output }, signal);
+        return response({ action: value.action, result });
+      } catch (error) {
+        // Only the adapter's pre-storage validation can establish rejection.
+        // Timeouts, stale context and uncertain commits must remain uncertain.
+        if (error instanceof DraftOwnerEditServerError && error.code === "EDIT_INVALID") {
+          return response({ error: "The edited wording could not be validated against the confirmed sources. Review the wording and source selections.", editRejected: true }, 422);
+        }
+        throw error;
+      }
+    }
     const versionId = value.action === "REVIEW_WORDING" ? value.review.versionId
       : value.action === "PROMOTE_SOURCE" || value.action === "LISTING_CHECK" ? value.expectedVersionId : value.versionId;
     if (versionId === null) {
@@ -135,6 +155,6 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
       }
     }
   } catch {
-    return response({ error: "The action could not be confirmed. Refresh the document workspace before continuing; retain the same Send request if its result is unknown." }, 409);
+    return response({ error: "The action could not be confirmed. Refresh the document workspace before continuing; keep the same pending action when checking an uncertain result." }, 409);
   }
 }

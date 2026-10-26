@@ -14,7 +14,7 @@ function parse<T>(schema: z.ZodType<T>, value: unknown, code: string): T { const
 const factRefSchema = z.object({ factId: uuid, field: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,59}(\.[0-9]{1,3})?$/), valueSha256: hash, attributionFactId: uuid }).strict();
 export const renderClaimSchema = z.object({ claimId: uuid, placement: z.string().min(1).max(180), text: z.string().min(1).max(3000), wordingSha256: hash,
   kind: z.enum(["CANDIDATE_FACT", "JOB_EVIDENCE", "MIXED", "NARRATIVE", "REFERENCE_PERMISSION"]),
-  origin: z.enum(["MODEL_PROPOSAL", "LOCAL_FACT", "LOCAL_JOB", "LOCAL_CONTACT", "CUSTOMER_PRESENTATION", "FIXED_PRESENTATION", "LOCAL_REFERENCE"]),
+  origin: z.enum(["MODEL_PROPOSAL", "OWNER_EDIT", "LOCAL_FACT", "LOCAL_JOB", "LOCAL_CONTACT", "CUSTOMER_PRESENTATION", "FIXED_PRESENTATION", "LOCAL_REFERENCE"]),
   qualification: z.enum(["EXACT", "QUALIFIED_TRANSFER", "NONFACTUAL"]), factRefs: z.array(factRefSchema).max(40), jobEvidenceIds: z.array(uuid).max(40), referencePermissionIds: z.array(uuid).max(3),
   contactBinding: z.object({ payloadId: uuid, contentSha256: hash, fields: z.array(z.string().min(1).max(60)).max(6) }).strict().nullable(),
   referenceBinding: z.object({ permissionId: uuid, recordVersionId: uuid, payloadId: uuid, contentSha256: hash, field: z.enum(DRAFT_REFERENCE_FIELDS) }).strict().optional(),
@@ -22,6 +22,9 @@ export const renderClaimSchema = z.object({ claimId: uuid, placement: z.string()
     interpretation: z.literal("POTENTIAL_EMPLOYER_PRIORITY_NOT_A_CANDIDATE_QUALIFICATION") }).strict()).max(8), state: z.literal("OWNER_REVIEW_REQUIRED") }).strict();
 const claims = z.array(renderClaimSchema).max(250);
 const renderSourceSchema = z.object({ schemaVersion: z.literal("applypack-draft-render-source-v1"), expected: draftingEvidenceExpectationSchema,
+  ownerEdit: z.object({ schemaVersion: z.literal("applypack-owner-draft-edit-v1"), requestId: uuid, requestSha256: hash,
+    priorVersionId: uuid, priorSourceSha256: hash, originalProposalSourceSha256: hash, reviewerId: uuid, editedAt: time,
+    validatedOutputSha256: hash, changedPlacements: z.array(z.string().regex(/^(?:resume\.(?:summary\.\d+|skills\.\d+|sections\.\d+\.bullets\.\d+)|coverLetter\.body\.\d+\.sentences\.\d+)$/)).min(1).max(250) }).strict().optional(),
   packetSha256: hash, proposalSourceSha256: hash, contactPayloadId: uuid, contactSha256: hash, finalVersionAt: time, validUntil: time, language: z.literal("en-US"),
   outputRules: z.object({ formats: z.array(z.enum(["PDF", "DOCX"])).min(1).max(2), resumePageLimit: z.number().int().positive().nullable(), letterPageLimit: z.number().int().positive().nullable() }).strict(),
   resume: z.object({ header: claims, summary: claims, skills: claims,
@@ -52,6 +55,12 @@ export function readStoredDraftRenderSource(saved: { body: string; value: unknow
       && exact(source.outputRules) === exact(packet.providerView.outputRules) && Date.parse(source.validUntil) === Date.parse(packet.validUntil)
       && Date.parse(source.validUntil) > now().getTime() && Date.parse(source.finalVersionAt) <= now().getTime(), "SOURCE_STALE");
     const permissions = packet.binding.referencePermissions;
+    ensure(!source.ownerReviewClaims.some((claim) => claim.origin === "OWNER_EDIT") || source.ownerEdit, "OWNER_EDIT_LINEAGE_MISSING");
+    if (source.ownerEdit) ensure(source.ownerEdit.originalProposalSourceSha256 === source.proposalSourceSha256
+      && source.ownerEdit.editedAt === source.finalVersionAt && Date.parse(source.ownerEdit.editedAt) <= now().getTime()
+      && source.ownerEdit.priorSourceSha256 !== sourceSha256 && new Set(source.ownerEdit.changedPlacements).size === source.ownerEdit.changedPlacements.length
+      && source.ownerReviewClaims.filter((claim) => claim.origin === "OWNER_EDIT").every((claim) => claim.contactBinding === null && !claim.referenceBinding
+        && claim.factRefs.length > 0 && /^(?:resume\.(?:summary\.|skills\.|sections\.\d+\.bullets\.)|coverLetter\.body\.\d+\.sentences\.)/.test(claim.placement)), "OWNER_EDIT_LINEAGE_INVALID");
     ensure(Boolean(source.referenceSheet) === Boolean(permissions.length), "REFERENCE_SCOPE_INVALID");
     if (source.referenceSheet) {
       const rawBindings = "referenceBindings" in packet.ownerEvidence ? packet.ownerEvidence.referenceBindings : undefined;

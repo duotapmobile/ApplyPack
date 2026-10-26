@@ -7,6 +7,7 @@ import type { DraftOwnerDetail, DraftOwnerQueue, SavedDraftInstructions } from "
 import { formatEasternDeadline } from "@/lib/commerce/presentation";
 import styles from "./draft-owner-workspace.module.css";
 import { DraftEvidenceRecoveryControls } from "./draft-evidence-recovery";
+import { DraftOwnerEdit } from "./draft-owner-edit";
 
 type Available = Extract<DraftOwnerDetail, { status: "AVAILABLE" }>;
 const checks = {
@@ -73,9 +74,10 @@ function DraftReview({ detail }: { detail: Available }) {
   const [promote, setPromote] = useState(false), [listingOpened, setListingOpened] = useState(false), [instructionsCompared, setInstructionsCompared] = useState(false);
   const [listingResult, setListingResult] = useState("ACTIVE"), [attestation, setAttestation] = useState(""), [rationale, setRationale] = useState(""), [sendConfirmed, setSendConfirmed] = useState(false);
   const [attempted, setAttempted] = useState(false), [message, setMessage] = useState("");
+  const [editing, setEditing] = useState(false);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => { const timer = setInterval(() => setClock(Date.now()), 1000); return () => { clearInterval(timer); controller.current?.abort(); }; }, []);
-  const stale = clock >= Date.parse(detail.validUntil), disabled = attempted || stale;
+  const stale = clock >= Date.parse(detail.validUntil), disabled = attempted || stale || editing;
   const binding = { versionId: detail.versionId, packetSha256: detail.packetSha256, sourceSha256: detail.sourceSha256, memberSetSha256: detail.memberSetSha256 };
   async function action(body: Record<string, unknown>) {
     if (disabled) return;
@@ -117,7 +119,7 @@ function DraftReview({ detail }: { detail: Available }) {
       <p>Delivery due {formatEasternDeadline(detail.dueAt)}. Evidence valid until {formatEasternDeadline(detail.validUntil)}.</p>
       {detail.applicationUrl ? <a href={detail.applicationUrl} target="_blank" rel="noopener noreferrer">Open employer application page (new tab)</a> : <p>The employer link could not be safely displayed.</p>}
       <p>{detail.kind === "PROPOSAL" ? "This is proposed wording. Contact details and exact confirmed headings are added in the next review version." : "This is the exact saved document text. Rendering, wording review, pair approval and sending are separate steps."}</p>
-      <p>Section editing and requests for changes are not available in this workspace yet. If a change is needed, leave this version unapproved. The editing step is still being connected.</p>
+      <p>Owner wording edits create a new version requiring fresh review. Requests for another system draft are not connected yet; no automatic retry or approval is started here.</p>
       {stale ? <p role="alert">This evidence has expired. Actions are locked until verified evidence is refreshed.</p> : null}
       <button type="button" onClick={() => router.refresh()}>Reload current version</button><p role="status" aria-live="polite">{message}</p>
     </header>
@@ -125,6 +127,10 @@ function DraftReview({ detail }: { detail: Available }) {
       {detail.documents.map((document) => <section className={styles.document} key={document.title} aria-label={document.title}><h4>{document.title}</h4>{document.sections.map((section, index) => <section key={`${section.heading}:${index}`}><h5>{section.heading}</h5>{section.lines.map((line, item) => line.bullet ? <ul key={item}><li>{line.text}</li></ul> : <p key={item}>{line.text}</p>)}</section>)}</section>)}
       {detail.canPromote ? <fieldset disabled={disabled}><legend>Prepare the complete review version</legend><label><input type="checkbox" checked={promote} onChange={(event) => setPromote(event.target.checked)} />I reviewed the proposal and want to add the exact confirmed contact details and factual headings for a complete wording review.</label><button type="button" disabled={!promote || disabled} onClick={() => void action({ action: "PROMOTE_SOURCE", expectedVersionId: detail.versionId, expectedSourceSha256: detail.sourceSha256 })}>Prepare complete review version</button><p>This does not approve or send the documents.</p></fieldset> : null}
     </section>
+    {detail.editing ? <DraftOwnerEdit key={`${detail.versionId}:${detail.sourceSha256}`} jobId={detail.jobId} versionId={detail.versionId} sourceSha256={detail.sourceSha256}
+      packetSha256={detail.packetSha256} validUntil={detail.validUntil} model={detail.editing} disabled={attempted || stale} onLockChange={(locked) => {
+        setEditing(locked); setReviewed({}); setPairChecks({}); setSendConfirmed(false); setPromote(false);
+      }} /> : null}
     <section className={styles.section} aria-labelledby="draft-facts"><h3 id="draft-facts">Confirmed background and instructions</h3><p>These are the frozen customer facts for this paid revision. Approximate, unfinished and negative facts must stay qualified.</p>
       <dl><dt>Emphasize</dt><dd>{detail.instructions.emphasis || "No additional emphasis requested."}</dd><dt>Do not mention</dt><dd>{detail.instructions.doNotMention || "No additional exclusion requested."}</dd></dl><SavedInstructions instructions={detail.instructions.saved} />
       {detail.facts.map((fact) => <details key={fact.id}><summary>{fact.label} · {human(fact.disposition)}</summary><p>Source: {human(fact.provenance.kind)}; {human(fact.provenance.verification)}{fact.provenance.confirmedAt ? ` on ${formatEasternDeadline(fact.provenance.confirmedAt)}` : ""}. {fact.provenance.document ? `${human(fact.provenance.document.kind)} version ${fact.provenance.document.version}. ` : ""}{fact.provenance.locator}</p><dl>{fact.fields.map((field, index) => <div key={index}><dt>{field.label}</dt><dd>{field.value || "Not supplied"}</dd></div>)}</dl></details>)}

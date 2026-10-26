@@ -73,3 +73,85 @@ test("owner workspace has labelled controls and reflows at 320 CSS pixels", asyn
   expect(results.violations.filter((item) => ["moderate", "serious", "critical"].includes(item.impact ?? ""))).toEqual([]);
   await page.screenshot({ path: test.info().outputPath("owner-recovery-320.png"), fullPage: true });
 });
+
+const editedWording = "Organized community event schedules and priorities.";
+const editConfirmation = "I want to save these edits as a new version and repeat wording, rendered-file and approval checks before a separate Send action.";
+function editReceipt(body: Record<string, unknown>, reconciled = false) {
+  return { action: "SAVE_OWNER_EDIT", result: { jobId: "78000000-0000-4000-8000-000000000001", requestId: body.requestId,
+    versionId: "78000000-0000-4000-8000-000000000090", packetSha256: "a".repeat(64), sourceSha256: "f".repeat(64),
+    state: "OWNER_REVIEW_REQUIRED", deliveryAuthorized: false, reconciled } };
+}
+async function beginEdit(page: Page) {
+  const edit = page.getByRole("button", { name: "Edit wording", exact: true });
+  await tabTo(page, edit); await page.keyboard.press("Enter");
+  const wording = page.getByRole("textbox", { name: "Experience 1 bullet 1 wording", exact: true });
+  await tabTo(page, wording); await wording.fill(editedWording);
+  await keyboardCheck(page, page.getByLabel(editConfirmation, { exact: true }));
+}
+test("owner wording edits reset review choices and save an unapproved new version", async ({ page }) => {
+  const requests: Record<string, unknown>[] = [];
+  await page.route("**/api/admin/material-draft-jobs/*", async (route) => {
+    const body = route.request().postDataJSON(); requests.push(body); await route.fulfill({ json: editReceipt(body) });
+  });
+  await open(page, "approve");
+  const checks = page.getByRole("group", { name: "Seven required pair checks" }).getByRole("checkbox");
+  await keyboardCheck(page, checks);
+  await page.getByRole("button", { name: "Edit wording", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Approve pair — do not send" })).toBeDisabled();
+  await page.getByRole("button", { name: "Cancel edits" }).click();
+  for (const box of await checks.all()) await expect(box).not.toBeChecked();
+  await beginEdit(page);
+  await expect(page.getByRole("textbox", { name: "Experience 1 bullet 1 wording", exact: true })).toHaveValue(editedWording);
+  await expect(page.getByRole("textbox", { name: /organization|phone|name|date/i })).toHaveCount(0);
+  const save = page.getByRole("button", { name: "Save new review version" }); await tabTo(page, save); await page.keyboard.press("Enter");
+  await expect.poll(() => requests.length).toBe(1);
+  expect(requests[0].action).toBe("SAVE_OWNER_EDIT");
+  expect(Object.keys(requests[0]).sort()).toEqual(["action", "expectedSourceSha256", "expectedVersionId", "output", "requestId"]);
+  expect(requests[0].requestId).toMatch(/^[a-f0-9-]{36}$/);
+  expect(requests[0].output).toMatchObject({ resume: { sections: [{ anchorFactId: "78000000-0000-4000-8000-000000000030", bullets: [{ text: editedWording, sourceAtomIds: ["4".repeat(64)] }] }] } });
+  await expect(page.getByText(/New version saved/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Approve pair — do not send" })).toBeDisabled();
+  expect(requests.every((request) => request.action === "SAVE_OWNER_EDIT")).toBe(true);
+});
+test("owner explicitly reconciles the identical edit after a lost response without storing prose", async ({ page }) => {
+  const requests: Record<string, unknown>[] = [];
+  await page.route("**/api/admin/material-draft-jobs/*", async (route) => {
+    const body = route.request().postDataJSON(); requests.push(body);
+    if (requests.length === 1) return route.abort("failed");
+    await route.fulfill({ json: editReceipt(body, true) });
+  });
+  await open(page, "send"); await beginEdit(page);
+  await page.getByRole("button", { name: "Save new review version" }).click();
+  const reconcile = page.getByRole("button", { name: "Reconcile saved edit" }); await expect(reconcile).toBeEnabled();
+  await expect(page.getByRole("textbox", { name: "Experience 1 bullet 1 wording", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Send approved pair" })).toBeDisabled();
+  await tabTo(page, reconcile); await page.keyboard.press("Enter");
+  await expect.poll(() => requests.length).toBe(2); expect(requests[1]).toEqual(requests[0]);
+  await expect(page.getByText(/New version saved/)).toBeVisible();
+  const storage = await page.evaluate(() => JSON.stringify({ session: Object.entries(sessionStorage), local: Object.entries(localStorage) }));
+  expect(storage).not.toContain(editedWording); expect(storage).not.toContain("Organized event schedules");
+});
+test("definitely rejected edits remain editable and require renewed confirmation", async ({ page }) => {
+  const requests: Record<string, unknown>[] = [];
+  await page.route("**/api/admin/material-draft-jobs/*", async (route) => {
+    const body = route.request().postDataJSON(); requests.push(body);
+    if (requests.length === 1) return route.fulfill({ status: 422, json: { editRejected: true, error: "The edited wording could not be validated against the confirmed sources. Review the wording and source selections." } });
+    await route.fulfill({ json: editReceipt(body) });
+  });
+  await open(page, "wording"); await beginEdit(page); await page.getByRole("button", { name: "Save new review version" }).click();
+  const wording = page.getByRole("textbox", { name: "Experience 1 bullet 1 wording", exact: true }); await expect(wording).toBeEnabled();
+  await expect(wording).toHaveValue(editedWording); await expect(page.getByLabel(editConfirmation, { exact: true })).not.toBeChecked();
+  await expect(page.getByRole("button", { name: "Save new review version" })).toBeDisabled();
+  await wording.fill("Organized schedules for community events."); await keyboardCheck(page, page.getByLabel(editConfirmation, { exact: true }));
+  await page.getByRole("button", { name: "Save new review version" }).click(); await expect.poll(() => requests.length).toBe(2);
+  expect(requests[1].requestId).not.toBe(requests[0].requestId); await expect(page.getByText(/New version saved/)).toBeVisible();
+});
+test("owner wording editor is labelled and reflows with expanded source choices", async ({ page }) => {
+  await open(page, "wording"); await page.getByRole("button", { name: "Edit wording", exact: true }).click();
+  await page.getByText("Confirmed sources for experience 1 bullet 1", { exact: true }).click();
+  await page.setViewportSize({ width: 320, height: 900 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  const results = await new AxeBuilder({ page }).exclude("script").analyze();
+  expect(results.violations.filter((item) => ["moderate", "serious", "critical"].includes(item.impact ?? ""))).toEqual([]);
+  await page.screenshot({ path: test.info().outputPath("owner-editor-320.png"), fullPage: true });
+});

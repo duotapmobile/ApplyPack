@@ -12827,6 +12827,18 @@ export type Database = {
         Args: { p_line_id: string; p_operation: string }
         Returns: undefined
       }
+      ap_assert_material_draft_reference_claim: {
+        Args: { p_claim: Json; p_job_id: string }
+        Returns: undefined
+      }
+      ap_assert_material_draft_reference_provenance: {
+        Args: {
+          p_artifact_type: Database["public"]["Enums"]["ap_artifact_type"]
+          p_job_id: string
+          p_provenance: Json
+        }
+        Returns: undefined
+      }
       ap_assert_service_retention_access: {
         Args: { p_action?: boolean; p_line_id?: string; p_order_id: string }
         Returns: undefined
@@ -14037,6 +14049,10 @@ export type Database = {
         Returns: Json
       }
       ap_material_draft_pair_schema_installed: { Args: never; Returns: boolean }
+      ap_material_draft_reference_evidence: {
+        Args: { p_job_id: string }
+        Returns: Json
+      }
       ap_material_draft_release_binding: {
         Args: { p_line_id: string }
         Returns: Json
@@ -14511,6 +14527,10 @@ export type Database = {
       ap_redact_service_retention_claim: {
         Args: { p_claim_id: string }
         Returns: number
+      }
+      ap_reference_aware_draft_schema_installed: {
+        Args: never
+        Returns: boolean
       }
       ap_refresh_material_draft_packet: {
         Args: {

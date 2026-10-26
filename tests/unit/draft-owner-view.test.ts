@@ -187,6 +187,15 @@ describe("private owner draft read model", () => {
     expect(result.questions.status).toBe("NOT_INSPECTED"); expect(result.documents[1].sections[0].lines[0].text).toContain("community event schedules");
     expect(JSON.stringify(result)).not.toMatch(/ciphertext|rawSourceEvidence|protectedPayloadId/); expect(d.buffers.every((buffer) => buffer.every((byte) => byte === 0))).toBe(true);
     expect(d.calls.every((call) => call.signal instanceof AbortSignal)).toBe(true);
+    expect(result.editing).toBeUndefined();
+  });
+  it.each(["SOURCE_READY", "REVIEW_READY", "APPROVED"])("provides actual source-linked prose editing for %s without writable identity", async (state) => {
+    const d = database("source"); if (state !== "SOURCE_READY") d.pair(); d.job.state = state;
+    const result = await d.detail(); expect(result.status).toBe("AVAILABLE"); if (result.status !== "AVAILABLE") return;
+    expect(result.editing?.output.resume.sections[0].bullets[0].sourceAtomIds).toHaveLength(1);
+    expect(result.editing?.output.coverLetter.body[0].sentences[0].text).toBe(d.base.build().coverLetter.body[0][0].text);
+    expect(result.editing?.output.resume).not.toHaveProperty("header"); expect(result.editing?.output).not.toHaveProperty("contact");
+    expect(result.editing?.sections[0].label).toContain("Volunteer coordinator");
   });
   it("shares strict saved-source decoding and displays exact contact, claim source and verified questions", async () => {
     const d = database("source", true), result = await d.detail(); expect(result.status).toBe("AVAILABLE"); if (result.status !== "AVAILABLE") return;
