@@ -108,7 +108,8 @@ export async function verifyIndependentSourceInventory(admin: AdminClient, actor
     customerVisible: false, nextStep: "ADMIT_SNAPSHOT_SEPARATELY_AND_RECONCILE_ONLY_AFTER_COMPLETE_RUN_REVIEW" };
 }
 
-export async function promoteVerifiedSourceInventory(admin: AdminClient, actorId: string, input: SourceVerificationInput) {
+export async function promoteVerifiedSourceInventory(admin: AdminClient, actorId: string, input: SourceVerificationInput,
+  preparationId?: string) {
   const { data: projection, error: projectionError } = await admin.from("job_source_listing_projections")
     .select("id,run_id,listing_key,job_id").eq("id", input.projectionId).maybeSingle();
   if (projectionError || !projection) throw new Error("source_projection_unavailable");
@@ -126,7 +127,8 @@ export async function promoteVerifiedSourceInventory(admin: AdminClient, actorId
       questionRun: { sourceRunId: projection.run_id, authorizationId: run.source_authorization_id!,
         authorizationHeadRevision: run.authorization_head_revision!, scopeSha256: run.scope_sha256! } });
   const rpc = admin.rpc.bind(admin) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ data: string | null; error: unknown }>;
-  const result = await rpc("ap_promote_verified_source_inventory", {
+  const result = await rpc(preparationId ? "ap_promote_prepared_research_observation" : "ap_promote_verified_source_inventory", {
+    ...(preparationId ? { p_preparation_id: z.uuid().parse(preparationId), p_normalized: built.normalized } : {}),
     p_projection_id: input.projectionId, p_actor_id: actorId, p_criteria_snapshot_id: input.snapshotId,
     p_inventory_version_id: plan.inventory_version_id, p_review: built.review,
     p_stable_job_id: built.stableJobId, p_job_snapshot: built.snapshot, p_requirement_nodes: built.requirementNodes,

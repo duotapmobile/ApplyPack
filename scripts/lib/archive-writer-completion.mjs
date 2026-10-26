@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ARCHIVE_DATABASE_READ_VERSIONS } from "./recovery-archive-history.mjs";
 import { canonicalSha256 } from "./protected-recovery-core.mjs";
 import { databaseFileCheckpointSchema } from "./database-recovery-protocol.mjs";
 import { authenticatedArchiveEvidence } from "./recovery-archive-evidence.mjs";
@@ -7,7 +8,7 @@ const sha = z.string().regex(/^[a-f0-9]{64}$/u);
 const release = z.string().regex(/^[a-f0-9]{40}$/u);
 const timestamp = z.iso.datetime({ offset: true });
 const version = z.string().min(1).max(1024).regex(/^[A-Za-z0-9._~+/=:-]+$/u).refine((value) => value !== "null");
-const schema = z.string().regex(/^2026102500(?:9[0-9])$/u);
+const schema = z.enum(ARCHIVE_DATABASE_READ_VERSIONS);
 const project = z.literal("spjaaxndiduhrcleazwb");
 const fail = (code) => { throw new Error(`ARCHIVE_WRITER_COMPLETION_${code}`); };
 const requireValue = (value, code) => { if (!value) fail(code); };

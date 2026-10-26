@@ -130,8 +130,10 @@ export async function POST(request: Request) {
     autonomy: review.autonomy ?? null,
     scope: review.scope ?? null,
     domain_context: review.domainContext ?? null,
-    duration_and_intensity: review.durationAndIntensity ?? null,
-    essential_tools: review.essentialTools ?? null,
+    // Missing JSON keys become SQL NULL in the immutable-review RPC. JSON null
+    // is a value and violates its object/array constraints for ordinary reviews.
+    ...(review.durationAndIntensity === undefined ? {} : { duration_and_intensity: review.durationAndIntensity }),
+    ...(review.essentialTools === undefined ? {} : { essential_tools: review.essentialTools }),
     rationale: review.rationale,
     catalog_version: MATCHING_RULES_VERSION,
     decision,

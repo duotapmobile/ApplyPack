@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+vi.mock("server-only", () => ({}));
 import { parseListingRequirements } from "@/lib/matching/listing-parser";
 import { deriveCustomerHardGates, derivePreferenceComponents, materialSourceQuality, salaryInput } from "@/lib/matching/evidence-derived";
 import { buildReviewSubjectKey } from "@/lib/matching/review";

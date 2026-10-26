@@ -12,6 +12,10 @@ param(
   [switch]$DraftChangeUpgrade,
   [switch]$ArchiveLifecycleUpgrade,
   [switch]$ServiceRepairUpgrade,
+  [switch]$ResearchJourney,
+  [ValidateSet('LIMITED','QUALIFIED')]
+  [string]$ResearchJourneyCase = 'LIMITED',
+  [switch]$ResearchPreparationUpgrade,
   [switch]$LegalReceiptUpgrade,
   [string[]]$FixtureNames,
   [string]$MaximumMigrationVersion
@@ -159,6 +163,14 @@ if ($ServiceRepairUpgrade) {
   if (-not $FixtureNames) { $fixtures = @() }
   $fixtures += @('service-repair-upgrade-seed.sql','service-repair-upgrade-verify.sql')
 }
+if ($ResearchPreparationUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $ServiceRepairUpgrade -or $LegalReceiptUpgrade -or
+      $MaximumMigrationVersion -cne '202610250100' -or $migrationFiles[-1].Name -cne '202610250100_automatic_research_preparation.sql') {
+    throw 'Research preparation upgrade requires the exact isolated099-to100 preservation sequence.'
+  }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('research-preparation-upgrade-seed.sql','research-preparation-upgrade-verify.sql')
+}
 $inputs = @([pscustomobject]@{Kind='bootstrap'; Name='bootstrap.sql'; Path=$bootstrapPath})
 foreach ($migration in $migrationFiles) {
   $copy = Join-Path $inputPath $migration.Name
@@ -240,6 +252,14 @@ if ($ServiceRepairUpgrade) {
     @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250099' }) +
     @($inputs | Where-Object Name -eq 'service-repair-upgrade-verify.sql') +
     @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('service-repair-upgrade-seed.sql','service-repair-upgrade-verify.sql') })
+}
+if ($ResearchPreparationUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250099' }) +
+    @($inputs | Where-Object Name -eq 'research-preparation-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250100' }) +
+    @($inputs | Where-Object Name -eq 'research-preparation-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('research-preparation-upgrade-seed.sql','research-preparation-upgrade-verify.sql') })
 }
 if ($LegalReceiptUpgrade) {
   $bindingPath = Join-Path $repoRoot 'scripts/launch-legal-contract.mjs'
@@ -427,6 +447,23 @@ try {
     $step = 'independent-connection synthetic capacity pressure'
     & python $pressureScript --postgres-bin $PostgresBin --evidence-directory $evidenceRoot --port $port
     if ($LASTEXITCODE -ne 0) { throw 'Capacity pressure failed; see process output.' }
+  }
+  if ($ResearchJourney) {
+    if ($LegacyBackfill -or $CapacityPressure -or $ServiceRepairUpgrade -or $MaximumMigrationVersion -cne '202610250100') { throw 'Research journey requires the explicit100 fictional fixture boundary.' }
+    $step = 'actual research routes against the owned loopback cluster'
+    $researchMarker = [guid]::NewGuid().ToString('N')
+    Invoke-Native 'psql.exe' @('-X', '-h', '127.0.0.1', '-p', "$port", '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', "create table public.ap_research_local_test_identity(marker text primary key); insert into public.ap_research_local_test_identity values('$researchMarker');") 30
+    $researchEnvironment = @{}
+    foreach ($key in @('AP_RESEARCH_TEST_PORT','AP_RESEARCH_TEST_PSQL','AP_RESEARCH_TEST_MARKER')) { $researchEnvironment[$key] = [Environment]::GetEnvironmentVariable($key, 'Process') }
+    try {
+      $env:AP_RESEARCH_TEST_PORT = "$port"
+      $env:AP_RESEARCH_TEST_PSQL = Join-Path $PostgresBin 'psql.exe'
+      $env:AP_RESEARCH_TEST_MARKER = $researchMarker
+      & (Get-Command node -ErrorAction Stop).Source (Join-Path $repoRoot 'scripts/run-research-native-journey.mjs') $ResearchJourneyCase
+      if ($LASTEXITCODE -ne 0) { throw 'Research route/database journey failed; no successful provider proof inferred.' }
+    } finally {
+      foreach ($key in $researchEnvironment.Keys) { [Environment]::SetEnvironmentVariable($key, $researchEnvironment[$key], 'Process') }
+    }
   }
   "PASS: $($migrationFiles.Count) migrations and $($fixtures.Count) fixtures; native PostgreSQL engine only." | Set-Content (Join-Path $evidenceRoot 'RESULT.txt')
 } catch {

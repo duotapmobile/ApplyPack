@@ -3,6 +3,7 @@ import type { Database } from "@/lib/database.types";
 import { runFeasibilityWorker, type FeasibilityWorkerStore, type PersistedFeasibilityInput } from "@/lib/matching/feasibility-worker";
 import type { FeasibilityReason, PersistedInventoryEvaluation } from "@/lib/matching/feasibility";
 import { assertCurrentCoverageAuthority } from "./coverage-authority";
+import { preparationAllowsFeasibility } from "./research-preparation-server";
 
 type AdminClient = SupabaseClient<Database>;
 
@@ -182,6 +183,9 @@ export async function processPendingFeasibilityRequests(admin: AdminClient, limi
   const results: Array<{ requestId: string; status: "complete" | "deferred" | "failed" }> = [];
   for (const request of data || []) {
     try {
+      if (!await preparationAllowsFeasibility(admin, request.id)) {
+        results.push({ requestId: request.id, status: "deferred" }); continue;
+      }
       const result = await runFeasibilityWorker(store, request.id, workerId);
       results.push({ requestId: request.id, status: result.runState === "COMPLETE" ? "complete" : "deferred" });
     } catch {

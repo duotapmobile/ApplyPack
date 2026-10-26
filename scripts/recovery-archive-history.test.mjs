@@ -19,7 +19,7 @@ test("finite legacy file roster is read without adding current table rows or ove
   assert.equal(parsed.manifest.inventory.schemaVersion, "applypack-protected-recovery-inventory-v1");
   assert.equal(parsed.manifest.inventory.serviceRetention, undefined); assert.deepEqual(canonicalBytes(parsed.manifest), bytes);
 });
-for (const value of ["202610240087", "202610250100", "202610250999", "202610250093extra"])
+for (const value of ["202610240087", "202610250101", "202610250999", "202610250093extra"])
   test(`unknown database read profile ${value} fails closed`, () => {
     const f = archiveHistoryFixture(value); assert.throws(() => validateHistoricalDatabaseManifest(f.database.manifest, f.database.digest), /SHAPE_OR_DIGEST/u);
   });

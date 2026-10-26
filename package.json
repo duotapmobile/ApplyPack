@@ -54,7 +54,9 @@
     "staging:readiness": "node scripts/report-staging-readiness.mjs",
     "test:hosted": "playwright test --config playwright.hosted.config.ts",
     "test:fixtures": "node scripts/generate-soft-opening-fixtures.mjs",
-    "maintenance:once": "node scripts/run-maintenance-once.mjs"
+    "maintenance:once": "node scripts/run-maintenance-once.mjs",
+    "test:automatic-research-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-100",
+    "test:automatic-research-integration": "node --test scripts/automatic-research-integration.test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-kms": "3.1137.0",

@@ -124,6 +124,11 @@ jobs:
         run: npm run test:service-repair-migration
       - name: Verify099 historical phases and recovery coverage
         run: npm run test:service-repair-integration
+      - name: Validate100 default-disabled automatic research controls
+        shell: pwsh
+        run: npm run test:automatic-research-migration
+      - name: Verify100 historical phases and recovery coverage
+        run: npm run test:automatic-research-integration
       - name: Validate098 default-disabled protected archive lifecycle controls
         shell: pwsh
         run: npm run test:archive-lifecycle-migration
@@ -187,7 +192,7 @@ jobs:
             browser-results.json
           if-no-files-found: warn
 
-  database:
+  database-core:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -219,7 +224,15 @@ jobs:
             evidence/database-type-generation/generated-database.types.ts
           if-no-files-found: error
       - name: Corrected-contract database fixtures
-        run: npm run test:database
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test scripts/rehearsal-upgrade-selection.test.mjs
+          node scripts/run-supabase-retention-upgrade-test.mjs
+          node scripts/run-supabase-legal-upgrade-test.mjs
+          node scripts/run-supabase-inventory-upgrade-test.mjs
+          node scripts/run-supabase-legacy-board-upgrade-test.mjs
+          node scripts/run-supabase-db-tests-v2.mjs
       - name: Independent PostgreSQL17 retention and hold races
         shell: bash
         run: |
@@ -251,6 +264,77 @@ jobs:
           cat tests/integration/historical-preservation-fixture.sql | docker exec -i supabase_db_applypack psql -U postgres -d postgres -v ON_ERROR_STOP=1
           supabase migration up --local
           cat tests/integration/historical-preservation-assertions.sql | docker exec -i supabase_db_applypack psql -U postgres -d postgres -v ON_ERROR_STOP=1
+
+  database-upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        predecessor:
+          - '202610040080'
+          - '202610190081'
+          - '202610190082'
+          - '202610190083'
+          - '202610190084'
+          - '202610220085'
+          - '202610230086'
+          - '202610240087'
+          - '202610250088'
+          - '202610250089'
+          - '202610250090'
+          - '202610250091'
+          - '202610250092'
+          - '202610250093'
+          - '202610250094'
+          - '202610250095'
+          - '202610250096'
+          - '202610250097'
+          - '202610250098'
+          - '202610250099'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.116.0
+      - run: supabase start
+      - name: Exact historical predecessor with all preservation and current checks
+        shell: bash
+        env:
+          APPLYPACK_UPGRADE_PREDECESSOR: ${{ matrix.predecessor }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/database-upgrade
+          git rev-parse HEAD > evidence/database-upgrade/tested-commit.txt
+          node scripts/run-supabase-rehearsal-upgrade-test.mjs --predecessor "$APPLYPACK_UPGRADE_PREDECESSOR" | tee evidence/database-upgrade/result.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: database-upgrade-${{ matrix.predecessor }}
+          path: evidence/database-upgrade
+          if-no-files-found: error
+
+  # Retain the established required check name. A failed, skipped or cancelled
+  # partition must never be hidden behind a successful current-schema job.
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    needs: [database-core, database-upgrade]
+    steps:
+      - name: Require current schema and every historical upgrade
+        env:
+          CORE_RESULT: ${{ needs.database-core.result }}
+          UPGRADE_RESULT: ${{ needs.database-upgrade.result }}
+        run: test "$CORE_RESULT" = success && test "$UPGRADE_RESULT" = success
 
   document-render:
     runs-on: windows-latest

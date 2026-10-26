@@ -11,6 +11,7 @@ import { processUnpaidSourceRetention } from "@/lib/files/unpaid-retention";
 import { processServiceRetention } from "@/lib/files/service-retention";
 import { processAwsTemporaryCleanup } from "@/lib/files/aws-temporary-cleanup";
 import { processPendingFeasibilityRequests } from "@/lib/matching/supabase-feasibility-store";
+import { processAutomaticResearchPreparation } from "@/lib/matching/research-preparation-server";
 import { processChunk4Workers } from "@/lib/commerce/workers";
 import { processMaterialDraftQueue } from "@/lib/documents/draft-queue-server";
 import { reconcileBoardSubscriptions } from "@/lib/job-board/stripe-events";
@@ -353,6 +354,12 @@ export async function POST(request: Request) {
     fileScans = await processQueue("malware", fileReady, () => processPendingFileScans(admin, 5));
     if (fileScans && fileScans.errors > 0) queueStages.malware = "FAILED";
   } else fileScans = { status: "DEFERRED_V2", malwareVerdict: "NOT_SCANNED", processed: 0 };
+  let researchPreparation;
+  if (process.env.APP_AUTOMATIC_RESEARCH_ENABLED === "true") {
+    researchPreparation = await processQueue("researchPreparation", encryptionReady && sourcesReady,
+      () => processAutomaticResearchPreparation({ signal: request.signal }));
+  }
+  if (researchPreparation?.status === "RESULT_UNKNOWN") queueStages.researchPreparation = "FAILED";
   const feasibility = await processQueue("feasibility", encryptionReady && sourcesReady, () => processPendingFeasibilityRequests(admin, 5));
   const unpaidSourceRetention = await processQueue("unpaidSourceRetention", true, () => processUnpaidSourceRetention(admin, 10));
   const serviceRetention = await processQueue("serviceRetention", process.env.APP_SERVICE_RETENTION_ENABLED === "true", () => processServiceRetention());
@@ -429,6 +436,7 @@ export async function POST(request: Request) {
     workflow,
     materialDrafts,
     feasibility,
+    researchPreparation,
     fileScans,
     documentExtractions,
     queueStages,

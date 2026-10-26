@@ -4,6 +4,7 @@ import { useState } from "react";
 import { MatchingGuidedControls } from "./matching-guided-controls";
 import { ManualResearchControls } from "./manual-research-controls";
 import { ManualSourceObservation, type ManualObservationSource } from "./manual-source-observation";
+import { ResearchPreparationReview } from "./research-preparation-review";
 import { evidenceRecord, evidenceRows, evidenceText, type PreparedResearchOperation } from "./matching-review-form";
 
 type CapturedListing = { id: string; label: string };
@@ -87,6 +88,7 @@ export function MatchingWorkbench({ intakes = [] }: { intakes?: Array<{ id: stri
     <button type="button" disabled={busy || !snapshot} onClick={() => void refresh()}>Load or refresh review evidence</button>
     {available ? <fieldset disabled={busy || Boolean(pending) || needsRefresh} key={revision}>
       <legend>Current intake research</legend>
+      <ResearchPreparationReview key={snapshot} snapshotId={snapshot} onChanged={load} />
       <MatchingGuidedControls snapshotId={snapshot} packet={packet} onPrepare={prepare} />
       <ManualSourceObservation sources={sources} busy={busy} onPrepare={(payload, summary) => prepare({
         endpoint: "job-source-manual-observations", payload, summary,

@@ -1,3 +1,4 @@
+import { ARCHIVE_DATABASE_READ_VERSIONS } from "./recovery-archive-history.mjs";
 import { z } from "zod";
 import { canonicalBytes, canonicalSha256, validateInventory } from "./protected-recovery-core.mjs";
 import { verifyRecoveryReceipt } from "./protected-recovery-source.mjs";
@@ -52,7 +53,7 @@ export function createArchiveLifecycleStore(admin) {
  * never by the request body. The default configuration does not enable this. */
 export function createArchiveLifecycleService({ store, readInventory, readCheckpoint, evidenceReader, configuration, now = Date.now }) {
   requireValue(configuration?.enabled === true && /^[a-f0-9]{40}$/u.test(configuration.releaseSha || "")
-    && /^20261025009[0-9]$/u.test(configuration.schemaVersion || "") && typeof configuration.receiptSecret === "string", "DISABLED");
+    && ARCHIVE_DATABASE_READ_VERSIONS.includes(configuration.schemaVersion) && typeof configuration.receiptSecret === "string", "DISABLED");
   const releaseSha = configuration.releaseSha;
   const validateRun = (run, id) => requireValue(run?.id === id && run.release_sha === releaseSha, "RUN_IDENTITY");
   const currentRun = async (id, signal) => {

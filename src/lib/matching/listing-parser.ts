@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { semanticComparisonKey, type TypedCriterion } from "@/lib/domain/foundation";
 import { industryCatalog, stateOrDcOptions } from "@/lib/intake/four-step";
 
-export const LISTING_PARSER_VERSION = "listing-requirements-v5";
+export const LISTING_PARSER_VERSION = "listing-requirements-v6";
 
 export type ListingParserIssue = {
   locator: string;
@@ -188,8 +188,15 @@ function criterionFor(snapshotId: string, locator: string, text: string, strengt
   return null;
 }
 
+// Tree identity distinguishes typed facts extracted from the same source text.
+// The criterion's matching key and persisted semantic_key retain their meaning.
+// Historical parser versions keep their original strict identity contract.
+export function requirementNodeSemanticKey(criterion: TypedCriterion) {
+  return criterion.version === "listing-requirements-v6" ? `${criterion.kind}:${criterion.semanticKey}` : criterion.semanticKey;
+}
+
 function criterionNode(criterion: TypedCriterion): ParsedRequirementNode {
-  return { nodeId: criterion.stableCriterionId, semanticKey: criterion.semanticKey, kind: "CRITERION", criterion };
+  return { nodeId: criterion.stableCriterionId, semanticKey: requirementNodeSemanticKey(criterion), kind: "CRITERION", criterion };
 }
 
 function alternativeNode(snapshotId: string, locator: string, text: string): { node: ParsedRequirementNode; criteria: TypedCriterion[] } | null {

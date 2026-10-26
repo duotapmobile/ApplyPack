@@ -17,6 +17,7 @@ import {
   type FitComponentName,
 } from "@/lib/matching/evaluation-engine";
 import { evaluateRequirementTree, evaluateToolCapability, type EvaluatableRequirementNode, type LeafDecision } from "@/lib/matching/requirements";
+import { requirementNodeSemanticKey } from "./listing-parser";
 import { activityCatalog, dealbreakerCatalog, industryCatalog } from "@/lib/intake/four-step";
 import { commuteGateKey, reviewedCommuteResult, COMMUTE_EVIDENCE_VERSION } from "@/lib/matching/commute-evidence";
 
@@ -26,6 +27,7 @@ export type PersistedRequirementRow = {
   position: number;
   node_kind: "ALL_OF" | "ANY_OF" | "CRITERION";
   criterion_type: string | null;
+  criterion_version?: string | null;
   stable_criterion_id: string | null;
   semantic_key: string | null;
   requirement_strength: string | null;
@@ -168,7 +170,15 @@ export function reconstructPersistedRequirementTree(rows: readonly PersistedRequ
     if (row.node_kind === "CRITERION") {
       const criterion = typedCriterionSchema.safeParse(row.typed_value);
       if (!criterion.success || criterion.data.strength !== "REQUIRED" || criterion.data.stableCriterionId !== row.stable_criterion_id) throw new Error("untyped_or_mismatched_hard_requirement");
-      return { nodeId: row.id, semanticKey: row.semantic_key || criterion.data.semanticKey, kind: "CRITERION", criterion: criterion.data };
+      // Pre-v6 rows keep their original reconstruction contract. The new tree
+      // identity is available only when both persisted version fields agree.
+      if ((row.criterion_version === "listing-requirements-v6" || criterion.data.version === "listing-requirements-v6")
+        && row.criterion_version !== criterion.data.version) throw new Error("mismatched_typed_requirement_version");
+      if (criterion.data.version === "listing-requirements-v6" && (row.criterion_type !== criterion.data.kind
+        || row.semantic_key !== criterion.data.semanticKey)) throw new Error("mismatched_typed_requirement_identity");
+      return { nodeId: row.id, semanticKey: criterion.data.version === "listing-requirements-v6"
+        ? requirementNodeSemanticKey({ ...criterion.data, semanticKey: row.semantic_key || criterion.data.semanticKey })
+        : row.semantic_key || criterion.data.semanticKey, kind: "CRITERION", criterion: criterion.data };
     }
     const children = [...(byParent.get(row.id) ?? [])].sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
     if (!children.length) throw new Error("empty_persisted_requirement_operator");

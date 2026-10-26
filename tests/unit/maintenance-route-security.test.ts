@@ -4,7 +4,7 @@ vi.mock("server-only", () => ({}));
 
 const dependencies = vi.hoisted(() => Object.fromEntries([
   "adminClient", "collectOperationsSummary", "recordMaintenanceDiagnosis", "recordMaintenanceFailure", "recordMaintenanceOutcome", "maintenanceActionsSucceeded",
-  "processUnpaidSourceRetention", "processServiceRetention", "processPendingFileScans", "processPendingDocumentExtractions", "processPendingFeasibilityRequests", "processWorkflowTasks",
+  "processUnpaidSourceRetention", "processServiceRetention", "processPendingFileScans", "processPendingDocumentExtractions", "processPendingFeasibilityRequests", "processAutomaticResearchPreparation", "processWorkflowTasks",
   "retryFailedEmails", "processChunk4Workers", "processMaterialDraftQueue", "reconcileBoardSubscriptions", "reconcileCheckoutInitiations", "processAwsTemporaryCleanup", "stripeClient", "sendTransactionalEmail",
 ].map(name => [name, vi.fn()])) as Record<string, ReturnType<typeof vi.fn>>);
 vi.mock("@/lib/supabase/admin", () => ({ createSupabaseAdminClient: dependencies.adminClient }));
@@ -23,6 +23,7 @@ vi.mock("@/lib/files/aws-temporary-cleanup", () => ({ processAwsTemporaryCleanup
 vi.mock("@/lib/files/process-scans", () => ({ processPendingFileScans: dependencies.processPendingFileScans }));
 vi.mock("@/lib/files/isolated-extraction", () => ({ processPendingDocumentExtractions: dependencies.processPendingDocumentExtractions }));
 vi.mock("@/lib/matching/supabase-feasibility-store", () => ({ processPendingFeasibilityRequests: dependencies.processPendingFeasibilityRequests }));
+vi.mock("@/lib/matching/research-preparation-server", () => ({ processAutomaticResearchPreparation: dependencies.processAutomaticResearchPreparation }));
 vi.mock("@/lib/workflow/process", () => ({ processWorkflowTasks: dependencies.processWorkflowTasks }));
 vi.mock("@/lib/email/retry", () => ({ retryFailedEmails: dependencies.retryFailedEmails }));
 vi.mock("@/lib/commerce/workers", () => ({ processChunk4Workers: dependencies.processChunk4Workers }));
@@ -56,6 +57,7 @@ describe("maintenance authorization and independent queues", () => {
     vi.stubEnv("APP_LEGACY_BOARD_MAINTENANCE_ENABLED", "true");
     vi.stubEnv("APP_SERVICE_RETENTION_ENABLED", "true");
     vi.stubEnv("APP_MATERIAL_DRAFT_QUEUE_ENABLED", "false");
+    vi.stubEnv("APP_AUTOMATIC_RESEARCH_ENABLED", "false");
     Object.values(dependencies).forEach(mock => mock.mockReset());
     dependencies.adminClient.mockReturnValue({ from: vi.fn(query), rpc: vi.fn().mockResolvedValue({ data: 0, error: null }),
       storage: { from: vi.fn(() => ({ remove: vi.fn().mockResolvedValue({ error: null }) })) } });
@@ -419,5 +421,29 @@ describe("maintenance authorization and independent queues", () => {
     expect(await response.json()).toMatchObject({ code: "MAINTENANCE_DIAGNOSIS_FAILED" });
     expect(dependencies.recordMaintenanceFailure).toHaveBeenCalledOnce();
     expect(dependencies.processPendingDocumentExtractions).not.toHaveBeenCalled();
+  });
+  it.each([undefined, "false", "TRUE"])("does not claim research without exact enablement (%s)", async enabled => {
+    vi.stubEnv("APP_AUTOMATIC_RESEARCH_ENABLED", enabled);
+    const result = await (await POST(request())).json();
+    expect(dependencies.processAutomaticResearchPreparation).not.toHaveBeenCalled();
+    expect(result.queueStages).not.toHaveProperty("researchPreparation");
+    expect(dependencies.processPendingFeasibilityRequests).toHaveBeenCalledOnce();
+  });
+  it("runs one bounded preparation stage before feasibility and passes cancellation", async () => {
+    vi.stubEnv("APP_AUTOMATIC_RESEARCH_ENABLED", "true");
+    dependencies.processAutomaticResearchPreparation.mockResolvedValue({ status: "ADVANCED", processed: 1 });
+    const req = request(), result = await (await POST(req)).json();
+    expect(result.queueStages.researchPreparation).toBe("SUCCEEDED");
+    expect(dependencies.processAutomaticResearchPreparation).toHaveBeenCalledExactlyOnceWith({ signal: req.signal });
+    expect(dependencies.processAutomaticResearchPreparation.mock.invocationCallOrder[0]).toBeLessThan(dependencies.processPendingFeasibilityRequests.mock.invocationCallOrder[0]);
+  });
+  it("reports an uncertain research outcome while preserving paid processors", async () => {
+    vi.stubEnv("APP_AUTOMATIC_RESEARCH_ENABLED", "true");
+    dependencies.processAutomaticResearchPreparation.mockResolvedValue({ status: "RESULT_UNKNOWN", processed: 0 });
+    const response = await POST(request());
+    expect(response.status).toBe(503);
+    expect((await response.json()).queueStages.researchPreparation).toBe("FAILED");
+    expect(dependencies.processChunk4Workers).toHaveBeenCalledOnce();
+    expect(dependencies.reconcileCheckoutInitiations).toHaveBeenCalledOnce();
   });
 });

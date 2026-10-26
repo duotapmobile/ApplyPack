@@ -24,10 +24,10 @@ test("099 appends its own locked phase without rewriting the historical098 check
 });
 
 test("current database export includes all six repair tables and file enumeration reads only finite metadata", () => {
-  assert.equal(DATABASE_RECOVERY.schemaVersion, "202610250099");
-  assert.equal(DATABASE_RECOVERY_SOURCE.schemaVersion, "202610250099");
-  assert.equal(DATABASE_RECOVERY_REQUIRED_TABLES.length, 27);
-  assert.equal(new Set(DATABASE_RECOVERY_REQUIRED_TABLES).size, 27);
+  assert.equal(DATABASE_RECOVERY.schemaVersion, "202610250100");
+  assert.equal(DATABASE_RECOVERY_SOURCE.schemaVersion, "202610250100");
+  assert.equal(DATABASE_RECOVERY_REQUIRED_TABLES.length, 30);
+  assert.equal(new Set(DATABASE_RECOVERY_REQUIRED_TABLES).size, 30);
   for (const table of tables) assert(DATABASE_RECOVERY_REQUIRED_TABLES.includes(table), table);
   assert(RECOVERY_TABLES.includes("ap_service_repair_files"));
   assert.deepEqual(recoverySourceColumns.ap_service_repair_files.split(","), ["id", "artifact_id", "storage_bucket", "storage_path",
@@ -36,9 +36,9 @@ test("current database export includes all six repair tables and file enumeratio
 });
 
 test("the actual pinned PG17 input contains099 plus the existing restricted-role and race proofs", () => {
-  const input = loadRetentionPostgresInputs(); assert.equal(input.migrationCount, 104);
+  const input = loadRetentionPostgresInputs(); assert.equal(input.migrationCount, 105);
   const fixtures = input.hashes.filter((value) => value.kind === "fixture").map((value) => value.name);
-  assert.equal(fixtures.length, 16);
+  assert.equal(fixtures.length, 17);
   for (const name of ["scoped-service-error-repairs.sql", "protected-archive-limited-role.sql", "protected-archive-races.sql", "service-retention-races.sql"])
     assert(fixtures.includes(name), name);
   assert(input.sql.includes("SCOPED_SERVICE_ERROR_REPAIRS_OK"));
@@ -49,7 +49,7 @@ test("upgrade rehearsal preserves exact098 before099, with the full nineteen-pre
   const source = read("./run-supabase-rehearsal-upgrade-test.mjs");
   for (const text of ['prepareHistoricalWorkspace("202610250098")', 'prepareHistoricalWorkspace("202610250099")',
     '"--historical-098"', "Database contract fixtures passed: 13. Schema phase: 202610250098.",
-    "Database contract fixtures passed: 14. Schema phase: 202610250099.", "All nineteen launch upgrade predecessors passed"])
+    "Database contract fixtures passed: 14. Schema phase: 202610250099.", "All twenty launch upgrade predecessors passed"])
     assert(source.includes(text), text);
   assert(source.indexOf("SERVICE_REPAIR_099_UPGRADE_PRESERVED") > source.indexOf("ARCHIVE_LIFECYCLE_098_UPGRADE_PRESERVED"));
   assert(read("../tests/integration/service-repair-upgrade-seed.sql").includes("202610250098"));
@@ -63,5 +63,5 @@ test("required CI adds099 checks without dropping historical release controls", 
     assert(ci.includes(`npm run ${name}`), name);
   assert.equal(scripts["test:service-repair-migration"], "node scripts/run-windows-release-self-test.mjs rehearsal-099");
   assert.equal(scripts["test:service-repair-integration"], "node --test scripts/service-repair-integration.test.mjs");
-  assert(read("./run-supabase-rollback-test.mjs").includes('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610250099"'));
+  assert(read("./run-supabase-rollback-test.mjs").includes('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610250100"'));
 });
