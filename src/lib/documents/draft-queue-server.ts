@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { Database } from "@/lib/database.types";
 import { processDraftQueue, draftQueueStages, type DraftQueueControls, type DraftQueueServices } from "./draft-queue";
 import { createDraftWorkflowServer } from "./draft-workflow-server";
+import { createDraftChangePort } from "./draft-change-supabase";
 import { attachDraftPacketForClaim } from "./draft-packet-worker";
 import { generateDraftForClaim } from "./draft-generation-worker";
 import { createDraftRenderServer } from "./draft-render-server";
@@ -22,7 +23,7 @@ function ensure(value: unknown): asserts value { if (!value) throw new Error("DR
  * A claim has one20-second transport budget and is never retried here. */
 export function createDraftQueueServer(admin: Admin, options: Options): DraftQueueServices {
   const now = options.now ?? (() => new Date());
-  const workflow = createDraftWorkflowServer(admin, { now });
+  const workflow = createDraftWorkflowServer(admin, { now, changePort: createDraftChangePort(admin) });
   const rendering = createDraftRenderServer(admin, { now, uploadClientFactory: options.uploadClientFactory });
   return {
     async claim(rawStage, rawWorkerId, parent) {

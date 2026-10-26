@@ -5,6 +5,9 @@ import type { Database } from "@/lib/database.types";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { draftClaimReviewRequestSchema } from "@/lib/documents/draft-claim-review";
 import { createDraftOwnerServer } from "@/lib/documents/draft-owner-server";
+import { draftChangeRequestSchema } from "@/lib/documents/draft-change-contract";
+import { createDraftChangeServer } from "@/lib/documents/draft-change-server";
+import { createDraftChangePort } from "@/lib/documents/draft-change-supabase";
 import { draftOwnerEditRequestSchema } from "@/lib/documents/draft-owner-edit";
 import { createDraftOwnerEditServer, DraftOwnerEditServerError } from "@/lib/documents/draft-owner-edit-server";
 import { createMaterialRuleOwnerServer } from "@/lib/documents/material-rule-owner-server";
@@ -16,6 +19,7 @@ const binding = { versionId: uuid, packetSha256: hash, sourceSha256: hash, membe
 const checklist = z.object({ contentReviewed: z.literal(true), visualReviewed: z.literal(true), listingRechecked: z.literal(true),
   instructionsReparsed: z.literal(true), linksRechecked: z.literal(true), provenanceReviewed: z.literal(true), secureFilesConfirmed: z.literal(true) }).strict();
 const inputSchema = z.discriminatedUnion("action", [
+  draftChangeRequestSchema.omit({ jobId: true }).extend({ action: z.literal("REQUEST_DRAFT_CHANGES") }).strict(),
   draftOwnerEditRequestSchema.omit({ jobId: true }).extend({ action: z.literal("SAVE_OWNER_EDIT") }).strict(),
   z.object({ action: z.literal("PROMOTE_SOURCE"), expectedVersionId: uuid, expectedSourceSha256: hash, careerBreakFactId: uuid.optional() }).strict(),
   z.object({ action: z.literal("REVIEW_WORDING"), review: draftClaimReviewRequestSchema }).strict(),
@@ -76,6 +80,12 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(60_000)]);
     // These adapters reconcile exact immutable receipts even when the original
     // version is no longer current; their own service-only checks own the CAS.
+    if (value.action === "REQUEST_DRAFT_CHANGES") {
+      const result = await createDraftChangeServer(admin, auth.user.id, createDraftChangePort(admin)).requestChanges({
+        jobId: jobId.data, expectedVersionId: value.expectedVersionId, expectedSourceSha256: value.expectedSourceSha256,
+        requestId: value.requestId, instructions: value.instructions }, signal);
+      return response({ action: value.action, result });
+    }
     if (value.action === "REVALIDATE_RULE") {
       const result = await createMaterialRuleOwnerServer(admin, auth.user.id).revalidate({ jobId: jobId.data,
         expectedVersionId: value.expectedVersionId, receiptId: value.receiptId, expectedBasis: value.expectedBasis, checklist: value.checklist }, signal);
@@ -119,13 +129,13 @@ export async function POST(request: Request, route: { params: Promise<{ id: stri
     }
     switch (value.action) {
       case "PROMOTE_SOURCE": {
-        const result = await createDraftOwnerServer(admin, auth.user.id).promoteSource({ jobId: jobId.data,
+        const result = await createDraftOwnerServer(admin, auth.user.id, { changePort: createDraftChangePort(admin) }).promoteSource({ jobId: jobId.data,
           expectedVersionId: value.expectedVersionId, expectedSourceSha256: value.expectedSourceSha256,
           ...(value.careerBreakFactId ? { careerBreakFactId: value.careerBreakFactId } : {}) }, signal);
         return response({ action: value.action, result });
       }
       case "REVIEW_WORDING": {
-        const result = await createDraftOwnerServer(admin, auth.user.id).recordWordingReview({ jobId: jobId.data, request: value.review }, signal);
+        const result = await createDraftOwnerServer(admin, auth.user.id, { changePort: createDraftChangePort(admin) }).recordWordingReview({ jobId: jobId.data, request: value.review }, signal);
         return response({ action: value.action, result });
       }
       case "LISTING_CHECK": {

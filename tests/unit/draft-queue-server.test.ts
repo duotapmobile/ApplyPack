@@ -45,6 +45,13 @@ describe("typed stage queue composition", () => {
     vi.stubEnv("APP_MATERIAL_DRAFT_QUEUE_ENABLED", "false"); expect(await f.run()).toMatchObject({ status: "DISABLED", claimed: 0 });
     expect(f.calls).toHaveLength(0); expect(ports.prepare).not.toHaveBeenCalled(); expect(ports.generate).not.toHaveBeenCalled(); expect(ports.render).not.toHaveBeenCalled();
   });
+  it("connects the actual097 evidence/reservation port to maintenance without enabling a stage", async () => {
+    const f = fixture(); createDraftQueueServer(f.admin, f.options);
+    const options = ports.workflow.mock.calls[0][1];
+    expect(options.now).toBe(f.options.now);
+    expect(Object.keys(options.changePort).sort()).toEqual(["commit", "readEvidence", "readRequest", "reserve"]);
+    expect(f.calls).toEqual([]); expect(ports.generate).not.toHaveBeenCalled();
+  });
   it.each(["PREPARE", "GENERATE", "RENDER"])("claims at most one %s job with the actual094 signature and dispatches the exact lease", async (stage) => {
     const f = fixture(stage); expect(await f.run()).toMatchObject({ status: "COMPLETE", claimed: 1, prepared: Number(stage === "PREPARE"), generated: Number(stage === "GENERATE"), rendered: Number(stage === "RENDER") });
     expect(f.calls.every((call) => call.name === "ap_claim_material_draft_stage" && call.args.p_limit === 1 && call.signal?.aborted)).toBe(true);

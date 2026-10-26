@@ -10,6 +10,7 @@ vi.mock("@/lib/documents/draft-packet-worker", async (original) => ({ ...await o
   readEncryptedDraftPayload: dependency.read, storeEncryptedDraftPayload: dependency.store }));
 vi.mock("@/lib/documents/drafting-evidence-server", () => ({ loadDraftingEvidencePacket: dependency.load }));
 import { createDraftWorkflowServer } from "@/lib/documents/draft-workflow-server";
+import { createDraftChangePort } from "@/lib/documents/draft-change-supabase";
 import { serializeDraftingEvidencePacket } from "@/lib/documents/drafting-evidence";
 
 const id = (n: number) => `99000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -18,7 +19,7 @@ const at = new Date("2026-10-25T12:00:00Z"), later = "2026-10-25T12:05:00Z", due
 const signal = () => new AbortController().signal;
 type Call = { kind: "table" | "rpc"; name: string; args?: unknown; columns?: string; filters: Array<[string, unknown]>; signal?: AbortSignal };
 type Receipt = { data: unknown; error: unknown };
-function fixture() {
+function fixture(withChanges = false) {
   const claim = { jobId: id(1), ownerId: id(2), leaseToken: id(3) };
   const job = { id: id(1), customer_id: id(4), material_line_id: id(5), line_revision_id: id(6), source_snapshot_id: id(7), state: "READY",
     active_version_id: id(8), lease_owner: id(2), lease_token: id(3), lease_generation: 1, lease_expires_at: later };
@@ -53,7 +54,7 @@ function fixture() {
   // no network client or credentials are used by this test transport.
   const admin = { from: (name: string) => request({ kind: "table", name, filters: [] }), rpc: (name: string, args: unknown) => request({ kind: "rpc", name, args, filters: [] }) } as unknown as SupabaseClient<Database>;
   let clock = at;
-  const services = createDraftWorkflowServer(admin, { now: () => clock });
+  const services = createDraftWorkflowServer(admin, { now: () => clock, ...(withChanges ? { changePort: createDraftChangePort(admin) } : {}) });
   const authorize = async () => { await services.generation.readRuntime(signal()); await services.generation.readPolicy(policy.id, signal()); };
   const state = (): DraftGenerationState => ({ ...claim, customerId: job.customer_id, materialLineId: job.material_line_id, revisionId: revision.id,
     revisionVersion: revision.version, bindingSha256: revision.binding_sha256, snapshotId: revision.source_snapshot_id, dueAt: due, leaseGeneration: 1,
@@ -79,6 +80,23 @@ beforeEach(() => { vi.stubEnv("APP_MATERIAL_DRAFTING_ENABLED", "true"); vi.stubE
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
 
 describe("service-only 091 database adapters", () => {
+  it("uses the typed097 request reservation with unchanged caps and never authorizes replay or disabled dispatch", async () => {
+    const f = fixture(true); await f.authorize();
+    const args = { p_job_id: id(1), p_lease_token: id(3), p_version_id: id(8), p_request_id: id(11), p_policy_id: id(10),
+      p_input_token_cap: 1000, p_output_token_cap: 1000, p_change_request_id: id(21), p_change_payload_sha256: "c".repeat(64) };
+    f.rpc.ap_begin_material_draft_request_with_changes = { requestId: id(11), dispatchAuthorized: false, state: "RESULT_RECORDED", reservedMicrousd: 200 };
+    expect(await f.services.generation.reserveWithChanges!(args, signal())).toEqual(f.rpc.ap_begin_material_draft_request_with_changes);
+    expect(f.calls.at(-1)).toMatchObject({ name: "ap_begin_material_draft_request_with_changes", args, signal: expect.any(AbortSignal) });
+    expect(f.calls.some((call) => call.name === "ap_begin_material_draft_request")).toBe(false);
+    vi.stubEnv("APP_MATERIAL_DRAFTING_ENABLED", "false"); const count = f.calls.length;
+    await expect(f.services.generation.reserveWithChanges!(args, signal())).rejects.toThrow("PROVIDER_DISABLED"); expect(f.calls).toHaveLength(count);
+  });
+  it("uses the typed097 ancestry reader for ordinary versions without decrypting absent request instructions", async () => {
+    const f = fixture(true), { packet } = f.storedPacket(); dependency.read.mockClear();
+    expect(await f.services.generation.loadChangeRequest!(f.state(), packet, signal())).toBeNull();
+    expect(f.calls).toEqual([expect.objectContaining({ name: "ap_material_draft_change_evidence", args: { p_version_id: id(8) } })]);
+    expect(dependency.read).not.toHaveBeenCalled();
+  });
   it("does no work on construction and keeps both environment and database gates closed", async () => {
     const f = fixture(); expect(f.calls).toEqual([]); expect(() => f.services.generation.readApiKey()).toThrow("PROVIDER_DISABLED");
     vi.stubEnv("APP_MATERIAL_DRAFTING_ENABLED", "false");

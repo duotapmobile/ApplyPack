@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { draftDocumentFixture } from "../fixtures/draft-document";
-const mocks = vi.hoisted(() => ({ auth: vi.fn(), origin: vi.fn(), from: vi.fn(), rpc: vi.fn(), factory: vi.fn(), promote: vi.fn(), review: vi.fn(), ruleFactory: vi.fn(), revalidate: vi.fn(), refresh: vi.fn(), editFactory: vi.fn(), saveEdit: vi.fn() }));
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), origin: vi.fn(), from: vi.fn(), rpc: vi.fn(), factory: vi.fn(), promote: vi.fn(), review: vi.fn(), ruleFactory: vi.fn(), revalidate: vi.fn(), refresh: vi.fn(), editFactory: vi.fn(), saveEdit: vi.fn(), changeFactory: vi.fn(), requestChanges: vi.fn(), changePort: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/auth/require-admin", () => ({ requireAdmin: mocks.auth }));
 vi.mock("@/lib/security/origin", () => ({ isSameOriginRequest: mocks.origin }));
 vi.mock("@/lib/documents/draft-owner-server", () => ({ createDraftOwnerServer: mocks.factory }));
+vi.mock("@/lib/documents/draft-change-server", () => ({ createDraftChangeServer: mocks.changeFactory }));
+vi.mock("@/lib/documents/draft-change-supabase", () => ({ createDraftChangePort: mocks.changePort }));
 vi.mock("@/lib/documents/draft-owner-edit-server", () => ({ createDraftOwnerEditServer: mocks.editFactory,
   DraftOwnerEditServerError: class extends Error { constructor(readonly code: string) { super(code); } } }));
 vi.mock("@/lib/documents/material-rule-owner-server", () => ({ createMaterialRuleOwnerServer: mocks.ruleFactory }));
@@ -29,6 +31,9 @@ const ruleReview = { action: "REVALIDATE_RULE", expectedVersionId: version, rece
 const refresh = { action: "REFRESH_PACKET", expectedVersionId: version, expectedPacketSha256: binding.packetSha256, expectedContextSha256: "f".repeat(64), requestId: id(16) };
 const edit = { action: "SAVE_OWNER_EDIT", expectedVersionId: version, expectedSourceSha256: binding.sourceSha256,
   requestId: id(18), output: draftDocumentFixture().draft };
+const changes = { action: "REQUEST_DRAFT_CHANGES", expectedVersionId: version, expectedSourceSha256: binding.sourceSha256,
+  requestId: id(20), instructions: "Make the confirmed scheduling example more concise." };
+const changePort = { readEvidence: "synthetic097" };
 let versionResult: { data: unknown; error: unknown };
 let jobResult: { data: unknown; error: unknown };
 let rpcResult: { data: unknown; error: unknown };
@@ -61,11 +66,42 @@ beforeEach(() => {
   mocks.revalidate.mockResolvedValue({ jobId: job, receiptId: ruleReview.receiptId, recorded: true, current: true, deliveryAuthorized: false });
   mocks.refresh.mockResolvedValue({ jobId: job, versionId: id(17), priorVersionId: version, recorded: true, current: true, deliveryAuthorized: false });
   mocks.editFactory.mockReturnValue({ saveEdit: mocks.saveEdit });
+  mocks.changePort.mockReturnValue(changePort); mocks.changeFactory.mockReturnValue({ requestChanges: mocks.requestChanges });
+  mocks.requestChanges.mockResolvedValue({ jobId: job, requestId: changes.requestId, parentVersionId: version,
+    versionId: id(21), requestSha256: "f".repeat(64), recorded: true, current: true, reconciled: false, state: "CHANGES_REQUESTED", deliveryAuthorized: false });
   mocks.saveEdit.mockResolvedValue({ jobId: job, versionId: id(19), requestId: edit.requestId, packetSha256: binding.packetSha256,
     sourceSha256: "f".repeat(64), state: "OWNER_REVIEW_REQUIRED", reconciled: false, deliveryAuthorized: false });
 });
 
 describe("owner document HTTP actions", () => {
+  it("records a strict owner request with session reviewer and the actual097 service port, without approval or Send", async () => {
+    const result = await invoke(changes); expect(result.status).toBe(200); privateHeaders(result);
+    expect(mocks.changePort).toHaveBeenCalledWith(admin); expect(mocks.changeFactory).toHaveBeenCalledWith(admin, reviewer, changePort);
+    expect(mocks.requestChanges).toHaveBeenCalledWith({ jobId: job, expectedVersionId: version, expectedSourceSha256: changes.expectedSourceSha256,
+      requestId: changes.requestId, instructions: changes.instructions }, expect.any(AbortSignal));
+    expect(mocks.from).not.toHaveBeenCalled(); expect(mocks.rpc).not.toHaveBeenCalled(); expect(mocks.promote).not.toHaveBeenCalled();
+    expect(await result.json()).toMatchObject({ action: "REQUEST_DRAFT_CHANGES", result: { recorded: true, deliveryAuthorized: false } });
+  });
+  it.each([{ ...changes, requestId: undefined }, { ...changes, expectedVersionId: null }, { ...changes, expectedSourceSha256: "bad" },
+    { ...changes, instructions: "short" }, { ...changes, instructions: "x".repeat(2401) }, { ...changes, instructions: "Hidden\u0000instruction" },
+    { ...changes, reviewerId: id(99) }, { ...changes, jobId: id(99) }, { ...changes, approved: true }, { ...changes, resetAttempts: true }])(
+    "rejects incomplete or authority-expanding request before private access %#", async (body) => {
+      expect((await invoke(body)).status).toBe(400); expect(mocks.changeFactory).not.toHaveBeenCalled(); expect(mocks.changePort).not.toHaveBeenCalled(); expect(mocks.from).not.toHaveBeenCalled();
+    });
+  it("keeps same-request reconciliation available after the original version is no longer current", async () => {
+    versionResult = { data: null, error: null };
+    mocks.requestChanges.mockRejectedValueOnce(new Error("PRIVATE_UNCERTAIN_DATABASE_DETAIL"));
+    const unknown = await invoke(changes); expect(unknown.status).toBe(409); expect(JSON.stringify(await unknown.json())).not.toContain("PRIVATE");
+    expect(mocks.requestChanges).toHaveBeenCalledTimes(1);
+    expect((await invoke(changes)).status).toBe(200);
+    expect(mocks.requestChanges.mock.calls[0][0]).toEqual(mocks.requestChanges.mock.calls[1][0]);
+    expect(mocks.from).not.toHaveBeenCalled(); expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+  it("rejects request changes before port construction when origin or fresh MFA is unavailable", async () => {
+    mocks.origin.mockReturnValue(false); expect((await invoke(changes)).status).toBe(403); expect(mocks.auth).not.toHaveBeenCalled();
+    mocks.origin.mockReturnValue(true); mocks.auth.mockResolvedValue({ ok: false, response: new Response(null, { status: 403 }) });
+    expect((await invoke(changes)).status).toBe(403); expect(mocks.changeFactory).not.toHaveBeenCalled(); expect(mocks.changePort).not.toHaveBeenCalled();
+  });
   it("saves only the exact owner edit through the authenticated reviewer, leaving approval and Send separate", async () => {
     const result = await invoke(edit); expect(result.status).toBe(200); privateHeaders(result);
     expect(mocks.editFactory).toHaveBeenCalledWith(admin, reviewer);
@@ -200,7 +236,7 @@ describe("owner document HTTP actions", () => {
   });
   it("uses only the authenticated reviewer for source promotion and wording review", async () => {
     expect((await invoke(promote)).status).toBe(200);
-    expect(mocks.factory).toHaveBeenCalledWith(admin, reviewer);
+    expect(mocks.factory).toHaveBeenCalledWith(admin, reviewer, { changePort });
     expect(mocks.promote).toHaveBeenCalledWith({ jobId: job, expectedVersionId: version, expectedSourceSha256: binding.sourceSha256 }, expect.any(AbortSignal));
     expect((await invoke(review)).status).toBe(200);
     expect(mocks.review).toHaveBeenCalledWith({ jobId: job, request: review.review }, expect.any(AbortSignal));

@@ -13,9 +13,10 @@ vi.mock("@/lib/documents/drafting-evidence-server", () => ({ loadDraftingEvidenc
 vi.mock("@/lib/documents/draft-owner-contact", () => ({ readConfirmedDraftContact: mock.contact }));
 vi.mock("@/lib/documents/draft-owner-references", async (original) => ({ ...await original<typeof import("@/lib/documents/draft-owner-references")>(), readConfirmedDraftReferences: mock.references }));
 import { createDraftChangeServer } from "@/lib/documents/draft-change-server";
+import { createDraftChangePort } from "@/lib/documents/draft-change-supabase";
 const id = (n: number) => `79000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 type Call = { name: string; args?: Record<string, unknown>; columns?: string; filters: [string, unknown][]; signal?: AbortSignal };
-function fixture(base = draftDocumentFixture(), initialState = "SOURCE_READY") {
+function fixture(base = draftDocumentFixture(), initialState = "SOURCE_READY", concretePort = false) {
   const source = base.build(), packet = base.input.packet, reviewer = id(90), jobId = id(91), oldId = id(92), packetId = id(93), sourceId = id(94);
   const job = { id: jobId, customer_id: packet.expected.customerId, material_line_id: packet.expected.materialLineId, line_revision_id: packet.expected.revisionId,
     source_snapshot_id: packet.binding.snapshotId, state: initialState, active_version_id: oldId };
@@ -32,12 +33,14 @@ function fixture(base = draftDocumentFixture(), initialState = "SOURCE_READY") {
     const run = async () => {
       if (call.name === "ap_require_material_reviewer") return { data: reviewerReceipt, error: null };
       if (call.name === "ap_material_draft_context_sha256") return { data: context, error: null };
+      if (call.name === "ap_material_draft_change_evidence") return { data: record, error: null };
+      if (call.name === "ap_request_material_draft_changes") return { data: await port.commit(call.args as Parameters<DraftChangePort["commit"]>[0], call.signal!), error: null };
       const key = call.filters.find(([key]) => key === "id")?.[1];
-      const row = call.name === "ap_material_draft_jobs" ? job : call.name === "ap_material_draft_versions" ? versions.get(String(key)) : call.name === "ap_material_line_revisions" ? revision : undefined;
+      const row = call.name === "ap_material_draft_jobs" ? job : call.name === "ap_material_draft_versions" ? versions.get(String(key)) : call.name === "ap_material_line_revisions" ? revision : call.name === "ap_material_draft_change_requests" ? record : undefined;
       return { data: row && call.columns ? structuredClone(Object.fromEntries(call.columns.split(",").map((column) => [column, (row as Record<string, unknown>)[column]]))) : null, error: null };
     };
     const q = { select: (columns: string) => { call.columns = columns; return q; }, eq: (key: string, value: unknown) => { call.filters.push([key, value]); return q; },
-      abortSignal: (signal: AbortSignal) => { call.signal = signal; return q; }, single: run, then: (resolve: (value: Awaited<ReturnType<typeof run>>) => unknown, reject?: (error: unknown) => unknown) => run().then(resolve, reject) }; return q;
+      abortSignal: (signal: AbortSignal) => { call.signal = signal; return q; }, single: run, maybeSingle: run, then: (resolve: (value: Awaited<ReturnType<typeof run>>) => unknown, reject?: (error: unknown) => unknown) => run().then(resolve, reject) }; return q;
   };
   const admin = { from: (name: string) => query({ name, filters: [] }), rpc: (name: string, args: Record<string, unknown>) => query({ name, args, filters: [] }) } as unknown as SupabaseClient<Database>;
   const port: DraftChangePort = { readRequest: vi.fn(async () => record && structuredClone(record)), readEvidence: vi.fn(async () => record), reserve: vi.fn(),
@@ -59,13 +62,23 @@ function fixture(base = draftDocumentFixture(), initialState = "SOURCE_READY") {
   mock.references.mockImplementation(async () => "references" in base ? (base as ReturnType<typeof draftReferenceFixture>).references.map((row) => { const plaintext = Buffer.from(row.plaintext); buffers.push(plaintext); return { ...row, plaintext }; }) : []);
   mock.store.mockImplementation(async (_, args) => { bodies.set(args.payloadId, args.body); return { payloadId: args.payloadId, sha256: args.sha256 }; });
   const request = { jobId, expectedVersionId: oldId, expectedSourceSha256: source.renderSourceSha256, requestId: id(98), instructions: "Make the scheduling example more concise without adding any facts." };
-  const service = createDraftChangeServer(admin, reviewer, port, { now: () => clock }), save = (raw: unknown = request, signal = new AbortController().signal) => service.requestChanges(raw, signal);
+  const service = createDraftChangeServer(admin, reviewer, concretePort ? createDraftChangePort(admin) : port, { now: () => clock }), save = (raw: unknown = request, signal = new AbortController().signal) => service.requestChanges(raw, signal);
   return { source, packet, base, job, prior, revision, versions, calls, buffers, request, save, port, bodies,
     setReviewer: (value: unknown) => { reviewerReceipt = value; }, lose: () => { lost = true; }, noCommit: () => { commit = false; },
     changeContext: () => { context = "e".repeat(64); }, setClock: (value: Date) => { clock = value; } };
 }
 beforeEach(() => vi.clearAllMocks()); afterEach(() => vi.useRealTimers());
 describe("durable internal owner request changes", () => {
+  it("connects the actual097 adapter through encrypted save and exact lost-response reconciliation", async () => {
+    const f = fixture(draftDocumentFixture(), "APPROVED", true); f.lose();
+    expect(await f.save()).toMatchObject({ recorded: true, reconciled: true, current: true, versionId: id(100), deliveryAuthorized: false });
+    expect(f.calls.filter((call) => call.name === "ap_request_material_draft_changes")).toHaveLength(1);
+    f.setClock(new Date("2027-01-01T00:00:00Z")); f.changeContext();
+    expect(await f.save()).toMatchObject({ recorded: true, reconciled: true });
+    expect(f.calls.filter((call) => call.name === "ap_request_material_draft_changes")).toHaveLength(1);
+    expect(mock.store).toHaveBeenCalledTimes(1); expect(f.buffers.every((buffer) => buffer.every((byte) => byte === 0))).toBe(true);
+    expect(f.calls.every((call) => call.name !== "ap_begin_material_draft_request_with_changes")).toBe(true);
+  });
   it.each(["SOURCE_READY", "REVIEW_READY", "APPROVED"])("queues an unapproved successor from %s using encrypted exact instructions", async (state) => {
     const f = fixture(draftDocumentFixture(), state), result = await f.save();
     expect(result).toMatchObject({ recorded: true, current: true, state: "CHANGES_REQUESTED", deliveryAuthorized: false, versionId: id(100), reconciled: false });

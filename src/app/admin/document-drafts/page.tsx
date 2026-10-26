@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { createDraftOwnerView } from "@/lib/documents/draft-owner-view";
+import { createDraftChangePort } from "@/lib/documents/draft-change-supabase";
 import { DraftOwnerWorkspace } from "@/components/admin/draft-owner-workspace";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ export default async function DocumentDraftsPage({ searchParams }: { searchParam
   const auth = await requireAdmin();
   if (!auth.ok) return <main id="main-content" className="auth-page"><section className="auth-card"><h1>Verify administrator access</h1><p>Fresh administrator MFA is required before private document drafts can be loaded.</p><Link href="/admin">Return to administrator verification</Link></section></main>;
   const params = await searchParams, admin: SupabaseClient<Database> = auth.admin;
-  const view = createDraftOwnerView(admin, auth.user.id), signal = AbortSignal.timeout(50_000);
+  const view = createDraftOwnerView(admin, auth.user.id, { changePort: createDraftChangePort(admin) }), signal = AbortSignal.timeout(50_000);
   const cursor = typeof params.cursor === "string" ? params.cursor : params.cursor ? "invalid" : null;
   const queue = await view.list(cursor, signal);
   const selected = typeof params.job === "string" ? params.job : params.job ? "invalid" : null;

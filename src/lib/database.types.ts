@@ -5442,6 +5442,110 @@ export type Database = {
           },
         ]
       }
+      ap_material_draft_change_requests: {
+        Row: {
+          context_sha256: string
+          created_at: string
+          customer_id: string
+          encrypted_payload_id: string
+          id: string
+          job_id: string
+          material_line_id: string
+          packet_sha256: string
+          parent_proposal_sha256: string
+          parent_source_sha256: string
+          parent_version_id: string
+          payload_sha256: string
+          request_sha256: string
+          reviewer_id: string
+          successor_version_id: string
+        }
+        Insert: {
+          context_sha256: string
+          created_at?: string
+          customer_id: string
+          encrypted_payload_id: string
+          id: string
+          job_id: string
+          material_line_id: string
+          packet_sha256: string
+          parent_proposal_sha256: string
+          parent_source_sha256: string
+          parent_version_id: string
+          payload_sha256: string
+          request_sha256: string
+          reviewer_id: string
+          successor_version_id: string
+        }
+        Update: {
+          context_sha256?: string
+          created_at?: string
+          customer_id?: string
+          encrypted_payload_id?: string
+          id?: string
+          job_id?: string
+          material_line_id?: string
+          packet_sha256?: string
+          parent_proposal_sha256?: string
+          parent_source_sha256?: string
+          parent_version_id?: string
+          payload_sha256?: string
+          request_sha256?: string
+          reviewer_id?: string
+          successor_version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_draft_change_requests_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_change_requests_encrypted_payload_id_fkey"
+            columns: ["encrypted_payload_id"]
+            isOneToOne: true
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_change_requests_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_draft_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_change_requests_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_change_requests_parent_version_id_fkey"
+            columns: ["parent_version_id"]
+            isOneToOne: true
+            referencedRelation: "ap_material_draft_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_change_requests_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_change_requests_successor_version_id_fkey"
+            columns: ["successor_version_id"]
+            isOneToOne: true
+            referencedRelation: "ap_material_draft_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_material_draft_jobs: {
         Row: {
           active_version_id: string | null
@@ -13432,6 +13536,32 @@ export type Database = {
         }
         Returns: Json
       }
+      ap_begin_material_draft_request_before097: {
+        Args: {
+          p_input_token_cap: number
+          p_job_id: string
+          p_lease_token: string
+          p_output_token_cap: number
+          p_policy_id: string
+          p_request_id: string
+          p_version_id: string
+        }
+        Returns: Json
+      }
+      ap_begin_material_draft_request_with_changes: {
+        Args: {
+          p_change_payload_sha256: string
+          p_change_request_id: string
+          p_input_token_cap: number
+          p_job_id: string
+          p_lease_token: string
+          p_output_token_cap: number
+          p_policy_id: string
+          p_request_id: string
+          p_version_id: string
+        }
+        Returns: Json
+      }
       ap_begin_pre_activation_edit: {
         Args: { p_draft_id: string; p_secret_hash: string }
         Returns: number
@@ -14385,6 +14515,14 @@ export type Database = {
         Returns: number
       }
       ap_matching_evidence_schema_installed: { Args: never; Returns: boolean }
+      ap_material_draft_change_evidence: {
+        Args: { p_version_id: string }
+        Returns: Json
+      }
+      ap_material_draft_change_schema_installed: {
+        Args: never
+        Returns: boolean
+      }
       ap_material_draft_checkout_contact_matches: {
         Args: {
           p_customer_id: string
@@ -15074,6 +15212,20 @@ export type Database = {
           p_payload_schema_version: string
           p_payload_sha256: string
           p_reference_record_id: string
+        }
+        Returns: string
+      }
+      ap_request_material_draft_changes: {
+        Args: {
+          p_expected_source_sha256: string
+          p_expected_version_id: string
+          p_job_id: string
+          p_parent_proposal_sha256: string
+          p_payload_id: string
+          p_payload_sha256: string
+          p_request_id: string
+          p_request_sha256: string
+          p_reviewer_id: string
         }
         Returns: string
       }

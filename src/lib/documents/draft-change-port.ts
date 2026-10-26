@@ -5,8 +5,8 @@ export const draftChangeRecordSchema = z.object({ id: uuid, customer_id: uuid, m
   parent_source_sha256: hash, parent_proposal_sha256: hash, packet_sha256: hash, context_sha256: hash,
   reviewer_id: uuid, created_at: z.iso.datetime({ offset: true }) }).strict();
 export type DraftChangeRecord = z.infer<typeof draftChangeRecordSchema>;
-/** Exact finite097 surface until the real generated Database artifact is
- * available. Implementations are server-owned; every response is parsed. */
+/** Finite097 service boundary. The Supabase implementation uses the actual
+ * generated Database artifact; every response is parsed before use. */
 export type DraftChangePort = {
   readRequest(requestId: string, signal: AbortSignal): Promise<unknown>;
   readEvidence(versionId: string, signal: AbortSignal): Promise<unknown>;
