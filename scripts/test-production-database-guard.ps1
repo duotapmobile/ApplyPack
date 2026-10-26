@@ -152,7 +152,7 @@ foreach ($mutation in @(
 # Every current forward boundary preserves its predecessor ledger and applies
 # only the missing, exact ordered suffix. The historical087 cases above remain.
 $current = Copy-Fixture
-$current.postSchemaVersion = '202610250094'
+$current.postSchemaVersion = '202610250095'
 foreach ($extra in @(
     @('202610250088','service_retention_cleanup','SERVICE_RETENTION_CLEANUP','202610240087','ONE_OFF_SERVICE_RETENTION'),
     @('202610250089','confirmed_intake','CONFIRMED_INTAKE','202610250088','SERVICE_RETENTION_CLEANUP'),
@@ -160,7 +160,8 @@ foreach ($extra in @(
     @('202610250091','material_draft_pair_workflow','MATERIAL_DRAFT_PAIR_WORKFLOW','202610250090','MATCHING_EVIDENCE_COMPLETION'),
     @('202610250092','material_rule_revalidation','MATERIAL_RULE_REVALIDATION','202610250091','MATERIAL_DRAFT_PAIR_WORKFLOW'),
     @('202610250093','source_aware_document_acceptance','SOURCE_AWARE_DOCUMENT_ACCEPTANCE','202610250092','MATERIAL_RULE_REVALIDATION'),
-    @('202610250094','material_draft_stage_claiming','MATERIAL_DRAFT_STAGE_CLAIMING','202610250093','SOURCE_AWARE_DOCUMENT_ACCEPTANCE')
+    @('202610250094','material_draft_stage_claiming','MATERIAL_DRAFT_STAGE_CLAIMING','202610250093','SOURCE_AWARE_DOCUMENT_ACCEPTANCE'),
+    @('202610250095','reference_aware_draft_delivery','REFERENCE_AWARE_DRAFT_DELIVERY','202610250094','MATERIAL_DRAFT_STAGE_CLAIMING')
 )) {
     $current.migrations += [pscustomobject]@{version=$extra[0];name=$extra[1];checkpoint=$extra[2];relativePath="supabase/migrations/$($extra[0])_$($extra[1]).sql";predecessor=$extra[3];predecessorCheckpoint=$extra[4];sha256=('a' * 64)}
 }
@@ -180,7 +181,12 @@ $historical093.postSchemaVersion = '202610250093'
 $historical093.migrations = @($historical093.migrations | Where-Object version -cle '202610250093')
 Assert-ProductionDatabaseManifest -Manifest $historical093 -Registry $registry
 $checks++
-foreach ($boundary in @('202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093')) {
+$historical094 = $current | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+$historical094.postSchemaVersion = '202610250094'
+$historical094.migrations = @($historical094.migrations | Where-Object version -cle '202610250094')
+Assert-ProductionDatabaseManifest -Manifest $historical094 -Registry $registry
+$checks++
+foreach ($boundary in @('202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094')) {
     $advance = $current | ConvertTo-Json -Depth 10 | ConvertFrom-Json
     $advance.expectedSchemaVersion = $boundary
     $advance.expectedLedger = @($entry) + @($advance.migrations | Where-Object { $_.version -cle $boundary } | ForEach-Object {

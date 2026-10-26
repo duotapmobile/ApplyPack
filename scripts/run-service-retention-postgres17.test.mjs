@@ -25,27 +25,28 @@ function fixture({ failAt, alterState, missingMarker, ambiguousCreate, invalidIm
     if (operation === "ps") return exists ? "fictional-container-id\n" : "";
     if (operation === "rm") { if (cleanupFailure) throw new Error("cleanup unavailable"); exists = false; deleted = true; return name; }
     if (operation === failAt || (operation === "exec" && args.some((value) => value.endsWith(`/${failAt}`)))) throw new Error("fictional process failed");
-    if (args.includes("/usr/lib/postgresql/17/bin/psql")) return [1, 2, 3, 4, 5, 6, 7, 8, 9].filter((index) => index !== missingMarker).map((index) => ` RETENTION_PG17_FIXTURE_${index}_COMPLETE \n`).join("");
+    if (args.includes("/usr/lib/postgresql/17/bin/psql")) return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter((index) => index !== missingMarker).map((index) => ` RETENTION_PG17_FIXTURE_${index}_COMPLETE \n`).join("");
     return "";
   };
   const run = (args = [], environment = {}) => runRetentionPostgres17(args, { execute, environment, platform: "linux", uuid: () => runId,
-    inputs: () => ({ sql: "fictional SQL", hashes: [{ kind: "fixture", name: "fictional.sql", sha256: "b".repeat(64) }], migrationCount: 99 }) });
+    inputs: () => ({ sql: "fictional SQL", hashes: [{ kind: "fixture", name: "fictional.sql", sha256: "b".repeat(64) }], migrationCount: 100 }) });
   return { calls, run, deleted: () => deleted };
 }
 
 test("builds all current migrations with exact source hashes and unchanged independent-connection fixture", () => {
   const inputs = loadRetentionPostgresInputs();
-  assert.equal(inputs.migrationCount, 99);
-  assert.equal(inputs.hashes.filter((entry) => entry.kind === "fixture").length, 9);
+  assert.equal(inputs.migrationCount, 100);
+  assert.equal(inputs.hashes.filter((entry) => entry.kind === "fixture").length, 10);
   assert(inputs.hashes.every((entry) => /^[a-f0-9]{64}$/u.test(entry.sha256)));
   assert.match(inputs.sql, /native_loopback_fixture_required/u);
   assert.match(inputs.sql, /dblink_send_query/u);
-  assert.match(inputs.sql, /RETENTION_PG17_FIXTURE_9_COMPLETE/u);
+  assert.match(inputs.sql, /RETENTION_PG17_FIXTURE_10_COMPLETE/u);
   assert.match(inputs.sql, /'202610250090','matching_evidence_completion'/u);
   assert.match(inputs.sql, /'202610250091','material_draft_pair_workflow'/u);
   assert.match(inputs.sql, /'202610250092','material_rule_revalidation'/u);
   assert.match(inputs.sql, /'202610250093','source_aware_document_acceptance'/u);
   assert.match(inputs.sql, /'202610250094','material_draft_stage_claiming'/u);
+  assert.match(inputs.sql, /'202610250095','reference_aware_draft_delivery'/u);
   assert.match(inputs.sql, /MATERIAL_DRAFT_STAGE_CONCURRENCY_OK/u);
   const native = readFileSync(new URL("./test-database-native.ps1", import.meta.url), "utf8").match(/\$bootstrap = @'\r?\n([\s\S]*?)\r?\n'@/u)?.[1];
   const bootstrap = readFileSync(new URL("../tests/integration/retention-postgres17-bootstrap.sql", import.meta.url), "utf8");

@@ -7,6 +7,7 @@ param(
   [switch]$RuleRevalidationUpgrade,
   [switch]$SourceAwareDocumentUpgrade,
   [switch]$DraftStageUpgrade,
+  [switch]$ReferenceDraftUpgrade,
   [switch]$LegalReceiptUpgrade,
   [string[]]$FixtureNames,
   [string]$MaximumMigrationVersion
@@ -86,9 +87,9 @@ if ($RuleRevalidationUpgrade) {
   $fixtures += @('material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql')
 }
 if ($LegalReceiptUpgrade) {
-  if ($LegacyBackfill -or $CapacityPressure -or $MaximumMigrationVersion -cnotin @('202610250092','202610250093','202610250094') -or
+  if ($LegacyBackfill -or $CapacityPressure -or $MaximumMigrationVersion -cnotin @('202610250092','202610250093','202610250094','202610250095') -or
       $migrationFiles[-1].Name.Split('_')[0] -cne $MaximumMigrationVersion) {
-    throw 'Legal receipt upgrade requires an exact isolated historical-to-092,093 or094 sequence.'
+    throw 'Legal receipt upgrade requires an exact isolated historical-to-092,093,094 or095 sequence.'
   }
   $fixtures += @('legal-receipt-074-fixture.sql','legal-receipt-076-verify.sql','legal-receipt-086-verify.sql','legal-receipt-087-verify.sql')
 }
@@ -107,6 +108,14 @@ if ($DraftStageUpgrade) {
   }
   $fixtures += @('material-draft-stage-upgrade-seed.sql','material-draft-stage-upgrade-verify.sql')
   if ($LegalReceiptUpgrade) { $fixtures += @('material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql','source-aware-document-upgrade-seed.sql','source-aware-document-upgrade-verify.sql') }
+}
+if ($ReferenceDraftUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or
+      $MaximumMigrationVersion -cne '202610250095' -or $migrationFiles[-1].Name -cne '202610250095_reference_aware_draft_delivery.sql') {
+    throw 'Reference draft upgrade requires the exact isolated094-to095 sequence.'
+  }
+  $fixtures += @('reference-draft-upgrade-seed.sql','reference-draft-upgrade-verify.sql')
+  if ($LegalReceiptUpgrade) { $fixtures += @('material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql','source-aware-document-upgrade-seed.sql','source-aware-document-upgrade-verify.sql','material-draft-stage-upgrade-seed.sql','material-draft-stage-upgrade-verify.sql') }
 }
 $inputs = @([pscustomobject]@{Kind='bootstrap'; Name='bootstrap.sql'; Path=$bootstrapPath})
 foreach ($migration in $migrationFiles) {
@@ -150,6 +159,14 @@ if ($DraftStageUpgrade) {
     @($inputs | Where-Object Name -eq 'material-draft-stage-upgrade-verify.sql') +
     @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('material-draft-stage-upgrade-seed.sql','material-draft-stage-upgrade-verify.sql') })
 }
+if ($ReferenceDraftUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250094' }) +
+    @($inputs | Where-Object Name -eq 'reference-draft-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250095' }) +
+    @($inputs | Where-Object Name -eq 'reference-draft-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('reference-draft-upgrade-seed.sql','reference-draft-upgrade-verify.sql') })
+}
 if ($LegalReceiptUpgrade) {
   $bindingPath = Join-Path $repoRoot 'scripts/launch-legal-contract.mjs'
   $bindingJson = & node --input-type=module -e 'import {pathToFileURL} from "node:url"; const m=await import(pathToFileURL(process.argv[1])); process.stdout.write(JSON.stringify([m.HISTORICAL_086_LEGAL_BINDING,m.LAUNCH_LEGAL_BINDING]));' $bindingPath
@@ -189,7 +206,7 @@ create table public.retention_legal_upgrade_preservation_fixture as
     $generated[$name] = [pscustomobject]@{Kind='fixture';Name=$name;Path=$path}
   }
   $historicalNames = @('legal-receipt-074-fixture.sql','legal-receipt-076-verify.sql','legal-receipt-086-verify.sql','legal-receipt-087-verify.sql',
-    'material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql','source-aware-document-upgrade-seed.sql','source-aware-document-upgrade-verify.sql','material-draft-stage-upgrade-seed.sql','material-draft-stage-upgrade-verify.sql')
+    'material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql','source-aware-document-upgrade-seed.sql','source-aware-document-upgrade-verify.sql','material-draft-stage-upgrade-seed.sql','material-draft-stage-upgrade-verify.sql','reference-draft-upgrade-seed.sql','reference-draft-upgrade-verify.sql')
   $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
     @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610040074' }) +
     @($inputs | Where-Object Name -eq 'legal-receipt-074-fixture.sql') +
@@ -216,7 +233,11 @@ create table public.retention_legal_upgrade_preservation_fixture as
     @($inputs | Where-Object Name -eq 'material-draft-stage-upgrade-seed.sql') +
     @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250094' }) +
     @($inputs | Where-Object Name -eq 'material-draft-stage-upgrade-verify.sql') +
-    $(if ($MaximumMigrationVersion -ceq '202610250094') { @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') } else { @() }) +
+    $(if ($MaximumMigrationVersion -cge '202610250094') { @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') } else { @() }) +
+    @($inputs | Where-Object Name -eq 'reference-draft-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250095' }) +
+    @($inputs | Where-Object Name -eq 'reference-draft-upgrade-verify.sql') +
+    $(if ($MaximumMigrationVersion -ceq '202610250095') { @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') } else { @() }) +
     @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin $historicalNames })
 }
 $sharedFixture = 'reviewed-source-fixture.sql'
@@ -247,8 +268,10 @@ Source-aware document upgrade mode: $SourceAwareDocumentUpgrade. When true,
 all existing public records are compared across exact092-to093; drafting stays disabled.
 Draft stage upgrade mode: $DraftStageUpgrade. When true, all existing public
 records and five unchanged core function definitions are compared across exact093-to094.
+Reference draft upgrade mode: $ReferenceDraftUpgrade. When true, all existing
+public records and five unchanged financial/refresh/release routines are compared across exact094-to095.
 Legal receipt upgrade mode: $LegalReceiptUpgrade. When true, original074 facts
-pass076/086/087 verification and the exact087 verifier is rerun at091,092 and each selected093/094 endpoint.
+pass076/086/087 verification and the exact087 verifier is rerun at091,092 and each selected093/094/095 endpoint.
 Legacy backfill mode: $LegacyBackfill. When true, synthetic paid legacy records
 are inserted after version 202609030021, before all remaining migrations and
 the existing legacy verification fixture. This is not a provider migration
