@@ -9423,6 +9423,615 @@ export type Database = {
           },
         ]
       }
+      ap_service_repair_case_events: {
+        Row: {
+          accepted_scope_sha256: string
+          case_id: string
+          content_sha256: string
+          created_at: string
+          customer_id: string
+          id: string
+          kind: string
+          material_line_id: string
+          reviewer_id: string
+          sensitive_payload_id: string
+        }
+        Insert: {
+          accepted_scope_sha256: string
+          case_id: string
+          content_sha256: string
+          created_at?: string
+          customer_id: string
+          id: string
+          kind: string
+          material_line_id: string
+          reviewer_id: string
+          sensitive_payload_id: string
+        }
+        Update: {
+          accepted_scope_sha256?: string
+          case_id?: string
+          content_sha256?: string
+          created_at?: string
+          customer_id?: string
+          id?: string
+          kind?: string
+          material_line_id?: string
+          reviewer_id?: string
+          sensitive_payload_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_service_repair_case_events_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "ap_service_error_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_case_events_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_case_events_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_case_events_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_case_events_sensitive_payload_id_fkey"
+            columns: ["sensitive_payload_id"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_service_repair_feedback: {
+        Row: {
+          case_id: string
+          content_sha256: string
+          created_at: string
+          customer_id: string
+          id: string
+          material_line_id: string
+          members: Json
+          repair_release_id: string
+          sensitive_payload_id: string
+        }
+        Insert: {
+          case_id: string
+          content_sha256: string
+          created_at?: string
+          customer_id: string
+          id: string
+          material_line_id: string
+          members: Json
+          repair_release_id: string
+          sensitive_payload_id: string
+        }
+        Update: {
+          case_id?: string
+          content_sha256?: string
+          created_at?: string
+          customer_id?: string
+          id?: string
+          material_line_id?: string
+          members?: Json
+          repair_release_id?: string
+          sensitive_payload_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_service_repair_feedback_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "ap_service_error_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_feedback_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_feedback_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_feedback_repair_release_id_fkey"
+            columns: ["repair_release_id"]
+            isOneToOne: false
+            referencedRelation: "ap_service_repair_releases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_feedback_sensitive_payload_id_fkey"
+            columns: ["sensitive_payload_id"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_service_repair_files: {
+        Row: {
+          artifact_id: string
+          artifact_type: Database["public"]["Enums"]["ap_artifact_type"]
+          checksum_sha256: string
+          created_at: string
+          customer_id: string
+          editable_bucket: string
+          editable_path: string | null
+          editable_sha256: string
+          id: string
+          material_line_id: string
+          mime_type: string
+          original_file_version_id: string
+          preview_bucket: string
+          preview_path: string | null
+          preview_sha256: string
+          registration: Json
+          render_source_sha256: string
+          repair_version_id: string
+          safe_filename: string | null
+          size_bytes: number
+          source_snapshot_id: string
+          storage_bucket: string
+          storage_path: string | null
+        }
+        Insert: {
+          artifact_id: string
+          artifact_type: Database["public"]["Enums"]["ap_artifact_type"]
+          checksum_sha256: string
+          created_at?: string
+          customer_id: string
+          editable_bucket: string
+          editable_path?: string | null
+          editable_sha256: string
+          id: string
+          material_line_id: string
+          mime_type: string
+          original_file_version_id: string
+          preview_bucket: string
+          preview_path?: string | null
+          preview_sha256: string
+          registration: Json
+          render_source_sha256: string
+          repair_version_id: string
+          safe_filename?: string | null
+          size_bytes: number
+          source_snapshot_id: string
+          storage_bucket: string
+          storage_path?: string | null
+        }
+        Update: {
+          artifact_id?: string
+          artifact_type?: Database["public"]["Enums"]["ap_artifact_type"]
+          checksum_sha256?: string
+          created_at?: string
+          customer_id?: string
+          editable_bucket?: string
+          editable_path?: string | null
+          editable_sha256?: string
+          id?: string
+          material_line_id?: string
+          mime_type?: string
+          original_file_version_id?: string
+          preview_bucket?: string
+          preview_path?: string | null
+          preview_sha256?: string
+          registration?: Json
+          render_source_sha256?: string
+          repair_version_id?: string
+          safe_filename?: string | null
+          size_bytes?: number
+          source_snapshot_id?: string
+          storage_bucket?: string
+          storage_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_service_repair_files_artifact_id_fkey"
+            columns: ["artifact_id"]
+            isOneToOne: false
+            referencedRelation: "ap_generated_artifacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_files_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_files_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_files_original_file_version_id_fkey"
+            columns: ["original_file_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_generated_file_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_files_repair_version_id_fkey"
+            columns: ["repair_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_service_repair_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_files_source_snapshot_id_fkey"
+            columns: ["source_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_service_repair_jobs: {
+        Row: {
+          active_version_id: string | null
+          case_id: string
+          created_at: string
+          customer_id: string
+          id: string
+          lease_expires_at: string | null
+          lease_generation: number
+          lease_owner: string | null
+          lease_token: string | null
+          material_line_id: string
+        }
+        Insert: {
+          active_version_id?: string | null
+          case_id: string
+          created_at?: string
+          customer_id: string
+          id: string
+          lease_expires_at?: string | null
+          lease_generation?: number
+          lease_owner?: string | null
+          lease_token?: string | null
+          material_line_id: string
+        }
+        Update: {
+          active_version_id?: string | null
+          case_id?: string
+          created_at?: string
+          customer_id?: string
+          id?: string
+          lease_expires_at?: string | null
+          lease_generation?: number
+          lease_owner?: string | null
+          lease_token?: string | null
+          material_line_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_service_repair_jobs_active_version_id_fkey"
+            columns: ["active_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_service_repair_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_jobs_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "ap_service_error_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_jobs_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_jobs_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_service_repair_releases: {
+        Row: {
+          accepted_scope_sha256: string
+          access_expires_at: string
+          approval_sha256: string
+          approved_by: string
+          case_id: string
+          committed_at: string
+          customer_id: string
+          id: string
+          material_line_id: string
+          member_set_sha256: string
+          order_id: string
+          outbox_id: string
+          repair_version_id: string
+        }
+        Insert: {
+          accepted_scope_sha256: string
+          access_expires_at: string
+          approval_sha256: string
+          approved_by: string
+          case_id: string
+          committed_at: string
+          customer_id: string
+          id: string
+          material_line_id: string
+          member_set_sha256: string
+          order_id: string
+          outbox_id: string
+          repair_version_id: string
+        }
+        Update: {
+          accepted_scope_sha256?: string
+          access_expires_at?: string
+          approval_sha256?: string
+          approved_by?: string
+          case_id?: string
+          committed_at?: string
+          customer_id?: string
+          id?: string
+          material_line_id?: string
+          member_set_sha256?: string
+          order_id?: string
+          outbox_id?: string
+          repair_version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_service_repair_releases_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_releases_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "ap_service_error_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_releases_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_releases_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_releases_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "ap_legacy_order_compatibility"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_releases_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_releases_outbox_id_fkey"
+            columns: ["outbox_id"]
+            isOneToOne: true
+            referencedRelation: "ap_outbox_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_releases_repair_version_id_fkey"
+            columns: ["repair_version_id"]
+            isOneToOne: true
+            referencedRelation: "ap_service_repair_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_service_repair_versions: {
+        Row: {
+          accepted_scope_sha256: string
+          approval_sha256: string | null
+          approved_at: string | null
+          approved_by: string | null
+          case_id: string
+          claim_review_encrypted_payload_id: string | null
+          claim_review_metadata: Json | null
+          claim_review_sha256: string | null
+          claims_reviewed_at: string | null
+          claims_reviewed_by: string | null
+          context_sha256: string
+          created_at: string
+          created_by: string
+          customer_id: string
+          encrypted_payload_id: string | null
+          id: string
+          invalidated_at: string | null
+          job_id: string
+          material_line_id: string
+          member_set_sha256: string | null
+          originals: Json
+          release_id: string | null
+          request_id: string
+          review_checklist: Json | null
+          source_sha256: string | null
+          supersedes_id: string | null
+          version: number
+        }
+        Insert: {
+          accepted_scope_sha256: string
+          approval_sha256?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          case_id: string
+          claim_review_encrypted_payload_id?: string | null
+          claim_review_metadata?: Json | null
+          claim_review_sha256?: string | null
+          claims_reviewed_at?: string | null
+          claims_reviewed_by?: string | null
+          context_sha256: string
+          created_at?: string
+          created_by: string
+          customer_id: string
+          encrypted_payload_id?: string | null
+          id: string
+          invalidated_at?: string | null
+          job_id: string
+          material_line_id: string
+          member_set_sha256?: string | null
+          originals: Json
+          release_id?: string | null
+          request_id: string
+          review_checklist?: Json | null
+          source_sha256?: string | null
+          supersedes_id?: string | null
+          version: number
+        }
+        Update: {
+          accepted_scope_sha256?: string
+          approval_sha256?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          case_id?: string
+          claim_review_encrypted_payload_id?: string | null
+          claim_review_metadata?: Json | null
+          claim_review_sha256?: string | null
+          claims_reviewed_at?: string | null
+          claims_reviewed_by?: string | null
+          context_sha256?: string
+          created_at?: string
+          created_by?: string
+          customer_id?: string
+          encrypted_payload_id?: string | null
+          id?: string
+          invalidated_at?: string | null
+          job_id?: string
+          material_line_id?: string
+          member_set_sha256?: string | null
+          originals?: Json
+          release_id?: string | null
+          request_id?: string
+          review_checklist?: Json | null
+          source_sha256?: string | null
+          supersedes_id?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_service_repair_versions_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_versions_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "ap_service_error_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_versions_claim_review_encrypted_payload__fkey"
+            columns: ["claim_review_encrypted_payload_id"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_versions_claims_reviewed_by_fkey"
+            columns: ["claims_reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_versions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_versions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_versions_encrypted_payload_id_fkey"
+            columns: ["encrypted_payload_id"]
+            isOneToOne: false
+            referencedRelation: "ap_sensitive_payloads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_versions_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "ap_service_repair_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_versions_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_versions_release_id_fkey"
+            columns: ["release_id"]
+            isOneToOne: false
+            referencedRelation: "ap_service_repair_releases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_service_repair_versions_supersedes_id_fkey"
+            columns: ["supersedes_id"]
+            isOneToOne: false
+            referencedRelation: "ap_service_repair_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_service_retention_claims: {
         Row: {
           completed_at: string | null
@@ -13402,6 +14011,16 @@ export type Database = {
         }
         Returns: string
       }
+      ap_approve_service_repair: {
+        Args: {
+          p_checklist: Json
+          p_member_set_sha256: string
+          p_reviewer_id: string
+          p_source_sha256: string
+          p_version_id: string
+        }
+        Returns: string
+      }
       ap_archive_fence_active: { Args: never; Returns: boolean }
       ap_archive_fence_coverage_current: { Args: never; Returns: boolean }
       ap_archive_retention_status: { Args: { p_id: string }; Returns: Json }
@@ -13471,6 +14090,48 @@ export type Database = {
         }
         Returns: undefined
       }
+      ap_assert_service_repair_claims: {
+        Args: { p_member: Json; p_version: string }
+        Returns: undefined
+      }
+      ap_assert_service_repair_current: {
+        Args: { p_lease?: string; p_version: string }
+        Returns: {
+          accepted_scope_sha256: string
+          approval_sha256: string | null
+          approved_at: string | null
+          approved_by: string | null
+          case_id: string
+          claim_review_encrypted_payload_id: string | null
+          claim_review_metadata: Json | null
+          claim_review_sha256: string | null
+          claims_reviewed_at: string | null
+          claims_reviewed_by: string | null
+          context_sha256: string
+          created_at: string
+          created_by: string
+          customer_id: string
+          encrypted_payload_id: string | null
+          id: string
+          invalidated_at: string | null
+          job_id: string
+          material_line_id: string
+          member_set_sha256: string | null
+          originals: Json
+          release_id: string | null
+          request_id: string
+          review_checklist: Json | null
+          source_sha256: string | null
+          supersedes_id: string | null
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ap_service_repair_versions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       ap_assert_service_retention_access: {
         Args: { p_action?: boolean; p_line_id?: string; p_order_id: string }
         Returns: undefined
@@ -13507,6 +14168,15 @@ export type Database = {
         }
         Returns: string
       }
+      ap_attach_service_repair_source: {
+        Args: {
+          p_lease_token: string
+          p_payload_id: string
+          p_source_sha256: string
+          p_version_id: string
+        }
+        Returns: string
+      }
       ap_authorize_manual_launch_canary_checkout: {
         Args: {
           p_actor_id: string
@@ -13520,6 +14190,15 @@ export type Database = {
         Returns: string
       }
       ap_authorize_material_download: {
+        Args: {
+          p_artifact_id: string
+          p_customer_id: string
+          p_file_version_id: string
+          p_reauthenticated_at: string
+        }
+        Returns: Json
+      }
+      ap_authorize_material_download_before_099: {
         Args: {
           p_artifact_id: string
           p_customer_id: string
@@ -14039,6 +14718,10 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      ap_claim_service_repair: {
+        Args: { p_owner: string; p_version_id: string }
+        Returns: Json
+      }
       ap_claim_unpaid_source_cleanup: {
         Args: { p_limit?: number }
         Returns: {
@@ -14299,6 +14982,10 @@ export type Database = {
       }
       ap_customer_retention_access: {
         Args: { p_customer_id: string }
+        Returns: Json
+      }
+      ap_customer_service_repair_files: {
+        Args: { p_customer_id: string; p_material_line_id: string }
         Returns: Json
       }
       ap_customer_visible_reference_permissions: {
@@ -14601,6 +15288,14 @@ export type Database = {
         Args: { p_case_id: string; p_reviewer_id: string }
         Returns: Json
       }
+      ap_inspect_service_repair: {
+        Args: {
+          p_case_id: string
+          p_material_line_id: string
+          p_reviewer_id: string
+        }
+        Returns: Json
+      }
       ap_intake_confirmation_source: {
         Args: {
           p_draft_id: string
@@ -14706,6 +15401,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      ap_lock_service_repair_case: {
+        Args: { p_allow_resolved?: boolean; p_case: string }
+        Returns: string
+      }
       ap_manual_launch_canary_checkout_authorized: {
         Args: {
           p_expected_customer_id?: string
@@ -14776,6 +15475,10 @@ export type Database = {
         Args: { p_line_id: string }
         Returns: string
       }
+      ap_material_retention_deadline_before_099: {
+        Args: { p_line_id: string }
+        Returns: string
+      }
       ap_material_rule_revalidation_schema_installed: {
         Args: never
         Returns: boolean
@@ -14840,6 +15543,18 @@ export type Database = {
           p_material_line_id: string
           p_non_sensitive_report: Json
           p_sensitive_payload_id: string
+        }
+        Returns: string
+      }
+      ap_open_service_repair: {
+        Args: {
+          p_case_id: string
+          p_context_sha256: string
+          p_expected_version_id: string
+          p_material_line_id: string
+          p_request_id: string
+          p_reviewer_id: string
+          p_scope_sha256: string
         }
         Returns: string
       }
@@ -15043,6 +15758,10 @@ export type Database = {
       }
       ap_read_material_service_error_report: {
         Args: { p_customer_id: string; p_request_id: string }
+        Returns: Json
+      }
+      ap_read_service_repair_version: {
+        Args: { p_request_id: string; p_reviewer_id: string }
         Returns: Json
       }
       ap_reconcile_checkout_initiation: {
@@ -15260,6 +15979,18 @@ export type Database = {
         }
         Returns: Json
       }
+      ap_record_service_repair_feedback: {
+        Args: {
+          p_case_id: string
+          p_content_sha256: string
+          p_customer_id: string
+          p_members: Json
+          p_payload_id: string
+          p_release_id: string
+          p_request_id: string
+        }
+        Returns: string
+      }
       ap_record_snapshot_legal_acceptance: {
         Args: {
           p_acceptance_sha256: string
@@ -15376,6 +16107,15 @@ export type Database = {
       }
       ap_register_material_draft_policy: {
         Args: { p_policy: Json; p_reviewer_id: string }
+        Returns: string
+      }
+      ap_register_service_repair_files: {
+        Args: {
+          p_lease_token: string
+          p_registrations: Json
+          p_source_sha256: string
+          p_version_id: string
+        }
         Returns: string
       }
       ap_release_fully_refunded_entitlement: {
@@ -15500,6 +16240,15 @@ export type Database = {
           prospective: boolean
         }[]
       }
+      ap_retention_object_references_before_099: {
+        Args: never
+        Returns: {
+          bucket: string
+          customer_ids: string[]
+          path: string
+          prospective: boolean
+        }[]
+      }
       ap_retention_patch_row: {
         Args: { p_before: Json; p_patch: Json; p_table: unknown }
         Returns: Json
@@ -15521,6 +16270,13 @@ export type Database = {
         Returns: string[]
       }
       ap_retention_row_object_paths: {
+        Args: { p_row: Json }
+        Returns: {
+          bucket: string
+          path: string
+        }[]
+      }
+      ap_retention_row_object_paths_before_099: {
         Args: { p_row: Json }
         Returns: {
           bucket: string
@@ -15590,6 +16346,17 @@ export type Database = {
           p_reviewer_id: string
         }
         Returns: Json
+      }
+      ap_review_service_repair_wording: {
+        Args: {
+          p_members: Json
+          p_payload_id: string
+          p_review_sha256: string
+          p_reviewer_id: string
+          p_source_sha256: string
+          p_version_id: string
+        }
+        Returns: string
       }
       ap_reviewed_commute_result: {
         Args: {
@@ -15700,6 +16467,18 @@ export type Database = {
         }
         Returns: string
       }
+      ap_send_service_repair: {
+        Args: {
+          p_approval_sha256: string
+          p_member_set_sha256: string
+          p_outbox_id: string
+          p_release_id: string
+          p_reviewer_id: string
+          p_source_sha256: string
+          p_version_id: string
+        }
+        Returns: string
+      }
       ap_service_error_contract_json: {
         Args: { p_line: string }
         Returns: Json
@@ -15720,6 +16499,24 @@ export type Database = {
         Args: never
         Returns: boolean
       }
+      ap_service_repair_context: {
+        Args: { p_case: string; p_line: string }
+        Returns: string
+      }
+      ap_service_repair_identity_json: {
+        Args: { p_value: Json }
+        Returns: string
+      }
+      ap_service_repair_member_set: {
+        Args: { p_version: string }
+        Returns: Json
+      }
+      ap_service_repair_originals: {
+        Args: { p_case: string; p_line: string }
+        Returns: Json
+      }
+      ap_service_repair_schema_installed: { Args: never; Returns: boolean }
+      ap_service_repair_scope: { Args: { p_case: string }; Returns: Json }
       ap_service_retention_access_allowed: {
         Args: { p_action?: boolean; p_line_id?: string; p_order_id: string }
         Returns: boolean
@@ -15737,6 +16534,14 @@ export type Database = {
         Returns: boolean
       }
       ap_service_retention_deadlines: {
+        Args: { p_order_id: string }
+        Returns: {
+          access_expires_at: string
+          action_expires_at: string
+          family_expires_at: string
+        }[]
+      }
+      ap_service_retention_deadlines_before_099: {
         Args: { p_order_id: string }
         Returns: {
           access_expires_at: string
@@ -15784,6 +16589,18 @@ export type Database = {
       ap_set_material_draft_runtime: {
         Args: { p_enabled: boolean; p_policy_id: string; p_reviewer_id: string }
         Returns: undefined
+      }
+      ap_set_service_repair_case_state: {
+        Args: {
+          p_case_id: string
+          p_content_sha256: string
+          p_payload_id: string
+          p_request_id: string
+          p_resolved: boolean
+          p_reviewer_id: string
+          p_scope_sha256: string
+        }
+        Returns: string
       }
       ap_set_service_retention_hold: {
         Args: {
