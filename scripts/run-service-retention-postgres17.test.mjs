@@ -28,20 +28,20 @@ function fixture({ failAt, alterState, missingMarker, ambiguousCreate, invalidIm
     if (args.includes("/usr/lib/postgresql/17/bin/psql")) {
       const isolated = options.input === "fictional isolated SQL";
       if (isolated && failIsolated) throw new Error("isolated fixture failed");
-      return (isolated ? [21] : Array.from({ length: 20 }, (_, index) => index + 1))
+      return (isolated ? [21] : [...Array.from({ length: 20 }, (_, index) => index + 1), 22, 23, 24])
         .filter(index => index !== missingMarker).map(index => ` RETENTION_PG17_FIXTURE_${index}_COMPLETE \n`).join("");
     }
     return "";
   };
   const run = (args = [], environment = {}) => runRetentionPostgres17(args, { execute, environment, platform: "linux", uuid: () => runId,
-    inputs: () => ({ sql: "fictional SQL", isolatedSql: "fictional isolated SQL", hashes: [{ kind: "fixture", name: "fictional.sql", sha256: "b".repeat(64) }], migrationCount: 107 }) });
+    inputs: () => ({ sql: "fictional SQL", isolatedSql: "fictional isolated SQL", hashes: [{ kind: "fixture", name: "fictional.sql", sha256: "b".repeat(64) }], migrationCount: 108 }) });
   return { calls, run, deleted: () => deleted };
 }
 
 test("builds all current migrations with exact source hashes and unchanged independent-connection fixture", () => {
   const inputs = loadRetentionPostgresInputs();
-  assert.equal(inputs.migrationCount, 107);
-  assert.equal(inputs.hashes.filter((entry) => entry.kind === "fixture").length, 21);
+  assert.equal(inputs.migrationCount, 108);
+  assert.equal(inputs.hashes.filter((entry) => entry.kind === "fixture").length, 24);
   assert(inputs.hashes.every((entry) => /^[a-f0-9]{64}$/u.test(entry.sha256)));
   assert.match(inputs.sql, /native_loopback_fixture_required/u);
   assert.match(inputs.sql, /dblink_send_query/u);
@@ -49,6 +49,12 @@ test("builds all current migrations with exact source hashes and unchanged indep
   assert.doesNotMatch(inputs.sql, /RETENTION_PG17_FIXTURE_21_COMPLETE/u);
   assert.match(inputs.isolatedSql, /RETENTION_PG17_FIXTURE_21_COMPLETE/u);
   assert.doesNotMatch(inputs.isolatedSql, /RETENTION_PG17_FIXTURE_20_COMPLETE/u);
+  assert.match(inputs.sql, /RETENTION_PG17_FIXTURE_22_COMPLETE/u);
+  assert.doesNotMatch(inputs.isolatedSql, /RETENTION_PG17_FIXTURE_22_COMPLETE/u);
+  assert.match(inputs.sql, /RETENTION_PG17_FIXTURE_23_COMPLETE/u);
+  assert.doesNotMatch(inputs.isolatedSql, /RETENTION_PG17_FIXTURE_23_COMPLETE/u);
+  assert.match(inputs.sql, /RETENTION_PG17_FIXTURE_24_COMPLETE/u);
+  assert.doesNotMatch(inputs.isolatedSql, /RETENTION_PG17_FIXTURE_24_COMPLETE/u);
   assert.match(inputs.isolatedSql, /dblink_send_query/u);
   assert.match(inputs.isolatedSql, /'202610260102','service_repair_case_state_cas'/u);
   assert.match(inputs.sql, /PROTECTED_ARCHIVE_NON_OWNER_BOUNDARY_OK/u);
@@ -91,6 +97,25 @@ test("first cluster success cannot hide missing isolated race proof", () => {
   const f = fixture({ missingMarker: 21 });
   assert.throws(() => f.run(), /RETENTION_FIXTURE_MARKER_MISSING:RETENTION_PG17_FIXTURE_21_COMPLETE/u);
   assert(f.deleted());
+});
+
+test("new resume fixture must complete in the first cluster before isolated race proof", () => {
+  const f = fixture({ missingMarker: 22 });
+  assert.throws(() => f.run(), /RETENTION_FIXTURE_MARKER_MISSING:RETENTION_PG17_FIXTURE_22_COMPLETE/u);
+  assert(f.deleted());
+  assert.equal(f.calls.filter(({ args }) => args.includes("/usr/lib/postgresql/17/bin/psql")).length, 1);
+});
+test("owned intake proof cannot be skipped before isolated race proof", () => {
+  const f = fixture({ missingMarker: 23 });
+  assert.throws(() => f.run(), /RETENTION_FIXTURE_MARKER_MISSING:RETENTION_PG17_FIXTURE_23_COMPLETE/u);
+  assert(f.deleted());
+  assert.equal(f.calls.filter(({ args }) => args.includes("/usr/lib/postgresql/17/bin/psql")).length, 1);
+});
+test("claimed payment proof cannot be skipped before isolated race proof", () => {
+  const f = fixture({ missingMarker: 24 });
+  assert.throws(() => f.run(), /RETENTION_FIXTURE_MARKER_MISSING:RETENTION_PG17_FIXTURE_24_COMPLETE/u);
+  assert(f.deleted());
+  assert.equal(f.calls.filter(({ args }) => args.includes("/usr/lib/postgresql/17/bin/psql")).length, 1);
 });
 test("isolated second-cluster failure stops and removes only its owned container", () => {
   const f = fixture({ failIsolated: true });

@@ -10,7 +10,7 @@ create table supabase_migrations.schema_migrations(version text primary key,name
 create extension pgcrypto with schema extensions;
 create table auth.users (
  id uuid primary key, instance_id uuid, aud text, role text, email text,
- encrypted_password text, email_confirmed_at timestamptz,
+ encrypted_password text, email_confirmed_at timestamptz, is_anonymous boolean not null default false,
  raw_app_meta_data jsonb, raw_user_meta_data jsonb, created_at timestamptz, updated_at timestamptz
 );
 create function auth.jwt() returns jsonb language sql stable as $$

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { current100LockedPhaseSql, current101LockedPhaseSql, current102LockedPhaseSql } from "./lib/supabase-upgrade-phases.mjs";
+import { current100LockedPhaseSql, current101LockedPhaseSql, current102LockedPhaseSql, current103LockedPhaseSql } from "./lib/supabase-upgrade-phases.mjs";
 import { DATABASE_RECOVERY } from "./lib/database-recovery-protocol.mjs";
 import { DATABASE_RECOVERY_SOURCE, DATABASE_RECOVERY_REQUIRED_TABLES } from "./lib/database-recovery-source.mjs";
 import { RECOVERY_TABLES } from "./lib/protected-recovery-protocol.mjs";
@@ -26,14 +26,18 @@ test("100 remains exact;101 and102 require their own guarded capabilities while 
 });
 
 test("all101 database metadata is required for recovery without inventing duplicate storage aliases", () => {
-  assert.equal(DATABASE_RECOVERY.schemaVersion, "202610260102");
-  assert.equal(DATABASE_RECOVERY_SOURCE.schemaVersion, "202610260102");
-  assert.equal(DATABASE_RECOVERY_REQUIRED_TABLES.length, 33);
-  assert.equal(new Set(DATABASE_RECOVERY_REQUIRED_TABLES).size, 33);
+  assert.equal(DATABASE_RECOVERY.schemaVersion, "202610260103");
+  assert.equal(DATABASE_RECOVERY_SOURCE.schemaVersion, "202610260103");
+  assert.equal(DATABASE_RECOVERY_REQUIRED_TABLES.length, 35);
+  assert.equal(new Set(DATABASE_RECOVERY_REQUIRED_TABLES).size, 35);
   assert.equal(RECOVERY_TABLES.length, 11);
   for (const table of tables) { assert(DATABASE_RECOVERY_REQUIRED_TABLES.includes(table)); assert(!RECOVERY_TABLES.includes(table)); }
-  for (const version of ["202610250100", "202610250101", "202610260102"]) assert(ARCHIVE_DATABASE_READ_VERSIONS.includes(version));
-  assert(!ARCHIVE_DATABASE_READ_VERSIONS.includes("202610260103"));
+  for (const table of ["ap_intake_account_claims", "ap_intake_clarification_notices"]) {
+    assert(DATABASE_RECOVERY_REQUIRED_TABLES.includes(table));
+    assert(!RECOVERY_TABLES.includes(table), "account metadata must not impersonate a file-storage alias");
+  }
+  for (const version of ["202610250100", "202610250101", "202610260102", "202610260103"]) assert(ARCHIVE_DATABASE_READ_VERSIONS.includes(version));
+  assert(!ARCHIVE_DATABASE_READ_VERSIONS.includes("202610260104"));
   const migration = read("../supabase/migrations/202610250101_material_clarification_confirmation.sql");
   for (const table of tables) assert(migration.includes(table));
   assert(migration.includes("ap_retention_snapshot_customers_before_101"));
@@ -41,11 +45,11 @@ test("all101 database metadata is required for recovery without inventing duplic
 });
 
 test("actual PG17 input retains every prior fixture and adds real101 and102 races with finite nested helpers", () => {
-  const input = loadRetentionPostgresInputs(); assert.equal(input.migrationCount, 107);
+  const input = loadRetentionPostgresInputs(); assert.equal(input.migrationCount, 108);
   const fixtures = input.hashes.filter(item => item.kind === "fixture").map(item => item.name);
-  assert.equal(fixtures.length, 21); assert.equal(new Set(fixtures).size, 21);
+  assert.equal(fixtures.length, 24); assert.equal(new Set(fixtures).size, 24);
   for (const name of ["material-clarification-confirmation.sql", "material-clarification-races.sql", "service-repair-case-state.sql",
-    "service-repair-case-state-races.sql", "service-retention-races.sql", "protected-archive-limited-role.sql", "protected-archive-races.sql", "material-draft-stage-claiming.sql"])
+    "service-repair-case-state-races.sql", "material-clarification-resume.sql", "verified-intake-ownership.sql", "verified-intake-payment.sql", "service-retention-races.sql", "protected-archive-limited-role.sql", "protected-archive-races.sql", "material-draft-stage-claiming.sql"])
     assert(fixtures.includes(name), name);
   assert(input.hashes.some(item => item.kind === "helper" && item.name === "service-repair-case-state-fixture.sql"));
   assert(!/^\s*\\ir /mu.test(input.sql));
@@ -53,15 +57,16 @@ test("actual PG17 input retains every prior fixture and adds real101 and102 race
   assert(input.sql.includes("SERVICE_REPAIR_CASE_STATE_CAS"));
 });
 
-test("all22 predecessors preserve the exact100-to101-to102 sequence before the current contract group", () => {
-  assert.equal(REHEARSAL_TARGET_VERSION, "202610260102"); assert.equal(REHEARSAL_PREDECESSORS.length, 22);
-  assert.deepEqual(REHEARSAL_PREDECESSORS.slice(-2), ["202610250100", "202610250101"]);
+test("all23 predecessors preserve the exact100-to101-to102 sequence before the current contract group", () => {
+  assert.equal(REHEARSAL_TARGET_VERSION, "202610260103"); assert.equal(REHEARSAL_PREDECESSORS.length, 23);
+  assert.deepEqual(REHEARSAL_PREDECESSORS.slice(-3), ["202610250100", "202610250101", "202610260102"]);
   const runner = read("./run-supabase-rehearsal-upgrade-test.mjs");
   for (const text of ['prepareHistoricalWorkspace("202610250100")', 'prepareHistoricalWorkspace("202610250101")', 'prepareHistoricalWorkspace("202610260102")',
     '"--historical-100"', '"--historical-101"', "Database contract fixtures passed: 15. Schema phase: 202610250100.",
-    "Database contract fixtures passed: 16. Schema phase: 202610250101.", "Database contract fixtures passed: 17. Schema phase: 202610260102."])
+    "Database contract fixtures passed: 16. Schema phase: 202610250101.", "Database contract fixtures passed: 17. Schema phase: 202610260102.",
+    '"--historical-102"', 'prepareHistoricalWorkspace("202610260103")', "Database contract fixtures passed: 20. Schema phase: 202610260103."])
     assert(runner.includes(text), text);
-  const points = ["AUTOMATIC_RESEARCH_100_UPGRADE_PRESERVED", "MATERIAL_CLARIFICATION_101_UPGRADE_PRESERVED", "SERVICE_REPAIR_CASE_STATE_102_UPGRADE_PRESERVED"].map(text => runner.indexOf(text));
+  const points = ["AUTOMATIC_RESEARCH_100_UPGRADE_PRESERVED", "MATERIAL_CLARIFICATION_101_UPGRADE_PRESERVED", "SERVICE_REPAIR_CASE_STATE_102_UPGRADE_PRESERVED", "MATERIAL_CLARIFICATION_RESUME_103_UPGRADE_PRESERVED"].map(text => runner.indexOf(text));
   assert(points.every((point, index) => point > 0 && (index === 0 || point > points[index - 1])));
   assert(read("../tests/integration/service-repair-case-state-upgrade-seed.sql").includes("case_state_upgrade_exact_101_required"));
   assert(read("../tests/integration/service-repair-case-state-upgrade-verify.sql").includes("case_state_upgrade_modified_existing"));
@@ -69,14 +74,29 @@ test("all22 predecessors preserve the exact100-to101-to102 sequence before the c
 
 test("controlled Windows and actual committed route harness require exact final schema without enabling providers", () => {
   const stage = read("./apply-staging-rehearsal-migration.ps1"), guard = read("./test-production-database-guard.ps1");
-  for (const name of ["ExpectedMaterialClarificationMigrationSha256", "ExpectedRepairCaseStateMigrationSha256"])
+  for (const name of ["ExpectedMaterialClarificationMigrationSha256", "ExpectedRepairCaseStateMigrationSha256", "ExpectedClarificationResumeMigrationSha256"])
     assert(stage.includes(`$${name}`) && stage.includes(`'${name}'`));
-  for (const phase of ["099", "100", "101", "102"]) assert(guard.includes(`GUARD_${phase}_ONLY_SUFFIX_FIXTURE_INVALID`));
+  for (const phase of ["099", "100", "101", "102", "103"]) assert(guard.includes(`GUARD_${phase}_ONLY_SUFFIX_FIXTURE_INVALID`));
   const ci = read("../.github/workflows/ci.yml");
-  for (const name of ["material-clarification-migration", "repair-case-state-migration", "material-clarification-integration"]) assert(ci.includes(`npm run test:${name}`));
+  for (const name of ["material-clarification-migration", "repair-case-state-migration", "material-clarification-resume-migration", "material-clarification-integration"]) assert(ci.includes(`npm run test:${name}`));
   const route = read("./run-research-postgres17.mjs");
-  assert(route.includes("schema='202610260102'"));
+  assert(route.includes("schema='202610260103'"));
   assert(route.includes("for(const scenario of ['QUALIFIED','LIMITED'])"));
   assert(route.includes("RESEARCH_GIT_BYTES_CHANGED"));
   assert(ci.includes("needs: [database-core, database-upgrade, research-route-journey]"));
+});
+
+
+test("103 adds capability-only resume while preserving102 and every operational lock", () => {
+  assert(!current102LockedPhaseSql.includes("202610260103"));
+  assert(current102LockedPhaseSql.includes("or exists(select 1 from public.ap_research_preparations)"));
+  assert(current103LockedPhaseSql.includes("or exists(select 1 from public.ap_research_preparations where state<>'STALE' or lease_token is not null or lease_until is not null)"));
+  assert(current103LockedPhaseSql.includes("or exists(select 1 from public.ap_research_preparation_sources)"));
+  for (const text of ["distinct from '202610260103'", "ap_material_clarification_resume_schema_installed()", "MATERIAL_CLARIFICATION_RESUME", "SERVICE_REPAIR_CASE_STATE_CAS",
+    "not enabled and policy_id is null", "not enabled and cardinality(configuration_ids)=0", "mode='LOCKED'", "not checkout_enabled"]) assert(current103LockedPhaseSql.includes(text), text);
+  for (const table of tables) assert(!current103LockedPhaseSql.includes(`or exists(select 1 from public.${table})`));
+  const migration = read("../supabase/migrations/202610260103_material_clarification_resume.sql");
+  assert(migration.includes("ap_resume_material_clarification"));
+  assert(read("../tests/integration/material-clarification-resume-upgrade-seed.sql").includes("202610260102"));
+  assert(read("../tests/integration/material-clarification-resume-upgrade-verify.sql").includes("MATERIAL_CLARIFICATION_RESUME_103_UPGRADE_PRESERVED"));
 });

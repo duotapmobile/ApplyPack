@@ -18,20 +18,20 @@ test("100 adds an inactive research phase and preserves the exact099 contract",(
     assert(current100LockedPhaseSql.includes(value),value);
 });
 test("database recovery includes all three metadata tables without inventing file paths",()=>{
-  assert.equal(DATABASE_RECOVERY.schemaVersion,"202610260102");assert.equal(DATABASE_RECOVERY_SOURCE.schemaVersion,"202610260102");
-  assert.equal(DATABASE_RECOVERY_REQUIRED_TABLES.length,33);assert.equal(new Set(DATABASE_RECOVERY_REQUIRED_TABLES).size,33);
+  assert.equal(DATABASE_RECOVERY.schemaVersion,"202610260103");assert.equal(DATABASE_RECOVERY_SOURCE.schemaVersion,"202610260103");
+  assert.equal(DATABASE_RECOVERY_REQUIRED_TABLES.length,35);assert.equal(new Set(DATABASE_RECOVERY_REQUIRED_TABLES).size,35);
   for(const table of tables){assert(DATABASE_RECOVERY_REQUIRED_TABLES.includes(table));assert(!RECOVERY_TABLES.includes(table));}
   assert(ARCHIVE_DATABASE_READ_VERSIONS.includes("202610250099"));assert(ARCHIVE_DATABASE_READ_VERSIONS.includes("202610250100"));assert(!ARCHIVE_DATABASE_READ_VERSIONS.includes("202610260199"));
 });
 test("pinned PG17 receives the actual research controls and all historical race fixtures",()=>{
-  const input=loadRetentionPostgresInputs();assert.equal(input.migrationCount,107);
-  const fixtures=input.hashes.filter(x=>x.kind==="fixture").map(x=>x.name);assert.equal(fixtures.length,21);
+  const input=loadRetentionPostgresInputs();assert.equal(input.migrationCount, 108);
+  const fixtures=input.hashes.filter(x=>x.kind==="fixture").map(x=>x.name);assert.equal(fixtures.length, 24);
   for(const name of ["automatic-research-preparation.sql","scoped-service-error-repairs.sql","protected-archive-limited-role.sql","protected-archive-races.sql","service-retention-races.sql"])assert(fixtures.includes(name));
   assert(input.sql.includes("research_retention_locked"));assert(input.sql.includes("for i in 1..51 loop"));
 });
 test("exact099 history precedes100 with all20 upgrade boundaries",()=>{
   const source=read("./run-supabase-rehearsal-upgrade-test.mjs");
-  for(const value of ['prepareHistoricalWorkspace("202610250100")','"--historical-099"',"Database contract fixtures passed: 14. Schema phase: 202610250099.","Database contract fixtures passed: 15. Schema phase: 202610250100.","All twenty-two launch upgrade predecessors passed"])assert(source.includes(value),value);
+  for(const value of ['prepareHistoricalWorkspace("202610250100")','"--historical-099"',"Database contract fixtures passed: 14. Schema phase: 202610250099.","Database contract fixtures passed: 15. Schema phase: 202610250100.","All twenty-three launch upgrade predecessors passed"])assert(source.includes(value),value);
   assert(source.indexOf("AUTOMATIC_RESEARCH_100_UPGRADE_PRESERVED")>source.indexOf("SERVICE_REPAIR_099_UPGRADE_PRESERVED"));
   for(const phase of ["098","099","100"])assert(read("./test-production-database-guard.ps1").includes(`GUARD_${phase}_ONLY_SUFFIX_FIXTURE_INVALID`));
   const seed=read("../tests/integration/research-preparation-upgrade-seed.sql");assert(seed.includes("202610250099"));assert(!seed.includes("then continue;"));
@@ -41,5 +41,5 @@ test("controlled100 Windows execution binds its exact file hash and stays separa
   assert(stage.includes("$ExpectedAutomaticResearchMigrationSha256"));assert(stage.includes("'ExpectedAutomaticResearchMigrationSha256'"));
   for(const name of ["test:automatic-research-migration","test:automatic-research-integration","test:service-repair-migration","test:service-repair-integration"])assert(ci.includes(`npm run ${name}`));
   assert.equal(pkg.scripts["test:automatic-research-migration"],"node scripts/run-windows-release-self-test.mjs rehearsal-100");
-  assert(read("./run-supabase-rollback-test.mjs").includes('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610260102"'));
+  assert(read("./run-supabase-rollback-test.mjs").includes('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610260103"'));
 });

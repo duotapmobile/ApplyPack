@@ -8,13 +8,13 @@ import { fileURLToPath } from "node:url";
 // Test-only server image. Never import this image into a deployed worker: its
 // server/tooling packages have a separate vulnerability profile from runtime.
 export const RETENTION_POSTGRES_IMAGE = "postgres:17-trixie@sha256:3518071376d0b6156b02e1db2747a78511b5b9dc3763cc79c506ebe2dc2ee71c";
-const schema = "202610260102";
+const schema = "202610260103";
 const version = "17.11";
 const fixtureLabel = "service-retention-postgres17";
 const bin = "/usr/lib/postgresql/17/bin/";
 const directory = "/tmp/applypack-retention";
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
-const fixtureNames = Object.freeze(["one-off-service-retention.sql", "service-retention-cleanup.sql", "confirmed-intake.sql", "reviewed-commute.sql", "material-draft-pair-workflow.sql", "material-rule-revalidation.sql", "source-aware-document-acceptance.sql", "reference-aware-draft-delivery.sql", "service-error-contract-and-triage.sql", "material-draft-change-requests.sql", "protected-archive-lifecycle.sql", "scoped-service-error-repairs.sql", "automatic-research-preparation.sql", "material-clarification-confirmation.sql", "service-repair-case-state.sql", "protected-archive-limited-role.sql", "protected-archive-races.sql", "service-retention-races.sql", "material-clarification-races.sql", "material-draft-stage-claiming.sql", "service-repair-case-state-races.sql"]);
+const fixtureNames = Object.freeze(["one-off-service-retention.sql", "service-retention-cleanup.sql", "confirmed-intake.sql", "reviewed-commute.sql", "material-draft-pair-workflow.sql", "material-rule-revalidation.sql", "source-aware-document-acceptance.sql", "reference-aware-draft-delivery.sql", "service-error-contract-and-triage.sql", "material-draft-change-requests.sql", "protected-archive-lifecycle.sql", "scoped-service-error-repairs.sql", "automatic-research-preparation.sql", "material-clarification-confirmation.sql", "service-repair-case-state.sql", "protected-archive-limited-role.sql", "protected-archive-races.sql", "service-retention-races.sql", "material-clarification-races.sql", "material-draft-stage-claiming.sql", "service-repair-case-state-races.sql", "material-clarification-resume.sql", "verified-intake-ownership.sql", "verified-intake-payment.sql"]);
 const fixtureMarkers = Object.freeze(fixtureNames.map((_, index) => `RETENTION_PG17_FIXTURE_${index + 1}_COMPLETE`));
 const isolatedFixture = "service-repair-case-state-races.sql";
 
@@ -134,7 +134,7 @@ export function runRetentionPostgres17(args = [], { execute = execFileSync, envi
       `-h 127.0.0.1 -p 5432 -k ${directory} -c max_connections=12 -c shared_buffers=16MB -c unix_socket_permissions=0700`], undefined, 45000);
     started = true;
     const output = executeLocal(`${bin}psql`, ["-X", "-q", "-h", "127.0.0.1", "-p", "5432", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1"], sql, 600000);
-    for (const marker of fixtureMarkers.slice(0, -1)) assert(output.split(/\r?\n/u).some((line) => line.trim() === marker), `RETENTION_FIXTURE_MARKER_MISSING:${marker}`);
+    for (const marker of fixtureMarkers.filter((_, index) => fixtureNames[index] !== isolatedFixture)) assert(output.split(/\r?\n/u).some((line) => line.trim() === marker), `RETENTION_FIXTURE_MARKER_MISSING:${marker}`);
     executeLocal(`${bin}pg_ctl`, ["-D", clusterData, "-w", "-t", "30", "-m", "fast", "stop"], undefined, 45000);
     started = false; clusterData = `${directory}/case-data`;
     executeLocal(`${bin}initdb`, ["-D", clusterData, "-U", "postgres", "--auth-local=trust", "--auth-host=trust", "--encoding=UTF8", "--no-locale"]);
@@ -142,7 +142,7 @@ export function runRetentionPostgres17(args = [], { execute = execFileSync, envi
       `-h 127.0.0.1 -p 5432 -k ${directory} -c max_connections=12 -c shared_buffers=16MB -c unix_socket_permissions=0700`], undefined, 45000);
     started = true;
     const isolatedOutput = executeLocal(`${bin}psql`, ["-X", "-q", "-h", "127.0.0.1", "-p", "5432", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1"], isolatedSql, 600000);
-    const isolatedMarker = fixtureMarkers.at(-1);
+    const isolatedMarker = fixtureMarkers[fixtureNames.indexOf(isolatedFixture)];
     assert(isolatedOutput.split(/\r?\n/u).some(line => line.trim() === isolatedMarker), `RETENTION_FIXTURE_MARKER_MISSING:${isolatedMarker}`);
     result = { status: "PASS", scope: "fictional-postgres17-retention-concurrency", postgresVersion: version, schemaVersion: schema,
       imageId: metadata.Id, imageDigest: RETENTION_POSTGRES_IMAGE.split("@")[1], migrationCount, fixtureCount: fixtureNames.length,

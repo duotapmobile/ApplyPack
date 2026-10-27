@@ -93,7 +93,10 @@ test("the actual research journey is isolated from generic integration and remai
   const generic = read("../vitest.integration.config.mts");
   assert.match(generic, /exclude:\s*\[\s*\/\/[^\n]*\n\s*"tests\/integration\/research-preparation-journey\.test\.ts",/u);
   const isolated = read("../vitest.research-container.config.mjs");
-  assert(isolated.includes("include:['tests/integration/research-preparation-journey.test.ts']"));
+  if (isolated.includes("AP_RESEARCH_JOURNEY_STAGE")) {
+    assert(isolated.includes("include:[process.env.AP_RESEARCH_JOURNEY_STAGE==='CLARIFICATION'"));
+    assert(isolated.includes("?'tests/integration/material-clarification-route-journey.test.ts':'tests/integration/research-preparation-journey.test.ts']"));
+  } else assert(isolated.includes("include:['tests/integration/research-preparation-journey.test.ts']"));
   const research = job("research-route-journey");
   assert(research.includes("node scripts/run-research-postgres17.mjs"));
   assert(!research.includes("continue-on-error") && !/^    if:/mu.test(research));
@@ -108,8 +111,16 @@ test("selection stays outside upgrade assertions and all local cleanup and concu
   assert(source.includes("await proveRehearsalCheckoutConcurrency()"));
   assert(source.includes('run("supabase", ["db", "reset", "--local", "--no-seed"])'));
   assert(source.includes('if (failure) throw failure;'));
-  assert(source.includes("All twenty-two launch upgrade predecessors passed"));
+  assert(source.includes("All twenty-three launch upgrade predecessors passed"));
   assert(source.includes("Selected launch upgrade predecessor ${predecessors[0]} passed"));
   const scripts = JSON.parse(read("../package.json")).scripts;
   assert(scripts["test:database"].endsWith("node scripts/run-supabase-rehearsal-upgrade-test.mjs"));
+});
+
+
+test("103 migration self-test remains mandatory alongside every earlier Windows gate", () => {
+  assert(workflow.includes("npm run test:material-clarification-resume-migration"));
+  assert(workflow.includes("npm run test:repair-case-state-migration"));
+  assert.equal(REHEARSAL_TARGET_VERSION, "202610260103");
+  assert.equal(REHEARSAL_PREDECESSORS.at(-1), "202610260102");
 });

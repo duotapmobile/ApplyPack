@@ -1,6 +1,6 @@
 begin;
 do $$ declare readiness jsonb:=public.ap_manual_launch_schema_readiness(); begin
- if readiness->>'requiredSchemaVersion' not in ('202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102') or not (readiness->'requiredMigrations' ?& array['202610240087','202610250088','202610250089'])
+ if readiness->>'requiredSchemaVersion' not in ('202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102','202610260103') or not (readiness->'requiredMigrations' ?& array['202610240087','202610250088','202610250089'])
    or not public.ap_confirmed_intake_schema_installed() then raise exception 'confirmed intake schema readiness is incomplete'; end if;
 end $$;
 create function pg_temp.assert_true(value boolean,message text) returns void language plpgsql as $$
@@ -55,7 +55,7 @@ end $$;
 -- Historical phases permitted reopening.101 requires a separately confirmed
 -- successor, whose full workflow is exercised by material-clarification-confirmation.sql.
 do $$ begin
- if (public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion') in('202610250101','202610260102') then
+ if (public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion') in('202610250101','202610260102','202610260103') then
   begin
    perform public.ap_save_four_step_draft('e8900000-0000-4000-8000-000000000001',repeat('a',64),3,3,pg_temp.answers('GUIDED')||'{"phone":"555 0101"}'::jsonb);
    raise exception 'confirmed draft reopened without successor';
@@ -87,7 +87,7 @@ values('e8900000-0000-4000-8000-000000000044','e8900000-0000-4000-8000-000000000
  'DOCUMENT','e8900000-0000-4000-8000-000000000032','Fixture page 1','EXTRACTED_UNCONFIRMED','fixture-v1','fixture-v1','MATCH_ENHANCING','Excel','{"summary":"Excel sorting: can do now"}','CAN_DO_NOW');
 select * from public.ap_save_four_step_draft('e8900000-0000-4000-8000-000000000002',repeat('b',64),2,3,pg_temp.answers('CURRENT_RESUME'));
 do $$ declare fact record; reviews jsonb:='{}'; receipt jsonb;
- successor_required boolean:=(public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion') in('202610250101','202610260102');
+ successor_required boolean:=(public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion') in('202610250101','202610260102','202610260103');
  edit_version bigint; begin
   for fact in select id from public.ap_candidate_facts where draft_id='e8900000-0000-4000-8000-000000000002' and snapshot_id is null loop
     perform public.ap_record_fact_presentation('e8900000-0000-4000-8000-000000000002',repeat('b',64),3,fact.id,'fact-'||fact.id::text);
@@ -140,7 +140,7 @@ end $$;
 -- Source changes invalidate a prepared review; approximate guided dates stay approximate.
 select * from public.ap_create_anonymous_draft('e8900000-0000-4000-8000-000000000003',repeat('c',64),now()+interval '1 day');
 do $$ declare answers jsonb; receipt jsonb; payload jsonb;
- successor_required boolean:=(public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion') in('202610250101','202610260102');
+ successor_required boolean:=(public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion') in('202610250101','202610260102','202610260103');
  edit_version bigint; begin
  answers:=pg_temp.answers('GUIDED')||'{"noPriorEmployment":false,"experienceAdditions":[{"clientId":"guide-1","kind":"PAID_EMPLOYMENT","organizationOrProject":"Fixture Store","roleOrRelationship":"Cashier","startsOn":"2020-01-01","endsOn":"2022-01-01","datePrecision":"YEAR","responsibilities":["Handled payments"],"intensityPercent":null}]}'::jsonb;
  perform public.ap_save_four_step_draft('e8900000-0000-4000-8000-000000000003',repeat('c',64),1,3,answers);

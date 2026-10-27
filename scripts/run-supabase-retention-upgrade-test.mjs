@@ -17,7 +17,7 @@ try {
   run("supabase", ["db", "reset", "--local", "--no-seed", "--version", "202610240087"]);
   run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs", "--historical-087"], "Database contract fixtures passed: 1. Schema phase: 202610240087.");
   run("supabase", ["migration", "up", "--local"]);
-  run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs"], "Database contract fixtures passed: 17. Schema phase: 202610260102.");
+  run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs"], "Database contract fixtures passed: 20. Schema phase: 202610260103.");
 } catch (error) { failure = error; }
 finally {
   try { run("supabase", ["db", "reset", "--local", "--no-seed"]); }

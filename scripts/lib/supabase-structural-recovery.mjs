@@ -137,6 +137,8 @@ select case when
   -- Installed schema controls do not authorize hosted cleanup or purchasing.
   and public.ap_sandbox_activation_schema_installed()
   and public.ap_one_off_retention_schema_installed()
+  and public.ap_material_clarification_resume_schema_installed()
+  and exists(select 1 from public.ap_migration_checkpoints where migration_id='202610260103' and checkpoint='MATERIAL_CLARIFICATION_RESUME')
   and public.ap_manual_launch_schema_readiness()->>'ready'='true'
   and exists(select 1 from public.ap_checkout_mode_configuration where singleton and mode='LOCKED')
   and exists(select 1 from public.ap_commerce_configuration where singleton and not checkout_enabled)
@@ -192,7 +194,7 @@ select case when
     where migration_id='202610250091' and checkpoint='MATERIAL_DRAFT_PAIR_WORKFLOW')
   and exists(select 1 from public.ap_material_draft_runtime where singleton and not enabled and policy_id is null)
   and not exists(select 1 from public.ap_material_draft_permits)
-  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610260102'
+  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610260103'
   and exists (
     select 1 from pg_proc procedure
     join pg_namespace namespace on namespace.oid=procedure.pronamespace

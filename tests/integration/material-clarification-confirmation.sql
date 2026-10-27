@@ -3,7 +3,7 @@ begin;
 create function pg_temp.assert_true(value boolean,message text) returns void language plpgsql as $$
 begin if value is not true then raise exception '%',message; end if; end $$;
 select pg_temp.assert_true(public.ap_material_clarification_schema_installed()
- and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' in('202610250101','202610260102')
+ and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' in('202610250101','202610260102','202610260103')
  and (public.ap_manual_launch_schema_readiness()->>'ready')::boolean
  and jsonb_array_length(public.ap_manual_launch_schema_readiness()->'requiredMigrations')=case public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' when '202610250101' then 25 when '202610260102' then 26 end
  and public.ap_manual_launch_schema_readiness()->'requiredMigrations' @> '["202610250099","202610250100","202610250101"]'::jsonb,

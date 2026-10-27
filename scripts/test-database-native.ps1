@@ -19,6 +19,7 @@ param(
   [switch]$MaterialClarificationUpgrade,
   [switch]$RepairCaseStateUpgrade,
   [switch]$ClarificationCaseUpgrade,
+  [switch]$ClarificationResumeUpgrade,
   [switch]$LegalReceiptUpgrade,
   [string[]]$FixtureNames,
   [string]$MaximumMigrationVersion
@@ -50,7 +51,7 @@ create table supabase_migrations.schema_migrations(version text primary key,name
 create extension pgcrypto with schema extensions;
 create table auth.users (
  id uuid primary key, instance_id uuid, aud text, role text, email text,
- encrypted_password text, email_confirmed_at timestamptz,
+ encrypted_password text, email_confirmed_at timestamptz, is_anonymous boolean not null default false,
  raw_app_meta_data jsonb, raw_user_meta_data jsonb, created_at timestamptz, updated_at timestamptz
 );
 create function auth.jwt() returns jsonb language sql stable as $$
@@ -196,6 +197,14 @@ if ($ClarificationCaseUpgrade) {
   if (-not $FixtureNames) { $fixtures = @() }
   $fixtures += @('material-clarification-upgrade-seed.sql','material-clarification-upgrade-verify.sql','service-repair-case-state-upgrade-seed.sql','service-repair-case-state-upgrade-verify.sql')
 }
+if ($ClarificationResumeUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $ServiceRepairUpgrade -or $ResearchPreparationUpgrade -or $MaterialClarificationUpgrade -or $RepairCaseStateUpgrade -or $ClarificationCaseUpgrade -or $LegalReceiptUpgrade -or $ResearchJourney -or
+      $MaximumMigrationVersion -cne '202610260103' -or $migrationFiles[-1].Name -cne '202610260103_material_clarification_resume.sql') { throw 'Clarification resume upgrade requires the exact isolated102-to103 sequence.' }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('material-clarification-resume-upgrade-seed.sql','material-clarification-resume-upgrade-verify.sql')
+  if ($fixtures -notcontains 'verified-intake-ownership.sql') { $fixtures += 'verified-intake-ownership.sql' }
+  if ($fixtures -notcontains 'verified-intake-payment.sql') { $fixtures += 'verified-intake-payment.sql' }
+}
 $inputs = @([pscustomobject]@{Kind='bootstrap'; Name='bootstrap.sql'; Path=$bootstrapPath})
 foreach ($migration in $migrationFiles) {
   $copy = Join-Path $inputPath $migration.Name
@@ -312,6 +321,32 @@ if ($ClarificationCaseUpgrade) {
     @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610260102' }) +
     @($inputs | Where-Object Name -eq 'service-repair-case-state-upgrade-verify.sql') +
     @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('material-clarification-upgrade-seed.sql','material-clarification-upgrade-verify.sql','service-repair-case-state-upgrade-seed.sql','service-repair-case-state-upgrade-verify.sql') })
+}
+if ($ClarificationResumeUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610260102' }) +
+    @($inputs | Where-Object Name -eq 'material-clarification-resume-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610260103' }) +
+    @($inputs | Where-Object Name -eq 'material-clarification-resume-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('material-clarification-resume-upgrade-seed.sql','material-clarification-resume-upgrade-verify.sql') })
+  # Execute the same final phase as hosted-CI's disposable upgrade runner, with
+  # its exact module and generated SQL retained in this owned input manifest.
+  $phaseModule = Join-Path $inputPath 'supabase-upgrade-phases.mjs'
+  Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/lib/supabase-upgrade-phases.mjs') -Destination $phaseModule
+  $phaseExporter = Join-Path $inputPath 'export-current103-phase.mjs'
+  Set-Content -LiteralPath $phaseExporter -Encoding utf8 -Value @'
+import { pathToFileURL } from 'node:url';
+const { current103LockedPhaseSql } = await import(pathToFileURL(process.argv[2]).href);
+if (typeof current103LockedPhaseSql !== 'string' || !current103LockedPhaseSql.length) throw new Error('Exact103 phase required');
+process.stdout.write(current103LockedPhaseSql);
+'@
+  $phaseSql = & (Get-Command node -ErrorAction Stop).Source $phaseExporter $phaseModule
+  if ($LASTEXITCODE -ne 0) { throw 'Exact103 phase export failed.' }
+  $phasePath = Join-Path $inputPath 'native-current103-locked-phase.sql'
+  Set-Content -LiteralPath $phasePath -Encoding utf8 -Value $phaseSql
+  $inputs += [pscustomobject]@{Kind='fixture'; Name='native-current103-locked-phase.sql'; Path=$phasePath}
+  $inputs += [pscustomobject]@{Kind='helper'; Name='supabase-upgrade-phases.mjs'; Path=$phaseModule}
+  $inputs += [pscustomobject]@{Kind='helper'; Name='export-current103-phase.mjs'; Path=$phaseExporter}
 }
 if ($LegalReceiptUpgrade) {
   $bindingPath = Join-Path $repoRoot 'scripts/launch-legal-contract.mjs'
@@ -507,7 +542,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Capacity pressure failed; see process output.' }
   }
   if ($ResearchJourney) {
-    if ($LegacyBackfill -or $CapacityPressure -or $ServiceRepairUpgrade -or $MaximumMigrationVersion -cne '202610260102') { throw 'Research journey requires the explicit102 fictional fixture boundary.' }
+    if ($LegacyBackfill -or $CapacityPressure -or $ServiceRepairUpgrade -or $ClarificationResumeUpgrade -or $MaximumMigrationVersion -cne '202610260103') { throw 'Research journey requires the explicit103 fictional fixture boundary.' }
     $step = 'actual research routes against the owned loopback cluster'
     $researchMarker = [guid]::NewGuid().ToString('N')
     Invoke-Native 'psql.exe' @('-X', '-h', '127.0.0.1', '-p', "$port", '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', "create table public.ap_research_local_test_identity(marker text primary key); insert into public.ap_research_local_test_identity values('$researchMarker');") 30

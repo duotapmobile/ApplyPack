@@ -286,6 +286,18 @@ describe("October 2 manual-launch hardening", () => {
       requiredMigrations: REQUIRED_LAUNCH_MIGRATIONS.filter((version) => version !== "202610250099"),
     })).toBe(false);
 
+    for (const missing of ["202610260102", "202610260103"] as const) {
+      expect(REQUIRED_LAUNCH_MIGRATIONS).toContain(missing);
+      expect(launchSchemaReadinessIsCurrent({
+        ready: true, requiredSchemaVersion: "202610260103",
+        requiredMigrations: REQUIRED_LAUNCH_MIGRATIONS.filter((version) => version !== missing),
+      })).toBe(false);
+    }
+    expect(launchSchemaReadinessIsCurrent({
+      ready: true, requiredSchemaVersion: "202610260104",
+      requiredMigrations: [...REQUIRED_LAUNCH_MIGRATIONS, "202610260104"],
+    })).toBe(false);
+
     const priorMigration = source("supabase/migrations/202610040079_runtime_launch_schema_readiness.sql");
     const migration = source("supabase/migrations/202610040080_persistent_inventory_identity_guard.sql");
     expect(priorMigration).toContain("lock table public.ap_inventory_members in share row exclusive mode");
@@ -875,7 +887,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(rollbackCheck).toContain("intentIndex >= uploadIndex");
     expect(rollbackCheck).toContain("exact approved legal content");
     expect(rollbackCheck).toContain("ap_upgrade_completed_intake_legal_acceptance");
-    expect(rollbackCheck).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610260102"');
+    expect(rollbackCheck).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610260103"');
     expect(rollbackCheck).toContain('admin.rpc("ap_manual_launch_schema_readiness")');
     expect(rollbackCheck).toContain("launchSchemaReadinessIsCurrent(schemaReadiness)");
     expect(rollbackRunbook).toContain("minimum compatible application rollback commit is `aeae1dee597e153602febd6adfea5644e4628d20`");

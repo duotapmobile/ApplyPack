@@ -11,7 +11,7 @@ const NOW = Date.parse("2026-10-25T16:00:00Z"); const SHA = "a".repeat(40); cons
 const runtime = { schemaVersion: "applypack-database-recovery-runtime-v1", postgresMajor: 17, clientVersion: "17.11",
   baseImageDigest: `sha256:${HASH}`, psqlSha256: HASH, pgDumpSha256: HASH };
 const target = { id: "synthetic-export", sourceProjectRef: RECOVERY_PROJECT, host: `db.${RECOVERY_PROJECT}.supabase.co`, port: 5432,
-  database: "postgres", user: "applypack_recovery_exporter", caSha256: HASH, schemaVersion: "202610260102", runtimeManifestSha256: canonicalSha256(runtime) };
+  database: "postgres", user: "applypack_recovery_exporter", caSha256: HASH, schemaVersion: "202610260103", runtimeManifestSha256: canonicalSha256(runtime) };
 const archive = { bucket: "applypack-production-protected-recovery-838445019912",
   kmsKeyArn: "arn:aws:kms:us-east-1:838445019912:key/11111111-1111-4111-8111-111111111111" };
 function fixture() {
