@@ -3,7 +3,7 @@ import "server-only";
 import { checkRuntimeFileSafety } from "@/lib/operations/runtime-readiness";
 import { checkSensitivePayloadHealth } from "@/lib/security/kms-health";
 import { checkDocumentRendererReadiness } from "@/lib/operations/renderer-readiness";
-import { maintenanceHeartbeatIsFresh } from "@/lib/operations/summary";
+import { currentSourceReadiness, maintenanceHeartbeatIsFresh } from "@/lib/operations/summary";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { assertConfiguredPrice, createStripeOperationalClient } from "@/lib/stripe/server";
 import { checkoutConfiguration } from "@/lib/stripe/mode";
@@ -94,7 +94,7 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
     documentRendering: false,
     maintenance: false,
     database: false,
-    manualInventoryReady: false,
+    permittedInventoryReady: false,
     releaseSha: false,
     legalContent: false,
     protectedRecovery: false,
@@ -175,7 +175,10 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
         }
       }
       capacityAvailable = Object.values(capacityByResource).some(Boolean);
-      checks.manualInventoryReady = !sourceError && sourceReadiness?.manualReady === true;
+      const sourceInventory = currentSourceReadiness(sourceReadiness);
+      checks.permittedInventoryReady = !sourceError && sourceInventory.valid && sourceInventory.currentVerifiedInventory
+        && sourceReadiness?.jobSourcesRegistered === true
+        && (sourceInventory.manualReady || sourceInventory.automatedReady);
       const legalContent = currentLegalContentBinding();
       checks.legalContent = !legalConfigurationError
         && legalConfiguration?.terms_version === legalContent.termsVersion

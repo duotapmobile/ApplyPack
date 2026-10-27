@@ -16,7 +16,8 @@ const selections=Object.freeze(['src','supabase/migrations','package.json','pack
   'tests/integration/research-local-database.ts','tests/integration/research-local-postgres.ts','tests/integration/research-preparation-journey.test.ts',
   'tests/integration/material-clarification-route-journey.test.ts','tests/integration/material-clarification-confirmation.sql',
   'tests/integration/intake-notification-native-journey.test.ts','tests/integration/verified-intake-ownership.sql',
-  'tests/integration/verified-intake-payment.sql','tests/integration/reviewed-source-fixture.sql']);
+  'tests/integration/verified-intake-payment.sql','tests/integration/reviewed-source-fixture.sql',
+  'tests/integration/verified-paid-search-native-journey.test.ts','tests/integration/paid-search-provider-fixture.ts']);
 
 /** Exact Git bytes only. The fixture never mounts a developer checkout or .env. */
 export function prepareResearchPostgresInputs({execute=execFileSync, environment={PATH:process.env.PATH},repositoryRoot=root}={}) {
@@ -106,7 +107,7 @@ function isolated(state,imageId,network,binds=[]) {
   assert((state.Mounts||[]).every(value=>['tmpfs','bind'].includes(value.Type)),'RESEARCH_MOUNT_TYPE');
 }
 
-/** Two real route journeys, each in its own networkless namespace and database. */
+/** Each scenario has its own networkless namespace and database. */
 export function runResearchPostgres17(args=[],{execute=execFileSync,environment=process.env,platform=process.platform,uuid=randomUUID,inputs=prepareResearchPostgresInputs,write=writeFileSync}={}) {
   assert.deepEqual(args,[],'RESEARCH_ARGUMENTS_FORBIDDEN');assert.equal(platform,'linux','RESEARCH_CI_LINUX_REQUIRED');
   for(const [key,value]of Object.entries(environment))if(value&&/^(?:DOCKER_|CONTAINER_HOST$|PG|DATABASE_URL$|SUPABASE_|NEXT_PUBLIC_SUPABASE_|AP_RESEARCH_TEST_)/iu.test(key))throw new Error('RESEARCH_EXTERNAL_ENVIRONMENT_FORBIDDEN');
@@ -118,7 +119,7 @@ export function runResearchPostgres17(args=[],{execute=execFileSync,environment=
   const pg=JSON.parse(docker(['image','inspect',RESEARCH_POSTGRES_IMAGE]))[0], node=JSON.parse(docker(['image','inspect',RESEARCH_NODE_IMAGE]))[0];
   const volumes=image(pg,RESEARCH_POSTGRES_IMAGE,'postgres');image(node,RESEARCH_NODE_IMAGE,'node');
   const results=[];
-  for(const scenario of ['QUALIFIED','LIMITED']) {
+  for(const scenario of ['QUALIFIED','LIMITED','PAID_SEARCH']) {
     const runId=uuid();assert(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(runId),'RESEARCH_RUN_ID');
     const pgName=`applypack-research-pg-${runId}`, nodeName=`applypack-research-node-${runId}`, marker=runId.replaceAll('-','');
     const attempted=[], common=['--pull','never','--read-only','--user','65534:65534','--cap-drop','ALL','--security-opt','no-new-privileges','--cpus','2'];
@@ -148,7 +149,9 @@ export function runResearchPostgres17(args=[],{execute=execFileSync,environment=
       phase='actual-route-journey';
       const output=docker(['start','--attach',nodeName],undefined,330000);
       write(join(prepared.directory,`${scenario.toLowerCase()}.log`),output);
-      assert(output.split(/\r?\n/u).some(line=>line.startsWith('RESEARCH_ROUTE_DATABASE_JOURNEY_OK:')),'RESEARCH_ROUTE_MARKER');
+      const requiredMarker=scenario==='PAID_SEARCH'?'PAID_SEARCH_ROUTE_DATABASE_JOURNEY_OK:':'RESEARCH_ROUTE_DATABASE_JOURNEY_OK:';
+      assert(output.split(/\r?\n/u).some(line=>line.startsWith(requiredMarker)),'RESEARCH_ROUTE_MARKER');
+      if(scenario==='LIMITED')assert(output.split(/\r?\n/u).some(line=>line==='RESEARCH_CLARIFICATION_NOTIFICATION_JOURNEYS_OK'),'RESEARCH_AGGREGATE_MARKER');
       const stopped=inspect(nodeName);owned(stopped,nodeName,runId);isolated(stopped,node.Id,`container:${pgState.Id}`,binds);
       assert(stopped.State?.Running===false&&stopped.State?.ExitCode===0&&stopped.State?.OOMKilled===false,'RESEARCH_ROUTE_EXIT');
       const finalPg=inspect(pgName);owned(finalPg,pgName,runId);isolated(finalPg,pg.Id,'none');assert.equal(finalPg.Id,pgState.Id);

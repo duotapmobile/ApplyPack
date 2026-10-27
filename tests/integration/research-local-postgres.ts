@@ -27,7 +27,8 @@ export function researchLocalSql(port: number, statement: string, discardResults
           if (["G", "H", "W"].includes(kind)) throw new Error("local_pg_copy_rejected");
           if (kind === "E") {
             const parts = value.toString("utf8").split("\0"); const message = parts.find(part => part.startsWith("M"))?.slice(1) ?? "local_pg_error";
-            throw new Error(message);
+            const code = parts.find(part => part.startsWith("C"))?.slice(1);
+            throw Object.assign(new Error(message), { code: /^[A-Z0-9]{5}$/u.test(code || "") ? code : "LOCAL_PG_ERROR" });
           }
           if (kind === "D") {
             if (value.length < 2) throw new Error("local_pg_result_shape");

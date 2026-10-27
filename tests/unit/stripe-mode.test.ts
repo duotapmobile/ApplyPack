@@ -102,7 +102,7 @@ describe("Stripe payment-mode guard", () => {
     { APP_CANARY_CHECKOUT_ENABLED: "true" }, { APP_EXPECTED_RELEASE_SHA: "b".repeat(40) },
     { NEXT_PUBLIC_APP_URL: "https://unknown.example" }, { NEXT_PUBLIC_SUPABASE_URL: "https://wrong.supabase.co" },
     { APP_REHEARSAL_CHECKOUT_ENABLED: "yes" }, { APP_DEPLOYMENT_ENV: "unknown" },
-    { STRIPE_SECRET_KEY: "sk_live_fixture" }, { APP_JOB_SOURCE_SYNC_ENABLED: "true" },
+    { STRIPE_SECRET_KEY: "sk_live_fixture" }, { APP_JOB_SOURCE_SYNC_ENABLED: "yes" },
   ])("fails closed for a wrong or mixed rehearsal configuration: %o", (changes) => {
     Object.assign(process.env, { APP_PAYMENT_MODE: "test", STRIPE_SECRET_KEY: "sk_test_fixture", APP_REHEARSAL_CHECKOUT_ENABLED: "true" }, changes);
     expect(checkoutMode()).toBe("INVALID"); expect(checkoutConfiguration().ready).toBe(false);
@@ -116,10 +116,24 @@ describe("Stripe payment-mode guard", () => {
     expect(checkoutMode()).toBe("INVALID");
   });
 
-  it.each(["APP_JOB_BOARD_CHECKOUT_ENABLED", "APP_JOB_SOURCE_SYNC_ENABLED"])("requires explicit false for %s", (name) => {
+  it.each(["APP_JOB_BOARD_CHECKOUT_ENABLED", "APP_JOB_SOURCE_SYNC_ENABLED"])("requires an explicit supported value for %s", (name) => {
     Object.assign(process.env, { APP_PAYMENT_MODE: "test", STRIPE_SECRET_KEY: "sk_test_fixture" });
     expect(checkoutMode()).toBe("LOCKED_STAGING");
     delete process.env[name]; expect(checkoutMode()).toBe("INVALID");
+  });
+
+  it.each(["true", "false"])("allows separately gated source collection during rehearsal: %s", (enabled) => {
+    Object.assign(process.env, { APP_PAYMENT_MODE: "test", STRIPE_SECRET_KEY: "sk_test_fixture", APP_REHEARSAL_CHECKOUT_ENABLED: "true",
+      APP_JOB_SOURCE_SYNC_ENABLED: enabled, STRIPE_WEBHOOK_SECRET: "whsec_fixture", STRIPE_JOB_SEARCH_PRICE_ID: "price_search", STRIPE_APPLY_PACK_PRICE_ID: "price_pack" });
+    expect(checkoutMode()).toBe("STAGING_REHEARSAL");
+    expect(checkoutConfiguration()).toMatchObject({ ready: true, acceptingOrders: false });
+    process.env.APP_JOB_BOARD_CHECKOUT_ENABLED = "true";
+    expect(checkoutMode()).toBe("INVALID"); process.env.APP_JOB_BOARD_CHECKOUT_ENABLED = "false";
+    process.env.APP_REHEARSAL_CHECKOUT_ENABLED = "false";
+    expect(checkoutConfiguration()).toMatchObject({ ready: false, state: "LOCKED_STAGING" });
+    process.env.APP_REHEARSAL_CHECKOUT_ENABLED = "true";
+    process.env.APP_EXPECTED_RELEASE_SHA = "b".repeat(40);
+    expect(checkoutMode()).toBe("INVALID");
   });
 
   it("keeps the Stripe setup product names aligned with checkout validation", () => {

@@ -10,13 +10,15 @@ import { POST } from "@/app/api/checkout/search/route";
 const id = (n: number) => `a1030000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const origin = "https://applypack.example", owner = id(1), draft = id(2), snapshot = id(3), assessment = id(4);
 let identity: { data: unknown; error: unknown };
+let feasibility: Record<string, unknown>;
 const rpc = vi.fn(), from = vi.fn();
 const request = () => new Request(`${origin}/api/checkout/search`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ snapshotId: snapshot, assessmentId: assessment, invitationId: id(5), invitationSecret: "a".repeat(43) }) });
 beforeEach(() => {
   vi.resetAllMocks(); vi.stubEnv("NEXT_PUBLIC_APP_URL", origin); vi.stubEnv("STRIPE_JOB_SEARCH_PRICE_ID", "price_fixture");
   identity = { data: { claimed: true, customerId: owner, rootDraftId: draft }, error: null };
+  feasibility = { snapshotId: snapshot, assessmentId: assessment, state: "COMPLETE", outcome: "LIKELY", checkoutEligible: true };
   rpc.mockImplementation(async (name: string) => {
-    if (name === "ap_read_current_feasibility") return { data: { snapshotId: snapshot, assessmentId: assessment, state: "COMPLETE", outcome: "LIKELY", checkoutEligible: true }, error: null };
+    if (name === "ap_read_current_feasibility") return { data: feasibility, error: null };
     if (name === "ap_intake_payment_identity") return identity;
     throw new Error("Unexpected command");
   });
@@ -26,6 +28,17 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 describe("verified search checkout ownership", () => {
+  it.each([true, false])("rechecks the invitation through release authorization when public eligibility is false and spare capacity is %s", async (capacityAvailable) => {
+    feasibility = { ...feasibility, checkoutEligible: false, capacityAvailable };
+    expect((await POST(request())).status).toBe(503);
+    expect(boundary.authorize).toHaveBeenCalledWith(expect.anything(), "SEARCH", { customerId: owner, resourceId: draft });
+    expect(from).not.toHaveBeenCalled(); // An invitation never bypasses the existing locked release.
+  });
+  it.each([{ snapshotId: id(9) }, { assessmentId: id(9) }, { state: "STALE" }, { state: "ERROR" }, { outcome: "LIMITED" }, { outcome: "INFEASIBLE" }])(
+    "rejects a mismatched or unavailable assessment before release authorization: %j", async (change) => {
+      feasibility = { ...feasibility, checkoutEligible: false, ...change };
+      expect((await POST(request())).status).toBe(409); expect(boundary.authorize).not.toHaveBeenCalled(); expect(from).not.toHaveBeenCalled();
+    });
   it("authorizes only the exact selected intake's stable account, without any email lookup", async () => {
     expect((await POST(request())).status).toBe(503);
     expect(rpc).toHaveBeenCalledWith("ap_intake_payment_identity", { p_draft_id: draft, p_snapshot_id: snapshot });

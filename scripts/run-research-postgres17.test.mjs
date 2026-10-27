@@ -9,7 +9,7 @@ import {prepareResearchPostgresInputs,RESEARCH_NODE_IMAGE,RESEARCH_POSTGRES_IMAG
 import {researchFixtureIdentity} from './lib/research-fixture-identity.mjs';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const pgId=`sha256:${'a'.repeat(64)}`,nodeId=`sha256:${'b'.repeat(64)}`;
-function fixture({fail,drift,missingMarker,ambiguousCreate,cleanupFailure}={}) {
+function fixture({fail,drift,missingMarker,missingAggregate,ambiguousCreate,cleanupFailure}={}) {
   const calls=[],states=new Map(),writes=[],prepared={commit:'c'.repeat(40),schemaVersion:'202610260103',workspace:'/fixture/source',dependencies:'/fixture/dependencies',directory:'/fixture/evidence',sql:'-- actual schema input placeholder',migrationCount:108,inputHashes:[],sourceArchiveSha256:'d'.repeat(64)};
   let counter=0;
   const execute=(command,args,options)=>{
@@ -28,7 +28,14 @@ function fixture({fail,drift,missingMarker,ambiguousCreate,cleanupFailure}={}) {
     if(op==='ps'){const name=at('--filter').slice(7,-1);return states.has(name)?states.get(name).Id:'';}
     if(op==='rm'){if(cleanupFailure)throw new Error('cleanup unavailable');states.delete(args.at(-1));return '';}
     if(op==='start') {
-      if(args.includes('--attach')){if(fail==='journey')throw new Error('route assertion failed');return missingMarker?'schema only\n':'RESEARCH_ROUTE_DATABASE_JOURNEY_OK: fictional boundary; real routes\n';}
+      if(args.includes('--attach')){
+        const invocation=calls.find(call=>call.args[2]==='create'&&call.args[call.args.indexOf('--name')+1]===args.at(-1));
+        const scenario=invocation.args.at(-1);
+        if(fail==='journey'||fail==='paid-journey'&&scenario==='PAID_SEARCH')throw new Error('route assertion failed');
+        if(missingMarker)return 'schema only\n';
+        return scenario==='PAID_SEARCH'?'PAID_SEARCH_ROUTE_DATABASE_JOURNEY_OK: fictional boundary; real routes\n'
+          :'RESEARCH_ROUTE_DATABASE_JOURNEY_OK: fictional boundary; real routes\n'+(scenario==='LIMITED'&&!missingAggregate?'RESEARCH_CLARIFICATION_NOTIFICATION_JOURNEYS_OK\n':'');
+      }
       return '';
     }
     if(op==='exec') {
@@ -40,17 +47,24 @@ function fixture({fail,drift,missingMarker,ambiguousCreate,cleanupFailure}={}) {
   const run=(args=[],environment={},platform='linux')=>runResearchPostgres17(args,{execute,environment,platform,uuid:()=>`11111111-2222-4333-8444-${String(++counter).padStart(12,'0')}`,inputs:()=>prepared,write:(...args)=>writes.push(args)});
   return {calls,run,states,writes};
 }
-test('runs both original route scenarios in separate owned networkless namespaces and cleans each pair',()=>{
+test('runs both original route scenarios and paid search in separate owned networkless namespaces and cleans each pair',()=>{
   const f=fixture(),receipt=f.run([],{PATH:'/bin',AWS_SECRET_ACCESS_KEY:'fictional',STRIPE_SECRET_KEY:'fictional'});
-  assert.deepEqual(receipt.results.map(value=>value.scenario),['QUALIFIED','LIMITED']);assert.equal(receipt.hostedProof,false);assert.equal(receipt.providerCalls,0);assert.equal(f.states.size,0);
-  const created=f.calls.filter(call=>call.args[2]==='create');assert.equal(created.length,4);
+  assert.deepEqual(receipt.results.map(value=>value.scenario),['QUALIFIED','LIMITED','PAID_SEARCH']);assert.equal(receipt.hostedProof,false);assert.equal(receipt.providerCalls,0);assert.equal(f.states.size,0);
+  const created=f.calls.filter(call=>call.args[2]==='create');assert.equal(created.length,6);
   const servers=created.filter(call=>call.args.includes('none')),nodes=created.filter(call=>call.args.some(value=>value.startsWith('container:')));
-  assert.equal(servers.length,2);assert.equal(nodes.length,2);assert.notEqual(nodes[0].args[nodes[0].args.indexOf('--network')+1],nodes[1].args[nodes[1].args.indexOf('--network')+1]);
+  assert.equal(servers.length,3);assert.equal(nodes.length,3);assert.equal(new Set(nodes.map(node=>node.args[node.args.indexOf('--network')+1])).size,3);
   for(const {args}of nodes){assert(args.includes('AP_RESEARCH_TEST_MODE=CONTAINER_PG17'));assert(args.includes('AP_RESEARCH_TEST_PORT=5432'));const mounts=args.filter(value=>value.startsWith('type=bind'));assert(mounts.every(value=>value.endsWith(',readonly')));assert(!mounts.some(value=>value.includes('.env')||value.includes('docker.sock')));}
   assert(f.calls.every(call=>call.options.env.AWS_SECRET_ACCESS_KEY===undefined&&call.options.env.STRIPE_SECRET_KEY===undefined));
-  assert.equal(f.calls.filter(call=>call.args.includes('/usr/lib/postgresql/17/bin/psql')).length,2);
+  assert.equal(f.calls.filter(call=>call.args.includes('/usr/lib/postgresql/17/bin/psql')).length,3);
   assert(f.calls.filter(call=>call.args.includes('--attach')).every(call=>call.options.timeout===330000));
-  assert.equal(f.writes.length,2);assert(receipt.results.every(value=>value.teardownVerified));
+  assert.equal(f.writes.length,3);assert(receipt.results.every(value=>value.teardownVerified));
+});
+test('paid-search failure fails the aggregate and tears down all three isolated scenarios',()=>{
+  const f=fixture({fail:'paid-journey'});assert.throws(()=>f.run(),/route assertion failed/u);assert.equal(f.states.size,0);
+  assert.equal(f.calls.filter(call=>call.args[2]==='create').length,6);assert(f.writes.some(([path])=>path.replaceAll('\\','/').endsWith('/paid_search-failure.log')));
+});
+test('LIMITED requires the full three-stage completion marker',()=>{
+  const f=fixture({missingAggregate:true});assert.throws(()=>f.run(),/RESEARCH_AGGREGATE_MARKER/u);assert.equal(f.states.size,0);
 });
 for(const fail of ['initdb','pg_ctl','psql','journey'])test(`failure at ${fail} cleans exactly the containers already created`,()=>{const f=fixture({fail});assert.throws(()=>f.run());assert.equal(f.states.size,0);});
 for(const ambiguousCreate of ['postgres','node'])test(`lost ${ambiguousCreate} creation response is reconciled and cleaned`,()=>{const f=fixture({ambiguousCreate});assert.throws(()=>f.run(),/lost create/u);assert.equal(f.states.size,0);});
@@ -84,7 +98,8 @@ test('source preparation archives only committed allowlisted bytes and excludes 
   'tests/integration/automatic-research-preparation.sql','tests/integration/retention-postgres17-bootstrap.sql','tests/integration/research-local-database.ts','tests/integration/research-local-postgres.ts','tests/integration/research-preparation-journey.test.ts',
   'tests/integration/material-clarification-route-journey.test.ts','tests/integration/material-clarification-confirmation.sql',
   'tests/integration/intake-notification-native-journey.test.ts','tests/integration/verified-intake-ownership.sql',
-  'tests/integration/verified-intake-payment.sql','tests/integration/reviewed-source-fixture.sql','supabase/migrations/202610260103_fictional.sql'];
+  'tests/integration/verified-intake-payment.sql','tests/integration/reviewed-source-fixture.sql',
+  'tests/integration/verified-paid-search-native-journey.test.ts','tests/integration/paid-search-provider-fixture.ts','supabase/migrations/202610260103_fictional.sql'];
  try {
   for(const path of files){mkdirSync(dirname(join(directory,path)),{recursive:true});writeFileSync(join(directory,path),path.endsWith('.sql')?'select 1;\n':'committed bytes\n');}
   const git=args=>execFileSync('git',args,{cwd:directory,stdio:'pipe',timeout:30000});

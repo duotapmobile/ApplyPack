@@ -10,7 +10,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { cloneElement, isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, LockKeyhole, RefreshCw, Trash2 } from "lucide-react";
-import { feasibilityPresentation, SEARCH_CHECKOUT_CTA, type FeasibilityView } from "@/lib/commerce/presentation";
+import { canRecheckInvitedSearch, feasibilityPresentation, SEARCH_CHECKOUT_CTA, type FeasibilityView } from "@/lib/commerce/presentation";
 import { LEGAL_ACCEPTANCE_PRESENTATION } from "@/lib/legal/presentation";
 import {
   activityCatalog, breadthChoices, businessSystemTasks, capabilityChoices, dealbreakerCatalog,
@@ -406,22 +406,26 @@ export function IntakeWizard({ fixtureMode = false, expectedDraftId, accessEmail
   }
 
   async function startCheckout() {
-    if (!feasibility?.snapshotId || !feasibility.assessmentId || !feasibility.checkoutEligible) return;
+    if (!feasibility || !canRecheckInvitedSearch(feasibility, checkoutInvitation !== null)) return;
     if (!checkoutInvitation) {
       setNotice("Your intake is ready for operator review. Checkout remains locked until a short-lived, single-use invitation is issued.");
       return;
     }
     setCheckoutBusy(true); setNotice("Validating your reserved capacity and preparing secure checkout. No payment has started yet.");
-    if (fixtureMode) { router.push("/e2e/chunk4?state=confirming"); return; }
-    const response = await request("/api/checkout/search", { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ snapshotId: feasibility.snapshotId, assessmentId: feasibility.assessmentId,
-        invitationId: checkoutInvitation.id, invitationSecret: checkoutInvitation.secret }) });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || typeof result.url !== "string") {
-      setCheckoutBusy(false); setNotice(result.error || "Secure checkout could not be prepared. No payment was started.");
-      return;
-    }
-    window.location.assign(result.url);
+    try {
+      if (fixtureMode) { router.push("/e2e/chunk4?state=confirming"); return; }
+      const response = await request("/api/checkout/search", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ snapshotId: feasibility.snapshotId, assessmentId: feasibility.assessmentId,
+          invitationId: checkoutInvitation.id, invitationSecret: checkoutInvitation.secret }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || typeof result.url !== "string") {
+        setNotice(result.error || "Secure checkout could not be confirmed. Check this invitation again before starting another payment.");
+        return;
+      }
+      window.location.assign(result.url);
+    } catch {
+      setNotice("We could not confirm checkout. Try this invitation again to check the same payment request; do not start a separate payment.");
+    } finally { setCheckoutBusy(false); }
   }
 
   async function confirmCurrentLegalContent() {
@@ -558,7 +562,7 @@ export function IntakeWizard({ fixtureMode = false, expectedDraftId, accessEmail
 function FeasibilityResult({ value, checkoutBusy, invitationAvailable, onCheckout, onEdit }: {
   value: FeasibilityView; checkoutBusy: boolean; invitationAvailable: boolean; onCheckout: () => void; onEdit?: () => void;
 }) {
-  const presentation = feasibilityPresentation(value);
+  const presentation = feasibilityPresentation(value, invitationAvailable);
   return <section className={`feasibility-result feasibility-result--${value.state.toLowerCase()}`} aria-live="polite" aria-labelledby="feasibility-title">
     <p className="eyebrow">FEASIBILITY RESULT</p>
     <h3 id="feasibility-title">{presentation.title}</h3>

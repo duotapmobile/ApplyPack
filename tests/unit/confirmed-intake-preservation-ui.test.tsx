@@ -24,7 +24,8 @@ describe("confirmed intake is preserved", () => {
     saved(true);
     const savedFetch = fetchMock.getMockImplementation()!;
     fetchMock.mockImplementation((url: string, init?: RequestInit) => url.endsWith("/feasibility")
-      ? Promise.resolve({ ok: true, json: async () => ({ feasibility: { state: "COMPLETE", outcome: "LIKELY", checkoutEligible: true, capacityAvailable: true } }) })
+      ? Promise.resolve({ ok: true, json: async () => ({ feasibility: { state: "COMPLETE", outcome: "LIKELY", checkoutEligible: true, capacityAvailable: true,
+        snapshotId: "11000000-0000-4000-8000-000000000002", assessmentId: "11000000-0000-4000-8000-000000000004" } }) })
       : savedFetch(url, init));
     render(<IntakeWizard expectedDraftId="11000000-0000-4000-8000-000000000001" accessEmail="fictional@example.invalid" />);
     expect(await screen.findByRole("button", { name: "Use My $18.99 Checkout Invitation" })).toBeVisible();

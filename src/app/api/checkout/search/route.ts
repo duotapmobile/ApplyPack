@@ -84,9 +84,13 @@ export async function POST(request: Request) {
     return NextResponse.json(mapped.body, { status: mapped.status });
   }
   if (!view || view.snapshotId !== parsed.data.snapshotId || view.assessmentId !== parsed.data.assessmentId
-    || view.state !== "COMPLETE" || view.outcome !== "LIKELY" || view.checkoutEligible !== true) {
+    || view.state !== "COMPLETE" || view.outcome !== "LIKELY") {
     return NextResponse.json({ error: "This search is not currently eligible for Checkout. No payment was started." }, { status: 409 });
   }
+  // checkoutEligible describes public checkout with unreserved capacity. The
+  // exact invitation may already hold that capacity, including during locked
+  // sandbox rehearsal. Release authorization and the atomic begin RPC below
+  // verify this invitation's mode, reservation, expiry and current evidence.
   const identity = await readIntakePaymentIdentity(context.admin, context.capability.draftId, parsed.data.snapshotId)
     .catch(() => null);
   if (!identity) {
@@ -223,8 +227,8 @@ export async function POST(request: Request) {
       ...STRIPE_NO_ADDED_TAX,
       payment_method_types: ["card"],
       customer_email: String(checkout.access_email),
-      success_url: `${applicationOrigin}/checkout/return`,
-      cancel_url: `${applicationOrigin}/checkout/return?cancelled=1`,
+      success_url: `${applicationOrigin}/checkout/return?checkout_kind=search`,
+      cancel_url: `${applicationOrigin}/checkout/return?checkout_kind=search&cancelled=1`,
       line_items: [{ quantity: 1, price: priceId }],
       metadata: {
         checkout_attempt_id: String(checkout.checkout_attempt_id),

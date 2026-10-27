@@ -6,7 +6,7 @@ const good = {
   status: "ready", releaseSha: sha, checkoutMode: "LOCKED_STAGING", restrictedCheckoutMode: null,
   sessionCreationConfigured: false, acceptingOrders: false, commerceConfigured: true,
   checks: Object.fromEntries(["checkoutMode", "supabase", "commerceConfigured", "email", "publicOrigin", "fileSafety",
-    "encryption", "documentRendering", "maintenance", "database", "manualInventoryReady", "releaseSha", "legalContent"].map((key) => [key, true])),
+    "encryption", "documentRendering", "maintenance", "database", "permittedInventoryReady", "releaseSha", "legalContent"].map((key) => [key, true])),
 };
 function provider(data = good, statusOverride = {}) {
   return async (url, options) => {
@@ -20,7 +20,12 @@ function provider(data = good, statusOverride = {}) {
   };
 }
 test("reports locked readiness from exact SHA, dependencies and negative probes", async () => {
-  assert.equal((await collectStagingReadiness({ expectedSha: sha, fetchImpl: provider() })).ready, true);
+  const result = await collectStagingReadiness({ expectedSha: sha, fetchImpl: provider() });
+  assert.equal(result.ready, true); assert.equal(result.collector, "report-staging-readiness-v3");
+});
+test("does not reinterpret the older manual-only check as current inventory proof", async () => {
+  const { permittedInventoryReady: _obsolete, ...checks } = good.checks;
+  assert.equal((await collectStagingReadiness({ expectedSha: sha, fetchImpl: provider({ ...good, checks: { ...checks, manualInventoryReady: true } }) })).ready, false);
 });
 test("accepts the search route's absent anonymous draft denial", async () => {
   const report = await collectStagingReadiness({ expectedSha: sha,
@@ -29,7 +34,7 @@ test("accepts the search route's absent anonymous draft denial", async () => {
   assert.equal(report.ready, true);
 });
 for (const change of [{ releaseSha: "b".repeat(40) }, { checkoutMode: "STAGING_CANARY" }, { acceptingOrders: true },
-  { checks: {} }, { checks: { ...good.checks, manualInventoryReady: false } }, { sessionCreationConfigured: true }, { commerceConfigured: false }]) {
+  { checks: {} }, { checks: { ...good.checks, permittedInventoryReady: false } }, { sessionCreationConfigured: true }, { commerceConfigured: false }]) {
   test(`fails closed for ${Object.keys(change).join(",")}`, async () => {
     assert.equal((await collectStagingReadiness({ expectedSha: sha, fetchImpl: provider({ ...good, ...change }) })).ready, false);
   });

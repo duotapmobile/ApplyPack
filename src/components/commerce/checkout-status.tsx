@@ -18,7 +18,7 @@ const responseSchema = z.object({
 });
 
 export function CheckoutStatus({ cancelled = false, fixtureStatus }: { cancelled?: boolean; fixtureStatus?: CheckoutStatusResponse }) {
-  const [status, setStatus] = useState<CheckoutStatusResponse>(fixtureStatus || { state: cancelled ? "CANCELED" : "CONFIRMING_PAYMENT" });
+  const [status, setStatus] = useState<CheckoutStatusResponse>(fixtureStatus || { state: "CONFIRMING_PAYMENT" });
   const [unavailable, setUnavailable] = useState(false);
 
   useEffect(() => {
@@ -30,17 +30,17 @@ export function CheckoutStatus({ cancelled = false, fixtureStatus }: { cancelled
       const requestRevision = ++revision;
       if (timer) window.clearTimeout(timer);
       try {
-        const response = cancelled
-          ? await fetch("/api/checkout/search/status", { method: "POST", headers: { "content-type": "application/json" } })
-          : await fetch("/api/checkout/search/status", { cache: "no-store" });
+        // Return parameters describe navigation, not an authorized cancellation
+        // or verified payment. Reopening/focusing this page is always read-only.
+        const response = await fetch("/api/checkout/search/status", { cache: "no-store", credentials: "same-origin" });
         const value = await response.json();
         if (!active || requestRevision !== revision) return;
         if (!response.ok) throw new Error("status_unavailable");
-        const parsed = responseSchema.safeParse(cancelled ? { state: "CANCELED" } : value);
+        const parsed = responseSchema.safeParse(value);
         if (!parsed.success) throw new Error("status_unavailable");
         setUnavailable(false);
         setStatus(parsed.data);
-        if (!cancelled && parsed.data.state === "CONFIRMING_PAYMENT") timer = window.setTimeout(() => void load(), 2_000);
+        if (parsed.data.state === "CONFIRMING_PAYMENT") timer = window.setTimeout(() => void load(), 2_000);
       } catch {
         if (!active || requestRevision !== revision) return;
         setStatus({ state: "CONFIRMING_PAYMENT" });
@@ -64,6 +64,7 @@ export function CheckoutStatus({ cancelled = false, fixtureStatus }: { cancelled
       <p className="eyebrow">SECURE CHECKOUT</p>
       <h1>{unavailable ? "Checkout status is unavailable" : presentation.title}</h1>
       <p>{unavailable ? "This checkout cannot be checked in the current browser or account. Open My ApplyPack and sign in with the account that placed the order." : presentation.message}</p>
+      {!unavailable && cancelled && status.state === "CONFIRMING_PAYMENT" && <p>Returning from checkout does not confirm cancellation or a refund. Check the current status before starting another payment.</p>}
       <div className="admin-buttons">
         <Link className="button-link button-link--primary" href={status.orderId ? `/my-applypack?order=${encodeURIComponent(status.orderId)}` : "/my-applypack"}><span>Open My ApplyPack</span></Link>
         {!status.orderId && cancelled && <Link className="button-link button-link--primary" href="/get-started"><span>Return to intake</span></Link>}

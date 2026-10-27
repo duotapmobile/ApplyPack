@@ -18,7 +18,7 @@ export function checkoutMode(): CheckoutMode {
   const names = ["APP_CHECKOUT_ENABLED", "APP_CANARY_CHECKOUT_ENABLED", "APP_REHEARSAL_CHECKOUT_ENABLED",
     "APP_LIVE_PAYMENTS_ENABLED", "APP_JOB_BOARD_CHECKOUT_ENABLED", "APP_JOB_SOURCE_SYNC_ENABLED"];
   if (names.some((name) => !["true", "false"].includes(process.env[name] || ""))) return "INVALID";
-  if (process.env.APP_JOB_BOARD_CHECKOUT_ENABLED !== "false" || process.env.APP_JOB_SOURCE_SYNC_ENABLED !== "false") return "INVALID";
+  if (process.env.APP_JOB_BOARD_CHECKOUT_ENABLED !== "false") return "INVALID";
   const publicEnabled = process.env.APP_CHECKOUT_ENABLED === "true";
   const canary = process.env.APP_CANARY_CHECKOUT_ENABLED === "true";
   const rehearsal = process.env.APP_REHEARSAL_CHECKOUT_ENABLED === "true";

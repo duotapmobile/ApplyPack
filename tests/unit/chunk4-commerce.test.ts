@@ -157,7 +157,7 @@ describe("Chunk 4 commerce contract", () => {
   });
 
   it("keeps checkout status on an HTTP-only narrow capability rather than a provider id", () => {
-    expect(checkoutRoute).toContain('success_url: `${applicationOrigin}/checkout/return`');
+    expect(checkoutRoute).toContain('success_url: `${applicationOrigin}/checkout/return?checkout_kind=search`');
     expect(checkoutRoute).not.toContain("{CHECKOUT_SESSION_ID}");
     expect(checkoutRoute).not.toContain("session_id=");
     expect(checkoutReturnPage).not.toContain('searchParams.get("session_id")');

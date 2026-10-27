@@ -13,10 +13,18 @@ describe("payment route safety", () => {
     expect(search).toContain("view.assessmentId !== parsed.data.assessmentId");
     expect(search).toContain('view.state !== "COMPLETE"');
     expect(search).toContain('view.outcome !== "LIKELY"');
-    expect(search).toContain("view.checkoutEligible !== true");
+    const authorization = search.indexOf('await authorizeCheckout(context.admin, "SEARCH"');
+    const locked = search.indexOf("if (!authorization)");
+    const begin = search.indexOf('context.admin.rpc("ap_begin_authorized_search_checkout"');
+    expect(authorization).toBeGreaterThan(search.indexOf('view.outcome !== "LIKELY"'));
+    expect(locked).toBeGreaterThan(authorization);
+    expect(begin).toBeGreaterThan(locked);
     expect(search).toContain("invitationId: z.uuid()");
     expect(search).toContain('context.admin.rpc("ap_begin_authorized_search_checkout"');
     expect(search).toContain("p_invitation_id: parsed.data.invitationId");
+    expect(search).toContain("p_invitation_secret_hash: hashCapabilitySecret(parsed.data.invitationSecret)");
+    expect(search).toContain("p_mode: authorization.mode");
+    expect(search).toContain("p_authorization_id: authorization.authorizationId");
   });
 
   it("uses configured fixed Stripe prices instead of browser-controlled price data", () => {

@@ -46,4 +46,30 @@ describe("checkout status account access", () => {
     expect(await screen.findByRole("heading", { name: "Checkout status is unavailable" })).toBeVisible();
     expect(screen.queryByRole("heading", { name: "Checkout was cancelled" })).not.toBeInTheDocument();
   });
+  it("never cancels a checkout because of a return parameter, including focus and history restoration", async () => {
+    fetchMock.mockResolvedValue(reply({ state: "CONFIRMING_PAYMENT" })); render(<CheckoutStatus cancelled />);
+    expect(screen.queryByRole("heading", { name: "Checkout was cancelled" })).not.toBeInTheDocument();
+    expect(await screen.findByText(/does not confirm cancellation or a refund/)).toBeVisible();
+    fireEvent.focus(window); fireEvent(window, new Event("pageshow"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    for (const [path, options] of fetchMock.mock.calls) {
+      expect(path).toBe("/api/checkout/search/status");
+      expect(options).toEqual({ cache: "no-store", credentials: "same-origin" });
+    }
+  });
+  it("shows verified server payment state even when the browser return says cancelled", async () => {
+    fetchMock.mockResolvedValue(reply(paid)); render(<CheckoutStatus cancelled />);
+    expect(await screen.findByRole("heading", { name: "Your search has started" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Checkout was cancelled" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open My ApplyPack" })).toHaveAttribute("href", `/my-applypack?order=${orderId}`);
+  });
+  it("reports cancellation only when the server's verified projection reports it", async () => {
+    fetchMock.mockResolvedValue(reply({ state: "CANCELED" })); render(<CheckoutStatus />);
+    expect(await screen.findByRole("heading", { name: "Checkout was cancelled" })).toBeVisible();
+  });
+  it("rejects a cancellation acknowledgement where a current status projection is required", async () => {
+    fetchMock.mockResolvedValue(reply({ cancelled: true })); render(<CheckoutStatus cancelled />);
+    expect(await screen.findByRole("heading", { name: "Checkout status is unavailable" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Checkout was cancelled" })).not.toBeInTheDocument();
+  });
 });

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { materialDraftStageContractFixture } from "./lib/material-draft-stage-fixture.mjs";
+import { verifiedIntakeOwnershipContractFixture } from "./lib/verified-intake-ownership-fixture.mjs";
 
 const historical085 = process.argv.length === 3 && process.argv[2] === "--historical-085";
 const historical086 = process.argv.length === 3 && process.argv[2] === "--historical-086";
@@ -74,6 +75,7 @@ for (const fixture of fixtures) {
   sql = sql.replace(/^\\ir reviewed-source-fixture\.sql\r?$/gm, () => readFileSync(new URL("../tests/integration/reviewed-source-fixture.sql", import.meta.url), "utf8"));
   if (/^\s*\\/mu.test(sql)) throw new Error("DATABASE_FIXTURE_INCLUDE_FORBIDDEN");
   if (fixture.endsWith("/material-draft-stage-claiming.sql")) sql = materialDraftStageContractFixture(sql);
+  if (fixture.endsWith("/verified-intake-ownership.sql")) sql = verifiedIntakeOwnershipContractFixture(sql);
   const result = spawnSync("docker", ["exec", "-i", "supabase_db_applypack", "psql", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"], {
     encoding: "utf8", input: sql, stdio: ["pipe", "pipe", "pipe"], timeout: 60_000,
   });

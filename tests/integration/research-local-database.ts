@@ -10,7 +10,10 @@ const tables = new Set(["profiles", "ap_intake_snapshots", "ap_candidate_facts",
   "ap_requirement_nodes", "ap_human_review_records", "ap_match_evaluations", "ap_job_snapshots", "ap_source_verifications", "ap_research_cell_reviews",
   "ap_manual_research_reviews", "job_source_schedules", "job_source_runs", "job_source_run_listings", "job_source_listing_projections", "job_sources", "ap_scheduled_jobs",
   "ap_anonymous_drafts", "ap_fact_presentations", "ap_commerce_configuration", "ap_search_services", "ap_refund_operations",
-  "ap_material_lines", "ap_criteria_amendments", "ap_reference_regenerations"]);
+  "ap_material_lines", "ap_criteria_amendments", "ap_reference_regenerations",
+  "operational_heartbeats", "ap_operational_alerts", "storage_cleanup_queue", "ap_aws_temporary_cleanup",
+  "ap_checkout_mode_configuration", "ap_staging_rehearsal_authorizations", "ap_checkout_initiations", "ap_sensitive_payloads",
+  "ap_checkout_attempts", "ap_quotes", "webhook_events", "orders", "search_candidates", "workflow_tasks"]);
 const rpcNames = new Set(["ap_claim_research_preparation", "ap_prepare_automatic_research", "ap_bind_prepared_research_run", "ap_finish_research_preparation_check",
   "ap_research_snapshot_current", "ap_promote_prepared_research_observation", "ap_complete_prepared_research_review", "ap_research_preparation_ready",
   "ap_enqueue_due_job_source_syncs", "ap_claim_job_source_syncs", "ap_renew_job_source_sync_lease", "ap_archive_source_attempt", "ap_finalize_job_source_run",
@@ -24,7 +27,10 @@ const rpcNames = new Set(["ap_claim_research_preparation", "ap_prepare_automatic
 for (const name of ["ap_owned_intake_draft_context", "ap_owned_intake_drafts", "ap_create_owned_intake_draft", "ap_claim_intake_draft",
   "ap_resume_owned_intake_draft", "ap_resume_material_clarification", "consume_rate_limit", "ap_prepare_intake_clarification_notification",
   "ap_pin_intake_clarification_delivery", "ap_prepare_claimed_payment_notification", "ap_pin_claimed_payment_delivery", "ap_claim_outbox_messages",
-  "ap_renew_outbox_lease", "ap_complete_outbox_message", "ap_fail_outbox_message", "ap_queue_search_refund"]) rpcNames.add(name);
+  "ap_renew_outbox_lease", "ap_complete_outbox_message", "ap_fail_outbox_message", "ap_queue_search_refund",
+  "ap_intake_payment_identity", "ap_read_current_feasibility", "ap_manual_launch_capacity_readiness", "ap_manual_launch_schema_readiness",
+  "ap_current_source_readiness", "ap_begin_authorized_search_checkout", "ap_bind_checkout_initiation", "ap_reconcile_checkout_initiation",
+  "claim_stripe_webhook", "ap_apply_verified_search_payment", "claim_workflow_tasks", "ap_persist_match_selection", "ap_commit_exact_ten_release"]) rpcNames.add(name);
 const ident = (value: string) => { if (!/^[a-z_][a-z0-9_]*$/u.test(value)) throw new Error("local_identifier_rejected"); return `"${value}"`; };
 const literal = (value: unknown): string => value === null ? "null" : `'${String(value).replaceAll("'", "''")}'`;
 const json = (value: unknown) => `${literal(JSON.stringify(value))}::jsonb`;
@@ -53,7 +59,7 @@ function projection(table: string, selection: string, alias = "row", level = 0):
 function predicate(params: URLSearchParams) {
   const clauses: string[] = [];
   for (const [column, expression] of params) {
-    if (["select", "order", "limit", "offset", "columns"].includes(column)) continue;
+    if (["select", "order", "limit", "offset", "columns", "on_conflict"].includes(column)) continue;
     const key = ident(column); let value = expression, negate = false;
     if (value.startsWith("not.")) { value = value.slice(4); negate = true; }
     const dot = value.indexOf("."), operator = value.slice(0, dot), operand = value.slice(dot + 1);
@@ -81,7 +87,13 @@ export async function createResearchLocalDatabase() {
   const failures: string[] = [];
   async function fetchDatabase(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     const request = new Request(input, init), url = new URL(request.url);
-    if (url.origin !== "http://127.0.0.1:1" || !url.pathname.startsWith("/rest/v1/")) throw new Error("local_research_transport_rejected");
+    if (url.origin !== "http://127.0.0.1:1") throw new Error("local_research_transport_rejected");
+    const authUser = /^\/auth\/v1\/admin\/users\/([a-f0-9-]{36})$/u.exec(url.pathname);
+    if (authUser && request.method === "GET" && !url.search) {
+      const user = await sql(`select jsonb_build_object('id',id,'email',email,'email_confirmed_at',email_confirmed_at,'is_anonymous',is_anonymous,'aud',aud,'role',role,'created_at',created_at,'updated_at',updated_at,'app_metadata',raw_app_meta_data,'user_metadata',raw_user_meta_data) from auth.users where id=${literal(authUser[1])}::uuid`, true);
+      return user ? Response.json({ user }) : Response.json({ message: "User not found" }, { status: 404 });
+    }
+    if (!url.pathname.startsWith("/rest/v1/")) throw new Error("local_research_transport_rejected");
     request.signal.throwIfAborted();
     try {
       const name = url.pathname.slice(9); let result: unknown;
@@ -107,6 +119,14 @@ export async function createResearchLocalDatabase() {
       } else {
         if (!tables.has(name)) throw new Error(`local_table_rejected:${name}`);
         const params = url.searchParams, select = params.get("select") || "*", where = predicate(params);
+        const conflict = params.get("on_conflict");
+        if (conflict && (name !== "search_candidates" || request.method !== "POST" || conflict !== "search_order_id,job_id"
+          || !request.headers.get("prefer")?.split(",").includes("resolution=ignore-duplicates"))) throw new Error("local_upsert_rejected");
+        if (request.method === "HEAD") {
+          if (request.headers.get("prefer") !== "count=exact" || params.has("columns")) throw new Error("local_count_request_rejected");
+          const count = await sql(`select count(*)::integer from public.${ident(name)}${where}`);
+          return new Response(null, { headers: { "content-range": `*/${count}` } });
+        }
         if (params.has("columns") && request.method !== "POST") throw new Error("local_columns_method_rejected");
         let source = `public.${ident(name)}`, prefix = "";
         if (["POST", "PATCH"].includes(request.method)) {
@@ -117,9 +137,12 @@ export async function createResearchLocalDatabase() {
             if (!Array.isArray(declared) || declared.length !== keys.length || declared.some((key, index) => key !== keys[index])) throw new Error("local_columns_shape_rejected");
           }
           const columns = keys.map(ident).join(",");
-          const mutation = request.method === "POST" ? `insert into ${source}(${columns}) select ${columns} from jsonb_populate_recordset(null::${source},${json(records)})`
+          const mutation = request.method === "POST" ? `insert into ${source}(${columns}) select ${columns} from jsonb_populate_recordset(null::${source},${json(records)})${conflict ? " on conflict(search_order_id,job_id) do nothing" : ""}`
             : `update ${source} set (${columns})=(select ${columns} from jsonb_populate_record(null::${source},${json(records[0])}))${where}`;
           prefix = `with changed as (${mutation} returning *) `; source = "changed";
+        } else if (request.method === "DELETE" && name === "search_candidates" && params.get("search_order_id")?.startsWith("eq.")
+          && params.get("review_status") === "eq.proposed") {
+          prefix = `with changed as (delete from ${source}${where} returning *) `; source = "changed";
         } else if (request.method !== "GET") throw new Error("local_method_rejected");
         const ordering = params.get("order")?.split(",").map(value => { const [key, direction] = value.split("."); if (!["asc", "desc"].includes(direction)) throw new Error("local_order_rejected"); return `${ident(key)} ${direction}`; }).join(",");
         const maximum = params.get("limit"); if (maximum && !/^\d{1,5}$/u.test(maximum)) throw new Error("local_limit_rejected");
@@ -130,7 +153,12 @@ export async function createResearchLocalDatabase() {
         }
       }
       request.signal.throwIfAborted(); return Response.json(result);
-    } catch (error) { failures.push(`${request.method} ${url.pathname}: ${String(error)}`); return Response.json({ code: "LOCAL_SQL_REJECTED", message: error instanceof Error ? error.message : String(error) }, { status: 400 }); }
+    } catch (error) {
+      failures.push(`${request.method} ${url.pathname}: ${String(error)}`);
+      const code = error instanceof Error && "code" in error && typeof error.code === "string" && /^[A-Z0-9]{5}$/u.test(error.code)
+        ? error.code : "LOCAL_SQL_REJECTED";
+      return Response.json({ code, message: error instanceof Error ? error.message : String(error) }, { status: 400 });
+    }
   }
   async function script(statement: string) {
     // Fixture setup emits composite rows; validate every protocol field while

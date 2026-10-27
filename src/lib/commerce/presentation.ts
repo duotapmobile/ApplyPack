@@ -37,7 +37,13 @@ const reasonText: Record<string, string> = {
   COMPENSATION_UNCONFIRMED: "Enough listings did not publish compensation that can be compared with the selected minimum.",
 };
 
-export function feasibilityPresentation(value: FeasibilityView): FeasibilityPresentation {
+export function canRecheckInvitedSearch(value: FeasibilityView, invitationAvailable: boolean) {
+  return invitationAvailable && value.state === "COMPLETE" && value.outcome === "LIKELY"
+    && [value.snapshotId, value.assessmentId].every(id => typeof id === "string"
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+}
+
+export function feasibilityPresentation(value: FeasibilityView, invitationAvailable = false): FeasibilityPresentation {
   if (value.state === "PENDING") {
     return { title: "Checking your search", message: "We are checking current inventory and evidence. No payment has started.", canCheckout: false, showEdit: false, showHumanReview: false, showLeave: true };
   }
@@ -48,6 +54,10 @@ export function feasibilityPresentation(value: FeasibilityView): FeasibilityPres
     return { title: "We could not finish the check", message: "A required source, rule, or system check did not complete. No payment has started.", canCheckout: false, showEdit: true, showHumanReview: true, showLeave: true };
   }
   if (value.outcome === "LIKELY") {
+    if (invitationAvailable) {
+      return { title: "Your search looks feasible", message: "Use your invitation to check its reserved capacity and current checkout requirements. Payment starts only if those checks pass.",
+        canCheckout: canRecheckInvitedSearch(value, true), showEdit: true, showHumanReview: false, showLeave: true };
+    }
     if (!value.capacityAvailable) {
       return { title: "Your search looks feasible", message: "The evidence supports the search, but no current 24-hour production slot is available. No payment has started.", canCheckout: false, showEdit: true, showHumanReview: false, showLeave: true };
     }

@@ -13,7 +13,7 @@ param(
   [switch]$ArchiveLifecycleUpgrade,
   [switch]$ServiceRepairUpgrade,
   [switch]$ResearchJourney,
-  [ValidateSet('LIMITED','QUALIFIED')]
+  [ValidateSet('LIMITED','QUALIFIED','PAID_SEARCH')]
   [string]$ResearchJourneyCase = 'LIMITED',
   [switch]$ResearchPreparationUpgrade,
   [switch]$MaterialClarificationUpgrade,

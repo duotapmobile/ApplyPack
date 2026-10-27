@@ -13,6 +13,7 @@ export default defineConfig({
       "tests/integration/research-preparation-journey.test.ts",
       "tests/integration/material-clarification-route-journey.test.ts",
       "tests/integration/intake-notification-native-journey.test.ts",
+      "tests/integration/verified-paid-search-native-journey.test.ts",
       ...(process.env.SCANNER_INTEGRATION === "true" ? [] : ["tests/integration/clamav.integration.test.ts"]),
     ],
     setupFiles: ["./tests/setup.ts"],

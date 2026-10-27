@@ -23,6 +23,7 @@ import { assertConfiguredPrice, createStripeMaterialsClient } from "@/lib/stripe
 import { APPLY_PACK_CONTRACT_VERSION } from "@/lib/domain/applypack";
 import { authorizeCheckout, selectedJobResourceSha256 } from "@/lib/commerce/checkout-authorization";
 import { createOrResumeCheckoutSession } from "@/lib/commerce/checkout-initiation";
+import { materialCheckoutReturnUrls } from "@/lib/commerce/material-checkout-status";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -311,8 +312,7 @@ export async function POST(request: Request) {
       mode: "payment",
       ...STRIPE_NO_ADDED_TAX,
       payment_method_types: ["card"],
-      success_url: `${applicationOrigin}/checkout/return`,
-      cancel_url: `${applicationOrigin}/checkout/return?cancelled=1`,
+      ...materialCheckoutReturnUrls(applicationOrigin, String(checkout.checkoutIntentId)),
       line_items: [{ quantity: providerSelections.length, price: priceId }],
       metadata: {
         checkout_intent_id: String(checkout.checkoutIntentId),

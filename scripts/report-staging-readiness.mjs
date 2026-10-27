@@ -7,7 +7,7 @@ const modes = {
   canary: { checkoutMode: "STAGING_CANARY", restrictedCheckoutMode: "CANARY", sessionCreationConfigured: true },
 };
 const requiredChecks = ["checkoutMode", "supabase", "commerceConfigured", "email", "publicOrigin", "fileSafety",
-  "encryption", "documentRendering", "maintenance", "database", "manualInventoryReady", "releaseSha", "legalContent"];
+  "encryption", "documentRendering", "maintenance", "database", "permittedInventoryReady", "releaseSha", "legalContent"];
 
 export async function collectStagingReadiness({ expectedSha, expectedMode = "locked", fetchImpl = fetch }) {
   if (!/^[a-f0-9]{40}$/.test(expectedSha || "")) throw new Error("EXPECTED_FULL_RELEASE_SHA_REQUIRED");
@@ -42,7 +42,7 @@ export async function collectStagingReadiness({ expectedSha, expectedMode = "loc
     && identityMatches && modeMatches && payload.acceptingOrders === false && payload.commerceConfigured === true
     && Object.values(checks).every(Boolean) && anonymousDenials && retiredCheckoutDenied;
   return {
-    observedAt: new Date().toISOString(), collector: "report-staging-readiness-v2", environment: "staging",
+    observedAt: new Date().toISOString(), collector: "report-staging-readiness-v3", environment: "staging",
     origin: STAGING_ORIGIN, expectedSha, expectedMode, ready,
     observedSha: /^[a-f0-9]{40}$/.test(payload.releaseSha || "") ? payload.releaseSha : null,
     identityMatches, modeMatches, publicAcceptanceDisabled: payload.acceptingOrders === false,

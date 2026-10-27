@@ -28,7 +28,8 @@ const due = (ageSeconds: number, completed = false): Row => ({
 });
 
 function database(rows: Row[] = []) {
-  const state = { rows, awsQueryError: false, missingDueTimestamp: false, unknownDueCount: false };
+  const state = { rows, awsQueryError: false, missingDueTimestamp: false, unknownDueCount: false, sourceError: false,
+    sourceReadiness: { jobSourcesRegistered: true, authorizedSourceInventory: true, manualReady: true, automatedReady: false } as unknown };
   const binding = currentLegalContentBinding();
   const legal = {
     terms_version: binding.termsVersion, terms_content_sha256: binding.termsContentSha256,
@@ -77,11 +78,11 @@ function database(rows: Row[] = []) {
     },
     async rpc(name: string) {
       const data = name === "ap_current_source_readiness"
-        ? { jobSourcesRegistered: true, authorizedSourceInventory: true, manualReady: true, automatedReady: false }
+        ? state.sourceReadiness
         : name === "ap_manual_launch_capacity_readiness"
           ? { ready: true, resources: [{ resource: "SEARCH", checkoutAvailable: true }, { resource: "MATERIALS", checkoutAvailable: true }] }
           : {};
-      return { data, error: null };
+      return { data, error: name === "ap_current_source_readiness" && state.sourceError ? { message: "unavailable" } : null };
     },
   };
   return { state, admin: admin as unknown as Parameters<typeof evaluateLaunchInfrastructure>[0] & Parameters<typeof collectOperationsSummary>[0] };
@@ -101,6 +102,22 @@ describe("AWS temporary cleanup readiness", () => {
     for (const [key, value] of Object.entries(environment)) vi.stubEnv(key, value);
   });
   afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+
+  it("accepts current permitted automatic inventory without a synthetic manual-source requirement", async () => {
+    const db = database();
+    db.state.sourceReadiness = { jobSourcesRegistered: true, authorizedSourceInventory: true, manualReady: false, automatedReady: true };
+    expect(await evaluateLaunchInfrastructure(db.admin)).toMatchObject({ ready: true, checks: { permittedInventoryReady: true } });
+    db.state.sourceError = true;
+    expect(await evaluateLaunchInfrastructure(db.admin)).toMatchObject({ ready: false, checks: { permittedInventoryReady: false } });
+  });
+  it.each([null, {}, { jobSourcesRegistered: true, authorizedSourceInventory: true, manualReady: false, automatedReady: "true" },
+    { jobSourcesRegistered: true, authorizedSourceInventory: false, manualReady: false, automatedReady: false },
+    { jobSourcesRegistered: false, authorizedSourceInventory: true, manualReady: false, automatedReady: true },
+    { jobSourcesRegistered: true, authorizedSourceInventory: false, manualReady: false, automatedReady: true }])(
+    "rejects absent, inconsistent or unverified inventory: %j", async (value) => {
+      const db = database(); db.state.sourceReadiness = value;
+      expect(await evaluateLaunchInfrastructure(db.admin)).toMatchObject({ ready: false, checks: { permittedInventoryReady: false } });
+    });
 
   it("changes an otherwise healthy launch gate at the exact overdue boundary", async () => {
     const db = database([due(1799)]);
