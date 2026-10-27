@@ -1,4 +1,5 @@
 import "server-only";
+import { z } from "zod";
 
 import type { MatchForSelection } from "@/components/portal/apply-pack-selector-v2";
 import type { MaterialDeliveryView } from "@/components/portal/material-deliveries";
@@ -23,6 +24,7 @@ export type DeliveredMatchGroup = {
   accessExpiresAt: string | null;
   actionExpiresAt: string | null;
   actionsExpired: boolean;
+  documentContactEmail: string | null;
   matches: MatchForSelection[];
 };
 
@@ -103,8 +105,30 @@ export async function loadDeliveredMatchGroups(input: {
       accessExpiresAt: accessByOrder.get(release.order_id)?.access_expires_at ?? null,
       actionExpiresAt: accessByOrder.get(release.order_id)?.action_expires_at ?? null,
       actionsExpired: searchActionsExpired(accessByOrder.get(release.order_id)),
+      documentContactEmail: null,
       matches: matches.map((match, index) => ({ ...match, position: index + 1 })),
     });
+  }
+  const contactSnapshotIds = [...new Set(groups.filter((group) => !group.actionsExpired).map((group) => group.sourceSnapshotId))];
+  if (contactSnapshotIds.length) {
+    // This is the customer's RLS client, scoped to the exact delivered source.
+    // A missing or hidden source must not silently replace confirmed contact data.
+    const contacts = await input.supabase.from("ap_intake_snapshots")
+      .select("id,document_contact_email,retention_state").in("id", contactSnapshotIds).eq("retention_state", "ACTIVE");
+    if (contacts.error) throw new Error("delivered_document_contact_unavailable");
+    const bySnapshot = new Map((contacts.data || []).map((row) => [row.id, row]));
+    if ((contacts.data || []).length !== contactSnapshotIds.length || bySnapshot.size !== contactSnapshotIds.length
+      || contactSnapshotIds.some((snapshotId) => !bySnapshot.has(snapshotId))) {
+      throw new Error("delivered_document_contact_unavailable");
+    }
+    for (const group of groups.filter((candidate) => !candidate.actionsExpired)) {
+      const contact = bySnapshot.get(group.sourceSnapshotId)!;
+      if (contact.retention_state !== "ACTIVE" || (contact.document_contact_email !== null
+        && !z.email().max(320).safeParse(contact.document_contact_email).success)) {
+        throw new Error("delivered_document_contact_unavailable");
+      }
+      group.documentContactEmail = contact.document_contact_email;
+    }
   }
   const jobs = groups.filter((group) => !group.actionsExpired).flatMap((group) => group.matches.map((match) => ({
     deliveredReleaseId: group.deliveredReleaseId,

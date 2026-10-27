@@ -3,6 +3,8 @@ import { SourceAnnotation } from "@/components/intake/source-annotation";
 import { GuidedExperienceEditor } from "@/components/intake/guided-experience-editor";
 import { FactFieldsEditor } from "@/components/intake/fact-fields-editor";
 import { buildConfirmedReview, type ConfirmationReceipt, type ReviewSection } from "@/lib/intake/confirmed-review";
+import { privateIntakeRequest } from "@/lib/intake/private-request";
+import { parseInvitationFragment, type CheckoutInvitation } from "@/lib/commerce/invitation-fragment";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -20,15 +22,21 @@ import {
 } from "@/lib/intake/four-step";
 
 type ServerDraft = { id: string; version: number; state: string; currentStep: number; answers: FourStepDraft;
-  finalizedSnapshotId?: string | null; legalContentAccepted?: boolean;
+  finalizedSnapshotId?: string | null; legalContentAccepted?: boolean; confirmedIntake?: boolean;
   documents: IntakeDocument[]; facts: FactSuggestion[]; presentedFactIds: string[] };
 type SaveState = "LOADING" | "SAVING" | "SAVED" | "ERROR" | "CONFLICT" | "READY";
 type PendingFinalization = { expectedVersion: number; answers: FourStepDraft; confirmation: ConfirmationReceipt; factsConfirmed: true };
 const labels = Object.fromEntries([...activityCatalog, ...industryCatalog.map(([id, label]) => [id, label] as const), ...breadthChoices]);
 const draftSignature = (value: FourStepDraft, currentStep: number) => JSON.stringify([currentStep, value]);
 
-export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean }) {
+export function IntakeWizard({ fixtureMode = false, expectedDraftId, accessEmail, invitation }: { fixtureMode?: boolean; expectedDraftId?: string; accessEmail?: string; invitation?: CheckoutInvitation | null }) {
   const router = useRouter();
+  const request = useCallback((path: string, init?: RequestInit) => privateIntakeRequest(expectedDraftId || "", path, init), [expectedDraftId]);
+  const assertSelectedDraft = useCallback((value: ServerDraft) => {
+    if (!fixtureMode && (!expectedDraftId || value.id !== expectedDraftId || value.answers.email.trim().normalize("NFC").toLocaleLowerCase("en-US") !== accessEmail)) {
+      throw new Error("The selected intake changed. Open your saved intake again before continuing.");
+    }
+  }, [accessEmail, expectedDraftId, fixtureMode]);
   const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
   const [draft, setDraft] = useState<FourStepDraft>(emptyFourStepDraft);
   const [serverDraft, setServerDraft] = useState<ServerDraft | null>(null);
@@ -50,6 +58,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   const reviewRevision = useRef(0);
   const saving = useRef(false);
   const loading = saveState === "LOADING";
+  const confirmedIntake = finalized && serverDraft?.confirmedIntake === true;
   const headingRef = useRef<HTMLHeadingElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const readyRef = useRef(false);
@@ -61,20 +70,21 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   const fixtureLegalFailureConsumed = useRef(false);
 
   const hydrate = useCallback((value: ServerDraft, restored = false) => {
+    assertSelectedDraft(value);
     const completed = ["COMPLETE", "LOCKED_TO_CHECKOUT"].includes(value.state);
     const contentAccepted = !completed || value.legalContentAccepted === true;
     const nextDraft = normalizedFourStepDraft({ ...emptyFourStepDraft, ...value.answers,
       termsAccepted: contentAccepted ? value.answers.termsAccepted : false });
-    const nextStep = Math.max(0, Math.min(3, value.currentStep)) as 0 | 1 | 2 | 3;
+    const nextStep = completed && value.confirmedIntake ? 3 : Math.max(0, Math.min(3, value.currentStep)) as 0 | 1 | 2 | 3;
     setServerDraft(value); setDraft(nextDraft); setStep(nextStep);
     setPresented(new Set(value.presentedFactIds || [])); setSaveState("READY");
     setFinalized(completed); setLegalContentAccepted(contentAccepted);
     pendingFinalization.current = null;
     setConfirmedReview(null); setFactsConfirmed(false); reviewRevision.current += 1;
     lastPersisted.current = draftSignature(nextDraft, nextStep);
-    if (restored) setNotice("Your saved intake was restored on this device session.");
+    if (restored) setNotice("Your selected saved intake is open in this browser.");
     readyRef.current = true;
-  }, []);
+  }, [assertSelectedDraft]);
 
   const load = useCallback(async () => {
     setSaveState("LOADING");
@@ -103,29 +113,21 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
       return;
     }
     try {
-      let response = await fetch("/api/intake/anonymous-draft", { cache: "no-store" });
-      let result = await response.json();
-      if (response.ok && !result.draft) { response = await fetch("/api/intake/anonymous-draft", { method: "POST" }); result = await response.json(); }
+      const response = await request("/api/intake/anonymous-draft", { cache: "no-store" });
+      const result = await response.json();
       if (!response.ok || !result.draft) throw new Error(result.error || "Your secure intake could not be opened.");
       hydrate(result.draft, result.draft.version > 1);
     } catch (error) { setSaveState("ERROR"); setNotice(error instanceof Error ? error.message : "Your secure intake could not be opened."); }
-  }, [fixtureMode, hydrate]);
+  }, [fixtureMode, hydrate, request]);
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-      const id = params.get("invitationId");
-      const secret = params.get("invitationSecret");
-      if (id && secret) {
-        setCheckoutInvitation({ id, secret });
-        window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-      } else {
-        setCheckoutInvitation(null);
-      }
+      setCheckoutInvitation(invitation === undefined ? parseInvitationFragment(window.location.hash) : invitation);
+      if (window.location.hash) window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [invitation]);
   useEffect(() => {
     if (!finalized || !legalContentAccepted) return;
     if (fixtureMode) {
@@ -145,7 +147,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     let active = true;
     let timer: number | undefined;
     async function read() {
-      const response = await fetch("/api/intake/anonymous-draft/feasibility", { cache: "no-store" });
+      const response = await request("/api/intake/anonymous-draft/feasibility", { cache: "no-store" });
       const result = await response.json().catch(() => ({}));
       if (!active) return;
       if (!response.ok || !result.feasibility) {
@@ -157,7 +159,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     }
     void read();
     return () => { active = false; if (timer) window.clearTimeout(timer); };
-  }, [finalized, fixtureMode, legalContentAccepted]);
+  }, [finalized, fixtureMode, legalContentAccepted, request]);
   useLayoutEffect(() => {
     if (loading) return;
     const controlId = pendingEditFocus.current;
@@ -180,16 +182,17 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
       lastPersisted.current = draftSignature(nextDraft, nextStep); setServerDraft(value); setSaveState("SAVED"); return value; }
     saving.current = true; setSaveState("SAVING");
     try {
-    const response = await fetch("/api/intake/anonymous-draft", { method: "PUT", headers: { "content-type": "application/json" },
+    const response = await request("/api/intake/anonymous-draft", { method: "PUT", headers: { "content-type": "application/json" },
       body: JSON.stringify({ expectedVersion: serverDraft.version, currentStep: nextStep, answers: nextDraft }) });
     const result = await response.json();
     if (response.status === 409) { setSaveState("CONFLICT"); setNotice(result.error); return null; }
     if (!response.ok) { setSaveState("ERROR"); setNotice(result.error || "Your changes could not be saved."); return null; }
+    assertSelectedDraft(result.draft);
     lastPersisted.current = draftSignature(nextDraft, nextStep);
     setServerDraft(result.draft); setSaveState("SAVED"); return result.draft as ServerDraft;
     } catch { setSaveState("ERROR"); setNotice("Your changes could not be saved. Check your connection and try again."); return null; }
     finally { saving.current = false; }
-  }, [draft, finalized, fixtureMode, serverDraft, step]);
+  }, [assertSelectedDraft, draft, finalized, fixtureMode, request, serverDraft, step]);
 
   useEffect(() => {
     if (!readyRef.current || !serverDraft || finalized || busyDocument || lastPersisted.current === draftSignature(draft, step)) return;
@@ -207,6 +210,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   const titleSuggestions = useMemo(() => facts.filter((fact) => /title|role/i.test(fact.semanticKey)).map((fact) => fact.displayValue), [facts]);
 
   function update<K extends keyof FourStepDraft>(key: K, value: FourStepDraft[K]) {
+    if (confirmedIntake && key !== "termsAccepted") return;
     pendingFinalization.current = null;
     setConfirmedReview(null); setFactsConfirmed(false); reviewRevision.current += 1;
     setDraft((current) => normalizedFourStepDraft({ ...current, [key]: value,
@@ -231,12 +235,13 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     if (saved) { setStep(destination); setReturnToReview(false); setErrors([]); setNotice("Progress saved securely."); }
   }
   async function editSection(target: 0 | 1 | 2 | 3, controlId: string, editAll = false) {
+    if (confirmedIntake) return;
     pendingFinalization.current = null;
     setConfirmedReview(null); setFactsConfirmed(false); reviewRevision.current += 1;
     if (finalized && !fixtureMode) {
       setSaveState("SAVING");
       setNotice("Closing the prior feasibility and Checkout before editing.");
-      const response = await fetch("/api/checkout/search/edit", { method: "POST" });
+      const response = await request("/api/checkout/search/edit", { method: "POST" });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || typeof result.draftVersion !== "number") {
         setSaveState("ERROR");
@@ -263,7 +268,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
       setServerDraft((current) => current && ({ ...current, version: current.version + 1, documents: [...current.documents.filter((item) => item.kind !== document.kind), document] }));
       setNotice(`${file.name} was saved privately and is quarantined for safety checks.`); setBusyDocument(null); return; }
     const form = new FormData(); form.set("kind", kind); form.set("file", file); form.set("expectedVersion", String(serverDraft.version));
-    try { const response = await fetch("/api/intake/anonymous-draft/document", { method: "POST", body: form }); const result = await response.json();
+    try { const response = await request("/api/intake/anonymous-draft/document", { method: "POST", body: form }); const result = await response.json();
       if (!response.ok) { if (response.status === 409) setSaveState("CONFLICT"); throw new Error(result.error); }
       setServerDraft((current) => current && ({ ...current, version: result.draftVersion,
         documents: [...current.documents.filter((item) => item.kind !== result.document.kind), result.document] }));
@@ -278,7 +283,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     invalidateSourceReview(kind);
     if (kind === "prior_cover_letter") setDraft((current) => ({ ...current, priorCoverLetterUse: "NEITHER" }));
     if (fixtureMode) { setServerDraft((current) => current && ({ ...current, version: current.version + 1, documents: current.documents.filter((item) => item.kind !== (kind === "resume" ? "RESUME" : "PRIOR_COVER_LETTER")) })); setBusyDocument(null); return; }
-    const response = await fetch(`/api/intake/anonymous-draft/document?kind=${kind}&expectedVersion=${serverDraft.version}`, { method: "DELETE" });
+    const response = await request(`/api/intake/anonymous-draft/document?kind=${kind}&expectedVersion=${serverDraft.version}`, { method: "DELETE" });
     const result = await response.json();
     if (response.ok) { setServerDraft((current) => current && ({ ...current, version: result.draftVersion, documents: current.documents.filter((item) => item.id !== result.documentId) })); setNotice("The document was removed. Its superseded history follows the configured retention policy."); }
     else { setNotice(result.error || "The document could not be removed."); if (response.status === 409) setSaveState("CONFLICT"); }
@@ -295,7 +300,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     pendingFinalization.current = null;
     invalidateSourceReview(kind);
     if (fixtureMode) { setServerDraft({ ...serverDraft, version: serverDraft.version + 1, documents: serverDraft.documents.map((item) => item.kind === (kind === "resume" ? "RESUME" : "PRIOR_COVER_LETTER") ? { ...item, processingState: "QUARANTINED", failureCode: null } : item) }); return; }
-    const response = await fetch("/api/intake/anonymous-draft/document/retry", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedVersion: serverDraft.version, kind }) });
+    const response = await request("/api/intake/anonymous-draft/document/retry", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedVersion: serverDraft.version, kind }) });
     const result = await response.json();
     if (!response.ok) { setNotice(result.error || "The safety checks could not be retried."); if (response.status === 409) setSaveState("CONFLICT"); return; }
     setServerDraft({ ...serverDraft, version: result.draftVersion, documents: serverDraft.documents.map((item) => item.kind === (kind === "resume" ? "RESUME" : "PRIOR_COVER_LETTER") ? { ...item, processingState: "QUARANTINED", failureCode: null } : item) });
@@ -313,9 +318,10 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   async function refreshDocuments() {
     if (fixtureMode) return;
     try {
-      const response = await fetch("/api/intake/anonymous-draft", { cache: "no-store" });
+      const response = await request("/api/intake/anonymous-draft", { cache: "no-store" });
       const result = await response.json();
       if (!response.ok || !result.draft) throw new Error();
+      assertSelectedDraft(result.draft);
       if (result.draft.version !== serverDraft?.version) { setSaveState("CONFLICT"); setNotice("This intake changed. Reload its saved version before continuing."); return; }
       setServerDraft((current) => current && ({ ...current, documents: result.draft.documents, facts: result.draft.facts, presentedFactIds: result.draft.presentedFactIds }));
       setConfirmedReview(null); setFactsConfirmed(false); reviewRevision.current += 1;
@@ -328,7 +334,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
       if (presented.has(fact.id) || presentingFacts.current.has(fact.id)) return;
       if (fixtureMode) { setPresented((current) => new Set(current).add(fact.id)); return; }
       presentingFacts.current.add(fact.id);
-      void fetch("/api/intake/anonymous-draft/fact-presentation", { method: "POST", headers: { "content-type": "application/json" },
+      void request("/api/intake/anonymous-draft/fact-presentation", { method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ expectedVersion: serverDraft.version, factId: fact.id, controlId: `fact-${fact.id}` }) })
         .then(async (response) => {
           if (response.ok) { setPresented((current) => new Set(current).add(fact.id)); return; }
@@ -339,7 +345,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
         .catch(() => setNotice("A resume suggestion could not be prepared for review."))
         .finally(() => presentingFacts.current.delete(fact.id));
     });
-  }, [facts, fixtureMode, presented, serverDraft, step]);
+  }, [facts, fixtureMode, presented, request, serverDraft, step]);
 
   async function prepareReview() {
     const nextErrors = [0, 1, 2, 3].flatMap((number) => validateFourStep(number as 0 | 1 | 2 | 3, draft, { resume, facts, presentedFactIds: presented }));
@@ -353,7 +359,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     }
     setSaveState("SAVING");
     try {
-      const response = await fetch("/api/intake/anonymous-draft/review", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedVersion: saved.version }) });
+      const response = await request("/api/intake/anonymous-draft/review", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedVersion: saved.version }) });
       const result = await response.json();
       if (revision !== reviewRevision.current) { setSaveState("READY"); setNotice("Your answers changed. Prepare a new review when you finish editing."); return; }
       if (!response.ok) { if (Array.isArray(result.errors)) showErrors(result.errors); setSaveState(response.status === 409 ? "CONFLICT" : "ERROR"); setNotice(result.error || "The review is unavailable."); return; }
@@ -378,7 +384,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     }
     setSubmissionPending(true);
     try {
-      const response = await fetch("/api/intake/anonymous-draft/finalize", { method: "POST", headers: { "content-type": "application/json" },
+      const response = await request("/api/intake/anonymous-draft/finalize", { method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify(command) });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -390,7 +396,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
         return;
       }
       pendingFinalization.current = null;
-      setServerDraft((current) => current && ({ ...current, version: result.draftVersion, state: "COMPLETE", currentStep: 3 }));
+      setServerDraft((current) => current && ({ ...current, version: result.draftVersion, state: "COMPLETE", currentStep: 3, finalizedSnapshotId: result.snapshotId, confirmedIntake: true }));
       setFeasibility({ state: "PENDING", outcome: null, checkoutEligible: false, snapshotId: result.snapshotId });
       setFinalized(true); setLegalContentAccepted(true); setSaveState("SAVED"); setNotice(result.feasibility.message + " No payment was started.");
     } catch {
@@ -407,7 +413,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     }
     setCheckoutBusy(true); setNotice("Validating your reserved capacity and preparing secure checkout. No payment has started yet.");
     if (fixtureMode) { router.push("/e2e/chunk4?state=confirming"); return; }
-    const response = await fetch("/api/checkout/search", { method: "POST", headers: { "content-type": "application/json" },
+    const response = await request("/api/checkout/search", { method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ snapshotId: feasibility.snapshotId, assessmentId: feasibility.assessmentId,
         invitationId: checkoutInvitation.id, invitationSecret: checkoutInvitation.secret }) });
     const result = await response.json().catch(() => ({}));
@@ -437,7 +443,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
         setSaveState("SAVED"); setNotice("The current Terms and Privacy Policy were confirmed. No payment was started.");
         return;
       }
-      const response = await fetch("/api/intake/anonymous-draft/legal-acceptance", {
+      const response = await request("/api/intake/anonymous-draft/legal-acceptance", {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ accepted: true }),
       });
       const result = await response.json().catch(() => ({}));
@@ -456,7 +462,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   return <main id="main-content" className="wizard-page"><div className="page-frame wizard-layout">
     <aside className="wizard-aside"><p className="eyebrow eyebrow--light">YOUR JOB SEARCH</p><h1>Find work that fits.</h1>
       <p>Complete four short steps. You will review everything before feasibility.</p><div className="wizard-price"><strong>$18.99</strong><span>once<br />no subscription</span></div>
-      <p className="wizard-security"><LockKeyhole aria-hidden="true" /> Private documents. 10 researched matches. No account or payment before review.</p></aside>
+      <p className="wizard-security"><LockKeyhole aria-hidden="true" /> Private documents. Verified account access. No payment before review.</p></aside>
     <section className="wizard-panel" aria-labelledby="wizard-title">
       <div className="wizard-progress" role="progressbar" aria-label="Intake progress" aria-valuemin={1} aria-valuemax={4} aria-valuenow={step + 1} aria-valuetext={`Step ${step + 1} of 4`}><span>STEP {step + 1} OF 4</span><div><i style={{ width: `${(step + 1) * 25}%` }} /></div></div>
       <SaveNotice state={saveState} notice={notice} onReload={load} />
@@ -464,10 +470,11 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
 
       <fieldset className="wizard-input-lock" disabled={submissionPending} aria-busy={submissionPending}><legend className="sr-only">Your intake information</legend>
       {step === 0 && <Step headingRef={headingRef} title="Start with your documents" help="See the offer and privacy boundary before sharing anything.">
-        <div className="intake-offer"><strong>$18.99 once for exactly 10 current, human-reviewed job matches.</strong><span>No subscription. No account or payment in this intake; checkout requires an operator-issued invitation.</span></div>
+        <div className="intake-offer"><strong>$18.99 once for exactly 10 current, human-reviewed job matches.</strong><span>No subscription. Your verified account protects this intake. Payment requires an operator-issued invitation.</span></div>
         <p className="privacy-note"><LockKeyhole aria-hidden="true" /> Your files use private storage and a separate secure browser session. Document bytes never go into browser local storage. Remove unnecessary sensitive information before upload.</p>
         <div className="field-grid"><Field id="full-name" label="Full name" required errors={errors}><input id="full-name" autoComplete="name" value={draft.fullName} onChange={(e) => update("fullName", e.target.value)} /></Field>
-        <Field id="email" label="Email address" required help="Used to resume and, after payment, access your order." errors={errors}><input id="email" type="email" autoComplete="email" value={draft.email} aria-describedby="email-help" onChange={(e) => update("email", e.target.value)} /></Field></div><ErrorFor errors={errors} fieldId="full-name" /><ErrorFor errors={errors} fieldId="email" />
+        <Field id="email" label="Account access email" required help="The verified email linked when this intake was saved. Your account keeps access to this intake and its orders." errors={errors}><input id="email" type="email" autoComplete="email" value={draft.email} aria-describedby="email-help" readOnly={!fixtureMode} onChange={fixtureMode ? (e) => update("email", e.target.value) : undefined} /></Field></div><ErrorFor errors={errors} fieldId="full-name" /><ErrorFor errors={errors} fieldId="email" />
+        <Field id="document-contact-email" label="Different email for your resume and cover letter (optional)" help="Leave blank to use the access email above. You will confirm your document contact details before buying an Apply Pack. This does not change your account or where ApplyPack sends updates." errors={errors}><input id="document-contact-email" type="email" autoComplete="email" value={draft.documentContactEmail || ""} aria-describedby="document-contact-email-help" onChange={e => update("documentContactEmail", e.target.value)} /></Field><ErrorFor errors={errors} fieldId="document-contact-email" />
         <Field id="phone" label="Phone for your documents (optional)" help="Enter it exactly as you want it shown."><input id="phone" type="tel" autoComplete="tel" value={draft.phone} onChange={(event) => update("phone", event.target.value)} /></Field>
         <fieldset><legend>How would you like to start?</legend><Radio name="entry-mode" value="CURRENT_RESUME" checked={draft.entryMode} onChange={(value) => update("entryMode", value)} label="Use my current resume" /><Radio name="entry-mode" value="OUTDATED_RESUME" checked={draft.entryMode} onChange={(value) => update("entryMode", value)} label="Use an older resume and add what changed" /><Radio name="entry-mode" value="GUIDED" checked={draft.entryMode} onChange={(value) => update("entryMode", value)} label="Build my background without a resume" /></fieldset>
         {(draft.entryMode !== "GUIDED" || resume) && <UploadField id="resume" label="Resume" required={draft.entryMode !== "GUIDED"} document={resume} errors={errors} busy={busyDocument === "RESUME"} onUpload={(file) => upload("resume", file)} onRemove={() => remove("resume")} onRetry={() => retryDocument("resume")} />}<ErrorFor errors={errors} fieldId="resume" />
@@ -493,9 +500,18 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
       </Step>}
 
       {step === 2 && <Step headingRef={headingRef} title="Confirm experience and skills" help="Resume text is a suggestion, not a verified claim. Confirm only what is accurate; skip and reject are different.">
+        {draft.clarifications && <fieldset id="clarification-answers" tabIndex={-1}><legend>Clarify your background</legend>
+          <p>Your earlier submission is preserved. Review these answers and every other section before confirming this updated intake. Say when you are unsure; do not guess.</p>
+          {draft.clarifications.map((clarification) => <div key={clarification.questionId}>
+            <Field id={`clarification-${clarification.questionId}`} label={clarification.prompt} required errors={errors}>
+              <textarea id={`clarification-${clarification.questionId}`} maxLength={5_000} value={clarification.answer}
+                onChange={(event) => update("clarifications", draft.clarifications?.map((item) => item.questionId === clarification.questionId ? { ...item, answer: event.target.value } : item))} />
+            </Field><ErrorFor errors={errors} fieldId={`clarification-${clarification.questionId}`} />
+          </div>)}
+        </fieldset>}
         {facts.length === 0 ? <div className="processing-card"><strong>{draft.entryMode === "GUIDED" ? "Your answers are the starting point." : resume?.processingState === "FAILED" ? "Extraction needs attention." : "Resume extraction is not ready yet."}</strong><p>{draft.entryMode === "GUIDED" ? "Include actual experience, education, projects or volunteering you want used. If you have not had a paid job, keep that choice and leave work history empty. We will not invent qualifications." : "We will not invent facts or send reference details to a model. You can add truthful structured experience below and return later."}</p></div> : factTiers.map((tier) => <FactGroup key={tier} tier={tier} facts={facts} draft={draft} update={update} errors={errors} />)}
-        {resume && <details><summary>Add a missing fact from an uploaded document (optional)</summary><SourceAnnotation facts={facts} onSaved={async () => {
-          const response = await fetch("/api/intake/anonymous-draft", { cache: "no-store" });
+        {resume && <details><summary>Add a missing fact from an uploaded document (optional)</summary><SourceAnnotation facts={facts} expectedDraftId={expectedDraftId || ""} onSaved={async () => {
+          const response = await request("/api/intake/anonymous-draft", { cache: "no-store" });
           const result = await response.json();
           if (!response.ok || !result.draft) throw new Error("Refresh the page to see the saved fact.");
           setConfirmedReview(null); setFactsConfirmed(false); reviewRevision.current += 1;
@@ -508,6 +524,8 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
       </Step>}
 
       {step === 3 && <Step headingRef={headingRef} title="Set requirements and review" help="The launch search covers the 50 United States and District of Columbia. Nothing required below is silently selected.">
+        {confirmedIntake && <p>Your confirmed intake is preserved. If we ask for clarification, answer the saved question and review the complete updated intake before confirming it.</p>}
+        {!confirmedIntake && <>
         <CheckCatalog id="work-modes" legend="Accepted work modes" errors={errors} options={[["REMOTE","Remote"],["HYBRID","Hybrid"],["ONSITE","On-site"]] as const} values={draft.workModes} onToggle={(value) => toggle("workModes", value)} /><ErrorFor errors={errors} fieldId="work-modes" />
         {draft.workModes.length > 1 && <Field id="preferred-work-mode" label="Preferred work mode"><select id="preferred-work-mode" value={draft.preferredWorkMode} onChange={(e) => update("preferredWorkMode", e.target.value as FourStepDraft["preferredWorkMode"])}><option value="">No preference</option>{draft.workModes.map((value) => <option key={value} value={value}>{value === "ONSITE" ? "On-site" : titleCase(value)}</option>)}</select></Field>}
         <Field id="state-or-dc" label="U.S. state or District of Columbia" required help="Some remote employers limit hiring by state." errors={errors}><select id="state-or-dc" value={draft.stateOrDc} onChange={(e) => update("stateOrDc", e.target.value)}><option value="">Choose one</option>{stateOrDcOptions.map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></Field><ErrorFor errors={errors} fieldId="state-or-dc" />
@@ -519,16 +537,17 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
         <fieldset id="leave-out" tabIndex={-1}><legend>What should we leave out of your search?</legend><div className="choice-grid">{dealbreakerCatalog.map(([value, label]) => <label className="choice" key={value}><input type="checkbox" checked={draft.dealbreakers.includes(value)} onChange={() => toggle("dealbreakers", value)} /><span><Check aria-hidden="true" />{label}</span></label>)}</div></fieldset>
         {draft.dealbreakers.includes("SOMETHING_ELSE") && <><Field id="custom-dealbreaker" label="What else should we leave out?" required errors={errors}><textarea id="custom-dealbreaker" value={draft.customDealbreaker} onChange={(e) => update("customDealbreaker", e.target.value)} /></Field><ErrorFor errors={errors} fieldId="custom-dealbreaker" /></>}
         {unknownCriteria.map((criterion) => { const fieldId = unknownPolicyFieldId(criterion.key); return <fieldset key={criterion.key} id={fieldId} tabIndex={-1} aria-invalid={hasError(errors, fieldId) || undefined} aria-describedby={hasError(errors, fieldId) ? errorId(fieldId) : undefined}><legend>If an employer does not state {criterion.label.toLowerCase()}, what should we do?</legend><Radio name={`unknown-${criterion.key}`} value="EXCLUDE_IF_UNKNOWN" checked={draft.employerUnknownPolicies[criterion.key] || ""} onChange={(next) => update("employerUnknownPolicies", { ...draft.employerUnknownPolicies, [criterion.key]: next })} label="Exclude it if unknown" /><Radio name={`unknown-${criterion.key}`} value="ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING" checked={draft.employerUnknownPolicies[criterion.key] || ""} onChange={(next) => update("employerUnknownPolicies", { ...draft.employerUnknownPolicies, [criterion.key]: next })} label="Include it with an unknown warning" /><ErrorFor errors={errors} fieldId={fieldId} /></fieldset>; })}
-        <Review sections={confirmedReview?.sections ?? buildConfirmedReview(draft, serverDraft?.documents ?? [], facts)} prepared={confirmedReview !== null} onEdit={editSection} />
+        </>}
+        <Review sections={confirmedReview?.sections ?? buildConfirmedReview(draft, serverDraft?.documents ?? [], facts)} prepared={confirmedReview !== null} onEdit={confirmedIntake ? undefined : editSection} />
         {confirmedReview && !finalized && <><label className="confirm"><input id="facts-confirmed" type="checkbox" checked={factsConfirmed} onChange={(event) => setFactsConfirmed(event.target.checked)} /><span>I reviewed the actual information shown in every section, corrected inaccuracies, and confirm this is the information ApplyPack should use.</span></label><ErrorFor errors={errors} fieldId="facts-confirmed" /></>}
         {finalized && legalContentAccepted && feasibility && <FeasibilityResult value={feasibility} checkoutBusy={checkoutBusy} invitationAvailable={checkoutInvitation !== null}
-          onCheckout={() => void startCheckout()} onEdit={() => editSection(3, "work-modes", true)} />}
+          onCheckout={() => void startCheckout()} onEdit={confirmedIntake ? undefined : () => editSection(3, "work-modes", true)} />}
         <div className="deadline-note"><strong>Service boundary</strong><p>ApplyPack researches public listings and provides 10 matches after feasibility, capacity, and payment. We do not contact employers, submit applications, or guarantee interviews, offers, salary, employment, or continued listing availability.</p></div>
         <ErrorFor errors={errors} fieldId="terms-accepted" /><label className="confirm legal-agreement"><input id="terms-accepted" type="checkbox" aria-invalid={hasError(errors, "terms-accepted") || undefined} aria-describedby={hasError(errors, "terms-accepted") ? errorId("terms-accepted") : undefined} checked={draft.termsAccepted} onChange={(e) => update("termsAccepted", e.target.checked)} /><span>{LEGAL_ACCEPTANCE_PRESENTATION.prefix}<Link href={LEGAL_ACCEPTANCE_PRESENTATION.termsHref} target="_blank">{LEGAL_ACCEPTANCE_PRESENTATION.termsLabel}</Link>{LEGAL_ACCEPTANCE_PRESENTATION.conjunction}<Link href={LEGAL_ACCEPTANCE_PRESENTATION.privacyHref} target="_blank">{LEGAL_ACCEPTANCE_PRESENTATION.privacyLabel}</Link>{LEGAL_ACCEPTANCE_PRESENTATION.suffix}</span></label>
       </Step>}
 
       </fieldset>
-      <div className="wizard-actions"><button className="wizard-back" type="button" disabled={step === 0 || saveState === "SAVING"} onClick={() => void move((step - 1) as 0 | 1 | 2)}><ArrowLeft aria-hidden="true" />Back</button>
+      <div className="wizard-actions"><button className="wizard-back" type="button" disabled={confirmedIntake || step === 0 || saveState === "SAVING"} onClick={() => void move((step - 1) as 0 | 1 | 2)}><ArrowLeft aria-hidden="true" />Back</button>
         {step < 3 ? <button className="wizard-next" type="button" disabled={saveState === "SAVING"} onClick={() => void move((step + 1) as 1 | 2 | 3)}>{saveState === "SAVING" ? "Saving…" : returnToReview ? "Save and return to review" : "Save and continue"}<ArrowRight aria-hidden="true" /></button>
           : finalized && !legalContentAccepted
             ? <button className="wizard-next" type="button" disabled={legalAcceptanceBusy || !draft.termsAccepted} onClick={() => void confirmCurrentLegalContent()}>{legalAcceptanceBusy ? "Confirming…" : "Confirm current Terms"}<ArrowRight aria-hidden="true" /></button>
@@ -537,7 +556,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
 }
 
 function FeasibilityResult({ value, checkoutBusy, invitationAvailable, onCheckout, onEdit }: {
-  value: FeasibilityView; checkoutBusy: boolean; invitationAvailable: boolean; onCheckout: () => void; onEdit: () => void;
+  value: FeasibilityView; checkoutBusy: boolean; invitationAvailable: boolean; onCheckout: () => void; onEdit?: () => void;
 }) {
   const presentation = feasibilityPresentation(value);
   return <section className={`feasibility-result feasibility-result--${value.state.toLowerCase()}`} aria-live="polite" aria-labelledby="feasibility-title">
@@ -549,7 +568,7 @@ function FeasibilityResult({ value, checkoutBusy, invitationAvailable, onCheckou
       {presentation.canCheckout && invitationAvailable && <p><strong>$18.99 total.</strong> The displayed total is fixed. ApplyPack does not add tax at checkout.</p>}
       {presentation.canCheckout && invitationAvailable && <button className="wizard-next" type="button" disabled={checkoutBusy} onClick={onCheckout}>{checkoutBusy ? "Preparing secure checkout…" : SEARCH_CHECKOUT_CTA}<ArrowRight aria-hidden="true" /></button>}
       {presentation.canCheckout && !invitationAvailable && <p>Your intake is ready for operator review. Checkout remains locked until capacity and ten suitable opportunities are verified and a single-use invitation is issued.</p>}
-      {presentation.showEdit && <button className="secondary-button" type="button" onClick={onEdit}>Edit my settings</button>}
+      {presentation.showEdit && onEdit && <button className="secondary-button" type="button" onClick={onEdit}>Edit my settings</button>}
       {presentation.showHumanReview && <Link href="/help?topic=feasibility-review">Request human review</Link>}
       {presentation.showLeave && <Link href="/">Leave without paying</Link>}
     </div>
@@ -617,7 +636,7 @@ function PreferenceSelects({ id, items, values, onChange, intro }: { id: string;
 function BenefitPreferences({ value, onChange }: { value: FourStepDraft["benefits"]; onChange: (value: FourStepDraft["benefits"]) => void }) { const options=["Health insurance","Paid time off","Retirement benefits"]; const groups=[["mustHave","Must have"],["wouldPrefer","Would prefer"],["openTo","Open to"]] as const; return <fieldset id="benefits-preferences" tabIndex={-1}><legend>Benefits that affect matching (optional)</legend>{groups.map(([key,label]) => <fieldset key={key}><legend>{label}</legend>{options.map((option) => <label className="confirm" key={option}><input type="checkbox" checked={value[key].includes(option)} onChange={() => onChange({ ...value, [key]: value[key].includes(option) ? value[key].filter((item) => item !== option) : [...value[key],option] })} /><span>{option}</span></label>)}</fieldset>)}</fieldset>; }
 function Compensation({ draft, update, errors }: { draft: FourStepDraft; update: <K extends keyof FourStepDraft>(key: K, value: FourStepDraft[K]) => void; errors: StepError[] }) { const hasPay = draft.salaryTargetCents !== null || draft.salaryHardMinimumCents !== null; return <fieldset id="compensation" tabIndex={-1}><legend>Compensation (optional)</legend><p className="field-help">Your target is a preference. A firm hard minimum is a gate and is never silently lowered.</p><div className="field-grid"><label htmlFor="salary-target">Target compensation<input id="salary-target" inputMode="decimal" aria-invalid={hasError(errors, "salary-target") || undefined} aria-describedby={hasError(errors, "salary-target") ? errorId("salary-target") : undefined} defaultValue={draft.salaryTargetCents === null ? "" : String(draft.salaryTargetCents / 100)} onBlur={(e) => { const value = parseCompensationInput(e.target.value); if (!Number.isNaN(value)) update("salaryTargetCents", value); }} /></label><label htmlFor="salary-minimum">Hard minimum<input id="salary-minimum" inputMode="decimal" defaultValue={draft.salaryHardMinimumCents === null ? "" : String(draft.salaryHardMinimumCents / 100)} onBlur={(e) => { const value = parseCompensationInput(e.target.value); if (!Number.isNaN(value)) update("salaryHardMinimumCents", value); }} /></label></div>{hasPay && <div className="field-grid"><label htmlFor="salary-period">Pay period <Required /><select id="salary-period" aria-invalid={hasError(errors, "salary-period") || undefined} aria-describedby={hasError(errors, "salary-period") ? errorId("salary-period") : undefined} value={draft.salaryPeriod} onChange={(e) => update("salaryPeriod", e.target.value as FourStepDraft["salaryPeriod"])}><option value="">Choose one</option><option value="YEAR">Annual</option><option value="HOUR">Hourly</option></select></label><label htmlFor="salary-basis">Pay meaning <Required /><select id="salary-basis" aria-invalid={hasError(errors, "salary-basis") || undefined} aria-describedby={hasError(errors, "salary-basis") ? errorId("salary-basis") : undefined} value={draft.salaryBasis} onChange={(e) => update("salaryBasis", e.target.value as FourStepDraft["salaryBasis"])}><option value="">Choose one</option><option value="BASE">Base pay</option><option value="GUARANTEED_TOTAL">Guaranteed total pay</option></select></label></div>}<label className="confirm"><input type="checkbox" checked={draft.salaryMinimumFlexible} onChange={(e) => update("salaryMinimumFlexible", e.target.checked)} /><span>Pay is flexible.</span></label><Policy name="unpublished" label="Jobs with unpublished pay" value={draft.salaryUnpublishedPolicy} onChange={(value) => update("salaryUnpublishedPolicy", value)} /><Policy name="overlap" label="Ranges that start below but reach my minimum" value={draft.salaryOverlapPolicy} onChange={(value) => update("salaryOverlapPolicy", value)} />{hasPay && <Policy name="variable" label="Materially variable compensation" value={draft.salaryVariablePayPolicy} onChange={(value) => update("salaryVariablePayPolicy", value)} />}</fieldset>; }
 function Policy({ name, label, value, onChange }: { name: string; label: string; value: "EXCLUDE" | "INCLUDE_WITH_WARNING"; onChange: (value: "EXCLUDE" | "INCLUDE_WITH_WARNING") => void }) { return <fieldset><legend>{label}</legend><Radio name={name} value="EXCLUDE" checked={value} onChange={onChange} label="Do not show me" /><Radio name={name} value="INCLUDE_WITH_WARNING" checked={value} onChange={onChange} label="Open to, with a clear warning" /></fieldset>; }
-function Review({ sections, prepared, onEdit }: { sections: ReviewSection[]; prepared: boolean; onEdit: (step: 0 | 1 | 2 | 3, controlId: string, editAll?: boolean) => void }) {
-  return <section className="review-list" aria-labelledby="review-title"><div className="review-heading"><h3 id="review-title" tabIndex={-1}>{prepared ? "Confirm your saved information" : "Review your search"}</h3><button type="button" onClick={() => onEdit(0, "full-name", true)}>Edit all answers</button></div><p>Read the actual facts and choices below. Excluded document suggestions will not be treated as confirmed facts. Edit any section before you submit.</p>{sections.map(({ title, lines, step, controlId }) => <div key={title}><section aria-label={title}><h4>{title}</h4><ul>{lines.map((line, index) => <li key={index}>{line}</li>)}</ul></section><button type="button" aria-label={`Edit ${title.toLowerCase()}`} onClick={() => onEdit(step, controlId)}>Edit</button></div>)}</section>;
+function Review({ sections, prepared, onEdit }: { sections: ReviewSection[]; prepared: boolean; onEdit?: (step: 0 | 1 | 2 | 3, controlId: string, editAll?: boolean) => void }) {
+  return <section className="review-list" aria-labelledby="review-title"><div className="review-heading"><h3 id="review-title" tabIndex={-1}>{prepared ? "Confirm your saved information" : "Review your search"}</h3>{onEdit && <button type="button" onClick={() => onEdit(0, "full-name", true)}>Edit all answers</button>}</div><p>Read the actual facts and choices below. Excluded document suggestions will not be treated as confirmed facts. {onEdit ? "Edit any section before you submit." : "This is your confirmed information."}</p>{sections.map(({ title, lines, step, controlId }) => <div key={title}><section aria-label={title}><h4>{title}</h4><ul>{lines.map((line, index) => <li key={index}>{line}</li>)}</ul></section>{onEdit && <button type="button" aria-label={`Edit ${title.toLowerCase()}`} onClick={() => onEdit(step, controlId)}>Edit</button>}</div>)}</section>;
 }
 function titleCase(value: string) { return value.toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }

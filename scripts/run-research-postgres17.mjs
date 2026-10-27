@@ -11,9 +11,12 @@ const schema='202610260103', label='research-route-postgres17', bin='/usr/lib/po
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 const root=fileURLToPath(new URL('../',import.meta.url));
 const selections=Object.freeze(['src','supabase/migrations','package.json','package-lock.json','tsconfig.json',
-  'scripts/run-research-native-journey.mjs','scripts/lib/research-fixture-identity.mjs','vitest.research-container.config.mjs',
+  'scripts/run-research-native-journey.mjs','scripts/lib','vitest.research-container.config.mjs',
   'tests/integration/automatic-research-preparation.sql','tests/integration/retention-postgres17-bootstrap.sql',
-  'tests/integration/research-local-database.ts','tests/integration/research-local-postgres.ts','tests/integration/research-preparation-journey.test.ts']);
+  'tests/integration/research-local-database.ts','tests/integration/research-local-postgres.ts','tests/integration/research-preparation-journey.test.ts',
+  'tests/integration/material-clarification-route-journey.test.ts','tests/integration/material-clarification-confirmation.sql',
+  'tests/integration/intake-notification-native-journey.test.ts','tests/integration/verified-intake-ownership.sql',
+  'tests/integration/verified-intake-payment.sql','tests/integration/reviewed-source-fixture.sql']);
 
 /** Exact Git bytes only. The fixture never mounts a developer checkout or .env. */
 export function prepareResearchPostgresInputs({execute=execFileSync, environment={PATH:process.env.PATH},repositoryRoot=root}={}) {

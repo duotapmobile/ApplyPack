@@ -6,6 +6,18 @@ import { readableFact } from "./confirmed-review";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
+export async function isConfirmedIntake(admin: AdminClient, draftId: string, snapshotId: string | null): Promise<boolean> {
+  if (!snapshotId) return false;
+  const { data, error } = await admin.from("ap_intake_snapshots").select("schema_version,confirmed_review")
+    .eq("id", snapshotId).eq("draft_id", draftId).abortSignal(AbortSignal.timeout(5_000)).maybeSingle();
+  if (error || !data) throw new Error("confirmed_intake_state_unavailable");
+  if (data.schema_version !== "applypack-intake-v4") return false;
+  const receipt = data.confirmed_review;
+  if (!receipt || typeof receipt !== "object" || Array.isArray(receipt)
+    || receipt.contractVersion !== "applypack-confirmed-intake-v1") throw new Error("confirmed_intake_state_unavailable");
+  return true;
+}
+
 export function parseStoredFourStepDraft(value: unknown): FourStepDraft {
   const merged = { ...emptyFourStepDraft, ...(value && typeof value === "object" ? value : {}) };
   const parsed = fourStepDraftSchema.safeParse(merged);
@@ -15,16 +27,17 @@ export function parseStoredFourStepDraft(value: unknown): FourStepDraft {
 
 export async function fourStepPrivateState(admin: AdminClient, draftId: string) {
   const [documentsResult, factsResult, presentationsResult] = await Promise.all([
-    admin.from("ap_document_versions")
+    admin.rpc("ap_effective_intake_documents", { p_draft_id: draftId })
       .select("id,version,kind,safe_display_name,size_bytes,verified_mime_type,processing_state,failure_code,structural_review_ready_at,structural_policy,malware_deferred,parse_status")
-      .eq("draft_id", draftId).eq("is_current", true),
+      .limit(101),
     admin.from("ap_candidate_facts")
       .select("id,semantic_key,fact_tier,verification,document_version_id,source_locator,customer_display_label,customer_display_value,typed_value")
       .eq("draft_id", draftId).is("snapshot_id", null),
     admin.from("ap_fact_presentations").select("fact_id").eq("draft_id", draftId),
   ]);
-  if (documentsResult.error || factsResult.error || presentationsResult.error) throw new Error("four_step_state_unavailable");
-  const documents = (documentsResult.data || []).map((row: Record<string, unknown>): IntakeDocument => ({
+  if (documentsResult.error || factsResult.error || presentationsResult.error || !Array.isArray(documentsResult.data)
+    || documentsResult.data.length > 100) throw new Error("four_step_state_unavailable");
+  const documents = documentsResult.data.map((row: Record<string, unknown>): IntakeDocument => ({
     id: String(row.id), version: Number(row.version), kind: row.kind as IntakeDocument["kind"],
     name: String(row.safe_display_name), size: Number(row.size_bytes), mimeType: String(row.verified_mime_type),
     processingState: row.structural_review_ready_at && row.structural_policy === "isolated-structural-v1" && row.malware_deferred === true && row.parse_status === "SUCCEEDED" && !row.failure_code

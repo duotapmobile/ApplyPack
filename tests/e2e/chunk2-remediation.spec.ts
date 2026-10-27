@@ -15,7 +15,7 @@ async function tabTo(page: Page, locator: Locator, maximumTabs = 200) {
 async function reachReview(page: Page) {
   await page.goto("/get-started");
   await page.getByLabel("Full name required").fill("Review Customer");
-  await page.getByLabel("Email address required").fill("review@example.invalid");
+  await page.getByLabel("Account access email required").fill("review@example.invalid");
   await page.getByLabel("Resume required").setInputFiles(resume);
   await page.getByRole("button", { name: /save and continue/i }).click();
   await page.getByRole("checkbox", { name: /Coordinating projects/ }).first().check();
@@ -49,7 +49,7 @@ test("keyboard-only operation completes all four steps with visible focus", asyn
   const focusStyle = await fullName.evaluate((element) => getComputedStyle(element).outlineStyle);
   expect(focusStyle).not.toBe("none");
 
-  const email = page.getByLabel("Email address required");
+  const email = page.getByLabel("Account access email required");
   await tabTo(page, email);
   await page.keyboard.type("keyboard@example.invalid");
   const resumeInput = page.getByLabel("Resume required");

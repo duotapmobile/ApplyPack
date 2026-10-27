@@ -142,7 +142,7 @@ export default async function PortalPage() {
           deliveredOrderId={group.deliveredOrderId}
           deliveredReleaseId={group.deliveredReleaseId}
           sourceSnapshotId={group.sourceSnapshotId}
-          initialEmail={authData.user.email || ""}
+          initialEmail={group.documentContactEmail ?? authData.user.email ?? ""}
         />)}
         {releasePortal.groups.length ? <ReferenceManager deliveredJobs={releasePortal.jobs} /> : null}
         <MaterialDeliveries lines={materialDeliveries} />

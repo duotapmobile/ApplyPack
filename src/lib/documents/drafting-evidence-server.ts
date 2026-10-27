@@ -51,7 +51,7 @@ async function readRecords(admin: Admin, expected: DraftingEvidenceExpectation, 
   if (!purchase.checkout_intent_id || !revision.source_snapshot_id || !revision.job_snapshot_id || !revision.employer_rule_snapshot_id) fail("SOURCE_BINDING_INVALID");
   if (draftJob.source_snapshot_id !== revision.source_snapshot_id) fail("DRAFT_JOB_BINDING_INVALID");
   const [snapshot, intent, job, rule, listingCheck, successors, ownsSnapshot] = await Promise.all([
-    result(admin.from("ap_intake_snapshots").select("id,customer_id,draft_id,schema_version,canonicalization_version,content_sha256,sensitive_payload_id,finalized_at,confirmed_review").eq("id", revision.source_snapshot_id).abortSignal(signal).single()),
+    result(admin.from("ap_intake_snapshots").select("id,customer_id,draft_id,schema_version,canonicalization_version,content_sha256,sensitive_payload_id,finalized_at,confirmed_review,parent_snapshot_id").eq("id", revision.source_snapshot_id).abortSignal(signal).single()),
     result(admin.from("ap_material_checkout_intents").select("id,customer_id,purchase_id,payment_attempt_id,delivered_order_id,delivered_release_id,source_snapshot_id,state,line_count,amount_cents,currency,selection_sha256,document_contact_confirmed,document_facts_confirmed,contact_payload_id,career_break_choice,career_break_custom_label,cover_letter_break_consent").eq("id", purchase.checkout_intent_id).abortSignal(signal).single()),
     result(admin.from("ap_job_snapshots").select("id,legacy_job_id,content_sha256,company,exact_title,canonical_application_url,source_url,captured_listing,retrieved_at,live_verified_at,discovery_source,external_job_id,source_run_id,source_authorization_id,listing_activity_result,application_path_result,legitimacy_result").eq("id", revision.job_snapshot_id).abortSignal(signal).single()),
     result(admin.from("ap_employer_submission_rules").select("id,job_snapshot_id,content_sha256,checked_at,human_confirmed_at,human_confirmed_by,is_current,superseded_at,injection_scan_state,hard_block_reason,allowed_formats,resume_page_limit,cover_letter_page_limit,resume_requirement,cover_letter_requirement,resume_filename_instruction,cover_letter_filename_instruction,reference_timing,reference_count,source_evidence_ids,application_questions").eq("id", revision.employer_rule_snapshot_id).abortSignal(signal).single()),
@@ -80,7 +80,7 @@ async function readRecords(admin: Admin, expected: DraftingEvidenceExpectation, 
     result(admin.from("ap_candidate_facts").select("id,snapshot_id,customer_id,semantic_key,value_kind,typed_value,source_kind,customer_assertion_snapshot_id,assertion_control_id,source_locator,verification,confirmed_or_corrected_at,superseded_at,catalog_version,schema_version")
       .eq("id", intent.contact_payload_id).abortSignal(signal).single()),
     result(admin.from("ap_candidate_facts").select(FACT_COLUMNS).eq("snapshot_id", snapshot.id).neq("semantic_key", "document_contact.confirmed").is("superseded_at", null).limit(501).abortSignal(signal)),
-    result(admin.from("ap_document_versions").select("id,draft_id,customer_id,kind,version,content_sha256:sha256,retention_state").eq("draft_id", snapshot.draft_id).eq("is_current", true).limit(101).abortSignal(signal)),
+    result(admin.rpc("ap_effective_intake_documents", { p_draft_id: snapshot.draft_id }).select("id,draft_id,customer_id,kind,version,content_sha256:sha256,retention_state").limit(101).abortSignal(signal)),
     result(admin.from("ap_fact_review_history").select("id,draft_id,snapshot_id,fact_id,correction_fact_id,decision,reviewed_at").eq("snapshot_id", snapshot.id).limit(501).abortSignal(signal)),
     result(admin.from("ap_requirement_nodes").select("id,job_snapshot_id,node_kind,stable_criterion_id,source_excerpt,source_locator,requirement_strength,typed_value,position").eq("job_snapshot_id", job.id).eq("node_kind", "CRITERION").limit(201).abortSignal(signal)),
     result(admin.from("ap_human_review_records").select("id,snapshot_id,customer_id,job_snapshot_id,review_kind,reviewer_id,created_at,invalidated_at,rationale,decision")
@@ -89,7 +89,15 @@ async function readRecords(admin: Admin, expected: DraftingEvidenceExpectation, 
     result(admin.rpc("ap_current_verified_job_snapshots", { p_job_ids: [job.legacy_job_id] }).abortSignal(signal)),
     result(admin.from("ap_material_checkout_references").select("reference_permission_id").eq("checkout_item_id", item.id).limit(21).abortSignal(signal)),
   ]);
-  if (factReviews.length > 500) fail("TOO_LARGE");
+  if (factReviews.length > 500 || documents.length > 100) fail("TOO_LARGE");
+  const lineageResult = await admin.rpc("ap_intake_source_lineage", { p_draft_id: snapshot.draft_id }).abortSignal(signal);
+  if (lineageResult.error || signal.aborted) fail("SOURCE_UNAVAILABLE");
+  const lineageEvidence = lineageResult.data === null ? {} : { sourceLineage: lineageResult.data };
+  const { parent_snapshot_id: parentSnapshotId, ...ordinarySnapshot } = snapshot;
+  // Other historical revision kinds also use parent_snapshot_id. Preserve their
+  // existing packet shape; only authenticated clarification lineage adds it.
+  const confirmedSnapshot = lineageResult.data !== null && parentSnapshotId
+    ? { ...ordinarySnapshot, parent_snapshot_id: parentSnapshotId } : ordinarySnapshot;
   // Replaced uploads can leave earlier extraction rows on the same draft. Only the
   // source IDs in this snapshot's immutable review history belong to its packet.
   const sourceFacts = factReviews.length ? await result(admin.from("ap_candidate_facts").select(FACT_COLUMNS)
@@ -125,9 +133,9 @@ async function readRecords(admin: Admin, expected: DraftingEvidenceExpectation, 
     ruleId: rule.id, ruleSha256: rule.content_sha256, originalCheckedAt: rule.checked_at,
   }, now());
   if (await readContext() !== initialContext || JSON.stringify(await readManagedJob()) !== JSON.stringify(draftJob)) fail("READ_CHANGED");
-  return { contextSha256: initialContext, jobFence: draftJob, records: { line, purchase, payment, revision, snapshot, draft, sourcePayload, intent, contact, contactFact, item, job, rule, listingCheck,
+  return { contextSha256: initialContext, jobFence: draftJob, records: { line, purchase, payment, revision, snapshot: confirmedSnapshot, draft, sourcePayload, intent, contact, contactFact, item, job, rule, listingCheck,
     draftJobId: draftJob.id, ruleEvidence,
-    ...referenceEvidence,
+    ...referenceEvidence, ...lineageEvidence,
     facts, sourceFacts, documents, factReviews, requirements, reviews, questionSourceNodes, questionSourceAuthority, referencePermissions, referencePermissionIds,
     ownsSnapshot, verifiedJobSnapshotIds: verified.map((row) => row.id), successorJobIds: successors.map((row) => row.id), refundIds: refunds.map((row) => row.id) } };
 }

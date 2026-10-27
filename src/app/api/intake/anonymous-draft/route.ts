@@ -1,32 +1,18 @@
 import { newIntakeRecoveryHold } from "@/lib/operations/protected-recovery-readiness";
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { z } from "zod";
 import { anonymousDraftContext, anonymousDraftError } from "@/lib/drafts/anonymous-server";
-import { emptyFourStepDraft, fourStepDraftSchema } from "@/lib/intake/four-step";
-import { fourStepPrivateState, publicFourStepDraft } from "@/lib/intake/four-step-server";
-import { createDraftCapability, draftCookieSettings, hashDraftSecret, serializeDraftCapability } from "@/lib/security/draft-capability";
+import { fourStepDraftSchema } from "@/lib/intake/four-step";
+import { fourStepPrivateState, isConfirmedIntake, publicFourStepDraft } from "@/lib/intake/four-step-server";
+import { hashDraftSecret } from "@/lib/security/draft-capability";
 import { isSameOriginRequest } from "@/lib/security/origin";
-import { consumeRateLimit } from "@/lib/security/rate-limit";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const updateSchema = z.object({ expectedVersion: z.number().int().positive(), currentStep: z.number().int().min(0).max(3), answers: fourStepDraftSchema }).strict();
 
 export async function POST(request: Request) {
   if (!isSameOriginRequest(request)) return NextResponse.json({ error: "This draft request was rejected." }, { status: 403 });
-  const settings = draftCookieSettings();
-  const admin = createSupabaseAdminClient();
-  if (!settings || !admin) return NextResponse.json({ error: "Anonymous draft retention is not configured." }, { status: 503 });
-  const recoveryHold = await newIntakeRecoveryHold(admin);
-  if (recoveryHold) return recoveryHold;
-  const rate = await consumeRateLimit({ request, scope: "anonymous_draft_create", limit: 12, windowSeconds: 60 * 60 });
-  if (!rate.configured || !rate.allowed) return NextResponse.json({ error: "A draft cannot be created right now." }, { status: rate.configured ? 429 : 503 });
-  const capability = createDraftCapability();
-  const expiresAt = new Date(Date.now() + settings.maxAge * 1000).toISOString();
-  const { data, error } = await admin.rpc("ap_create_anonymous_draft", { p_draft_id: capability.draftId, p_secret_hash: capability.secretHash, p_expires_at: expiresAt });
-  if (error || !Array.isArray(data) || !data[0]) return NextResponse.json({ error: "A draft cannot be created right now." }, { status: 502 });
-  (await cookies()).set(settings.name, serializeDraftCapability(capability), settings);
-  return NextResponse.json({ draft: publicFourStepDraft({ ...(data[0] as Record<string, unknown>), current_step: 0, answers: emptyFourStepDraft }) }, { status: 201, headers: { "cache-control": "no-store" } });
+  return NextResponse.json({ error: "Verify your email and choose Start my intake from Get Started.", code: "VERIFIED_INTAKE_REQUIRED" },
+    { status: 409, headers: { "cache-control": "private, no-store" } });
 }
 
 export async function GET() {
@@ -38,6 +24,9 @@ export async function GET() {
   const state = row ? await fourStepPrivateState(context.admin, context.capability.draftId).catch(() => null) : null;
   if (row && !state) return NextResponse.json({ error: "The saved intake details are temporarily unavailable." }, { status: 502 });
   const publicDraft = row ? publicFourStepDraft(row as Record<string, unknown>, state!) : null;
+  const confirmedIntake = publicDraft ? await isConfirmedIntake(context.admin, context.capability.draftId,
+    publicDraft.finalizedSnapshotId as string | null).catch(() => null) : false;
+  if (confirmedIntake === null) return NextResponse.json({ error: "The saved intake confirmation is temporarily unavailable." }, { status: 502, headers: { "cache-control": "no-store" } });
   let legalContentAccepted = false;
   if (publicDraft?.finalizedSnapshotId) {
     const legal = await context.admin.rpc("ap_has_current_content_bound_legal_acceptance", {
@@ -47,7 +36,7 @@ export async function GET() {
     if (legal.error) return NextResponse.json({ error: "The saved intake legal status is temporarily unavailable." }, { status: 502 });
     legalContentAccepted = legal.data === true;
   }
-  return NextResponse.json({ draft: publicDraft ? { ...publicDraft, legalContentAccepted } : null }, { headers: { "cache-control": "no-store" } });
+  return NextResponse.json({ draft: publicDraft ? { ...publicDraft, legalContentAccepted, confirmedIntake } : null }, { headers: { "cache-control": "no-store" } });
 }
 
 export async function PUT(request: Request) {

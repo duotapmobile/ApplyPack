@@ -92,11 +92,16 @@ test("the existing database required check cannot succeed without every partitio
 test("the actual research journey is isolated from generic integration and remains a required CI gate", () => {
   const generic = read("../vitest.integration.config.mts");
   assert.match(generic, /exclude:\s*\[\s*\/\/[^\n]*\n\s*"tests\/integration\/research-preparation-journey\.test\.ts",/u);
-  const isolated = read("../vitest.research-container.config.mjs");
-  if (isolated.includes("AP_RESEARCH_JOURNEY_STAGE")) {
-    assert(isolated.includes("include:[process.env.AP_RESEARCH_JOURNEY_STAGE==='CLARIFICATION'"));
-    assert(isolated.includes("?'tests/integration/material-clarification-route-journey.test.ts':'tests/integration/research-preparation-journey.test.ts']"));
-  } else assert(isolated.includes("include:['tests/integration/research-preparation-journey.test.ts']"));
+  for (const path of ["../vitest.research-container.config.mjs", "../vitest.research-native.config.mts"]) {
+    const isolated = read(path).replace(/\s+/gu, "").replaceAll('"', "'");
+    assert(isolated.includes("include:[process.env.AP_RESEARCH_JOURNEY_STAGE==='NOTIFICATION'?'tests/integration/intake-notification-native-journey.test.ts':process.env.AP_RESEARCH_JOURNEY_STAGE==='CLARIFICATION'?'tests/integration/material-clarification-route-journey.test.ts':'tests/integration/research-preparation-journey.test.ts']"), path);
+  }
+  for (const fixture of ["material-clarification-route-journey.test.ts", "intake-notification-native-journey.test.ts"])
+    assert(generic.includes(`"tests/integration/${fixture}"`));
+  const stages = read("./run-research-native-journey.mjs");
+  assert(stages.includes("scenario === 'LIMITED' ? ['RESEARCH', 'CLARIFICATION', 'NOTIFICATION'] : ['RESEARCH']"));
+  assert(stages.includes("if (result.error || result.status !== 0) { process.exitCode = 1; break; }"));
+  assert(stages.includes("if (!process.exitCode && scenario === 'LIMITED') console.log('RESEARCH_CLARIFICATION_NOTIFICATION_JOURNEYS_OK')"));
   const research = job("research-route-journey");
   assert(research.includes("node scripts/run-research-postgres17.mjs"));
   assert(!research.includes("continue-on-error") && !/^    if:/mu.test(research));

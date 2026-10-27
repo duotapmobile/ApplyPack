@@ -13,6 +13,7 @@ import { SEARCH_CONTRACT_VERSION, SEARCH_PRICE_CENTS } from "@/lib/domain/applyp
 import { manualLaunchFixedTotalIsSafe, STRIPE_NO_ADDED_TAX } from "@/lib/commerce/fixed-total";
 import { authorizeCheckout } from "@/lib/commerce/checkout-authorization";
 import { createOrResumeCheckoutSession } from "@/lib/commerce/checkout-initiation";
+import { readIntakePaymentIdentity } from "@/lib/commerce/intake-identity-server";
 
 const schema = z.object({
   snapshotId: z.uuid(),
@@ -86,16 +87,16 @@ export async function POST(request: Request) {
     || view.state !== "COMPLETE" || view.outcome !== "LIKELY" || view.checkoutEligible !== true) {
     return NextResponse.json({ error: "This search is not currently eligible for Checkout. No payment was started." }, { status: 409 });
   }
-  const snapshot = await context.admin.from("ap_intake_snapshots")
-      .select("access_email_normalized").eq("id", parsed.data.snapshotId)
-      .eq("draft_id", context.capability.draftId).maybeSingle();
-  const customer = snapshot.data?.access_email_normalized
-      ? await context.admin.rpc("ap_find_customer_by_access_email", {
-        p_email: snapshot.data.access_email_normalized,
-      })
-      : null;
+  const identity = await readIntakePaymentIdentity(context.admin, context.capability.draftId, parsed.data.snapshotId)
+    .catch(() => null);
+  if (!identity) {
+    return NextResponse.json({ error: "The saved intake owner could not be verified. No payment was started." }, { status: 503 });
+  }
+  if (!identity.claimed || identity.customerId !== context.customerId) {
+    return NextResponse.json({ error: "Sign in to the account that owns this intake before starting checkout." }, { status: 403 });
+  }
   const authorization = await authorizeCheckout(context.admin, "SEARCH", {
-    customerId: typeof customer?.data === "string" ? customer.data : null,
+    customerId: identity.customerId,
     resourceId: context.capability.draftId,
   }).catch(() => null);
   if (!authorization) {

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { canonicalApplicationOrigin, createCapabilitySecret, hashCapabilitySecret } from "@/lib/commerce/server";
 import { isSameOriginRequest } from "@/lib/security/origin";
+import { loadCurrentIntakeRecipient } from "@/lib/commerce/intake-identity-server";
 
 const schema = z.object({
   draftId: z.uuid(),
@@ -25,6 +26,16 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "A current intake, assessment, expiry, and operator rationale are required." }, { status: 400, headers });
   }
+  const snapshot = await access.admin.from("ap_intake_snapshots")
+    .select("access_email_normalized").eq("id", parsed.data.snapshotId).eq("draft_id", parsed.data.draftId).maybeSingle();
+  if (snapshot.error || !snapshot.data) {
+    return NextResponse.json({ error: "The invitation intake could not be verified." }, { status: 409, headers });
+  }
+  const recipient = await loadCurrentIntakeRecipient(access.admin, parsed.data.draftId, parsed.data.snapshotId,
+    snapshot.data.access_email_normalized).catch(() => null);
+  if (!recipient) {
+    return NextResponse.json({ error: "The customer's current contact could not be verified. No invitation was issued." }, { status: 409, headers });
+  }
   const invitationId = randomUUID();
   const secret = createCapabilitySecret();
   const expiresAt = new Date(Date.now() + parsed.data.expiresInMinutes * 60_000).toISOString();
@@ -41,10 +52,15 @@ export async function POST(request: Request) {
   if (result.error) {
     return NextResponse.json({ error: "The invitation could not be issued. Capacity remains unavailable." }, { status: 409, headers });
   }
+  const currentRecipient = await loadCurrentIntakeRecipient(access.admin, parsed.data.draftId, parsed.data.snapshotId,
+    snapshot.data.access_email_normalized).catch(() => null);
+  if (!currentRecipient || currentRecipient.customerId !== recipient.customerId) {
+    return NextResponse.json({ error: "The invitation may be reserved, but its recipient could not be confirmed. Refresh the queue before retrying." }, { status: 409, headers });
+  }
   const origin = canonicalApplicationOrigin();
   const url = new URL("/get-started", origin);
   // Keep the capability out of request logs, analytics, referrers, and the
   // server-rendered URL. The customer page consumes and immediately removes it.
   url.hash = new URLSearchParams({ invitationId, invitationSecret: secret }).toString();
-  return NextResponse.json({ invitationId, expiresAt, url: url.toString() }, { status: 201, headers });
+  return NextResponse.json({ invitationId, expiresAt, recipientEmail: currentRecipient.email, url: url.toString() }, { status: 201, headers });
 }

@@ -79,8 +79,12 @@ for(const changes of [{AP_RESEARCH_TEST_PORT:'5433'},{AP_RESEARCH_TEST_MARKER:'w
 
 test('source preparation archives only committed allowlisted bytes and excludes developer secrets/WIP',()=>{
  const base=resolve(tmpdir()),directory=mkdtempSync(join(base,'applypack-research-input-'));
- const files=['src/example.ts','package.json','package-lock.json','tsconfig.json','scripts/run-research-native-journey.mjs','scripts/lib/research-fixture-identity.mjs','vitest.research-container.config.mjs',
-  'tests/integration/automatic-research-preparation.sql','tests/integration/retention-postgres17-bootstrap.sql','tests/integration/research-local-database.ts','tests/integration/research-local-postgres.ts','tests/integration/research-preparation-journey.test.ts','supabase/migrations/202610260103_fictional.sql'];
+ const files=['src/example.ts','package.json','package-lock.json','tsconfig.json','scripts/run-research-native-journey.mjs','scripts/lib/research-fixture-identity.mjs',
+  'scripts/lib/archive-writer-completion.mjs','scripts/lib/aws-roles-anywhere.mjs','scripts/lib/database-recovery-protocol.mjs','vitest.research-container.config.mjs',
+  'tests/integration/automatic-research-preparation.sql','tests/integration/retention-postgres17-bootstrap.sql','tests/integration/research-local-database.ts','tests/integration/research-local-postgres.ts','tests/integration/research-preparation-journey.test.ts',
+  'tests/integration/material-clarification-route-journey.test.ts','tests/integration/material-clarification-confirmation.sql',
+  'tests/integration/intake-notification-native-journey.test.ts','tests/integration/verified-intake-ownership.sql',
+  'tests/integration/verified-intake-payment.sql','tests/integration/reviewed-source-fixture.sql','supabase/migrations/202610260103_fictional.sql'];
  try {
   for(const path of files){mkdirSync(dirname(join(directory,path)),{recursive:true});writeFileSync(join(directory,path),path.endsWith('.sql')?'select 1;\n':'committed bytes\n');}
   const git=args=>execFileSync('git',args,{cwd:directory,stdio:'pipe',timeout:30000});
@@ -92,6 +96,10 @@ test('source preparation archives only committed allowlisted bytes and excludes 
   assert.equal(prepared.migrationCount,1);assert.match(prepared.sql,/schema_migrations/u);assert(prepared.inputHashes.every(value=>/^[a-f0-9]{64}$/u.test(value.sha256)));
   assert.deepEqual(readdirSync(join(prepared.workspace,'node_modules')),[]);
   assert(!prepared.inputHashes.some(value=>value.path.startsWith('node_modules/')));
+  for(const path of files.filter(value=>value.startsWith('tests/integration/')||value.startsWith('scripts/lib/'))){
+   assert(prepared.inputHashes.some(value=>value.path===path),`required journey source absent: ${path}`);
+   assert(readFileSync(join(prepared.workspace,path)).equals(git(['show',`HEAD:${path}`])),`required journey source differs: ${path}`);
+  }
  }finally {
   const target=resolve(directory);assert(target.startsWith(base+sep)&&target.slice(base.length+1).startsWith('applypack-research-input-'));rmSync(target,{recursive:true,force:true});
  }

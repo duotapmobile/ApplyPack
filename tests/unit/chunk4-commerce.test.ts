@@ -127,6 +127,18 @@ describe("Chunk 4 commerce contract", () => {
     }
   });
 
+  it("keeps intake notices generic and rejects private identifiers or authorization in their link", () => {
+    const notice = renderChunk4Email({ kind: "INTAKE_CLARIFICATION_REQUIRED", actionUrl: "https://applypack.work/my-applypack" });
+    expect(notice.text).toContain("Sign in to review its current status");
+    expect(notice.text).not.toMatch(/24 hours|payment|deadline|Order reference|resume|cover letter/i);
+    for (const suffix of ["?access=fictional-secret", "?question=fictional-id", "#fictional-secret", "/other"]) {
+      expect(() => renderChunk4Email({ kind: "INTAKE_CLARIFICATION_REQUIRED", actionUrl: `https://applypack.work/my-applypack${suffix}` }))
+        .toThrow("intake_notice_private_content_forbidden");
+    }
+    expect(() => renderChunk4Email({ kind: "INTAKE_CLARIFICATION_REQUIRED", actionUrl: "https://applypack.work/my-applypack", orderId: "fictional-id" }))
+      .toThrow("intake_notice_private_content_forbidden");
+  });
+
   it("binds checkout to server-side facts, a card-only provider session, and a durable promotion", () => {
     expect(checkoutRoute).toContain('context.admin.rpc("ap_read_current_feasibility"');
     expect(checkoutRoute).toContain('view.outcome !== "LIKELY"');

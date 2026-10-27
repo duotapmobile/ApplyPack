@@ -5,7 +5,7 @@ begin if value is not true then raise exception '%',message; end if; end $$;
 select pg_temp.assert_true(public.ap_material_clarification_schema_installed()
  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' in('202610250101','202610260102','202610260103')
  and (public.ap_manual_launch_schema_readiness()->>'ready')::boolean
- and jsonb_array_length(public.ap_manual_launch_schema_readiness()->'requiredMigrations')=case public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' when '202610250101' then 25 when '202610260102' then 26 end
+ and jsonb_array_length(public.ap_manual_launch_schema_readiness()->'requiredMigrations')=case public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' when '202610250101' then 25 when '202610260102' then 26 when '202610260103' then 27 end
  and public.ap_manual_launch_schema_readiness()->'requiredMigrations' @> '["202610250099","202610250100","202610250101"]'::jsonb,
  'clarification aggregate schema readiness incomplete');
 alter table public.ap_document_versions disable trigger ap_confirmed_document_source_frozen;
@@ -110,8 +110,8 @@ end $$;
 
 -- Real uploaded-document rows are inherited by exact identity, never copied to
 -- a second storage_path row. Their original extracted facts stay unchanged.
-select * from public.ap_create_anonymous_draft('a1010000-0000-4000-8000-000000000030',repeat('c',64),now()+interval '1 day');
-select * from public.ap_register_anonymous_document('a1010000-0000-4000-8000-000000000030',repeat('c',64),1,
+select * from public.ap_create_anonymous_draft('a1010000-0000-4000-8000-000000000030',repeat('c1',32),now()+interval '1 day');
+select * from public.ap_register_anonymous_document('a1010000-0000-4000-8000-000000000030',repeat('c1',32),1,
  'a1010000-0000-4000-8000-000000000031','RESUME','fixture.pdf','anonymous/a1010000-0000-4000-8000-000000000030/resume/fixture.pdf',128,'application/pdf','application/pdf',repeat('1',64));
 select public.ap_record_isolated_document_review('a1010000-0000-4000-8000-000000000030','a1010000-0000-4000-8000-000000000031',repeat('1',64),'isolated-extractor-v1','["Worked as cashier at Fictional Store."]');
 insert into public.ap_candidate_facts(id,draft_id,semantic_key,value_kind,typed_value,source_kind,document_version_id,source_locator,verification,catalog_version,schema_version,fact_tier,customer_display_label,customer_display_value)
@@ -120,8 +120,8 @@ insert into public.ap_candidate_facts(id,draft_id,semantic_key,value_kind,typed_
 insert into public.ap_candidate_facts(id,draft_id,semantic_key,value_kind,typed_value,source_kind,document_version_id,source_locator,verification,catalog_version,schema_version,fact_tier,customer_display_label,customer_display_value)
  values('a1010000-0000-4000-8000-000000000033','a1010000-0000-4000-8000-000000000030','annotated:RESPONSIBILITY:fixture','RESPONSIBILITY','{"employmentFactId":"a1010000-0000-4000-8000-000000000032","activity":"Handled customer calls"}',
  'DOCUMENT','a1010000-0000-4000-8000-000000000031','Fixture page1','EXTRACTED_UNCONFIRMED','fixture-v1','fixture-v1','MATCH_ENHANCING','Responsibility','{"summary":"Handled customer calls"}');
-select * from public.ap_save_four_step_draft('a1010000-0000-4000-8000-000000000030',repeat('c',64),2,3,pg_temp.answers()||'{"entryMode":"CURRENT_RESUME","factReviews":{"a1010000-0000-4000-8000-000000000032":"CONFIRM","a1010000-0000-4000-8000-000000000033":"CONFIRM"}}');
-select pg_temp.finalize('a1010000-0000-4000-8000-000000000030',repeat('c',64),'a1010000-0000-4000-8000-000000000034','a1010000-0000-4000-8000-000000000035');
+select * from public.ap_save_four_step_draft('a1010000-0000-4000-8000-000000000030',repeat('c1',32),2,3,pg_temp.answers()||'{"entryMode":"CURRENT_RESUME","factReviews":{"a1010000-0000-4000-8000-000000000032":"CONFIRM","a1010000-0000-4000-8000-000000000033":"CONFIRM"}}');
+select pg_temp.finalize('a1010000-0000-4000-8000-000000000030',repeat('c1',32),'a1010000-0000-4000-8000-000000000034','a1010000-0000-4000-8000-000000000035');
 select * from public.ap_create_anonymous_draft('a1010000-0000-4000-8000-000000000070',repeat('7',64),now()+interval '1 day');
 do $$ begin
  begin
@@ -153,11 +153,11 @@ do $$ declare q uuid; d public.ap_anonymous_drafts; reply jsonb; path text; begi
  -- is rolled back with the expected error, not deleted to accelerate a test.
  begin
   insert into public.ap_retention_legacy_object_intents(bucket,path_sha256) values('customer-source-documents',encode(extensions.digest(path,'sha256'),'hex'));
-  perform public.ap_answer_material_clarification(q,'a1010000-0000-4000-8000-000000000030',repeat('c',64),null,'A paper calendar.','a1010000-0000-4000-8000-000000000037',repeat('d',64));
+  perform public.ap_answer_material_clarification(q,'a1010000-0000-4000-8000-000000000030',repeat('c1',32),null,'A paper calendar.','a1010000-0000-4000-8000-000000000037',repeat('d1',32));
   raise exception 'cleanup-claimed source inherited';
  exception when others then if sqlerrm<>'clarification_source_unavailable' then raise; end if; end;
  perform pg_temp.assert_true(not exists(select 1 from public.ap_anonymous_drafts where id='a1010000-0000-4000-8000-000000000037'),'failed inheritance leaked successor');
- reply:=public.ap_answer_material_clarification(q,'a1010000-0000-4000-8000-000000000030',repeat('c',64),null,'A paper calendar.','a1010000-0000-4000-8000-000000000037',repeat('d',64));
+ reply:=public.ap_answer_material_clarification(q,'a1010000-0000-4000-8000-000000000030',repeat('c1',32),null,'A paper calendar.','a1010000-0000-4000-8000-000000000037',repeat('d1',32));
  select * into d from public.ap_anonymous_drafts where id='a1010000-0000-4000-8000-000000000037';
  perform pg_temp.assert_true(not exists(select 1 from public.ap_document_versions where draft_id=d.id),'inherited upload duplicated a document row');
  perform pg_temp.assert_true((select count(*)=1 from public.ap_effective_intake_documents(d.id) where id='a1010000-0000-4000-8000-000000000031' and draft_id='a1010000-0000-4000-8000-000000000030'),'inherited source lost real identity');
@@ -166,12 +166,12 @@ do $$ declare q uuid; d public.ap_anonymous_drafts; reply jsonb; path text; begi
   where child.draft_id=d.id and child.snapshot_id is null and parent.draft_id=d.id and parent.id<>'a1010000-0000-4000-8000-000000000032'),'cloned responsibility retained foreign parent');
  begin perform public.ap_answer_material_clarification(q,null,null,'a1010000-0000-4000-8000-000000000001','A paper calendar.',d.id,repeat('e',64));
   raise exception 'foreign signed-in customer answered'; exception when others then if sqlerrm<>'question_owner_or_version_invalid' then raise; end if; end;
- begin perform public.ap_answer_material_clarification(q,d.id,repeat('d',64),null,'Changed answer.',d.id,repeat('d',64));
+ begin perform public.ap_answer_material_clarification(q,d.id,repeat('d1',32),null,'Changed answer.',d.id,repeat('d1',32));
   raise exception 'changed answer replay accepted'; exception when others then if sqlerrm<>'clarification_answer_already_saved_edit_review' then raise; end if; end;
- begin perform public.ap_answer_material_clarification(q,'a1010000-0000-4000-8000-000000000030',repeat('c',64),null,'A paper calendar.',d.id,repeat('e',64));
+ begin perform public.ap_answer_material_clarification(q,'a1010000-0000-4000-8000-000000000030',repeat('c1',32),null,'A paper calendar.',d.id,repeat('e',64));
   raise exception 'different replay capability accepted'; exception when others then if sqlerrm<>'clarification_capability_conflict' then raise; end if; end;
- perform public.ap_save_four_step_draft(d.id,repeat('d',64),d.version,3,jsonb_set(d.answers,'{backgroundReviewed}','true'));
- perform pg_temp.finalize(d.id,repeat('d',64),'a1010000-0000-4000-8000-000000000038','a1010000-0000-4000-8000-000000000039');
+ perform public.ap_save_four_step_draft(d.id,repeat('d1',32),d.version,3,jsonb_set(d.answers,'{backgroundReviewed}','true'));
+ perform pg_temp.finalize(d.id,repeat('d1',32),'a1010000-0000-4000-8000-000000000038','a1010000-0000-4000-8000-000000000039');
  perform pg_temp.assert_true(exists(select 1 from public.ap_candidate_facts where snapshot_id='a1010000-0000-4000-8000-000000000038' and document_version_id='a1010000-0000-4000-8000-000000000031'),'successor did not retain source-bound reviewed facts');
  perform pg_temp.assert_true((select document=to_jsonb(v) from upload_original,public.ap_document_versions v where v.id='a1010000-0000-4000-8000-000000000031'),'original upload metadata changed');
 end $$;

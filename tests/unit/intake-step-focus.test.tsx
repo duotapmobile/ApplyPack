@@ -29,7 +29,7 @@ async function reachSecondStep() {
   const view = render(<IntakeWizard fixtureMode />);
   await screen.findByRole("heading", { name: "Start with your documents" });
   fireEvent.change(screen.getByLabelText("Full name required"), { target: { value: "Keyboard Customer" } });
-  fireEvent.change(screen.getByLabelText(/^Email address required/), { target: { value: "keyboard@example.invalid" } });
+  fireEvent.change(screen.getByLabelText(/^Account access email required/), { target: { value: "keyboard@example.invalid" } });
   fireEvent.change(screen.getByLabelText(/^Resume required/), {
     target: { files: [new File(["%PDF-1.7\n%%EOF"], "synthetic-resume.pdf", { type: "application/pdf" })] },
   });

@@ -17,7 +17,7 @@ async function completeFeasibilityOnce(page: Page, state: string) {
     : "";
   await gotoStable(page, `/get-started?feasibility=${encodeURIComponent(state)}${invitation}`);
   await page.getByLabel("Full name required").fill("Synthetic Evidence Customer");
-  await page.getByLabel("Email address required").fill("chunk4-evidence@example.invalid");
+  await page.getByLabel("Account access email required").fill("chunk4-evidence@example.invalid");
   await page.getByLabel("Resume required").setInputFiles(resume);
   await page.getByRole("button", { name: /save and continue/i }).click();
   await page.getByRole("checkbox", { name: /Coordinating projects/ }).first().check();

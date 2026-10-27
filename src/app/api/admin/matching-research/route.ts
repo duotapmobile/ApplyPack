@@ -49,8 +49,9 @@ export async function POST(request: Request) {
    if(result.error)throw result.error;return NextResponse.json({state:"COMPLETE"},{headers});
   }
   if(input.action==="QUESTION") {
-   const result=await rpc("ap_issue_candidate_question",{p_snapshot_id:input.snapshotId,p_job_snapshot_id:input.jobSnapshotId,p_node_id:input.nodeId,p_actor_id:auth.user.id,p_prompt:input.prompt});
-   if(result.error)throw result.error;return NextResponse.json({questionId:result.data},{status:201,headers});
+   const result=await auth.admin.rpc("ap_issue_candidate_question",{p_snapshot_id:input.snapshotId,p_job_snapshot_id:input.jobSnapshotId,p_node_id:input.nodeId,p_actor_id:auth.user.id,p_prompt:input.prompt});
+   if(result.error)throw result.error;
+   return NextResponse.json({questionId:z.uuid().parse(result.data)},{status:201,headers});
   }
   if(input.action==="ADMIT") {
    const {data:job,error}=await auth.admin.from("ap_job_snapshots").select("canonical_application_url,normalized_fingerprint,canonical_employer_domain").eq("id",input.jobSnapshotId).single();
@@ -63,5 +64,14 @@ export async function POST(request: Request) {
   const built=researchFamilies(snapshot.data,facts.data||[],input.round);
   const result=await rpc("ap_begin_research_round",{p_snapshot_id:input.snapshotId,p_actor_id:auth.user.id,p_request_sha256:canonicalSha256({research:built.hash,configurations:[...input.configurationIds].sort()}),p_families:built.families,p_configuration_ids:input.configurationIds,p_round:input.round});
   if(result.error)throw result.error; return NextResponse.json({planId:result.data,state:"PENDING",families:built.families},{status:201,headers});
- }catch{return NextResponse.json({error:"Current criteria, source configurations and bounded research evidence are required."},{status:409,headers});}
+ }catch(error){
+  const code=error && typeof error==="object" && "message" in error ? error.message : null;
+  if(input.action==="QUESTION" && code==="clarification_paid_or_checkout_owner_exception") {
+   return NextResponse.json({code:"CLARIFICATION_OWNER_REVIEW_REQUIRED",error:"This intake already has a paid obligation or a checkout awaiting reconciliation. Handle this through the existing order and support workflow; its payment and deadline have not been changed."},{status:409,headers});
+  }
+  if(input.action==="QUESTION" && code==="clarification_owner_exception_required") {
+   return NextResponse.json({code:"CLARIFICATION_LIMIT_REACHED",error:"This review has reached its question limit. Review the existing answers and resolve the missing information before asking for another confirmation."},{status:409,headers});
+  }
+  return NextResponse.json({error:"Current criteria, source configurations and bounded research evidence are required."},{status:409,headers});
+ }
 }

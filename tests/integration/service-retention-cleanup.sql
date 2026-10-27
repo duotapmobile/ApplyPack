@@ -123,9 +123,9 @@ select pg_temp.assert_retention((select desired_activities='[]'::jsonb from publ
 select pg_temp.assert_retention((select preferred_work_mode is null and preferred_employment_type is null and work_condition_preferences='{}'::jsonb from public.ap_intake_snapshots where id='87300000-0000-4000-8000-000000000001'),'private work preferences removed');
 select pg_temp.assert_retention((select fit_summary='removed' from public.job_matches where id='87f00000-0000-4000-8000-000000000001'),'matching body removed');
 select pg_temp.assert_retention((select answers='{}'::jsonb from public.intake_answers where intake_id='87100000-0000-4000-8000-000000000001'),'redundant answers removed');
-select pg_temp.assert_retention((select state='STALE' and stale_reason='SERVICE_CONTENT_REMOVED' from public.ap_feasibility_requests),'purged research cannot remain an active queue item');
+select pg_temp.assert_retention((select state='STALE' and stale_reason='SERVICE_CONTENT_REMOVED' from public.ap_feasibility_requests where draft_id='87200000-0000-4000-8000-000000000001' and snapshot_id='87300000-0000-4000-8000-000000000001'),'purged research cannot remain an active queue item');
 select pg_temp.assert_retention((select count(*)=1 from public.ap_payment_attempts where amount_cents=1899 and settlement='PAID'),'financial evidence retained');
-select pg_temp.assert_retention((select acceptance_sha256=repeat('c',64) from public.ap_snapshot_legal_content_receipts),'consent evidence unchanged');
+select pg_temp.assert_retention((select acceptance_sha256=repeat('c',64) from public.ap_snapshot_legal_content_receipts where id='87500000-0000-4000-8000-000000000001'),'consent evidence unchanged');
 select pg_temp.assert_retention((select state='PURGED' from public.ap_order_retention_contracts where order_id='87900000-0000-4000-8000-000000000001'),'purge completes');
 select pg_temp.assert_retention(public.ap_finish_service_retention_claim((select id from public.ap_service_retention_claims)),'complete retry idempotent');
 select pg_temp.assert_retention((select count(*)=0 from public.ap_retention_redaction_permits),'no residual permit');

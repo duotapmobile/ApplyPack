@@ -47,11 +47,20 @@ type Product = keyof typeof products;
 
 function setup() {
   const events = new Map<string, { processed_at: string | null; processing_status: string }>();
+  const ownerId = "a1030000-0000-4000-8000-000000000001";
+  const draftId = "a1030000-0000-4000-8000-000000000002";
+  const snapshotId = "a1030000-0000-4000-8000-000000000003";
+  const checkoutId = "a1030000-0000-4000-8000-000000000004";
+  const otherId = "a1030000-0000-4000-8000-000000000005";
+  const ownership = { data: { claimed: true, customerId: ownerId, rootDraftId: draftId } as unknown, error: null as unknown };
   const from = vi.fn((table: string) => {
     let update: Record<string, unknown> | null = null;
     const filters: Record<string, unknown> = {};
     const result = () => {
       if (table === "email_events") return { data: null, error: null };
+      if (table === "ap_checkout_attempts") return { data: { id: checkoutId, draft_id: draftId, quote_id: "quote", provider_checkout_session_id: "cs_test_claimed" }, error: null };
+      if (table === "ap_quotes") return { data: { snapshot_id: snapshotId }, error: null };
+      if (table === "ap_intake_snapshots") return { data: { id: snapshotId, access_email_normalized: "reused-old@example.invalid" }, error: null };
       if (table !== "webhook_events") throw new Error(`Unexpected database table: ${table}`);
       const row = events.get(String(filters.provider_event_id));
       if (update && row) {
@@ -78,6 +87,9 @@ function setup() {
   });
   const rpc = vi.fn(async (name: string) => {
     if (name === "claim_stripe_webhook") return { data: true, error: null };
+    if (name === "ap_intake_payment_identity") return ownership;
+    if (name === "ap_find_customer_by_access_email") return { data: otherId, error: null };
+    if (name === "ap_apply_verified_search_payment") return { data: { outcome: "SEARCH_ACTIVE" }, error: null };
     if (["complete_paid_checkout", "complete_apply_pack_cart"].includes(name)) {
       return { data: { customer_id: "customer-fixture" }, error: null };
     }
@@ -113,7 +125,19 @@ function setup() {
       product: { active: false, name: product.name, livemode: false } });
     return session;
   }
-  return { from, rpc, account, retrieveSession, retrievePrice, checkout, session: checkout("search") };
+  function claimedSearch() {
+    const session = { id: "cs_test_claimed", object: "checkout.session", mode: "payment", status: "complete", payment_status: "paid", currency: "usd", amount_total: 1899, livemode: false,
+      metadata: { contract_version: "manual-launch-search-v2", product_kind: "job_search", checkout_attempt_id: checkoutId },
+      line_items: { data: [{ quantity: 1, price: { id: products.search.currentPrice } }] },
+      payment_intent: { id: "pi_claimed", status: "succeeded", currency: "usd", amount_received: 1899, amount_capturable: 0, capture_method: "automatic", payment_method_types: ["card"],
+        latest_charge: { id: "ch_claimed", paid: true, status: "succeeded", created: Math.floor(Date.now() / 1000), payment_method_details: { type: "card" }, billing_details: { email: null } } },
+    } as unknown as Stripe.Checkout.Session;
+    retrieveSession.mockResolvedValue(session);
+    retrievePrice.mockResolvedValue({ id: products.search.currentPrice, active: true, type: "one_time", currency: "usd", unit_amount: 1899, livemode: false,
+      product: { active: true, name: "Job Match Search", livemode: false } });
+    return session;
+  }
+  return { from, rpc, account, retrieveSession, retrievePrice, checkout, claimedSearch, ownership, ownerId, otherId, draftId, snapshotId, session: checkout("search") };
 }
 
 let fixture: ReturnType<typeof setup>;
@@ -245,5 +269,49 @@ describe("signed Stripe webhook account boundary", () => {
     expect(fixture.retrieveSession).toHaveBeenCalledOnce();
     expect(dependencies.sendReceipt).toHaveBeenCalledOnce();
     expect(dependencies.after).toHaveBeenCalledOnce();
+  });
+
+  it("settles a claimed payment to its durable owner without looking up the reused old email", async () => {
+    const value = event(fixture.claimedSearch());
+    const response = await POST(signedRequest(value));
+    expect(response.status, JSON.stringify({ commands: fixture.rpc.mock.calls, tables: fixture.from.mock.calls, prices: fixture.retrievePrice.mock.calls })).toBe(200);
+    expect(fixture.rpc).toHaveBeenCalledWith("ap_intake_payment_identity", { p_draft_id: fixture.draftId, p_snapshot_id: fixture.snapshotId });
+    expect(fixture.rpc).toHaveBeenCalledWith("ap_apply_verified_search_payment", expect.objectContaining({ p_customer_id: fixture.ownerId, p_amount_cents: 1899 }));
+    expect(fixture.rpc.mock.calls.some(([name]) => name === "ap_find_customer_by_access_email")).toBe(false);
+    expect(fixture.from.mock.calls.some(([table]) => table === "ap_intake_snapshots")).toBe(false);
+    expect((await POST(signedRequest(value))).status).toBe(200);
+    expect(fixture.rpc.mock.calls.filter(([name]) => name === "ap_apply_verified_search_payment")).toHaveLength(1);
+    expect(dependencies.sendReceipt).not.toHaveBeenCalled();
+  });
+
+  it.each([null, { claimed: false }, { claimed: true, customerId: "invalid", rootDraftId: "invalid" }])("does not settle or fall back when an ownership receipt is malformed: %j", async (data) => {
+    fixture.ownership.data = data;
+    expect((await POST(signedRequest(event(fixture.claimedSearch())))).status).toBe(500);
+    expect(fixture.rpc.mock.calls.some(([name]) => ["ap_find_customer_by_access_email", "ap_apply_verified_search_payment"].includes(name))).toBe(false);
+    expect(dependencies.after).not.toHaveBeenCalled();
+  });
+
+  it("preserves retry after an unavailable ownership lookup without accepting partial receipt data", async () => {
+    fixture.ownership.error = { message: "private identity failure" };
+    const value = event(fixture.claimedSearch());
+    const failed = await POST(signedRequest(value));
+    expect(failed.status).toBe(500); expect(await failed.text()).not.toContain("private identity failure");
+    fixture.ownership.error = null;
+    expect((await POST(signedRequest(value))).status).toBe(200);
+    expect(fixture.rpc.mock.calls.filter(([name]) => name === "ap_apply_verified_search_payment")).toHaveLength(1);
+  });
+
+  it("uses historical email reconciliation only for an explicit unclaimed payment", async () => {
+    fixture.ownership.data = { claimed: false, customerId: null, rootDraftId: null };
+    expect((await POST(signedRequest(event(fixture.claimedSearch())))).status).toBe(200);
+    expect(fixture.rpc).toHaveBeenCalledWith("ap_find_customer_by_access_email", { p_email: "reused-old@example.invalid" });
+    expect(fixture.rpc).toHaveBeenCalledWith("ap_apply_verified_search_payment", expect.objectContaining({ p_customer_id: fixture.otherId }));
+  });
+
+  it("records an unverified payment without creating or resolving an account", async () => {
+    const session = fixture.claimedSearch(); session.amount_total = 1;
+    expect((await POST(signedRequest(event(session)))).status).toBe(200);
+    expect(fixture.rpc.mock.calls.some(([name]) => ["ap_intake_payment_identity", "ap_find_customer_by_access_email"].includes(name))).toBe(false);
+    expect(fixture.rpc).toHaveBeenCalledWith("ap_apply_verified_search_payment", expect.objectContaining({ p_payment_status: "unverified_succeeded", p_payment_succeeded_at: null }));
   });
 });

@@ -1608,6 +1608,7 @@ export type Database = {
           capacity_allocation_id: string | null
           capacity_exception_at: string | null
           capacity_exception_reason: string | null
+          claimed_customer_email: string | null
           command_id: string
           created_at: string
           customer_id: string | null
@@ -1631,6 +1632,7 @@ export type Database = {
           capacity_allocation_id?: string | null
           capacity_exception_at?: string | null
           capacity_exception_reason?: string | null
+          claimed_customer_email?: string | null
           command_id: string
           created_at?: string
           customer_id?: string | null
@@ -1654,6 +1656,7 @@ export type Database = {
           capacity_allocation_id?: string | null
           capacity_exception_at?: string | null
           capacity_exception_reason?: string | null
+          claimed_customer_email?: string | null
           command_id?: string
           created_at?: string
           customer_id?: string | null
@@ -3497,6 +3500,48 @@ export type Database = {
           },
         ]
       }
+      ap_intake_account_claims: {
+        Row: {
+          access_email_normalized: string
+          claimed_at: string
+          creation_request_id: string | null
+          customer_id: string
+          email_verified_at: string
+          root_draft_id: string
+        }
+        Insert: {
+          access_email_normalized: string
+          claimed_at?: string
+          creation_request_id?: string | null
+          customer_id: string
+          email_verified_at: string
+          root_draft_id: string
+        }
+        Update: {
+          access_email_normalized?: string
+          claimed_at?: string
+          creation_request_id?: string | null
+          customer_id?: string
+          email_verified_at?: string
+          root_draft_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_intake_account_claims_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_account_claims_root_draft_id_fkey"
+            columns: ["root_draft_id"]
+            isOneToOne: true
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_intake_clarification_answers: {
         Row: {
           answer_sha256: string
@@ -3540,6 +3585,68 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "ap_intake_snapshots"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_intake_clarification_notices: {
+        Row: {
+          created_at: string
+          customer_id: string
+          delivery_envelope_sha256: string | null
+          message_id: string
+          question_id: string
+          recipient_email: string
+          root_draft_id: string
+          template_version: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          delivery_envelope_sha256?: string | null
+          message_id: string
+          question_id: string
+          recipient_email: string
+          root_draft_id: string
+          template_version?: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          delivery_envelope_sha256?: string | null
+          message_id?: string
+          question_id?: string
+          recipient_email?: string
+          root_draft_id?: string
+          template_version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_intake_clarification_notices_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_clarification_notices_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: true
+            referencedRelation: "ap_outbox_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_clarification_notices_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "ap_candidate_questions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_clarification_notices_root_draft_id_fkey"
+            columns: ["root_draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_account_claims"
+            referencedColumns: ["root_draft_id"]
           },
         ]
       }
@@ -7327,6 +7434,9 @@ export type Database = {
       ap_outbox_messages: {
         Row: {
           attempts: number
+          claimed_delivery_envelope_sha256: string | null
+          claimed_recipient_email: string | null
+          claimed_root_draft_id: string | null
           created_at: string
           customer_id: string | null
           dead_lettered_at: string | null
@@ -7350,6 +7460,9 @@ export type Database = {
         }
         Insert: {
           attempts?: number
+          claimed_delivery_envelope_sha256?: string | null
+          claimed_recipient_email?: string | null
+          claimed_root_draft_id?: string | null
           created_at?: string
           customer_id?: string | null
           dead_lettered_at?: string | null
@@ -7373,6 +7486,9 @@ export type Database = {
         }
         Update: {
           attempts?: number
+          claimed_delivery_envelope_sha256?: string | null
+          claimed_recipient_email?: string | null
+          claimed_root_draft_id?: string | null
           created_at?: string
           customer_id?: string | null
           dead_lettered_at?: string | null
@@ -7395,6 +7511,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "ap_outbox_messages_claimed_root_draft_id_fkey"
+            columns: ["claimed_root_draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_account_claims"
+            referencedColumns: ["root_draft_id"]
+          },
           {
             foreignKeyName: "ap_outbox_messages_customer_id_fkey"
             columns: ["customer_id"]
@@ -15037,6 +15160,15 @@ export type Database = {
           snapshot_id: string
         }[]
       }
+      ap_claim_intake_draft: {
+        Args: {
+          p_customer_id: string
+          p_draft_id: string
+          p_secret_hash: string
+          p_verified_email: string
+        }
+        Returns: Json
+      }
       ap_claim_job_source_syncs: {
         Args: { p_limit?: number; p_owner: string }
         Returns: {
@@ -15079,6 +15211,9 @@ export type Database = {
         Args: { p_limit?: number; p_owner: string }
         Returns: {
           attempts: number
+          claimed_delivery_envelope_sha256: string | null
+          claimed_recipient_email: string | null
+          claimed_root_draft_id: string | null
           created_at: string
           customer_id: string | null
           dead_lettered_at: string | null
@@ -15196,6 +15331,14 @@ export type Database = {
           document_id: string
           lease_token: string
         }[]
+      }
+      ap_claimed_checkout_email: {
+        Args: { p_checkout_id: string; p_historical_email: string }
+        Returns: string
+      }
+      ap_claimed_payment_message_identity: {
+        Args: { p_message_id: string }
+        Returns: Json
       }
       ap_clone_clarification_sources: {
         Args: { p_clarification_id: string; p_draft_id: string }
@@ -15395,6 +15538,17 @@ export type Database = {
           version: number
         }[]
       }
+      ap_create_owned_intake_draft: {
+        Args: {
+          p_customer_id: string
+          p_draft_id: string
+          p_expires_at: string
+          p_request_id: string
+          p_secret_hash: string
+          p_verified_email: string
+        }
+        Returns: Json
+      }
       ap_create_reference_record: {
         Args: {
           p_customer_id: string
@@ -15458,6 +15612,10 @@ export type Database = {
         }[]
       }
       ap_customer_owns_snapshot: {
+        Args: { p_customer_id: string; p_snapshot_id: string }
+        Returns: boolean
+      }
+      ap_customer_owns_snapshot_before_103: {
         Args: { p_customer_id: string; p_snapshot_id: string }
         Returns: boolean
       }
@@ -15579,6 +15737,10 @@ export type Database = {
       ap_enqueue_chunk5_due_jobs: { Args: never; Returns: Json }
       ap_enqueue_due_job_source_syncs: {
         Args: { p_limit?: number }
+        Returns: number
+      }
+      ap_enqueue_intake_clarification_notices: {
+        Args: { p_root_draft_id: string }
         Returns: number
       }
       ap_enqueue_job_source_sync: {
@@ -15833,6 +15995,10 @@ export type Database = {
         }
         Returns: Json
       }
+      ap_intake_claim_customer: {
+        Args: { p_draft_id: string }
+        Returns: string
+      }
       ap_intake_confirmation_source: {
         Args: {
           p_draft_id: string
@@ -15841,6 +16007,12 @@ export type Database = {
         }
         Returns: string
       }
+      ap_intake_draft_chain: { Args: { p_root_id: string }; Returns: string[] }
+      ap_intake_payment_identity: {
+        Args: { p_draft_id: string; p_snapshot_id: string }
+        Returns: Json
+      }
+      ap_intake_root_draft: { Args: { p_draft_id: string }; Returns: string }
       ap_intake_source_lineage: { Args: { p_draft_id: string }; Returns: Json }
       ap_invalidate_pre_activation_snapshot: {
         Args: {
@@ -15862,6 +16034,16 @@ export type Database = {
         Returns: string
       }
       ap_issue_candidate_question_before_101: {
+        Args: {
+          p_actor_id: string
+          p_job_snapshot_id: string
+          p_node_id: string
+          p_prompt: string
+          p_snapshot_id: string
+        }
+        Returns: string
+      }
+      ap_issue_candidate_question_before_103: {
         Args: {
           p_actor_id: string
           p_job_snapshot_id: string
@@ -16020,6 +16202,14 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      ap_lock_owned_intake: {
+        Args: {
+          p_allow_checkout?: boolean
+          p_draft_id: string
+          p_proposed_customer_id?: string
+        }
+        Returns: string[]
+      }
       ap_lock_research_preparation: {
         Args: { p_preparation_id: string; p_skip_locked?: boolean }
         Returns: {
@@ -16092,6 +16282,10 @@ export type Database = {
           prompt: string
           review_required: boolean
         }[]
+      }
+      ap_material_clarification_resume_schema_installed: {
+        Args: never
+        Returns: boolean
       }
       ap_material_clarification_schema_installed: {
         Args: never
@@ -16234,6 +16428,28 @@ export type Database = {
         }
         Returns: string
       }
+      ap_owned_intake_draft_context: {
+        Args: {
+          p_customer_id: string
+          p_draft_id: string
+          p_secret_hash: string
+        }
+        Returns: Json
+      }
+      ap_owned_intake_drafts: {
+        Args: { p_customer_id: string; p_limit?: number }
+        Returns: Json
+      }
+      ap_owned_intake_metadata: {
+        Args: {
+          p_allow_checkout?: boolean
+          p_allow_source?: boolean
+          p_customer_id: string
+          p_draft_id: string
+          p_replayed?: boolean
+        }
+        Returns: Json
+      }
       ap_persist_derived_feasibility_assessment: {
         Args: {
           p_request_id: string
@@ -16265,6 +16481,22 @@ export type Database = {
         }
         Returns: string
       }
+      ap_pin_claimed_payment_delivery: {
+        Args: {
+          p_lease_owner: string
+          p_message_id: string
+          p_payload_sha256: string
+        }
+        Returns: Json
+      }
+      ap_pin_intake_clarification_delivery: {
+        Args: {
+          p_lease_owner: string
+          p_message_id: string
+          p_payload_sha256: string
+        }
+        Returns: Json
+      }
       ap_plan_archive_retention: {
         Args: {
           p_id: string
@@ -16275,6 +16507,10 @@ export type Database = {
         }
         Returns: Json
       }
+      ap_prelock_claimed_intake: {
+        Args: { p_draft_id: string }
+        Returns: undefined
+      }
       ap_prepare_automatic_research: {
         Args: {
           p_families: Json
@@ -16282,6 +16518,14 @@ export type Database = {
           p_preparation_id: string
         }
         Returns: string
+      }
+      ap_prepare_claimed_payment_notification: {
+        Args: { p_lease_owner: string; p_message_id: string }
+        Returns: Json
+      }
+      ap_prepare_intake_clarification_notification: {
+        Args: { p_lease_owner: string; p_message_id: string }
+        Returns: Json
       }
       ap_prepare_intake_confirmation: {
         Args: {
@@ -16952,6 +17196,27 @@ export type Database = {
         }
         Returns: string
       }
+      ap_resume_material_clarification: {
+        Args: {
+          p_customer_id: string
+          p_draft_id: string
+          p_question_id: string
+          p_secret_hash: string
+          p_successor_draft_id: string
+          p_successor_secret_hash: string
+        }
+        Returns: Json
+      }
+      ap_resume_owned_intake_draft: {
+        Args: {
+          p_customer_id: string
+          p_expected_capability_version: number
+          p_expected_draft_id: string
+          p_root_draft_id: string
+          p_secret_hash: string
+        }
+        Returns: Json
+      }
       ap_retention_cleanup_blocked: {
         Args: { p_customer: string }
         Returns: boolean
@@ -16998,6 +17263,10 @@ export type Database = {
         Args: { p_row: Json; p_table: string }
         Returns: string[]
       }
+      ap_retention_row_customers_before_103: {
+        Args: { p_row: Json; p_table: string }
+        Returns: string[]
+      }
       ap_retention_row_object_paths: {
         Args: { p_row: Json }
         Returns: {
@@ -17017,6 +17286,10 @@ export type Database = {
         Returns: string[]
       }
       ap_retention_snapshot_customers_before_101: {
+        Args: { p_snapshot: string }
+        Returns: string[]
+      }
+      ap_retention_snapshot_customers_before_103: {
         Args: { p_snapshot: string }
         Returns: string[]
       }
@@ -17408,6 +17681,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_try_lock_intake_retention_owners: {
+        Args: { p_draft_id: string }
+        Returns: boolean
+      }
       ap_unpaid_source_retention_eligible: {
         Args: { p_document_id: string }
         Returns: boolean
@@ -17454,6 +17731,14 @@ export type Database = {
           p_work_sample_instruction: string
         }
         Returns: string
+      }
+      ap_verified_intake_email: {
+        Args: { p_customer_id: string; p_expected_email?: string }
+        Returns: string
+      }
+      ap_verified_intake_ownership_schema_installed: {
+        Args: never
+        Returns: boolean
       }
       ap_verify_manual_source_observation: {
         Args: {

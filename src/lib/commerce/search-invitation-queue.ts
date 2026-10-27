@@ -1,5 +1,6 @@
 import "server-only";
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { loadCurrentIntakeRecipient } from "./intake-identity-server";
 
 export type SearchInvitationCandidate = {
   draftId: string;
@@ -63,9 +64,12 @@ export async function loadSearchInvitationQueue(
       || assessment.resolution_blocker !== "NONE" || assessment.invalidated_at || !assessment.expires_at
       || !Number.isFinite(Date.parse(assessment.expires_at)) || Date.parse(assessment.expires_at) <= now.getTime()
       || (assessment.preliminarily_deliverable_count || 0) < 10) continue;
+    const recipient = await loadCurrentIntakeRecipient(admin, draft.id, snapshot.id, snapshot.access_email_normalized)
+      .catch(() => null);
+    if (!recipient) return unavailable;
     candidates.push({
       draftId: draft.id, snapshotId: snapshot.id, assessmentId: assessment.id,
-      email: snapshot.access_email_normalized, direction: list(snapshot.desired_activities) || "Review intake direction",
+      email: recipient.email, direction: list(snapshot.desired_activities) || "Review intake direction",
       requirements: [list(snapshot.work_modes), snapshot.us_state_or_dc, list(snapshot.employment_types)].filter(Boolean).join(" · "),
       eligibleJobs: assessment.preliminarily_deliverable_count!, assessmentExpiresAt: assessment.expires_at,
       activeInvitationExpiresAt: invitationResult.data?.find((invitation) => invitation.draft_id === draft.id)?.expires_at || null,

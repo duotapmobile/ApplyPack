@@ -137,6 +137,9 @@ export const stateOrDcOptions = [
 ] as const;
 
 const boundedText = (max: number) => z.string().trim().max(max);
+export const materialClarificationAnswerSchema = z.object({
+  questionId: z.uuid(), prompt: z.string().min(10).max(1_000), answer: boundedText(5_000),
+}).strict();
 const optionalDate = z.union([z.literal(""), z.iso.date()]);
 const optionalChoice = <T extends readonly [string, ...string[]]>(values: T) => z.union([z.literal(""), z.enum(values)]);
 export const editableFactKeys = ["name", "fullName", "displayName", "email", "phone", "cityState", "location", "employer", "employerOrOrganization", "organizationOrProject", "historicalTitle", "roleOrRelationship", "dates", "startsOn", "endsOn", "datePrecision", "current", "bullets", "responsibilities", "activity", "responsibility", "tools", "skills", "taskOrTool", "capabilityStatus", "educationLevel", "educationField", "completionStatus", "credentialName", "issuingOrganization", "summary", "text", "verbatim", "coverLetterEvidence"] as const;
@@ -210,6 +213,7 @@ export const fourStepDraftSchema = z.object({
   flowVersion: z.literal(FOUR_STEP_FLOW_VERSION),
   fullName: boundedText(200),
   email: boundedText(320),
+  documentContactEmail: boundedText(320).optional(),
   phone: boundedText(60).default(""),
   entryMode: z.enum(["CURRENT_RESUME", "OUTDATED_RESUME", "GUIDED"]).default("CURRENT_RESUME"),
   careerChange: z.boolean().default(false),
@@ -227,6 +231,8 @@ export const fourStepDraftSchema = z.object({
   factReviews: z.record(z.string(), z.enum(factReviewDecisions)),
   factCorrections: z.record(z.string(), factCorrectionSchema),
   experienceAdditions: z.array(experienceAdditionSchema).max(30),
+  clarifications: z.array(materialClarificationAnswerSchema).min(1).max(20)
+    .refine((answers) => new Set(answers.map((answer) => answer.questionId)).size === answers.length).optional(),
   capabilities: z.record(z.string(), z.enum(["CAN_DO_NOW", "DONE_BEFORE_NEEDS_REFRESHER", "BASIC_EXPOSURE", "NOT_DONE", "UNSURE"])),
   workModes: z.array(z.enum(workModes)).max(3),
   preferredWorkMode: optionalChoice(workModes),
@@ -367,7 +373,7 @@ export function buildFourStepSnapshot(draft: FourStepDraft, sensitivePayloadSha2
   const answers = normalizedFourStepDraft(draft);
   return {
     accessEmailNormalized: answers.email.trim().normalize("NFC").toLocaleLowerCase("en-US"),
-    documentContactEmail: answers.email.trim(),
+    documentContactEmail: answers.documentContactEmail?.trim() || answers.email.trim(),
     desiredActivities: answers.desiredActivities,
     avoidedActivities: answers.avoidedActivities,
     optionalTitles: answers.targetTitles,
@@ -407,6 +413,7 @@ export function buildFourStepSnapshot(draft: FourStepDraft, sensitivePayloadSha2
     entryMode: answers.entryMode,
     careerChange: answers.careerChange,
     noPriorEmployment: answers.noPriorEmployment,
+    ...(answers.clarifications ? { clarifications: answers.clarifications } : {}),
     sensitivePayloadSha256,
     canonicalizationVersion,
     schemaVersion: FOUR_STEP_SCHEMA_VERSION,
@@ -463,6 +470,7 @@ export function validateFourStep(step: 0 | 1 | 2 | 3, draft: FourStepDraft, inpu
   if (step === 0) {
     if (draft.fullName.trim().length < 2) errors.push({ fieldId: "full-name", message: "Enter your full name." });
     if (!z.email().safeParse(draft.email.trim()).success) errors.push({ fieldId: "email", message: "Enter a valid email address." });
+    if (draft.documentContactEmail?.trim() && !z.email().safeParse(draft.documentContactEmail.trim()).success) errors.push({ fieldId: "document-contact-email", message: "Enter a valid email address for your documents, or leave it blank to use your access email." });
     if (draft.entryMode !== "GUIDED" && !input.resume) errors.push({ fieldId: "resume", message: "Upload your resume, or choose to build your background without one." });
     if (draft.entryMode === "GUIDED" && input.resume) errors.push({ fieldId: "resume", message: "Remove the uploaded resume to use guided background only, or choose the uploaded-resume option." });
     if (input.resume?.processingState === "FAILED") errors.push({ fieldId: "resume", message: "Replace the resume or use the retry option." });
@@ -471,6 +479,9 @@ export function validateFourStep(step: 0 | 1 | 2 | 3, draft: FourStepDraft, inpu
     errors.push({ fieldId: "desired-activities", message: "Choose work you would like to do or select Help me decide from my experience." });
   }
   if (step === 2) {
+    for (const clarification of draft.clarifications ?? []) {
+      if (!clarification.answer.trim()) errors.push({ fieldId: `clarification-${clarification.questionId}`, message: "Answer this question using what you know. Say when you are unsure; do not guess." });
+    }
     if (!draft.backgroundReviewed) errors.push({ fieldId: "background-reviewed", message: "Check that your background includes the updates and experience you want us to use." });
     if (draft.entryMode === "GUIDED" && !draft.experienceAdditions.length && !draft.noPriorEmployment) errors.push({ fieldId: "experience-additions", message: "Add your actual work, education, project or other relevant experience, or tell us you have not had a paid job." });
     for (const experience of draft.experienceAdditions) {

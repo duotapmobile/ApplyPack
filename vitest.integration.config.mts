@@ -11,6 +11,8 @@ export default defineConfig({
     exclude: [
       // Runs in the required isolated PostgreSQL job with both route scenarios.
       "tests/integration/research-preparation-journey.test.ts",
+      "tests/integration/material-clarification-route-journey.test.ts",
+      "tests/integration/intake-notification-native-journey.test.ts",
       ...(process.env.SCANNER_INTEGRATION === "true" ? [] : ["tests/integration/clamav.integration.test.ts"]),
     ],
     setupFiles: ["./tests/setup.ts"],

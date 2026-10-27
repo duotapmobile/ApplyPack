@@ -5,7 +5,7 @@ test("guided no-resume intake presents real facts, requires reapproval after edi
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto("/get-started");
   await page.getByLabel("Full name required").fill("Guided Customer");
-  await page.getByLabel("Email address required").fill("guided@example.invalid");
+  await page.getByLabel("Account access email required").fill("guided@example.invalid");
   await page.getByRole("radio", { name: "Build my background without a resume" }).check();
   await expect(page.getByLabel("Resume required")).toHaveCount(0);
   await page.getByLabel("I am considering a career change.").check();

@@ -47,7 +47,7 @@ export function buildConfirmedReview(draft: FourStepDraft, documents: readonly I
   const a = normalizedFourStepDraft(draft);
   const sections: ReviewSection[] = [
     { title: "Contact and documents", step: 0, controlId: "full-name", lines: [
-      `Name: ${a.fullName}`, `Email: ${a.email}`, `Phone: ${a.phone || "Not supplied"}`, `Starting point: ${readableLabel(a.entryMode)}`,
+      `Name: ${a.fullName}`, `Account access email: ${a.email}`, `Email on your documents: ${a.documentContactEmail?.trim() || a.email}`, `Phone: ${a.phone || "Not supplied"}`, `Starting point: ${readableLabel(a.entryMode)}`,
       ...documents.map((doc) => `${doc.kind === "RESUME" ? "Resume" : "Previous cover letter"}: ${doc.name} (version ${doc.version}, ${readableLabel(doc.processingState)})`),
       `Previous cover letter use: ${readableLabel(a.priorCoverLetterUse)}`, `Career change: ${a.careerChange ? "Yes" : "No"}`, `No previous paid job: ${a.noPriorEmployment ? "Yes" : "No"}`,
     ] },
@@ -62,6 +62,9 @@ export function buildConfirmedReview(draft: FourStepDraft, documents: readonly I
       return `${fact.displayLabel}: ${fact.displayValue}. ${decision === "CONFIRM" ? "Confirmed" : decision === "CORRECT" ? correction?.category === "FIELD_EDITS" ? `Corrected values to use: ${readableFact({ ...fact.editableValues, ...correction.fields })}` : `Apply this correction to the information above: ${readableFact(correction)}` : "Excluded from confirmed facts"}. Source: ${fact.sourceLocator}`;
     }) : ["No document facts. The structured background below is the source."] },
   ];
+  if (a.clarifications) sections.push({ title: "Clarifications", step: 2, controlId: "clarification-answers",
+    lines: a.clarifications.flatMap((answer) => [answer.prompt, `Your answer: ${answer.answer || "Not answered"}`]),
+  });
   for (const [index, item] of a.experienceAdditions.entries()) sections.push({ title: `Experience ${index + 1}: ${item.roleOrRelationship || readableLabel(item.kind)}`, step: 2, controlId: "experience-additions", lines: [
     `Type: ${readableLabel(item.kind)}`, `Organization or project: ${item.organizationOrProject || "Not supplied"}`, `Role or relationship: ${item.roleOrRelationship || "Not supplied"}`,
     `Dates: ${experienceDate(item.startsOn, item.datePrecision)} to ${item.current ? "Current" : experienceDate(item.endsOn, item.datePrecision)} (${readableLabel(item.datePrecision)})`,

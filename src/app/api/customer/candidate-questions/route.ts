@@ -1,31 +1,38 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { verifiedIntakeIdentity } from "@/lib/intake/verified-intake-server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isSameOriginRequest } from "@/lib/security/origin";
+import { clarificationRequestSchema } from "@/lib/intake/clarification-contract";
+import { boundedIntakeJson } from "@/lib/intake/confirmed-review-server";
+import { newIntakeRecoveryHold } from "@/lib/operations/protected-recovery-readiness";
+import { answerMaterialClarification, clarificationErrorResponse, loadClarificationQuestions } from "@/lib/intake/clarification-server";
 const headers = { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" };
 async function context() {
-  const client = await createSupabaseServerClient();
+  const identity = await verifiedIntakeIdentity();
   const admin = createSupabaseAdminClient();
-  if (!client || !admin) return null;
-  const { data, error } = await client.auth.getUser();
-  if (error || !data.user) return null;
-  return { customerId: data.user.id, rpc: admin.rpc.bind(admin) as unknown as (name: string,args: Record<string,unknown>) => Promise<{data: unknown;error: unknown}> };
+  if (!identity || !admin) return null;
+  return { customerId: identity.customerId, admin };
 }
 export async function GET() {
-  const c = await context();
-  if (!c) return NextResponse.json({ error: "Sign in to view questions." }, { status: 401, headers });
-  const result = await c.rpc("ap_customer_candidate_questions", { p_customer_id: c.customerId });
-  if (result.error || !Array.isArray(result.data) || result.data.length>100) return NextResponse.json({ error: "Questions are unavailable. Contact support." }, { status: 503, headers });
-  return NextResponse.json({ questions: result.data }, { headers });
+  try {
+    const current = await context();
+    if (!current) return NextResponse.json({ error: "Sign in to view questions." }, { status: 401, headers });
+    return NextResponse.json({ questions: await loadClarificationQuestions(current.admin, { kind: "CUSTOMER", customerId: current.customerId }) }, { headers });
+  } catch (error) { const mapped = clarificationErrorResponse(error); return NextResponse.json(mapped.body, { status: mapped.status, headers }); }
 }
 export async function POST(request: Request) {
   if (!isSameOriginRequest(request)) return NextResponse.json({ error: "Origin rejected." }, { status: 403, headers });
-  const c = await context();
-  if (!c) return NextResponse.json({ error: "Sign in to answer questions." }, { status: 401, headers });
-  const input = z.object({ questionId: z.uuid(), answer: z.string().trim().min(1).max(5000), confirmed: z.literal(true) }).strict().safeParse(await request.json().catch(() => null));
-  if (!input.success) return NextResponse.json({ error: "Confirm your factual answer." }, { status: 400, headers });
-  const result = await c.rpc("ap_answer_customer_question", { p_customer_id: c.customerId, p_question_id: input.data.questionId, p_answer: input.data.answer });
-  return NextResponse.json(result.error ? { error: "This question changed or was already answered. Refresh or contact support for a correction." }
-    : { factId: result.data, state: "REVIEW_REQUIRED" }, { status: result.error ? 409 : 201, headers });
+  if (Number(request.headers.get("content-length") || 0) > 24_000) return NextResponse.json({ error: "This answer is too large." }, { status: 413, headers });
+  const input = clarificationRequestSchema.safeParse(await boundedIntakeJson(request));
+  if (!input.success) return NextResponse.json({ error: "Confirm your factual answer or select the saved review." }, { status: 400, headers });
+  if ("action" in input.data) return NextResponse.json({ error: "Choose the saved intake from Get Started to open its complete review." }, { status: 409, headers });
+  try {
+    const current = await context();
+    if (!current) return NextResponse.json({ error: "Sign in to answer questions." }, { status: 401, headers });
+    const hold = await newIntakeRecoveryHold(current.admin); if (hold) return hold;
+    const result = await answerMaterialClarification(current.admin, { kind: "CUSTOMER", customerId: current.customerId }, input.data);
+    // Account-level questions can concern another intake. Cookie selection is
+    // performed only by the explicit, browser-fenced intake access flow.
+    return NextResponse.json(result.receipt, { status: result.receipt.state === "FULL_REVIEW_REQUIRED" && result.receipt.replayed ? 200 : 201, headers });
+  } catch (error) { const mapped = clarificationErrorResponse(error); return NextResponse.json(mapped.body, { status: mapped.status, headers }); }
 }

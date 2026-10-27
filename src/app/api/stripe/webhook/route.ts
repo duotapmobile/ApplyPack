@@ -18,6 +18,8 @@ import { assertConfiguredPrice, assertStripeAccount, createStripeOperationalClie
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { processWorkflowTasks } from "@/lib/workflow/process";
 import { bindCheckoutSession, observeCheckoutSession } from "@/lib/commerce/checkout-initiation";
+import { readIntakePaymentIdentity } from "@/lib/commerce/intake-identity-server";
+import { intakePaymentCustomer } from "@/lib/commerce/intake-payment-identity";
 
 export const runtime = "nodejs";
 
@@ -273,9 +275,6 @@ async function completeCorrectedSearch(
   const { data: quote, error: quoteError } = await admin.from("ap_quotes")
     .select("snapshot_id").eq("id", checkout.quote_id).maybeSingle();
   if (quoteError || !quote) throw quoteError || new Error("Corrected quote binding was not found");
-  const { data: snapshot, error: snapshotError } = await admin.from("ap_intake_snapshots")
-    .select("id,access_email_normalized").eq("id", quote.snapshot_id).eq("draft_id", checkout.draft_id).maybeSingle();
-  if (snapshotError || !snapshot?.access_email_normalized) throw snapshotError || new Error("Immutable access email was not found");
 
   const paymentIntentId = paymentIntent.id;
   const payerEmail = session.customer_details?.email || charge?.billing_details.email || session.customer_email || null;
@@ -308,7 +307,14 @@ async function completeCorrectedSearch(
     return;
   }
 
-  const customerId = await findOrCreatePaidCustomer(admin, snapshot.access_email_normalized);
+  if (!checkout.draft_id || !quote.snapshot_id) throw new Error("Corrected payment intake binding was not found");
+  const identity = await readIntakePaymentIdentity(admin, checkout.draft_id, quote.snapshot_id);
+  const customerId = await intakePaymentCustomer(identity, async () => {
+    const { data: snapshot, error: snapshotError } = await admin.from("ap_intake_snapshots")
+      .select("id,access_email_normalized").eq("id", quote.snapshot_id).eq("draft_id", checkout.draft_id).maybeSingle();
+    if (snapshotError || !snapshot?.access_email_normalized) throw new Error("Historical access email was not found");
+    return findOrCreatePaidCustomer(admin, snapshot.access_email_normalized);
+  });
   const { error } = await admin.rpc("ap_apply_verified_search_payment", {
     p_provider_event_id: evidence.eventId,
     p_event_type: evidence.eventType,

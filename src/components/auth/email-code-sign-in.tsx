@@ -3,7 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { normalizeEmailCode, safeAuthDestination } from "@/lib/auth/email-code";
+import { normalizeEmailCode } from "@/lib/auth/email-code";
+import { invitationAuthRedirect, invitationFragment } from "@/lib/commerce/invitation-fragment";
 
 export function EmailCodeSignIn({ defaultDestination = "/my-applypack" }: { defaultDestination?: string }) {
   const router = useRouter();
@@ -17,7 +18,11 @@ export function EmailCodeSignIn({ defaultDestination = "/my-applypack" }: { defa
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const params = new URLSearchParams(window.location.search);
-      setDestination(safeAuthDestination(params.get("next") || defaultDestination));
+      const next = invitationAuthRedirect(params.get("next") || defaultDestination);
+      setDestination(next);
+      if (window.location.hash && (!invitationFragment(window.location.hash) || new URL(next, window.location.origin).pathname !== "/get-started")) {
+        window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+      }
       const suppliedEmail = params.get("email");
       if (suppliedEmail) setEmail(suppliedEmail);
     }, 0);
@@ -57,7 +62,9 @@ export function EmailCodeSignIn({ defaultDestination = "/my-applypack" }: { defa
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
-      router.push(result.redirectTo || destination);
+      const redirectTo = invitationAuthRedirect(result.redirectTo || destination, window.location.hash);
+      if (window.location.hash) window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+      router.push(redirectTo);
       router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The code could not be verified.");
@@ -70,8 +77,8 @@ export function EmailCodeSignIn({ defaultDestination = "/my-applypack" }: { defa
     <main id="main-content" className="auth-page">
       <section className="auth-card">
         <p className="eyebrow">MY APPLYPACK</p>
-        <h1>{step === "email" ? "Access your searches and documents." : "Enter your six-digit code."}</h1>
-        <p>{step === "email" ? "Enter the email used for your ApplyPack purchase. We will send a secure six-digit sign-in code." : <>We sent the code to <strong>{email}</strong>.</>}</p>
+        <h1>{step === "email" ? "Access your intake and orders." : "Enter your six-digit code."}</h1>
+        <p>{step === "email" ? "Enter your ApplyPack account email, or the email you want to use for a new intake. We will send a secure six-digit sign-in code." : <>We sent the code to <strong>{email}</strong>.</>}</p>
         {step === "email" ? (
           <form onSubmit={requestCode}>
             <label htmlFor="sign-in-email">Email address</label>

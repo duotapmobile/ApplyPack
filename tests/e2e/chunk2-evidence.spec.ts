@@ -18,7 +18,7 @@ test("capture Chunk 2 four-step and adaptive/error evidence", async ({ page }, t
       await page.screenshot({ path: resolve(output, "390-error-summary.png"), fullPage: true });
     }
     await page.getByLabel("Full name required").fill("Synthetic Customer");
-    await page.getByLabel("Email address required").fill("synthetic@example.invalid");
+    await page.getByLabel("Account access email required").fill("synthetic@example.invalid");
     await page.getByLabel("Resume required").setInputFiles({ name: "synthetic-resume.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7\n%%EOF") });
     await page.getByRole("button", { name: /save and continue/i }).click();
     await expect(page.getByText("STEP 2 OF 4")).toBeVisible();

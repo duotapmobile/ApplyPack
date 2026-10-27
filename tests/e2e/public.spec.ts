@@ -35,12 +35,12 @@ test("sign-in starts with the six-digit email-code flow", async ({ page }) => {
   await expect(page.getByRole("button", { name: /send.*code/i })).toBeEnabled();
 });
 
-test("the anonymous four-step intake is accessible and starts no checkout", async ({ page }) => {
+test("the four-step intake fixture is accessible and starts no checkout", async ({ page }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 320, height: 760 });
   await gotoStable(page, "/get-started");
   await expect(page.getByText("STEP 1 OF 4")).toBeVisible();
-  await expect(page.getByText(/No account or payment in this intake/)).toBeVisible();
+  await expect(page.getByText(/Your verified account protects this intake/)).toBeVisible();
   await page.getByRole("button", { name: /save and continue/i }).click();
   const errorSummary = page.locator(".intake-errors");
   await expect(errorSummary).toBeFocused();
@@ -49,7 +49,7 @@ test("the anonymous four-step intake is accessible and starts no checkout", asyn
   await nameErrorLink.click();
   await expect(page.getByLabel("Full name required")).toBeFocused();
   await page.getByLabel("Full name required").fill("E2E Customer");
-  await page.getByLabel("Email address required").fill("e2e@example.invalid");
+  await page.getByLabel("Account access email required").fill("e2e@example.invalid");
   await page.getByLabel("Resume required").setInputFiles({ name: "resume.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7\n%%EOF") });
   await page.getByRole("button", { name: /save and continue/i }).click();
   await expect(page.getByText("STEP 2 OF 4")).toBeVisible();

@@ -122,6 +122,69 @@ function uploaded(f: Fixture, entryMode: "CURRENT_RESUME" | "OUTDATED_RESUME" = 
   f.seal();
 }
 
+function clarification(f: Fixture) {
+  const answer = { questionId: id(101), prompt: "Which calendar did you actually use?", answer: "I used a paper calendar, not scheduling software." };
+  (f.r.draft.answers as unknown as FourStepDraft).clarifications = [answer];
+  f.r.snapshot.parent_snapshot_id = id(102);
+  f.r.sourceLineage = { draftId: f.r.draft.id, sourceDraftId: id(103), sourceSnapshotId: id(102), sourceSnapshotSha256: digest("d"),
+    confirmedSnapshotId: f.r.snapshot.id, customerId: f.expected.customerId, documents: [] };
+  f.r.facts.push({ ...f.r.facts[0], id: id(104), semantic_key: "calendar_use", value_kind: "CLARIFICATION", catalog_version: "confirmed-clarification-v1",
+    typed_value: { questionId: answer.questionId, statement: answer.answer }, assertion_control_id: `clarification:${answer.questionId}`,
+    source_locator: `question:${answer.questionId}`, capability_status: null });
+  f.seal(); return answer;
+}
+
+describe("confirmed clarification drafting provenance", () => {
+  it("retains full confirmed answer provenance without upgrading an unstructured statement to a qualification", () => {
+    const f = fixture(), answer = clarification(f), packet = f.build();
+    const fact = packet.providerView.facts.find((entry) => entry.id === id(104));
+    expect(fact?.disposition).toBe("UNSTRUCTURED_OWNER_REVIEW_REQUIRED");
+    expect(fact?.value).toEqual({ statement: answer.answer });
+    expect(JSON.stringify(packet.providerView)).not.toContain(answer.questionId);
+    expect(packet.ownerEvidence.sourceLineage).toEqual(f.r.sourceLineage);
+    (f.r.reviews[0].decision as Record<string, unknown>).candidateFactVersionIds = [id(104)];
+    (f.r.reviews[0].decision as Record<string, unknown>).candidateFactIds = [id(104)];
+    expect(f.build).toThrow("NEGATIVE_FACT_USED_AS_POSITIVE");
+  });
+  it("preserves the actual original uploaded record identity only through exact confirmed lineage", () => {
+    const f = fixture(); uploaded(f); clarification(f);
+    const doc = f.r.documents[0]; doc.draft_id = id(103);
+    f.r.sourceLineage!.documents = [{ id: doc.id, draftId: doc.draft_id, sha256: doc.content_sha256 }];
+    const packet = f.build();
+    expect(packet.ownerEvidence.documents[0].draft_id).toBe(id(103));
+    expect(packet.ownerEvidence.sourceFacts[0].draft_id).toBe(f.r.draft.id);
+    expect(packet.ownerEvidence.sourceReviews[0].snapshot_id).toBe(f.r.snapshot.id);
+    const savedHash = packet.packetSha256; f.r.sourceLineage!.sourceSnapshotSha256 = digest("f");
+    expect(f.build().packetSha256).not.toBe(savedHash);
+  });
+  it.each([
+    ["missing lineage", (f: Fixture) => { delete f.r.sourceLineage; }, "SOURCE_LINEAGE_REQUIRED"],
+    ["wrong parent", (f: Fixture) => { f.r.snapshot.parent_snapshot_id = id(199); }, "SOURCE_LINEAGE_INVALID"],
+    ["foreign customer", (f: Fixture) => { f.r.sourceLineage!.customerId = id(199); }, "SOURCE_LINEAGE_INVALID"],
+    ["wrong current snapshot", (f: Fixture) => { f.r.sourceLineage!.confirmedSnapshotId = id(199); }, "SOURCE_LINEAGE_INVALID"],
+    ["changed answer fact", (f: Fixture) => { f.r.facts.at(-1)!.typed_value = { statement: "Managed a software team", questionId: id(101) }; }, "CLARIFICATION_FACT_INVALID"],
+    ["missing answer fact", (f: Fixture) => { f.r.facts.pop(); }, "CLARIFICATION_FACT_MISSING"],
+    ["duplicate answer fact", (f: Fixture) => { f.r.facts.push({ ...f.r.facts.at(-1)!, id: id(105) }); }, "CLARIFICATION_FACT_MISSING"],
+    ["invented answer field", (f: Fixture) => { f.r.facts.at(-1)!.typed_value = { statement: "I used a paper calendar, not scheduling software.", questionId: id(101), held: true }; }, "CLARIFICATION_FACT_INVALID"],
+  ] as const)("rejects %s", (_label, mutate, error) => {
+    const f = fixture(); clarification(f); mutate(f); expect(f.build).toThrow(error);
+  });
+  it.each(["hash", "foreign", "missing", "extra", "duplicate"] as const)("rejects %s inherited document bindings", (kind) => {
+    const f = fixture(); uploaded(f); clarification(f); const doc = f.r.documents[0]; doc.draft_id = id(103);
+    f.r.sourceLineage!.documents = [{ id: doc.id, draftId: doc.draft_id, sha256: doc.content_sha256 }];
+    if (kind === "hash") f.r.sourceLineage!.documents[0].sha256 = digest("a");
+    if (kind === "foreign") doc.customer_id = id(199);
+    if (kind === "missing") f.r.sourceLineage!.documents = [];
+    if (kind === "extra") f.r.sourceLineage!.documents.push({ id: id(199), draftId: id(103), sha256: digest("a") });
+    if (kind === "duplicate") f.r.sourceLineage!.documents.push(f.r.sourceLineage!.documents[0]);
+    expect(f.build).toThrow(/SOURCE_(LINEAGE_INVALID|OWNER_MISMATCH)/);
+  });
+  it("does not add lineage or clarification keys to ordinary packet bodies", () => {
+    const f = fixture(), serialized = serializeDraftingEvidencePacket(f.build());
+    expect(serialized).not.toContain("sourceLineage"); expect(serialized).not.toContain("clarifications");
+  });
+});
+
 describe("immutable drafting evidence", () => {
   it("retains the exact evidence packet while its paid line advances through rendering and approval", () => {
     const f = fixture(), saved = serializeDraftingEvidencePacket(f.build());
@@ -385,9 +448,11 @@ function fakeAdmin(f: Fixture, onRead?: (table: string, count: number) => void) 
       },
     }; return query;
   });
-  const rpc = vi.fn((name: string): { abortSignal(): Promise<{ data: unknown; error: unknown }> } => {
+  const rpc = vi.fn((name: string): ReturnType<typeof from> | { abortSignal(): Promise<{ data: unknown; error: unknown }> } => {
     counts[name] = (counts[name] ?? 0) + 1; onRead?.(name, counts[name]);
+    if (name === "ap_effective_intake_documents") return from("ap_document_versions");
     const data = name === "ap_customer_owns_snapshot" ? r.ownsSnapshot
+      : name === "ap_intake_source_lineage" ? r.sourceLineage ?? null
       : name === "ap_material_draft_context_sha256" ? authority.contextSha256
       : name === "ap_material_draft_rule_evidence" ? { ...r.ruleEvidence, activeVersionId: managedJob.active_version_id, leaseGeneration: managedJob.lease_generation }
       : name === "ap_current_verified_job_snapshots" ? r.verifiedJobSnapshotIds.map((value) => ({ id: value })) : null;
@@ -396,6 +461,31 @@ function fakeAdmin(f: Fixture, onRead?: (table: string, count: number) => void) 
   return { admin: { from, rpc } as unknown as Parameters<typeof loadDraftingEvidencePacket>[0], from, rpc, counts, selections, tables, managedJob, authority };
 }
 describe("connected drafting evidence loader", () => {
+  it("preserves ordinary historical packet bytes when a separate revision has a parent", async () => {
+    const f = fixture(), db = fakeAdmin(f);
+    const before = await loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now });
+    f.r.snapshot.parent_snapshot_id = id(199);
+    const after = await loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now });
+    expect(serializeDraftingEvidencePacket(after)).toBe(serializeDraftingEvidencePacket(before));
+  });
+  it("loads exact inherited documents and confirmed lineage on both consistency passes", async () => {
+    const f = fixture(); uploaded(f); clarification(f);
+    const doc = f.r.documents[0]; doc.draft_id = id(103);
+    f.r.sourceLineage!.documents = [{ id: doc.id, draftId: doc.draft_id, sha256: doc.content_sha256 }];
+    const db = fakeAdmin(f), packet = await loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now });
+    expect(db.rpc).toHaveBeenCalledWith("ap_effective_intake_documents", { p_draft_id: f.r.draft.id });
+    expect(db.rpc).toHaveBeenCalledWith("ap_intake_source_lineage", { p_draft_id: f.r.draft.id });
+    expect(db.counts.ap_effective_intake_documents).toBe(2); expect(db.counts.ap_intake_source_lineage).toBe(2);
+    expect(packet.ownerEvidence.documents[0].draft_id).toBe(id(103));
+    expect(packet.ownerEvidence.sourceLineage).toEqual(f.r.sourceLineage);
+  });
+  it("rejects changed or unavailable inherited lineage without returning a partial packet", async () => {
+    const f = fixture(); clarification(f);
+    const db = fakeAdmin(f, (name, count) => { if (name === "ap_intake_source_lineage" && count === 2) f.r.sourceLineage!.sourceSnapshotSha256 = digest("f"); });
+    await expect(loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now })).rejects.toThrow("READ_CHANGED");
+    const missing = fakeAdmin(f); delete f.r.sourceLineage;
+    await expect(loadDraftingEvidencePacket(missing.admin, f.expected, { now: () => now })).rejects.toThrow("SOURCE_LINEAGE_REQUIRED");
+  });
   it("reads exact selected reference versions and filename instruction into owner-only packet metadata", async () => {
     const f = fixture(); selectedReference(f); const db = fakeAdmin(f);
     const packet = await loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now });

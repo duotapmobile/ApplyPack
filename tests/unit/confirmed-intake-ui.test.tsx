@@ -11,7 +11,7 @@ async function background() {
   render(<IntakeWizard fixtureMode />);
   await screen.findByLabelText("Full name required");
   fireEvent.change(screen.getByLabelText("Full name required"), { target: { value: "Synthetic Customer" } });
-  fireEvent.change(screen.getByLabelText(/^Email address required/), { target: { value: "synthetic@example.invalid" } });
+  fireEvent.change(screen.getByLabelText(/^Account access email required/), { target: { value: "synthetic@example.invalid" } });
   fireEvent.click(screen.getByLabelText("Build my background without a resume"));
   fireEvent.click(screen.getByRole("button", { name: /save and continue/i }));
   await screen.findByRole("heading", { name: "Choose the work you want" });

@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
 import type { FactSuggestion } from "@/lib/intake/four-step";
+import { privateIntakeRequest } from "@/lib/intake/private-request";
 
-export function SourceAnnotation({ facts, onSaved }: { facts: FactSuggestion[]; onSaved: () => Promise<void> }) {
+export function SourceAnnotation({ facts, onSaved, expectedDraftId }: { facts: FactSuggestion[]; onSaved: () => Promise<void>; expectedDraftId: string }) {
   const sources = facts.filter(f => f.semanticKey.startsWith("document.excerpt."));
   const [selected, setSelected] = useState<string[]>([]);
   const [kind, setKind] = useState("EMPLOYMENT");
@@ -21,7 +22,7 @@ export function SourceAnnotation({ facts, onSaved }: { facts: FactSuggestion[]; 
         : kind === "RESPONSIBILITY" ? { kind, activity: fields.activity, ...(fields.employmentFactId ? { employmentFactId: fields.employmentFactId } : {}), coverLetterEvidence: lines("coverLetterEvidence") }
         : kind === "EDUCATION" ? { kind, educationLevel: fields.educationLevel, educationField: fields.educationField, completionStatus: fields.completionStatus }
         : { kind, taskOrTool: fields.taskOrTool, capabilityStatus: fields.capabilityStatus || "UNSURE" };
-      const response = await fetch("/api/intake/anonymous-draft/annotations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceFactIds: selected, annotation }) });
+      const response = await privateIntakeRequest(expectedDraftId, "/api/intake/anonymous-draft/annotations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceFactIds: selected, annotation }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "The fact could not be saved.");
       setFields({}); setSelected([]); await onSaved();

@@ -7,6 +7,8 @@ import { canonicalApplicationOrigin, hashCapabilitySecret, parsePostgresBytea, s
 import { decryptSensitivePayload, sensitivePayloadConfiguration, sensitivePayloadEncryptionReady } from "@/lib/security/sensitive-payload";
 import { remoteKmsAdapter } from "@/lib/security/remote-kms";
 import { renderChunk4Email, type Chunk4EmailInput, type Chunk4EmailKind } from "./email";
+import { claimedPaymentNotificationContext, intakeClarificationDelivery, pinIntakeNotificationEnvelope,
+  type PrepareIntakeNotification, type PinIntakeNotification, type PrepareClaimedPaymentNotification, type PinClaimedPaymentNotification } from "./intake-notification";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 type OutboxMessage = {
@@ -159,28 +161,72 @@ async function messageDetails(admin: AdminClient, message: OutboxMessage, kind: 
   return details;
 }
 
-async function sendMessage(admin: AdminClient, message: OutboxMessage, owner: string) {
+type NotificationAdapters = { prepareIntakeNotification?: PrepareIntakeNotification; pinIntakeNotification?: PinIntakeNotification;
+  prepareClaimedPaymentNotification?: PrepareClaimedPaymentNotification; pinClaimedPaymentNotification?: PinClaimedPaymentNotification };
+
+async function sendMessage(admin: AdminClient, message: OutboxMessage, owner: string, adapters: NotificationAdapters) {
   const renewed = await admin.rpc("ap_renew_outbox_lease", { p_message_id: message.id, p_owner: owner });
   if (renewed.error) throw renewed.error;
   const origin = canonicalApplicationOrigin();
   const delivery = deliveryConfiguration();
-  const context = await orderContext(admin, message);
-  const kind = templateKind(message.message_kind);
-  const actionUrl = ["PAYMENT_VERIFIED_SEARCH_STARTED", "SECURE_ACCESS_RESEND"].includes(kind)
-    ? await accessAction(admin, message, origin, owner)
-    : `${origin}/my-applypack${message.order_id ? `?order=${encodeURIComponent(message.order_id)}` : ""}`;
-  const details = await messageDetails(admin, message, kind, context.service?.delivery_due_at || null);
-  const rendered = renderChunk4Email({ ...details, actionUrl });
+  let recipient: string, rendered: ReturnType<typeof renderChunk4Email>;
+  let claimedContext: ReturnType<typeof claimedPaymentNotificationContext> | null = null;
+  const prepareNotice = async () => {
+    if (!adapters.prepareIntakeNotification) throw new Error("intake_notice_resolver_unavailable");
+    const prepared = await adapters.prepareIntakeNotification(message.id, owner);
+    if (prepared.error) throw new Error("intake_notice_context_unavailable");
+    return intakeClarificationDelivery(message, prepared.data, origin);
+  };
+  const preparePaidNotice = async () => {
+    if (!adapters.prepareClaimedPaymentNotification) throw new Error("claimed_notice_resolver_unavailable");
+    const prepared = await adapters.prepareClaimedPaymentNotification(message.id, owner);
+    if (prepared.error) throw new Error("claimed_notice_context_unavailable");
+    return claimedPaymentNotificationContext(message, prepared.data);
+  };
+  if (message.message_kind === "INTAKE_CLARIFICATION_REQUIRED") {
+    const notice = await prepareNotice();
+    recipient = notice.recipient; rendered = notice.rendered;
+  } else {
+    const kind = templateKind(message.message_kind);
+    claimedContext = await preparePaidNotice();
+    if (claimedContext.claimed) {
+      const details = await messageDetails(admin, message, kind, claimedContext.deliveryDueAt);
+      recipient = claimedContext.recipientEmail;
+      // Verified account owners use normal sign-in; no emailed bearer capability
+      // may redirect access after their original contact email changes hands.
+      rendered = renderChunk4Email({ ...details, accountSignIn: true, actionUrl: `${origin}/my-applypack${message.order_id ? `?order=${encodeURIComponent(message.order_id)}` : ""}` });
+    } else {
+      const context = await orderContext(admin, message);
+      const actionUrl = ["PAYMENT_VERIFIED_SEARCH_STARTED", "SECURE_ACCESS_RESEND"].includes(kind)
+        ? await accessAction(admin, message, origin, owner)
+        : `${origin}/my-applypack${message.order_id ? `?order=${encodeURIComponent(message.order_id)}` : ""}`;
+      const details = await messageDetails(admin, message, kind, context.service?.delivery_due_at || null);
+      recipient = context.recipient; rendered = renderChunk4Email({ ...details, actionUrl });
+    }
+  }
   const submitLease = await admin.rpc("ap_renew_outbox_lease", { p_message_id: message.id, p_owner: owner });
   if (submitLease.error) throw submitLease.error;
-  const result = await new Resend(delivery.apiKey).emails.send({
+  if (message.message_kind === "INTAKE_CLARIFICATION_REQUIRED") {
+    const current = await prepareNotice();
+    if (current.recipient !== recipient || JSON.stringify(current.rendered) !== JSON.stringify(rendered)) throw new Error("intake_notice_dispatch_changed");
+  } else {
+    const current = await preparePaidNotice();
+    if (JSON.stringify(current) !== JSON.stringify(claimedContext)) throw new Error("claimed_notice_dispatch_changed");
+  }
+  const envelope = {
     from: delivery.from,
-    to: safeTransactionalRecipient(context.recipient),
+    to: safeTransactionalRecipient(recipient),
     replyTo: delivery.replyTo,
     subject: rendered.subject,
     text: rendered.text,
     html: rendered.html,
-  }, { idempotencyKey: message.provider_idempotency_key });
+  };
+  if (message.message_kind === "INTAKE_CLARIFICATION_REQUIRED") {
+    await pinIntakeNotificationEnvelope(adapters.pinIntakeNotification, message.id, owner, envelope);
+  } else if (claimedContext?.claimed) {
+    await pinIntakeNotificationEnvelope(adapters.pinClaimedPaymentNotification, message.id, owner, envelope);
+  }
+  const result = await new Resend(delivery.apiKey).emails.send(envelope, { idempotencyKey: message.provider_idempotency_key });
   if (result.error || !result.data?.id) throw new Error("provider_send_failed");
   const completed = await admin.rpc("ap_complete_outbox_message", {
     p_message_id: message.id,
@@ -190,7 +236,23 @@ async function sendMessage(admin: AdminClient, message: OutboxMessage, owner: st
   if (completed.error) throw completed.error;
 }
 
-export async function processChunk4Outbox(admin: AdminClient, owner: string, limit = 10) {
+export async function processChunk4Outbox(admin: AdminClient, owner: string, limit = 10,
+  options: NotificationAdapters = {}) {
+  const adapters: NotificationAdapters = {
+    prepareIntakeNotification: async (messageId, leaseOwner) => admin.rpc("ap_prepare_intake_clarification_notification", {
+      p_message_id: messageId, p_lease_owner: leaseOwner,
+    }),
+    pinIntakeNotification: async (messageId, leaseOwner, payloadSha256) => admin.rpc("ap_pin_intake_clarification_delivery", {
+      p_message_id: messageId, p_lease_owner: leaseOwner, p_payload_sha256: payloadSha256,
+    }),
+    prepareClaimedPaymentNotification: async (messageId, leaseOwner) => admin.rpc("ap_prepare_claimed_payment_notification", {
+      p_message_id: messageId, p_lease_owner: leaseOwner,
+    }),
+    pinClaimedPaymentNotification: async (messageId, leaseOwner, payloadSha256) => admin.rpc("ap_pin_claimed_payment_delivery", {
+      p_message_id: messageId, p_lease_owner: leaseOwner, p_payload_sha256: payloadSha256,
+    }),
+    ...options,
+  };
   const claimed = await admin.rpc("ap_claim_outbox_messages", { p_owner: owner, p_limit: Math.max(1, Math.min(25, limit)) });
   if (claimed.error) {
     if (claimed.error.message.includes("email_provider_guarantee_unapproved")) {
@@ -202,7 +264,7 @@ export async function processChunk4Outbox(admin: AdminClient, owner: string, lim
   let sent = 0;
   for (const message of messages) {
     try {
-      await sendMessage(admin, message, owner);
+      await sendMessage(admin, message, owner, adapters);
       sent += 1;
     } catch {
       const deadLetter = outboxShouldDeadLetter(message.first_submitted_at);

@@ -16,7 +16,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("guided checkout invitations", () => {
   it("requires an explicit review and rationale before issuing the server-bound request", async () => {
-    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ url: "https://example.test/get-started#invitationSecret=private", expiresAt: "2026-10-23T12:15:00Z" }) });
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ url: "https://example.test/get-started#invitationSecret=private", expiresAt: "2026-10-23T12:15:00Z", recipientEmail: "current@example.invalid" }) });
     render(<SearchCheckoutInvitations candidates={[candidate]} unavailable={false} />);
     expect(screen.getByRole("button", { name: "Reserve slot and create invitation" })).toBeDisabled();
     approve();
@@ -27,7 +27,17 @@ describe("guided checkout invitations", () => {
     expect(url).toBe("/api/admin/search-checkout-invitations");
     expect(JSON.parse(options.body)).toEqual({ draftId: "draft", snapshotId: "snapshot", assessmentId: "assessment", rationale, expiresInMinutes: 15 });
     expect(screen.getByLabelText("Private invitation link")).toHaveAttribute("readonly");
+    expect(screen.getByText("Send to: current@example.invalid")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Invitation created for current@example.invalid");
     expect(screen.queryByRole("button", { name: "Reserve slot and create invitation" })).not.toBeInTheDocument();
+  });
+  it("withholds the private link if the issued response has no verified recipient", async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ url: "https://example.test/get-started#private", expiresAt: "2026-10-23T12:15:00Z" }) });
+    render(<SearchCheckoutInvitations candidates={[candidate]} unavailable={false} />);
+    approve(); fireEvent.click(screen.getByRole("button", { name: "Reserve slot and create invitation" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("response was incomplete"));
+    expect(screen.queryByLabelText("Private invitation link")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
   it("requires a refresh after a lost response instead of blindly retrying a possible reservation", async () => {
     fetchMock.mockRejectedValue(new Error("Network unavailable"));

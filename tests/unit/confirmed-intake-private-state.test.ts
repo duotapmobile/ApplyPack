@@ -12,10 +12,12 @@ describe("visible document facts", () => {
       ], ap_fact_presentations: [],
     };
     const filters: unknown[][] = [];
-    const admin = { from: (table: string) => {
-      const query = { select: () => query, eq: (...args: unknown[]) => { filters.push([table, ...args]); return query; }, is: (...args: unknown[]) => { filters.push([table, ...args]); return query; }, then: (resolve: (value: unknown) => unknown) => Promise.resolve(resolve({ data: data[table], error: null })) };
+    const from = (table: string) => {
+      const query = { select: () => query, limit: () => query, eq: (...args: unknown[]) => { filters.push([table, ...args]); return query; }, is: (...args: unknown[]) => { filters.push([table, ...args]); return query; }, then: (resolve: (value: unknown) => unknown) => Promise.resolve(resolve({ data: data[table], error: null })) };
       return query;
-    } } as unknown as Parameters<typeof fourStepPrivateState>[0];
+    };
+    const rpc = vi.fn(() => from("ap_document_versions"));
+    const admin = { from, rpc } as unknown as Parameters<typeof fourStepPrivateState>[0];
     const result = await fourStepPrivateState(admin, "draft");
     expect(result.facts).toHaveLength(1);
     expect(result.facts[0].displayValue).toContain("Actual Store");
@@ -25,5 +27,12 @@ describe("visible document facts", () => {
     expect(result.facts[0].editableValues?.verbatim).toBe("Original source statement");
     expect(result.facts[0].editableValues?.coverLetterEvidence).toEqual(["x".repeat(2_000)]);
     expect(filters).toContainEqual(["ap_candidate_facts", "snapshot_id", null]);
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("ap_effective_intake_documents", { p_draft_id: "draft" });
+  });
+  it.each([null, {}, Array.from({ length: 101 }, () => ({}))])("rejects an incomplete or truncated effective-document result", async data => {
+    const query = { select: () => query, limit: () => query, eq: () => query, is: () => query,
+      then: (resolve: (value: unknown) => unknown) => Promise.resolve(resolve({ data, error: null })) };
+    const admin = { rpc: () => query, from: () => query } as unknown as Parameters<typeof fourStepPrivateState>[0];
+    await expect(fourStepPrivateState(admin, "successor")).rejects.toThrow("four_step_state_unavailable");
   });
 });

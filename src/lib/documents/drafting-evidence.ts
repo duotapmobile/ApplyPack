@@ -16,6 +16,10 @@ const text = (max: number) => z.string().max(max);
 const ids = z.array(uuid).max(100);
 const json = z.json();
 const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+export const intakeSourceLineageSchema = z.object({ draftId: uuid, sourceDraftId: uuid, sourceSnapshotId: uuid,
+  sourceSnapshotSha256: hash, confirmedSnapshotId: uuid, customerId: uuid,
+  documents: z.array(z.object({ id: uuid, draftId: uuid, sha256: hash }).strict()).max(100),
+}).strict();
 
 export const draftingEvidenceExpectationSchema = z.object({ customerId: uuid, materialLineId: uuid, revisionId: uuid,
   revisionVersion: z.number().int().positive(), bindingSha256: hash }).strict();
@@ -33,6 +37,7 @@ const factSchema = z.object({ id: uuid, snapshot_id: uuid.nullable(), customer_i
 
 // These are finite persisted projections, not client-supplied authorization evidence.
 export const draftingEvidenceRecordsSchema = z.object({
+  sourceLineage: intakeSourceLineageSchema.optional(),
   referenceMetadata: draftReferenceMetadataSchema.optional(),
   referenceFilenameInstruction: text(2000).nullable().optional(),
   draftJobId: uuid.optional(),
@@ -50,7 +55,8 @@ export const draftingEvidenceRecordsSchema = z.object({
     revision_kind: z.enum(["ORIGINAL", "SUBSTITUTION", "FACT_CORRECTION", "REFERENCE_SCOPE"]), parent_revision_id: uuid.nullable(),
     accepted_at: time, started_at: time, due_at: time, superseded_at: z.null(), reference_scope: json.nullable() }).strict(),
   snapshot: z.object({ id: uuid, customer_id: uuid.nullable(), draft_id: uuid, schema_version: text(100),
-    canonicalization_version: text(100), content_sha256: hash, sensitive_payload_id: uuid, finalized_at: time, confirmed_review: json.nullable() }).strict(),
+    canonicalization_version: text(100), content_sha256: hash, sensitive_payload_id: uuid, finalized_at: time, confirmed_review: json.nullable(),
+    parent_snapshot_id: uuid.optional() }).strict(),
   sourcePayload: z.object({ id: uuid, customer_id: uuid.nullable(), draft_id: uuid, content_sha256: hash, retention_state: z.literal("ACTIVE") }).strict(),
   draft: z.object({ id: uuid, converted_customer_id: uuid, finalized_snapshot_id: uuid, version: z.number().int().positive(),
     confirmation_receipt: json, answers: json, retention_state: z.literal("ACTIVE") }).strict(),
@@ -133,9 +139,9 @@ const flatFactKeys = new Set(["clientId", "kind", "name", "fullName", "displayNa
   "employer", "employerOrOrganization", "organizationOrProject", "historicalTitle", "roleOrRelationship", "dates", "startsOn", "endsOn", "datePrecision", "current",
   "bullets", "responsibilities", "activity", "responsibility", "tools", "skills", "task", "taskOrTool", "status", "capabilityStatus",
   "educationLevel", "educationField", "completionStatus", "credentialName", "issuingOrganization", "certifications", "relevantCoursework",
-  "summary", "text", "verbatim", "coverLetterEvidence", "scope", "outcome", "intensityPercent", "optionalDetail", "sourceDocumentFactId", "sourceFactIds", "employmentFactId",
+  "summary", "text", "verbatim", "statement", "questionId", "coverLetterEvidence", "scope", "outcome", "intensityPercent", "optionalDetail", "sourceDocumentFactId", "sourceFactIds", "employmentFactId",
   "held", "hasExperience", "canDo", "supported", "completed", "earned", "obtained", "graduated", "certified", "licensed", "credentialState", "factLabel", "factValue"]);
-const localFields = new Set(["name", "fullName", "displayName", "email", "phone", "cityState", "location", "sourceDocumentFactId", "sourceFactIds", "employmentFactId", "clientId"]);
+const localFields = new Set(["name", "fullName", "displayName", "email", "phone", "cityState", "location", "sourceDocumentFactId", "sourceFactIds", "employmentFactId", "clientId", "questionId"]);
 export const DRAFTING_LOCAL_RENDER_FIELDS = ["employer", "employerOrOrganization", "organizationOrProject", "historicalTitle", "roleOrRelationship",
   "dates", "startsOn", "endsOn", "datePrecision", "current", "educationLevel", "educationField", "completionStatus", "credentialName", "issuingOrganization", "certifications"] as const;
 export type DraftingEvidenceAtom = { id: string; factId: string; path: string; value: unknown; localRenderOnly: boolean };
@@ -169,7 +175,7 @@ export function draftingFactDisposition(value: Record<string, unknown>, capabili
   const statuses = [capability, value.status, value.capabilityStatus, value.completionStatus, value.credentialState].filter((v): v is string => typeof v === "string").map((v) => v.toUpperCase().replaceAll(/[\s-]+/g, "_"));
   if (Object.entries(value).some(([key, val]) => ["held", "hasExperience", "canDo", "supported", "completed", "earned", "obtained", "graduated", "certified", "licensed"].includes(key) && val === false) || statuses.some((s) => ["NOT_DONE", "NOT_HELD", "FAIL", "INCOMPLETE"].includes(s))) return "NEGATIVE_DO_NOT_ASSERT" as const;
   if (statuses.some((s) => ["UNSURE", "UNKNOWN", "BASIC_EXPOSURE", "IN_PROGRESS", "PENDING", "PLANNED", "DONE_BEFORE_NEEDS_REFRESHER"].includes(s))) return "LIMITED_OR_UNKNOWN_DO_NOT_UPGRADE" as const;
-  if (Object.keys(value).every((key) => ["text", "verbatim", "sourceDocumentFactId", "sourceFactIds"].includes(key))) return "UNSTRUCTURED_OWNER_REVIEW_REQUIRED" as const;
+  if (Object.keys(value).every((key) => ["text", "verbatim", "statement", "questionId", "sourceDocumentFactId", "sourceFactIds"].includes(key))) return "UNSTRUCTURED_OWNER_REVIEW_REQUIRED" as const;
   return "CONFIRMED_SOURCE_NOT_APPROVED_PROSE" as const;
 }
 
@@ -231,7 +237,16 @@ export function buildDraftingEvidencePacket(raw: unknown, expectedRaw: DraftingE
     for (const rows of [r.facts, r.sourceFacts, r.documents, r.factReviews, r.requirements, r.reviews, r.referencePermissions]) requireThat(unique(rows.map((row) => String(row.id))), "DUPLICATE_EVIDENCE");
     const documents = new Map(r.documents.map((doc) => [doc.id, doc])), sources = new Map(r.sourceFacts.map((fact) => [fact.id, fact]));
     const facts = new Map(r.facts.map((fact) => [fact.id, fact]));
-    for (const doc of r.documents) requireThat(doc.draft_id === r.draft.id && (doc.customer_id === null || doc.customer_id === expected.customerId), "SOURCE_OWNER_MISMATCH");
+    const lineage = r.sourceLineage;
+    requireThat(Boolean(lineage) === Boolean(answers.clarifications) && Boolean(lineage) === Boolean(r.snapshot.parent_snapshot_id), "SOURCE_LINEAGE_REQUIRED");
+    if (lineage) requireThat(lineage.draftId === r.draft.id && lineage.customerId === expected.customerId && lineage.confirmedSnapshotId === r.snapshot.id &&
+      lineage.sourceSnapshotId === r.snapshot.parent_snapshot_id && lineage.sourceSnapshotId !== r.snapshot.id && lineage.sourceDraftId !== r.draft.id &&
+      unique(lineage.documents.map((doc) => doc.id)) && lineage.documents.every((inherited) => {
+        const actual = documents.get(inherited.id);
+        return actual && actual.draft_id === inherited.draftId && actual.content_sha256 === inherited.sha256 && actual.draft_id !== r.draft.id;
+      }), "SOURCE_LINEAGE_INVALID");
+    for (const doc of r.documents) requireThat((doc.draft_id === r.draft.id || lineage?.documents.some((inherited) => inherited.id === doc.id &&
+      inherited.draftId === doc.draft_id && inherited.sha256 === doc.content_sha256)) && (doc.customer_id === null || doc.customer_id === expected.customerId), "SOURCE_OWNER_MISMATCH");
     requireThat(answers.entryMode === "GUIDED" ? !r.documents.some((doc) => doc.kind === "RESUME") : r.documents.some((doc) => doc.kind === "RESUME"), "ENTRY_SOURCE_MISMATCH");
     for (const source of r.sourceFacts) requireThat(source.snapshot_id === null && source.draft_id === r.draft.id &&
       (source.customer_id === null || source.customer_id === expected.customerId) && source.document_version_id && documents.has(source.document_version_id), "SOURCE_FACT_INVALID");
@@ -264,6 +279,12 @@ export function buildDraftingEvidencePacket(raw: unknown, expectedRaw: DraftingE
           requireThat(parent, "FACT_PARENT_INVALID"); expectedValue.employmentFactId = parent.id;
         }
         requireThat(canonicalSha256({ ...expectedValue, sourceDocumentFactId: source.id }) === canonicalSha256(value), "FACT_VALUE_DIFFERS_FROM_CONFIRMATION");
+      } else if (fact.catalog_version === "confirmed-clarification-v1") {
+        const answer = answers.clarifications?.find((entry) => entry.questionId === value.questionId);
+        requireThat(lineage && answer && fact.source_kind === "CUSTOMER_ASSERTION" && fact.customer_assertion_snapshot_id === r.snapshot.id &&
+          fact.document_version_id === null && fact.value_kind === "CLARIFICATION" &&
+          fact.assertion_control_id === `clarification:${answer.questionId}` && fact.source_locator === `question:${answer.questionId}` &&
+          canonicalSha256(value) === canonicalSha256({ statement: answer.answer, questionId: answer.questionId }), "CLARIFICATION_FACT_INVALID");
       } else requireThat(fact.source_kind === "CUSTOMER_ASSERTION" && fact.customer_assertion_snapshot_id === r.snapshot.id &&
         (answers.experienceAdditions.some((entry) => fact.semantic_key === `experience:${entry.clientId}`) ||
           Object.keys(answers.capabilities).some((task) => fact.semantic_key === `capability:${task}`)), "FACT_ORIGIN_UNSUPPORTED");
@@ -273,6 +294,8 @@ export function buildDraftingEvidencePacket(raw: unknown, expectedRaw: DraftingE
     }
     for (const experience of answers.experienceAdditions) requireThat(r.facts.some((fact) => fact.semantic_key === `experience:${experience.clientId}` && canonicalSha256(fact.typed_value) === canonicalSha256(experience)), "GUIDED_FACT_MISSING");
     for (const [task, status] of Object.entries(answers.capabilities)) requireThat(r.facts.some((fact) => fact.semantic_key === `capability:${task}` && canonicalSha256(fact.typed_value) === canonicalSha256({ task, status }) && fact.capability_status === status), "CAPABILITY_FACT_MISSING");
+    for (const answer of answers.clarifications ?? []) requireThat(r.facts.filter((fact) => fact.catalog_version === "confirmed-clarification-v1" &&
+      fact.assertion_control_id === `clarification:${answer.questionId}`).length === 1, "CLARIFICATION_FACT_MISSING");
     requireThat(!answers.noPriorEmployment || !answers.experienceAdditions.some((experience) => ["PAID_EMPLOYMENT", "SELF_EMPLOYMENT_BUSINESS", "CONTRACT_FREELANCE"].includes(experience.kind)), "BACKGROUND_CONTRADICTION");
     const nodes = new Map(r.requirements.map((node) => [node.id, node]));
     for (const node of r.requirements) requireThat(node.job_snapshot_id === r.job.id, "REQUIREMENT_JOB_MISMATCH");
@@ -338,7 +361,7 @@ export function buildDraftingEvidencePacket(raw: unknown, expectedRaw: DraftingE
       rawSource: { sourceUrl: r.job.source_url, observedAt: r.job.retrieved_at, value: r.job.captured_listing }, nodes: r.questionSourceNodes, captureBinding,
     }, now);
 
-    const privateStrings = [answers.fullName, answers.email, answers.phone, ...r.facts.flatMap((fact) => Object.entries(record(fact.typed_value)).filter(([key]) => localFields.has(key) && !key.endsWith("Id") && !key.endsWith("Ids")).flatMap(([, val]) => typeof val === "string" && val.trim().length >= 3 ? [val] : []))].filter((value) => value.trim().length >= 3).sort((a, b) => b.length - a.length);
+    const privateStrings = [answers.fullName, answers.email, answers.documentContactEmail || "", answers.phone, ...r.facts.flatMap((fact) => Object.entries(record(fact.typed_value)).filter(([key]) => localFields.has(key) && !key.endsWith("Id") && !key.endsWith("Ids")).flatMap(([, val]) => typeof val === "string" && val.trim().length >= 3 ? [val] : []))].filter((value) => value.trim().length >= 3).sort((a, b) => b.length - a.length);
     const phoneDigits = answers.phone.replace(/\D/g, "");
     const knownPhone = phoneDigits.length >= 7 ? new RegExp(phoneDigits.split("").join("[\\s().-]*"), "g") : null;
     const minimize = <T,>(value: T): T => {
@@ -384,6 +407,7 @@ export function buildDraftingEvidencePacket(raw: unknown, expectedRaw: DraftingE
         contactPayloadId: r.contact.id, contactSha256: r.contact.content_sha256, referencePermissions: sorted(r.referencePermissions) },
       employerQuestionInsights,
       ownerEvidence: { contactFact: r.contactFact, facts: sorted(r.facts), sourceFacts: sorted(r.sourceFacts), sourceReviews: sorted(r.factReviews), documents: sorted(r.documents),
+        ...(lineage ? { sourceLineage: lineage } : {}),
         ...(referenceBindings ? { referenceBindings, referenceFilenameInstruction: r.referenceFilenameInstruction ?? null } : {}),
         ...(ruleEvidence ? { ruleEvidence } : {}),
         matchReviews: sorted(r.reviews), requirements: sorted(r.requirements), employerInstructions: r.rule, customerInstructions: r.item,
