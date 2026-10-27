@@ -81,7 +81,7 @@ test("controlled Windows and actual committed route harness require exact final 
   for (const name of ["material-clarification-migration", "repair-case-state-migration", "material-clarification-resume-migration", "material-clarification-integration"]) assert(ci.includes(`npm run test:${name}`));
   const route = read("./run-research-postgres17.mjs");
   assert(route.includes("schema='202610260103'"));
-  assert(route.includes("for(const scenario of ['QUALIFIED','LIMITED'])"));
+  assert(route.includes("for(const scenario of ['QUALIFIED','LIMITED','PAID_SEARCH'])"));
   assert(route.includes("RESEARCH_GIT_BYTES_CHANGED"));
   assert(ci.includes("needs: [database-core, database-upgrade, research-route-journey]"));
 });
