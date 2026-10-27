@@ -104,7 +104,10 @@ test("Chunk 5 selection checkout, delivery, proposals, references, support, and 
     }
 
     await page.goto("/e2e/chunk5?state=delivered");
-    await page.getByRole("button", { name: "Request the included factual correction" }).click();
+    const historicalCorrection = page.getByRole("button", { name: "Request the included factual correction" });
+    await expect(historicalCorrection).toBeVisible();
+    await expect(page.getByText("Document support options are temporarily unavailable. Contact support if you need help with an existing report.")).toHaveCount(0);
+    await historicalCorrection.click();
     await expect(page.getByLabel("What the document says")).toBeVisible();
     await capture(page, `${width}-postdelivery-private-support.png`);
 

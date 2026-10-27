@@ -3497,6 +3497,131 @@ export type Database = {
           },
         ]
       }
+      ap_intake_clarification_answers: {
+        Row: {
+          answer_sha256: string
+          created_at: string
+          draft_id: string
+          question_id: string
+          source_snapshot_id: string
+        }
+        Insert: {
+          answer_sha256: string
+          created_at?: string
+          draft_id: string
+          question_id: string
+          source_snapshot_id: string
+        }
+        Update: {
+          answer_sha256?: string
+          created_at?: string
+          draft_id?: string
+          question_id?: string
+          source_snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_intake_clarification_answers_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_clarification_answers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: true
+            referencedRelation: "ap_candidate_questions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_clarification_answers_source_snapshot_id_fkey"
+            columns: ["source_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ap_intake_clarifications: {
+        Row: {
+          confirmed_at: string | null
+          confirmed_snapshot_id: string | null
+          created_at: string
+          customer_id: string | null
+          draft_id: string | null
+          id: string
+          issued_by: string
+          source_draft_id: string
+          source_snapshot_id: string
+        }
+        Insert: {
+          confirmed_at?: string | null
+          confirmed_snapshot_id?: string | null
+          created_at?: string
+          customer_id?: string | null
+          draft_id?: string | null
+          id?: string
+          issued_by: string
+          source_draft_id: string
+          source_snapshot_id: string
+        }
+        Update: {
+          confirmed_at?: string | null
+          confirmed_snapshot_id?: string | null
+          created_at?: string
+          customer_id?: string | null
+          draft_id?: string | null
+          id?: string
+          issued_by?: string
+          source_draft_id?: string
+          source_snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_intake_clarifications_confirmed_snapshot_id_fkey"
+            columns: ["confirmed_snapshot_id"]
+            isOneToOne: true
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_clarifications_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_clarifications_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: true
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_clarifications_issued_by_fkey"
+            columns: ["issued_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_clarifications_source_draft_id_fkey"
+            columns: ["source_draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_clarifications_source_snapshot_id_fkey"
+            columns: ["source_snapshot_id"]
+            isOneToOne: true
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_intake_event_counts: {
         Row: {
           count: number
@@ -3517,6 +3642,71 @@ export type Database = {
           step?: number
         }
         Relationships: []
+      }
+      ap_intake_inherited_documents: {
+        Row: {
+          content_sha256: string
+          created_at: string
+          document_version_id: string
+          draft_id: string
+          excluded_at: string | null
+          id: string
+          kind: Database["public"]["Enums"]["ap_document_kind"]
+          source_draft_id: string
+          source_snapshot_id: string
+        }
+        Insert: {
+          content_sha256: string
+          created_at?: string
+          document_version_id: string
+          draft_id: string
+          excluded_at?: string | null
+          id?: string
+          kind: Database["public"]["Enums"]["ap_document_kind"]
+          source_draft_id: string
+          source_snapshot_id: string
+        }
+        Update: {
+          content_sha256?: string
+          created_at?: string
+          document_version_id?: string
+          draft_id?: string
+          excluded_at?: string | null
+          id?: string
+          kind?: Database["public"]["Enums"]["ap_document_kind"]
+          source_draft_id?: string
+          source_snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_intake_inherited_documents_document_version_id_fkey"
+            columns: ["document_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_document_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_inherited_documents_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_inherited_documents_source_draft_id_fkey"
+            columns: ["source_draft_id"]
+            isOneToOne: false
+            referencedRelation: "ap_anonymous_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_intake_inherited_documents_source_snapshot_id_fkey"
+            columns: ["source_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_intake_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ap_intake_snapshots: {
         Row: {
@@ -14099,6 +14289,18 @@ export type Database = {
         Args: { p_answer: string; p_customer_id: string; p_question_id: string }
         Returns: string
       }
+      ap_answer_material_clarification: {
+        Args: {
+          p_answer: string
+          p_customer_id: string
+          p_draft_id: string
+          p_question_id: string
+          p_secret_hash: string
+          p_successor_draft_id: string
+          p_successor_secret_hash: string
+        }
+        Returns: Json
+      }
       ap_append_material_entitlement_state: {
         Args: { p_line_id: string; p_state: string }
         Returns: string
@@ -14262,6 +14464,10 @@ export type Database = {
           p_resource_sha256: string
         }
         Returns: string
+      }
+      ap_assert_clarification_checkout: {
+        Args: { p_snapshot_id: string }
+        Returns: undefined
       }
       ap_assert_confirmed_intake: {
         Args: {
@@ -14705,6 +14911,10 @@ export type Database = {
         Args: { p_payment_attempt_id: string; p_release_sha: string }
         Returns: string
       }
+      ap_bind_material_clarification: {
+        Args: { p_snapshot: Json; p_snapshot_id: string }
+        Returns: undefined
+      }
       ap_bind_prepared_research_run: {
         Args: {
           p_lease_token: string
@@ -14986,6 +15196,10 @@ export type Database = {
           document_id: string
           lease_token: string
         }[]
+      }
+      ap_clone_clarification_sources: {
+        Args: { p_clarification_id: string; p_draft_id: string }
+        Returns: Json
       }
       ap_commit_exact_ten_release: {
         Args: {
@@ -15305,6 +15519,50 @@ export type Database = {
         Returns: Json
       }
       ap_dispatch_archive_writer: { Args: { p_id: string }; Returns: Json }
+      ap_effective_intake_documents: {
+        Args: { p_draft_id: string }
+        Returns: {
+          claimed_mime_type: string
+          created_at: string
+          customer_id: string | null
+          draft_id: string | null
+          failure_code: string | null
+          id: string
+          intake_id: string | null
+          is_current: boolean
+          kind: Database["public"]["Enums"]["ap_document_kind"]
+          leak_scan_status: string
+          malware_deferred: boolean
+          malware_provider_ref: string | null
+          malware_status: string
+          model_ready_at: string | null
+          parse_status: string
+          parser_identity: string | null
+          parser_limits: Json | null
+          permitted_model_policy: string | null
+          processing_state: Database["public"]["Enums"]["ap_document_processing_state"]
+          reference_isolation_status: string
+          retention_due_at: string | null
+          retention_state: Database["public"]["Enums"]["ap_retention_state"]
+          safe_display_name: string
+          sha256: string
+          size_bytes: number
+          storage_bucket: string
+          storage_path: string
+          structural_policy: string | null
+          structural_review_ready_at: string | null
+          supersedes_id: string | null
+          updated_at: string
+          verified_mime_type: string
+          version: number
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "ap_document_versions"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       ap_enqueue_board_job_recompute: {
         Args: { p_change_key: string; p_job_id: string; p_reason_code: string }
         Returns: string
@@ -15583,6 +15841,7 @@ export type Database = {
         }
         Returns: string
       }
+      ap_intake_source_lineage: { Args: { p_draft_id: string }; Returns: Json }
       ap_invalidate_pre_activation_snapshot: {
         Args: {
           p_customer_id: string
@@ -15593,6 +15852,16 @@ export type Database = {
         Returns: boolean
       }
       ap_issue_candidate_question: {
+        Args: {
+          p_actor_id: string
+          p_job_snapshot_id: string
+          p_node_id: string
+          p_prompt: string
+          p_snapshot_id: string
+        }
+        Returns: string
+      }
+      ap_issue_candidate_question_before_101: {
         Args: {
           p_actor_id: string
           p_job_snapshot_id: string
@@ -15646,6 +15915,10 @@ export type Database = {
         Args: { p_bucket: string; p_path: string }
         Returns: boolean
       }
+      ap_legacy_retention_object_allowed_before_101: {
+        Args: { p_bucket: string; p_path: string }
+        Returns: boolean
+      }
       ap_lock_anonymous_draft_to_checkout: {
         Args: {
           p_checkout_attempt_id: string
@@ -15653,6 +15926,73 @@ export type Database = {
           p_secret_hash: string
         }
         Returns: boolean
+      }
+      ap_lock_clarification_finalization: {
+        Args: {
+          p_draft_id: string
+          p_secret_hash: string
+          p_snapshot_id: string
+        }
+        Returns: undefined
+      }
+      ap_lock_material_clarification: {
+        Args: { p_snapshot_id: string }
+        Returns: {
+          access_email_normalized: string
+          avoided_activities: Json
+          benefits: Json
+          blocked_industries: Json
+          canonicalization_version: string
+          confirmed_review: Json | null
+          confirmed_title_restriction: Json | null
+          content_sha256: string
+          created_at: string
+          currency: string
+          customer_id: string | null
+          dealbreakers: Json
+          desired_activities: Json
+          document_contact_email: string | null
+          draft_id: string | null
+          employer_unknown_policy: Json
+          employment_types: Json
+          finalized_at: string
+          guidance_requested: boolean
+          id: string
+          intake_id: string | null
+          optional_industries: Json
+          optional_titles: Json
+          parent_snapshot_id: string | null
+          payer_receipt_email: string | null
+          preferred_employment_type: string | null
+          preferred_work_mode: string | null
+          prior_cover_letter_use: string
+          salary_basis: string | null
+          salary_hard_minimum_cents: number | null
+          salary_minimum_flexible: boolean
+          salary_noncomparable_policy: string
+          salary_overlap_policy: string
+          salary_period: string | null
+          salary_target_cents: number | null
+          salary_unpublished_policy: string
+          salary_variable_pay_policy: string
+          schedules: Json
+          schema_version: string
+          search_breadth: string
+          sensitive_payload_id: string | null
+          snapshot_kind: string
+          targeted_authorization_answers: Json
+          travel: Json
+          us_state_or_dc: string | null
+          version: number
+          work_condition_preferences: Json
+          work_modes: Json
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ap_intake_snapshots"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       ap_lock_material_draft_job: {
         Args: { p_job_id: string; p_lease_token?: string }
@@ -15727,6 +16067,36 @@ export type Database = {
         Returns: number
       }
       ap_matching_evidence_schema_installed: { Args: never; Returns: boolean }
+      ap_material_clarification_answer_context: {
+        Args: {
+          p_customer_id: string
+          p_draft_id: string
+          p_question_id: string
+          p_secret_hash: string
+        }
+        Returns: Json
+      }
+      ap_material_clarification_answers_valid: {
+        Args: { p_answers: Json; p_draft_id: string }
+        Returns: boolean
+      }
+      ap_material_clarification_questions: {
+        Args: {
+          p_customer_id: string
+          p_draft_id: string
+          p_secret_hash: string
+        }
+        Returns: {
+          answered: boolean
+          id: string
+          prompt: string
+          review_required: boolean
+        }[]
+      }
+      ap_material_clarification_schema_installed: {
+        Args: never
+        Returns: boolean
+      }
       ap_material_draft_change_evidence: {
         Args: { p_version_id: string }
         Returns: Json
@@ -16087,6 +16457,10 @@ export type Database = {
       }
       ap_read_material_service_error_report: {
         Args: { p_customer_id: string; p_request_id: string }
+        Returns: Json
+      }
+      ap_read_service_repair_case_review: {
+        Args: { p_case_id: string; p_reviewer_id: string }
         Returns: Json
       }
       ap_read_service_repair_version: {
@@ -16473,6 +16847,20 @@ export type Database = {
           storage_path: string
         }[]
       }
+      ap_remove_anonymous_document_before_101: {
+        Args: {
+          p_draft_id: string
+          p_expected_draft_version: number
+          p_kind: Database["public"]["Enums"]["ap_document_kind"]
+          p_secret_hash: string
+        }
+        Returns: {
+          document_id: string
+          draft_version: number
+          storage_bucket: string
+          storage_path: string
+        }[]
+      }
       ap_remove_reference: {
         Args: {
           p_customer_id: string
@@ -16545,6 +16933,10 @@ export type Database = {
         Returns: boolean
       }
       ap_research_snapshot_current: {
+        Args: { p_snapshot_id: string }
+        Returns: boolean
+      }
+      ap_research_snapshot_current_before_101: {
         Args: { p_snapshot_id: string }
         Returns: boolean
       }
@@ -16621,6 +17013,10 @@ export type Database = {
         }[]
       }
       ap_retention_snapshot_customers: {
+        Args: { p_snapshot: string }
+        Returns: string[]
+      }
+      ap_retention_snapshot_customers_before_101: {
         Args: { p_snapshot: string }
         Returns: string[]
       }
@@ -16836,6 +17232,10 @@ export type Database = {
         Args: never
         Returns: boolean
       }
+      ap_service_repair_case_state_schema_installed: {
+        Args: never
+        Returns: boolean
+      }
       ap_service_repair_context: {
         Args: { p_case: string; p_line: string }
         Returns: string
@@ -16931,6 +17331,19 @@ export type Database = {
         Args: {
           p_case_id: string
           p_content_sha256: string
+          p_payload_id: string
+          p_request_id: string
+          p_resolved: boolean
+          p_reviewer_id: string
+          p_scope_sha256: string
+        }
+        Returns: string
+      }
+      ap_set_service_repair_case_state_reviewed: {
+        Args: {
+          p_case_id: string
+          p_content_sha256: string
+          p_expected_review_context_sha256: string
           p_payload_id: string
           p_request_id: string
           p_resolved: boolean

@@ -46,6 +46,12 @@ function fixture() {
   const rpc = vi.fn((name: string, args: Record<string, unknown>) => ({ abortSignal: async () => {
     if (name === "ap_require_material_reviewer") return { data: reviewer, error: null };
     if (name === "ap_customer_service_repair_files") return { data: structuredClone([file]), error: null };
+    if (name === "ap_read_service_repair_case_review") return { data: await port.review(), error: null };
+    if (name === "ap_set_service_repair_case_state_reviewed") return await port.set({
+      caseId: String(args.p_case_id), requestId: String(args.p_request_id), scopeSha256: String(args.p_scope_sha256),
+      expectedReviewContextSha256: String(args.p_expected_review_context_sha256), resolved: args.p_resolved === true,
+      payloadId: String(args.p_payload_id), contentSha256: String(args.p_content_sha256), reviewerId: String(args.p_reviewer_id),
+    });
     if (name !== "ap_record_service_repair_feedback") throw new Error("Unexpected RPC");
     if (persist) tables.ap_service_repair_feedback.push({ id: args.p_request_id, case_id: args.p_case_id, customer_id: args.p_customer_id,
       material_line_id: lineId, repair_release_id: args.p_release_id, sensitive_payload_id: args.p_payload_id,
@@ -71,11 +77,41 @@ function fixture() {
   return { customerId, reviewerId, lineId, caseId, file, request, tables, rpc, from, port, review, stateRequest, readCalls, storedBuffers, decryptedBuffers,
     role: (value: unknown) => { reviewer = value; }, lose: () => { loseResponse = true; }, absent: () => { persist = false; },
     clock: (value: string) => { now = new Date(value); }, after: (fn: () => void) => { afterStore = fn; },
-    customer: createCustomerRepairFollowups(admin, customerId, () => now), owner: createOwnerRepairFollowups(admin, reviewerId, port) };
+    customer: createCustomerRepairFollowups(admin, customerId, () => now), owner: createOwnerRepairFollowups(admin, reviewerId, port),
+    concreteOwner: createOwnerRepairFollowups(admin, reviewerId) };
 }
 beforeEach(() => vi.clearAllMocks());
 describe("authenticated repair follow-ups", () => {
   it("does no I/O while constructing customer and owner adapters", () => { const f = fixture(); expect(f.rpc).not.toHaveBeenCalled(); expect(f.from).not.toHaveBeenCalled(); });
+  it("loads a real102 review through the generated RPC name and trusted reviewer identity", async () => {
+    const f = fixture(); expect(await f.concreteOwner.review(f.caseId, signal())).toMatchObject({ caseId: f.caseId, canResolve: true, members: f.review.members });
+    expect(f.rpc.mock.calls.filter(([name]) => name === "ap_read_service_repair_case_review")).toEqual([
+      ["ap_read_service_repair_case_review", { p_case_id: f.caseId, p_reviewer_id: f.reviewerId }],
+    ]);
+    expect(f.rpc.mock.calls.filter(([name]) => name === "ap_require_material_reviewer")).toHaveLength(2);
+    expect(f.rpc.mock.calls.some(([name]) => name === "ap_set_service_repair_case_state")).toBe(false);
+  });
+  it("sends the exact102 reviewed mutation and reconciles a committed lost response without an unsafe fallback", async () => {
+    const f = fixture(); f.lose(); const result = await f.concreteOwner.set(f.stateRequest, signal());
+    expect(result.receipt).toMatchObject({ requestId: f.stateRequest.requestId, reviewerId: f.reviewerId, action: "RESOLVED" });
+    const mutations = () => f.rpc.mock.calls.filter(([name]) => name === "ap_set_service_repair_case_state_reviewed");
+    expect(mutations()).toHaveLength(1); expect(mutations()[0][1]).toEqual({
+      p_case_id: f.caseId, p_request_id: f.stateRequest.requestId, p_scope_sha256: f.stateRequest.acceptedScopeSha256,
+      p_expected_review_context_sha256: f.stateRequest.expectedReviewContextSha256, p_resolved: true,
+      p_payload_id: f.tables.ap_service_repair_case_events[0].sensitive_payload_id,
+      p_content_sha256: result.receipt.contentSha256, p_reviewer_id: f.reviewerId,
+    });
+    f.review.reviewContextSha256 = "0".repeat(64);
+    expect((await f.concreteOwner.set(f.stateRequest, signal())).replayed).toBe(true); expect(mutations()).toHaveLength(1);
+    expect(f.rpc.mock.calls.some(([name]) => name === "ap_set_service_repair_case_state")).toBe(false); expect(payload.store).toHaveBeenCalledOnce();
+  });
+  it("keeps newer feedback open when the actual102 RPC rejects the reviewed context", async () => {
+    const f = fixture(); f.after(() => { f.review.reviewContextSha256 = "0".repeat(64); });
+    await expect(f.concreteOwner.set(f.stateRequest, signal())).rejects.toThrow("CASE_CHANGED");
+    expect(f.tables.ap_service_repair_case_events).toHaveLength(0);
+    expect(f.rpc.mock.calls.filter(([name]) => name === "ap_set_service_repair_case_state_reviewed")).toHaveLength(1);
+    expect(f.rpc.mock.calls.some(([name]) => name === "ap_set_service_repair_case_state")).toBe(false);
+  });
   it("returns only real current repaired-file identities for the exact customer line", async () => {
     const f = fixture(); expect(await f.customer.context(f.lineId, signal())).toEqual({ materialLineId: f.lineId, files: [{ ...f.file, caseId: f.caseId }] });
     expect(payload.read).not.toHaveBeenCalled(); expect(f.rpc.mock.calls.every(([name]) => name === "ap_customer_service_repair_files")).toBe(true);

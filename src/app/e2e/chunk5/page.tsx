@@ -150,6 +150,8 @@ function materialLine(state: string): MaterialDeliveryView {
     stateMessage: "The resume and cover letter passed automated checks plus separate content and visual approval.",
     dueAt,
     refundState: "NONE",
+    // This fixture covers the earlier paid contract's included correction flow.
+    supportPolicy: "HISTORICAL",
     proposal: null,
     regeneration: null,
     artifacts: [

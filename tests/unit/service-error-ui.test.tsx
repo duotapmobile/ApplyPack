@@ -58,7 +58,8 @@ describe("owner service-error decisions", () => {
   it("starts reviews unchecked and records a decision without repair, approval or delivery actions", async () => {
     const fetch = vi.fn(async (_url: string, init: RequestInit) => { if (init.method !== "POST") return json(owner()); const request = JSON.parse(String(init.body)); return json({ result: { status: "RECORDED", deliveryAuthorized: false,
       receipt: { ...request, previousDecisionId: request.expectedDecisionId, reviewSha256: serviceErrorSha256(serviceErrorReviewPayload(request)) } } }); });
-    vi.stubGlobal("fetch", fetch); render(<ServiceErrorReview caseId={caseId} />); expect(await screen.findByRole("button", { name: "Record decision" })).toBeDisabled(); await fillOwner();
+    vi.stubGlobal("fetch", fetch); render(<ServiceErrorReview caseId={caseId} />); expect(await screen.findByRole("button", { name: "Record decision" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Load current case review" })).not.toBeInTheDocument(); await fillOwner();
     expect(await screen.findByText(/Decision recorded. No files were generated or sent/)).toBeInTheDocument(); expect(sessionStorage.length).toBe(0); expect(localStorage.length).toBe(0);
   });
   it("does not falsely confirm a changed decision during reconciliation", async () => {
@@ -71,5 +72,21 @@ describe("owner service-error decisions", () => {
   it("preserves unfinished accepted files instead of allowing a later decision to discard them", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => json({ ...owner(), inspection: { ...owner().inspection, decisions: [{ classification: "CONFIRMED_SERVICE_ERROR", affected: [member] }] } })));
     render(<ServiceErrorReview caseId={caseId} />); const checkbox = await screen.findByRole("checkbox", { name: "This file already has an unfinished accepted repair" }); expect(checkbox).toBeChecked(); expect(checkbox).toBeDisabled(); expect(screen.getByRole("combobox", { name: "Classification" })).toBeDisabled();
+  });
+  it("connects accepted repairs to a fresh case review and keeps unfinished work unresolvable", async () => {
+    const detail = { ...owner(), inspection: { ...owner().inspection, decisions: [{ classification: "CONFIRMED_SERVICE_ERROR", affected: [member] }] } };
+    const fetch = vi.fn(async (url: string) => url.endsWith("/state") ? json({
+      schemaVersion: "applypack-service-repair-case-review-v1", caseId, customerId: id(11), materialLineId: line,
+      acceptedScopeSha256: "a".repeat(64), reviewContextSha256: "b".repeat(64), state: "OPEN", canResolve: false,
+      members: [{ ...member, materialLineId: line, sourceSnapshotId: id(7), artifactType: "RESUME", completed: false }], feedback: [], events: [],
+    }) : json(detail));
+    vi.stubGlobal("fetch", fetch); render(<ServiceErrorReview caseId={caseId} />);
+    const load = await screen.findByRole("button", { name: "Load current case review" });
+    expect(fetch).toHaveBeenCalledTimes(1); fireEvent.click(load);
+    expect(await screen.findByText(/accepted repair unfinished/)).toBeInTheDocument();
+    expect(fetch.mock.calls[1][0]).toBe(`/api/admin/service-errors/${caseId}/state`);
+    expect(screen.getByRole("button", { name: "Mark reviewed case resolved" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: /I reviewed the actual repaired files/ })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /I reviewed the latest customer feedback/ })).not.toBeChecked();
   });
 });

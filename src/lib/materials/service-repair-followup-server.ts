@@ -134,14 +134,28 @@ export function createCustomerRepairFollowups(admin: Admin, trustedCustomerId: s
   };
 }
 
-/** Exact102 port: connect using genuine generated declarations after the
- * forward migration passes CI. There is intentionally no legacy setter fallback. */
+/** Exact102 boundary. The unsafe historical setter is never called here. */
 export type RepairCaseStatePort = {
   review(caseId: string, reviewerId: string, signal: AbortSignal): Promise<unknown>;
   set(input: { caseId: string; requestId: string; scopeSha256: string; expectedReviewContextSha256: string; resolved: boolean;
     payloadId: string; contentSha256: string; reviewerId: string }, signal: AbortSignal): Promise<Result>;
 };
-export function createOwnerRepairFollowups(admin: Admin, trustedReviewerId: string, port: RepairCaseStatePort) {
+export function createRepairCaseStatePort(admin: Admin): RepairCaseStatePort {
+  return {
+    review: (caseId, reviewerId, signal) => data(admin.rpc("ap_read_service_repair_case_review", {
+      p_case_id: caseId, p_reviewer_id: reviewerId,
+    }).abortSignal(signal), signal),
+    set: async (input, signal) => {
+      ensure(!signal.aborted, "ABORTED");
+      return await admin.rpc("ap_set_service_repair_case_state_reviewed", {
+        p_case_id: input.caseId, p_request_id: input.requestId, p_scope_sha256: input.scopeSha256,
+        p_expected_review_context_sha256: input.expectedReviewContextSha256, p_resolved: input.resolved,
+        p_payload_id: input.payloadId, p_content_sha256: input.contentSha256, p_reviewer_id: input.reviewerId,
+      }).abortSignal(signal);
+    },
+  };
+}
+export function createOwnerRepairFollowups(admin: Admin, trustedReviewerId: string, port: RepairCaseStatePort = createRepairCaseStatePort(admin)) {
   const reviewerId = uuid.parse(trustedReviewerId);
   const authorized = async (signal: AbortSignal) => parse(z.literal(true),
     await data(admin.rpc("ap_require_material_reviewer", { p_reviewer_id: reviewerId }).abortSignal(signal), signal), "REVIEWER_UNCONFIRMED");

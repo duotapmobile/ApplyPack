@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
+import yaml from "js-yaml";
 import { REHEARSAL_PREDECESSORS, REHEARSAL_TARGET_VERSION, selectRehearsalPredecessors } from "./lib/rehearsal-upgrade-selection.mjs";
 
 const read = path => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -9,6 +10,30 @@ function job(name) {
   const found = workflow.match(new RegExp(`^  ${name}:\\r?\\n([\\s\\S]*?)(?=^  [a-z][a-z-]*:|$(?![\\s\\S]))`, "m"));
   assert(found, `missing ${name} job`); return found[1];
 }
+
+test("new commits supersede only the same workflow, event and ref without cancelling push or PR counterparts", () => {
+  const files = ["../.github/workflows/ci.yml", "../.github/workflows/launch-image.yml"];
+  const groups = new Set();
+  for (const file of files) {
+    const parsed = yaml.load(read(file));
+    assert.equal(parsed.concurrency["cancel-in-progress"], true);
+    assert.deepEqual(Object.keys(parsed.concurrency).sort(), ["cancel-in-progress", "group"]);
+    const expression = parsed.concurrency.group;
+    const keys = [...expression.matchAll(/\$\{\{\s*github\.([a-z_]+)\s*\}\}/gu)].map(match => match[1]);
+    assert.deepEqual(keys.sort(), ["event_name", "ref", "workflow"]);
+    const resolve = context => expression.replace(/\$\{\{\s*github\.([a-z_]+)\s*\}\}/gu, (_, key) => context[key]);
+    for (const event_name of ["push", "pull_request", "workflow_dispatch"]) {
+      for (const ref of ["refs/heads/main", "refs/heads/codex/manual-launch-hardening-2026-10-02", "refs/pull/6/merge", "refs/pull/7/merge"]) {
+        const context = { workflow: parsed.name, event_name, ref, sha: "a".repeat(40), run_id: "123" };
+        const group = resolve(context).toLowerCase();
+        assert(group.length > 0 && !group.includes("${{"));
+        assert(!groups.has(group), `another workflow, event or ref shares ${group}`); groups.add(group);
+        assert.equal(resolve({ ...context, sha: "b".repeat(40), run_id: "456" }).toLowerCase(), group);
+      }
+    }
+  }
+  assert.equal(groups.size, 24);
+});
 
 test("default rehearsal still covers every available predecessor through the current target", () => {
   const migrations = readdirSync(new URL("../supabase/migrations/", import.meta.url)).map(name => /^(\d{12})_/.exec(name)?.[1])

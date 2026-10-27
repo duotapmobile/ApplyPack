@@ -21,7 +21,8 @@ test("owner reviews exact wording with keyboard and does not automatically appro
   });
   await open(page, "wording");
   await expect(page.getByText("Organized event schedules", { exact: true })).toBeVisible();
-  await expect(page.getByText("Describe how you prioritize competing requests.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Employer application questions", exact: true }).getByText("Describe how you prioritize competing requests.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Employer-question context for Resume experience", exact: true }).getByText("Describe how you prioritize competing requests.", { exact: true })).toBeVisible();
   const button = page.getByRole("button", { name: "Record wording review" }); await expect(button).toBeDisabled();
   await keyboardCheck(page, page.getByRole("group", { name: "Individual wording decisions" }).getByRole("checkbox"));
   await tabTo(page, button); await page.keyboard.press("Enter"); await expect.poll(() => requests.length).toBe(1);

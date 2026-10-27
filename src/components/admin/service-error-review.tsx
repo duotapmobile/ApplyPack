@@ -5,6 +5,7 @@ import type { createServiceErrorEvidenceReader } from "@/lib/materials/service-e
 import type { ServiceErrorDecision } from "@/lib/materials/service-error-contract";
 import { matchesServiceErrorDecision } from "@/lib/materials/service-error-client";
 import { ServiceRepairWorkspace } from "./service-repair-workspace";
+import { ServiceRepairCaseState } from "./service-repair-case-state";
 import styles from "./draft-owner-workspace.module.css";
 type Inspection = Awaited<ReturnType<ReturnType<typeof createOwnerServiceErrors>["inspect"]>>;
 type File = Awaited<ReturnType<ReturnType<typeof createServiceErrorEvidenceReader>>>;
@@ -86,6 +87,7 @@ export function ServiceErrorReview({ caseId }: { caseId: string }) {
         return <ServiceRepairWorkspace key={materialLineId} caseId={caseId} materialLineId={materialLineId}
           title={`${file.evidence.targetJob.company} — ${file.evidence.targetJob.title}`} />;
       })}
+      {acceptedIds.size > 0 && <ServiceRepairCaseState caseId={caseId} />}
       {report?.state === "OPEN" && <form onSubmit={(event) => { event.preventDefault(); if (busy || pending) return;
         const evidence = detail.files.map((file) => { const selected = facts[file.fileVersionId] ?? []; return { artifactId: file.artifactId, fileVersionId: file.fileVersionId, releaseId: file.releaseId,
           sourceSnapshotId: file.evidence.snapshotId, sourceFactIds: selected, documentVersionIds: [...new Set(file.evidence.facts.filter((fact) => selected.includes(fact.id)).flatMap((fact) => fact.document_version_id ? [fact.document_version_id] : []))] }; });
