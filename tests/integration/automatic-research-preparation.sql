@@ -37,7 +37,7 @@ begin
 end $$;
 select pg_temp.assert_true((select count(*)=1 from public.ap_research_preparations where snapshot_id='a1000000-0000-4000-8000-000000000002'),'finalization did not durably enqueue');
 select public.ap_enqueue_research_preparation(id) from public.ap_feasibility_requests where snapshot_id='a1000000-0000-4000-8000-000000000002';
-select pg_temp.assert_true((select count(*)=1 from public.ap_research_preparations),'replay duplicated preparation');
+select pg_temp.assert_true((select count(*)=1 from public.ap_research_preparations where snapshot_id='a1000000-0000-4000-8000-000000000002'),'replay duplicated preparation');
 select pg_temp.assert_true(not exists(select 1 from public.ap_claim_research_preparation()),'disabled queue claimed work');
 select pg_temp.assert_true(not public.ap_research_preparation_ready((select id from public.ap_feasibility_requests where snapshot_id='a1000000-0000-4000-8000-000000000002')),'no-plan request reached feasibility');
 

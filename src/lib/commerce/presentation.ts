@@ -55,7 +55,7 @@ export function feasibilityPresentation(value: FeasibilityView, invitationAvaila
   }
   if (value.outcome === "LIKELY") {
     if (invitationAvailable) {
-      return { title: "Your search looks feasible", message: "Use your invitation to check its reserved capacity and current checkout requirements. Payment starts only if those checks pass.",
+      return { title: "Your search looks feasible", message: "Use your invitation to check its reserved capacity and current checkout requirements. Checkout opens only if those checks pass. Your exact 24-hour deadline starts only after verified payment.",
         canCheckout: canRecheckInvitedSearch(value, true), showEdit: true, showHumanReview: false, showLeave: true };
     }
     if (!value.capacityAvailable) {

@@ -27,9 +27,9 @@ end $$;
 insert into auth.users(id,aud,role,email,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
  values('a1060000-0000-4000-8000-000000000001','authenticated','authenticated','resume-current-operator@example.invalid','{}','{}',now(),now());
 update public.profiles set role='operator' where id='a1060000-0000-4000-8000-000000000001';
-select * from public.ap_create_anonymous_draft('a1060000-0000-4000-8000-000000000002',repeat('a',64),now()+interval '1 day');
-select * from public.ap_save_four_step_draft('a1060000-0000-4000-8000-000000000002',repeat('a',64),1,3,pg_temp.resume_current_answers());
-select pg_temp.resume_current_finalize('a1060000-0000-4000-8000-000000000002',repeat('a',64),'a1060000-0000-4000-8000-000000000003','a1060000-0000-4000-8000-000000000004');
+select * from public.ap_create_anonymous_draft('a1060000-0000-4000-8000-000000000002',repeat('a6',32),now()+interval '1 day');
+select * from public.ap_save_four_step_draft('a1060000-0000-4000-8000-000000000002',repeat('a6',32),1,3,pg_temp.resume_current_answers());
+select pg_temp.resume_current_finalize('a1060000-0000-4000-8000-000000000002',repeat('a6',32),'a1060000-0000-4000-8000-000000000003','a1060000-0000-4000-8000-000000000004');
 
 -- Synthetic SQL authorization state: seed customer_id on the initial INSERT
 -- with every production constraint/trigger enabled. This is not proof of a
@@ -37,7 +37,7 @@ select pg_temp.resume_current_finalize('a1060000-0000-4000-8000-000000000002',re
 -- real anonymous confirmation/capabilities; no frozen historical guard is bypassed.
 insert into auth.users(id,aud,role,email,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
  values('a1060000-0000-4000-8000-000000000020','authenticated','authenticated','resume-current-customer@example.invalid','{}','{}',now(),now());
-select * from public.ap_create_anonymous_draft('a1060000-0000-4000-8000-000000000061',repeat('2',64),now()+interval '1 day');
+select * from public.ap_create_anonymous_draft('a1060000-0000-4000-8000-000000000061',repeat('26',32),now()+interval '1 day');
 update public.ap_anonymous_drafts target set answers=source.answers,version=source.version,current_step=source.current_step,
  state='COMPLETE',confirmation_receipt=source.confirmation_receipt,access_email_normalized=source.access_email_normalized
  from public.ap_anonymous_drafts source where target.id='a1060000-0000-4000-8000-000000000061' and source.id='a1060000-0000-4000-8000-000000000002';
@@ -49,7 +49,7 @@ insert into public.ap_feasibility_requests(id,draft_id,snapshot_id,request_versi
  values(gen_random_uuid(),'a1060000-0000-4000-8000-000000000061','a1060000-0000-4000-8000-000000000060','chunk2-v2','feasibility:a1060000-0000-4000-8000-000000000060');
 create temp table resume_current_original as select to_jsonb(s) snapshot, d.answers, d.confirmation_receipt from public.ap_intake_snapshots s join public.ap_anonymous_drafts d on d.id=s.draft_id where s.id='a1060000-0000-4000-8000-000000000060';
 do $$ begin
- begin perform public.ap_save_four_step_draft('a1060000-0000-4000-8000-000000000061',repeat('2',64),3,3,pg_temp.resume_current_answers()||'{"phone":"wrong"}');
+ begin perform public.ap_save_four_step_draft('a1060000-0000-4000-8000-000000000061',repeat('26',32),3,3,pg_temp.resume_current_answers()||'{"phone":"wrong"}');
   raise exception 'ordinary save reopened original confirmed intake';
  exception when others then if sqlerrm<>'confirmed_intake_requires_successor_review' then raise; end if; end;
 end $$;
@@ -73,9 +73,9 @@ select pg_temp.resume_current_assert((select state='STALE' from public.ap_resear
 select pg_temp.resume_current_assert(public.ap_material_clarification_resume_schema_installed()
  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610260103'
  and jsonb_array_length(public.ap_manual_launch_schema_readiness()->'requiredMigrations')=27,'resume103 readiness incomplete');
-select public.ap_answer_material_clarification((select id from resume_current_question),'a1060000-0000-4000-8000-000000000061',repeat('2',64),null,
- 'I answered customer calls.','a1060000-0000-4000-8000-000000000005',repeat('b',64));
-select * from public.ap_save_four_step_draft('a1060000-0000-4000-8000-000000000005',repeat('b',64),
+select public.ap_answer_material_clarification((select id from resume_current_question),'a1060000-0000-4000-8000-000000000061',repeat('26',32),null,
+ 'I answered customer calls.','a1060000-0000-4000-8000-000000000005',repeat('b6',32));
+select * from public.ap_save_four_step_draft('a1060000-0000-4000-8000-000000000005',repeat('b6',32),
  (select version from public.ap_anonymous_drafts where id='a1060000-0000-4000-8000-000000000005'),3,
  (select jsonb_set(answers,'{clarifications,0,answer}','"I answered customer calls and scheduled appointments."') from public.ap_anonymous_drafts where id='a1060000-0000-4000-8000-000000000005'));
 create temp table resume_current_before as select to_jsonb(d) draft,to_jsonb(a) receipt from public.ap_anonymous_drafts d
@@ -88,15 +88,15 @@ exception when others then if sqlerrm<>expected then raise; end if;
 end $$;
 do $$ declare q uuid; operation text; reply jsonb; d public.ap_anonymous_drafts; begin
  select id into q from resume_current_question;
- operation:=format('select public.ap_resume_material_clarification(%L,%L,%L,null,%L,%L)',q,'a1060000-0000-4000-8000-000000000061',repeat('2',64),'a1060000-0000-4000-8000-000000000005',repeat('b',64));
+ operation:=format('select public.ap_resume_material_clarification(%L,%L,%L,null,%L,%L)',q,'a1060000-0000-4000-8000-000000000061',repeat('26',32),'a1060000-0000-4000-8000-000000000005',repeat('b6',32));
  perform pg_temp.resume_current_rejected(null,format('select public.ap_answer_material_clarification(%L,%L,%L,null,%L,%L,%L)',q,
-  'a1060000-0000-4000-8000-000000000061',repeat('2',64),'I answered customer calls and scheduled appointments.','a1060000-0000-4000-8000-000000000005',repeat('b',64)),
+  'a1060000-0000-4000-8000-000000000061',repeat('26',32),'I answered customer calls and scheduled appointments.','a1060000-0000-4000-8000-000000000005',repeat('b6',32)),
   'clarification_answer_already_saved_edit_review');
- perform pg_temp.resume_current_rejected(null,replace(operation,repeat('2',64),repeat('0',64)),'question_owner_or_version_invalid');
- perform pg_temp.resume_current_rejected(null,replace(operation,repeat('b',64),repeat('0',64)),'clarification_capability_conflict');
+ perform pg_temp.resume_current_rejected(null,replace(operation,repeat('26',32),repeat('0',64)),'question_owner_or_version_invalid');
+ perform pg_temp.resume_current_rejected(null,replace(operation,repeat('b6',32),repeat('0',64)),'clarification_capability_conflict');
  perform pg_temp.resume_current_rejected(null,replace(operation,'a1060000-0000-4000-8000-000000000005','a1060000-0000-4000-8000-000000000099'),'clarification_not_open');
  perform pg_temp.resume_current_rejected(null,format('select public.ap_resume_material_clarification(%L,null,null,%L,%L,%L)',q,
-  'a1060000-0000-4000-8000-000000000001','a1060000-0000-4000-8000-000000000005',repeat('f',64)),'question_owner_or_version_invalid');
+  'a1060000-0000-4000-8000-000000000001','a1060000-0000-4000-8000-000000000005',repeat('f6',32)),'question_owner_or_version_invalid');
  perform pg_temp.resume_current_rejected('update public.ap_retention_restore_lock set locked=true where singleton',operation,'retention_restore_locked');
  perform pg_temp.resume_current_rejected(format('insert into public.ap_requirement_nodes select (jsonb_populate_record(null::public.ap_requirement_nodes,to_jsonb(n)||jsonb_build_object(''id'',''a1060000-0000-4000-8000-000000000070'',''stable_criterion_id'',''a1060000-0000-4000-8000-000000000070'',''position'',1))).* from public.ap_requirement_nodes n where id=''a1060000-0000-4000-8000-000000000011''; insert into public.ap_candidate_questions select (jsonb_populate_record(null::public.ap_candidate_questions,to_jsonb(q)||jsonb_build_object(''id'',''a1060000-0000-4000-8000-000000000071'',''requirement_node_id'',''a1060000-0000-4000-8000-000000000070''))).* from public.ap_candidate_questions q where id=%L',q),replace(operation,q::text,'a1060000-0000-4000-8000-000000000071'),'clarification_not_open');
  perform pg_temp.resume_current_rejected('update public.ap_anonymous_drafts set created_at=now()-interval ''2 days'',expires_at=now()-interval ''1 day'' where id=''a1060000-0000-4000-8000-000000000061''',operation,'question_owner_or_version_invalid');
@@ -109,22 +109,22 @@ do $$ declare q uuid; operation text; reply jsonb; d public.ap_anonymous_drafts;
  select * into d from public.ap_anonymous_drafts where id='a1060000-0000-4000-8000-000000000005';
  perform pg_temp.resume_current_assert(reply=jsonb_build_object('state','FULL_REVIEW_REQUIRED','draftId',d.id,'version',d.version,'expiresAt',d.expires_at,'replayed',true),'anonymous resume receipt changed');
  perform pg_temp.resume_current_assert((select draft=to_jsonb(d) from resume_current_before),'anonymous resume rewrote working review');
- reply:=public.ap_resume_material_clarification(q,d.id,repeat('b',64),null,d.id,repeat('b',64));
+ reply:=public.ap_resume_material_clarification(q,d.id,repeat('b6',32),null,d.id,repeat('b6',32));
  perform pg_temp.resume_current_assert(reply->>'draftId'=d.id::text,'successor capability did not resume');
- reply:=public.ap_resume_material_clarification(q,null,null,'a1060000-0000-4000-8000-000000000020',d.id,repeat('f',64));
+ reply:=public.ap_resume_material_clarification(q,null,null,'a1060000-0000-4000-8000-000000000020',d.id,repeat('f6',32));
  select * into d from public.ap_anonymous_drafts where id=d.id;
- perform pg_temp.resume_current_assert(d.capability_secret_hash=repeat('f',64) and d.capability_version=2,'authenticated recovery did not rotate exactly once');
+ perform pg_temp.resume_current_assert(d.capability_secret_hash=repeat('f6',32) and d.capability_version=2,'authenticated recovery did not rotate exactly once');
  perform pg_temp.resume_current_assert((select draft-array['capability_secret_hash','capability_version','capability_rotated_at']=to_jsonb(d)-array['capability_secret_hash','capability_version','capability_rotated_at'] from resume_current_before),'rotation altered answer/version/confirmation');
- perform pg_temp.resume_current_rejected(null,format('select public.ap_resume_material_clarification(%L,%L,%L,null,%L,%L)',q,d.id,repeat('b',64),d.id,repeat('b',64)),'question_owner_or_version_invalid');
+ perform pg_temp.resume_current_rejected(null,format('select public.ap_resume_material_clarification(%L,%L,%L,null,%L,%L)',q,d.id,repeat('b6',32),d.id,repeat('b6',32)),'question_owner_or_version_invalid');
  perform pg_temp.resume_current_rejected(null,operation,'clarification_capability_conflict');
- reply:=public.ap_resume_material_clarification(q,null,null,'a1060000-0000-4000-8000-000000000020',d.id,repeat('f',64));
+ reply:=public.ap_resume_material_clarification(q,null,null,'a1060000-0000-4000-8000-000000000020',d.id,repeat('f6',32));
  perform pg_temp.resume_current_assert((select capability_version=2 from public.ap_anonymous_drafts where id=d.id),'same-hash customer replay rotated again');
  perform pg_temp.resume_current_assert((select receipt=to_jsonb(a) from resume_current_before,public.ap_intake_clarification_answers a where a.question_id=q),'immutable initial answer receipt changed');
  perform pg_temp.resume_current_assert((select snapshot=to_jsonb(s) and original.answers=source.answers and original.confirmation_receipt=source.confirmation_receipt from resume_current_original original,public.ap_intake_snapshots s join public.ap_anonymous_drafts source on source.id=s.draft_id where s.id='a1060000-0000-4000-8000-000000000060'),'original confirmed source changed');
  perform pg_temp.resume_current_assert(not exists(select 1 from public.ap_candidate_answers where question_id=q),'resume confirmed an answer');
- perform public.ap_save_four_step_draft(d.id,repeat('f',64),d.version,3,jsonb_set(d.answers,'{backgroundReviewed}','true'));
- perform pg_temp.resume_current_finalize(d.id,repeat('f',64),'a1060000-0000-4000-8000-000000000040','a1060000-0000-4000-8000-000000000041');
- perform pg_temp.resume_current_rejected(null,format('select public.ap_resume_material_clarification(%L,null,null,%L,%L,%L)',q,'a1060000-0000-4000-8000-000000000020',d.id,repeat('f',64)),'clarification_not_open');
+ perform public.ap_save_four_step_draft(d.id,repeat('f6',32),d.version,3,jsonb_set(d.answers,'{backgroundReviewed}','true'));
+ perform pg_temp.resume_current_finalize(d.id,repeat('f6',32),'a1060000-0000-4000-8000-000000000040','a1060000-0000-4000-8000-000000000041');
+ perform pg_temp.resume_current_rejected(null,format('select public.ap_resume_material_clarification(%L,null,null,%L,%L,%L)',q,'a1060000-0000-4000-8000-000000000020',d.id,repeat('f6',32)),'clarification_not_open');
 end $$;
 rollback;
 select 'MATERIAL_CLARIFICATION_RESUME_OK';

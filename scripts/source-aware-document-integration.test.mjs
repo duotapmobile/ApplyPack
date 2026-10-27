@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import test from "node:test";
 import { materialDraftStageContractFixture } from "./lib/material-draft-stage-fixture.mjs";
+import { verifiedIntakeOwnershipContractFixture } from "./lib/verified-intake-ownership-fixture.mjs";
 import { current091LockedPhaseSql, current092LockedPhaseSql, current093LockedPhaseSql } from "./lib/supabase-upgrade-phases.mjs";
 
 for (const [flag, version, count, containsRule, containsSource] of [
@@ -26,8 +27,9 @@ for (const [flag, version, count, containsRule, containsSource] of [
       .replace(/^import .*;\r?\n/gmu, "").replaceAll("import.meta.url", JSON.stringify(import.meta.url));
     const inputs = [], logs = [];
     runInNewContext(source, {
-      URL, fileURLToPath, materialDraftStageContractFixture,
-      readFileSync: (path) => String(path).endsWith("material-draft-stage-claiming.sql") ? readFileSync(path, "utf8") : `-- fictional fixture ${path}`,
+      URL, fileURLToPath, materialDraftStageContractFixture, verifiedIntakeOwnershipContractFixture,
+      readFileSync: (path) => ["material-draft-stage-claiming.sql", "verified-intake-ownership.sql"].some(name => String(path).endsWith(name))
+        ? readFileSync(path, "utf8") : `-- fictional fixture ${path}`,
       spawnSync: (command, args, options) => {
         assert.equal(command, "docker"); assert(args.includes("supabase_db_applypack"));
         inputs.push(options.input); return { status: 0, stdout: "", stderr: "" };
@@ -40,6 +42,8 @@ for (const [flag, version, count, containsRule, containsSource] of [
     assert.equal(inputs.some((sql) => sql.includes("material-rule-revalidation.sql")), containsRule);
     assert.equal(inputs.some((sql) => sql.includes("source-aware-document-acceptance.sql")), containsSource);
     assert(inputs.some((sql) => sql.includes("chunk5-materials-delivery.sql")));
+    assert.equal(inputs.some((sql) => sql.includes("VERIFIED_INTAKE_OWNERSHIP_OK")), version === "202610260103");
+    assert(!inputs.some((sql) => sql.includes("VERIFIED_INTAKE_OWNERSHIP_REAL_CONNECTION_RACES_OK")));
     assert.equal(logs.at(-1), `Database contract fixtures passed: ${count}. Schema phase: ${version}.`);
   });
 }

@@ -36,6 +36,7 @@ describe("invited search checkout revalidation", () => {
   it("sends the selected current identities and allows the same safe retry after a lost response", async () => {
     setup(); render(<IntakeWizard expectedDraftId={id(1)} accessEmail="fictional@example.invalid" invitation={invitation} />);
     const button = await screen.findByRole("button", { name: "Use My $18.99 Checkout Invitation" });
+    expect(screen.getByText(/exact 24-hour deadline starts only after verified payment/i)).toBeVisible();
     fireEvent.click(button);
     expect(await screen.findByText(/Try this invitation again to check the same payment request/)).toBeVisible();
     expect(button).toBeEnabled(); fireEvent.click(button);
