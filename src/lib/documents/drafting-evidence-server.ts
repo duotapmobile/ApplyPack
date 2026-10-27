@@ -51,9 +51,9 @@ async function readRecords(admin: Admin, expected: DraftingEvidenceExpectation, 
   ]);
   if (!purchase.checkout_intent_id || !revision.source_snapshot_id || !revision.job_snapshot_id || !revision.employer_rule_snapshot_id) fail("SOURCE_BINDING_INVALID");
   if (draftJob.source_snapshot_id !== revision.source_snapshot_id) fail("DRAFT_JOB_BINDING_INVALID");
-  const [snapshot, intent, jobSource, rule, listingCheck, successors, ownsSnapshot] = await Promise.all([
+  const [snapshot, intentSource, jobSource, rule, listingCheck, successors, ownsSnapshot] = await Promise.all([
     result(admin.from("ap_intake_snapshots").select("id,customer_id,draft_id,schema_version,canonicalization_version,content_sha256,sensitive_payload_id,finalized_at,confirmed_review,parent_snapshot_id").eq("id", revision.source_snapshot_id).abortSignal(signal).single()),
-    result(admin.from("ap_material_checkout_intents").select("id,customer_id,purchase_id,payment_attempt_id,delivered_order_id,delivered_release_id,source_snapshot_id,state,line_count,amount_cents,currency,selection_sha256,document_contact_confirmed,document_facts_confirmed,contact_payload_id,career_break_choice,career_break_custom_label,cover_letter_break_consent").eq("id", purchase.checkout_intent_id).abortSignal(signal).single()),
+    result(admin.from("ap_material_checkout_intents").select("id,customer_id,purchase_id,payment_attempt_id,delivered_order_id,delivered_release_id,source_snapshot_id,state,completed_at,line_count,amount_cents,currency,selection_sha256,document_contact_confirmed,document_facts_confirmed,contact_payload_id,career_break_choice,career_break_custom_label,cover_letter_break_consent").eq("id", purchase.checkout_intent_id).abortSignal(signal).single()),
     result(admin.from("ap_job_snapshots").select("id,legacy_job_id,content_sha256,company,exact_title,canonical_application_url,source_url,captured_listing,retrieved_at,live_verified_at,discovery_source,external_job_id,source_run_id,source_authorization_id,listing_activity_result,application_path_result,legitimacy_result,application_host_type").eq("id", revision.job_snapshot_id).abortSignal(signal).single()),
     result(admin.from("ap_employer_submission_rules").select("id,job_snapshot_id,content_sha256,checked_at,human_confirmed_at,human_confirmed_by,is_current,superseded_at,injection_scan_state,hard_block_reason,allowed_formats,resume_page_limit,cover_letter_page_limit,resume_requirement,cover_letter_requirement,resume_filename_instruction,cover_letter_filename_instruction,reference_timing,reference_count,source_evidence_ids,application_questions").eq("id", revision.employer_rule_snapshot_id).abortSignal(signal).single()),
     result(admin.from("ap_material_listing_checks").select("id,material_line_id,line_revision_id,job_snapshot_id,submission_rule_id,evidence_sha256,phase,result,checked_at")
@@ -61,6 +61,12 @@ async function readRecords(admin: Admin, expected: DraftingEvidenceExpectation, 
     result(admin.from("ap_job_snapshots").select("id").eq("supersedes_job_snapshot_id", revision.job_snapshot_id).limit(1).abortSignal(signal)),
     result(admin.rpc("ap_customer_owns_snapshot", { p_customer_id: expected.customerId, p_snapshot_id: revision.source_snapshot_id }).abortSignal(signal)),
   ]);
+  // Historical packets already bind the nonnull purchase timestamp. Adding a
+  // newly selected field to those records would change their authority digest.
+  // Only the actual nullable purchase path carries the bound intent timestamp.
+  const { completed_at: intentCompletedAt, ...historicalIntent } = intentSource;
+  const intent = purchase.completed_at === null
+    ? { ...historicalIntent, completed_at: intentCompletedAt } : historicalIntent;
   // Host metadata validates only the protected source node. Keep the historical
   // packet's job shape unchanged after that validation.
   const { application_host_type: applicationHostType, ...job } = jobSource;

@@ -46,7 +46,7 @@ export const draftingEvidenceRecordsSchema = z.object({
     active_revision: z.number().int().positive(), allocated_amount_cents: z.literal(799), fulfillment: z.enum(["PAID", "GENERATING", "HUMAN_REVIEW", "READY_TO_RELEASE"]),
     materials_payment_verified_at: time, materials_started_at: time, materials_due_at: time, selected_reference_sheet: z.boolean() }).strict(),
   purchase: z.object({ id: uuid, customer_id: uuid, checkout_intent_id: uuid, payment_attempt_id: uuid,
-    amount_cents: z.number().int().positive(), currency: z.literal("USD"), completed_at: time }).strict(),
+    amount_cents: z.number().int().positive(), currency: z.literal("USD"), completed_at: time.nullable() }).strict(),
   payment: z.object({ id: uuid, customer_id: uuid, amount_cents: z.number().int().positive(), currency: z.literal("USD"),
     settlement: z.literal("PAID"), payment_verified_at: time, immediate_charge_verified: z.literal(true),
     dispute: z.enum(["NONE", "WON"]), funds_reversed_at: z.null() }).strict(),
@@ -62,6 +62,7 @@ export const draftingEvidenceRecordsSchema = z.object({
     confirmation_receipt: json, answers: json, retention_state: z.literal("ACTIVE") }).strict(),
   intent: z.object({ id: uuid, customer_id: uuid, purchase_id: uuid, payment_attempt_id: uuid, delivered_order_id: uuid,
     delivered_release_id: uuid, source_snapshot_id: uuid, state: z.literal("COMPLETED"), line_count: z.number().int().min(1).max(10),
+    completed_at: time.optional(),
     amount_cents: z.number().int().positive(), currency: z.literal("USD"), selection_sha256: hash,
     document_contact_confirmed: z.literal(true), document_facts_confirmed: z.literal(true), contact_payload_id: uuid,
     career_break_choice: z.enum(["KEEP_EXISTING_TIMELINE", "CAREER_BREAK", "FAMILY_CAREGIVING", "CUSTOM_WORDING", "OMIT_ENTRY"]),
@@ -198,6 +199,12 @@ export function buildDraftingEvidencePacket(raw: unknown, expectedRaw: DraftingE
     requireThat(same(r.line.purchase_id, r.purchase.id, r.intent.purchase_id) && same(r.line.payment_attempt_id, r.purchase.payment_attempt_id, r.payment.id, r.intent.payment_attempt_id) &&
       same(r.purchase.checkout_intent_id, r.intent.id, r.item.checkout_intent_id) && same(r.line.delivered_order_id, r.intent.delivered_order_id) &&
       same(r.item.delivered_match_id, r.line.delivered_match_id) && same(r.purchase.amount_cents, r.payment.amount_cents, r.intent.amount_cents, 799 * r.intent.line_count), "PAYMENT_BINDING_INVALID");
+    // Settlement completes the bound checkout intent; the purchase timestamp is
+    // nullable in persisted paid rows. Retain both original values as authority,
+    // and never substitute a clock value or move the service deadline.
+    requireThat(r.purchase.completed_at === null || !Object.hasOwn(r.intent, "completed_at"), "PAYMENT_COMPLETION_INVALID");
+    const checkoutCompletedAt = r.purchase.completed_at ?? r.intent.completed_at;
+    requireThat(checkoutCompletedAt !== undefined, "PAYMENT_COMPLETION_INVALID");
     requireThat(same(r.intent.contact_payload_id, r.contact.id, r.contactFact.id, r.contactFact.typed_value.protectedPayloadId) &&
       same(expected.customerId, r.contactFact.customer_id) && same(r.contact.content_sha256, r.contactFact.typed_value.contentSha256) &&
       same(r.intent.source_snapshot_id, r.contactFact.snapshot_id, r.contactFact.customer_assertion_snapshot_id) &&
@@ -219,7 +226,7 @@ export function buildDraftingEvidencePacket(raw: unknown, expectedRaw: DraftingE
       createHash("sha256").update(`${r.intent.selection_sha256}:${r.job.content_sha256}:${r.rule.content_sha256}`).digest("hex") === r.revision.binding_sha256, "ORIGINAL_BINDING_INVALID");
     requireThat(r.revision.revision_kind === "ORIGINAL" || r.revision.version > 1 && r.revision.parent_revision_id !== null, "REVISION_CHAIN_INVALID");
     requireThat(same(r.line.materials_due_at, r.revision.due_at) && same(r.line.materials_started_at, r.revision.started_at) && Date.parse(r.revision.due_at) > clock &&
-      Date.parse(r.revision.due_at) > Date.parse(r.revision.started_at) && [r.line.materials_payment_verified_at, r.payment.payment_verified_at, r.purchase.completed_at, r.revision.started_at,
+      Date.parse(r.revision.due_at) > Date.parse(r.revision.started_at) && [r.line.materials_payment_verified_at, r.payment.payment_verified_at, checkoutCompletedAt, r.revision.started_at,
         r.revision.accepted_at, r.snapshot.finalized_at].every(past), "DEADLINE_INVALID");
     requireThat(!r.refundIds.length && !r.successorJobIds.length && r.verifiedJobSnapshotIds.length === 1 && r.verifiedJobSnapshotIds[0] === r.job.id, "CURRENT_AUTHORITY_REQUIRED");
     requireThat(same(r.job.id, r.revision.job_snapshot_id, r.rule.job_snapshot_id, r.listingCheck.job_snapshot_id) &&

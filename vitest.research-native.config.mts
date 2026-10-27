@@ -2,7 +2,8 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
-  test: { environment: "node", include: [process.env.AP_RESEARCH_JOURNEY_STAGE === "EMPLOYER_RULE"
+  test: { environment: "node", include: [process.env.AP_RESEARCH_JOURNEY_STAGE === "PACK_PACKET"
+    ? "tests/integration/employer-question-pack-native-journey.test.ts" : process.env.AP_RESEARCH_JOURNEY_STAGE === "EMPLOYER_RULE"
     ? "tests/integration/employer-rule-owner-native-journey.test.ts" : process.env.AP_RESEARCH_JOURNEY_STAGE === "PAID_SEARCH"
     ? "tests/integration/verified-paid-search-native-journey.test.ts" : process.env.AP_RESEARCH_JOURNEY_STAGE === "NOTIFICATION"
     ? "tests/integration/intake-notification-native-journey.test.ts" : process.env.AP_RESEARCH_JOURNEY_STAGE === "CLARIFICATION"

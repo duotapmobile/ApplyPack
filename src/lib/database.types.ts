@@ -17886,6 +17886,7 @@ export type Database = {
         Args: never
         Returns: boolean
       }
+      ap_verified_source_run_schema_installed: { Args: never; Returns: boolean }
       ap_verify_manual_source_observation: {
         Args: {
           p_actor_id: string

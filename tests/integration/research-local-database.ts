@@ -13,7 +13,10 @@ const tables = new Set(["profiles", "ap_intake_snapshots", "ap_candidate_facts",
   "ap_material_lines", "ap_criteria_amendments", "ap_reference_regenerations",
   "operational_heartbeats", "ap_operational_alerts", "storage_cleanup_queue", "ap_aws_temporary_cleanup",
   "ap_checkout_mode_configuration", "ap_staging_rehearsal_authorizations", "ap_checkout_initiations", "ap_sensitive_payloads",
-  "ap_checkout_attempts", "ap_quotes", "webhook_events", "orders", "search_candidates", "workflow_tasks"]);
+  "ap_checkout_attempts", "ap_quotes", "webhook_events", "orders", "search_candidates", "workflow_tasks",
+  "ap_employer_submission_rules", "ap_fact_review_history", "ap_material_checkout_intents", "ap_material_checkout_items",
+  "ap_material_checkout_references", "ap_material_draft_jobs", "ap_material_draft_versions", "ap_material_line_revisions",
+  "ap_material_listing_checks", "ap_material_purchases", "ap_payment_attempts"]);
 const rpcNames = new Set(["ap_claim_research_preparation", "ap_prepare_automatic_research", "ap_bind_prepared_research_run", "ap_finish_research_preparation_check",
   "ap_research_snapshot_current", "ap_promote_prepared_research_observation", "ap_complete_prepared_research_review", "ap_research_preparation_ready",
   "ap_enqueue_due_job_source_syncs", "ap_claim_job_source_syncs", "ap_renew_job_source_sync_lease", "ap_archive_source_attempt", "ap_finalize_job_source_run",
@@ -31,7 +34,11 @@ for (const name of ["ap_owned_intake_draft_context", "ap_owned_intake_drafts", "
   "ap_intake_payment_identity", "ap_read_current_feasibility", "ap_manual_launch_capacity_readiness", "ap_manual_launch_schema_readiness",
   "ap_current_source_readiness", "ap_begin_authorized_search_checkout", "ap_bind_checkout_initiation", "ap_reconcile_checkout_initiation",
   "claim_stripe_webhook", "ap_apply_verified_search_payment", "claim_workflow_tasks", "ap_persist_match_selection", "ap_commit_exact_ten_release",
-  "ap_employer_rule_review_basis", "ap_prepare_employer_rule_source_evidence", "ap_confirm_employer_submission_rules", "ap_employer_rule_review_receipt"]) rpcNames.add(name);
+  "ap_employer_rule_review_basis", "ap_prepare_employer_rule_source_evidence", "ap_confirm_employer_submission_rules", "ap_employer_rule_review_receipt",
+  "ap_customer_retention_access", "ap_begin_authorized_material_checkout", "ap_apply_verified_material_payment",
+  "ap_record_material_draft_listing_check", "ap_claim_material_draft_stage", "ap_customer_owns_snapshot",
+  "ap_material_draft_context_sha256", "ap_material_draft_rule_evidence", "ap_renew_material_draft_lease",
+  "ap_attach_material_draft_packet"]) rpcNames.add(name);
 const ident = (value: string) => { if (!/^[a-z_][a-z0-9_]*$/u.test(value)) throw new Error("local_identifier_rejected"); return `"${value}"`; };
 const literal = (value: unknown): string => value === null ? "null" : `'${String(value).replaceAll("'", "''")}'`;
 const json = (value: unknown) => `${literal(JSON.stringify(value))}::jsonb`;
@@ -78,12 +85,28 @@ function predicate(params: URLSearchParams) {
 export async function createResearchLocalDatabase() {
   const { port, marker } = researchFixtureIdentity(process.env, process.platform);
   async function sql(statement: string, privileged = false) {
-    const command = `begin; set local statement_timeout='10s'; set local lock_timeout='2s'; ${privileged ? "" : "set local role service_role;"} ${statement}; commit;`;
+    // This transport models only the server's service client. SQL role alone
+    // cannot preserve auth.role() inside a SECURITY DEFINER function.
+    const serviceIdentity = `set local role service_role; set local "request.jwt.claims"='{"role":"service_role"}';`;
+    const command = `begin; set local statement_timeout='10s'; set local lock_timeout='2s'; ${privileged ? "" : serviceIdentity} ${statement}; commit;`;
     const rows = await researchLocalSql(Number(port), command);
     if (rows.length > 1) throw new Error("local_pg_ambiguous_receipt"); return rows.length ? JSON.parse(rows[0]) : null;
   }
   const identity = await sql("select jsonb_build_object('address',inet_server_addr()::text,'port',inet_server_port(),'marker',(select marker from public.ap_research_local_test_identity))", true);
   if (identity.address !== "127.0.0.1/32" && identity.address !== "127.0.0.1" || identity.port !== Number(port) || identity.marker !== marker) throw new Error("local_research_database_identity_rejected");
+  const retentionProbe = "public.ap_customer_retention_access('00000000-0000-4000-8000-000000000000'::uuid)";
+  const service = await sql(`select jsonb_build_object('sqlRole',current_user,'jwtRole',auth.role(),'customerId',auth.uid(),'access',${retentionProbe})`);
+  if (service.sqlRole !== "service_role" || service.jwtRole !== "service_role" || service.customerId !== null
+    || service.access?.policyVersion !== "one_off_30d_v1") throw new Error("local_service_identity_unconfirmed");
+  // The actual retention guard must still deny an unclaimed connection. No
+  // customer identity or database guard is synthesized to make the probe pass.
+  let unclaimedDenied = false;
+  try { await sql(`select ${retentionProbe}`, true); }
+  catch (error) {
+    if (!(error instanceof Error) || !("code" in error) || error.code !== "P0001" || error.message !== "service_retention_owner_required") throw error;
+    unclaimedDenied = true;
+  }
+  if (!unclaimedDenied) throw new Error("local_unclaimed_identity_not_rejected");
   const metadata = new Map<string, { args: Record<string, string>; set: boolean }>();
   const failures: string[] = [];
   async function fetchDatabase(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {

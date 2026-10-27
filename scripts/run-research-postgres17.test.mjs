@@ -10,7 +10,8 @@ import {researchFixtureIdentity} from './lib/research-fixture-identity.mjs';
 import {runResearchNativeJourney} from './run-research-native-journey.mjs';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const pgId=`sha256:${'a'.repeat(64)}`,nodeId=`sha256:${'b'.repeat(64)}`;
-function fixture({fail,drift,missingMarker,missingAggregate,missingOwnerMarker,missingEmployerRunnerMarker,ambiguousCreate,cleanupFailure}={}) {
+const packMarkers=['EMPLOYER_QUESTION_PACK_NATIVE_JOURNEY_OK','PAID_PACK_ROUTE_DELIVERY_OBLIGATION_RECEIPT','PAID_PACK_PREPARE_PACKET_RECEIPT'];
+function fixture({fail,drift,missingMarker,missingAggregate,missingOwnerMarker,missingEmployerRunnerMarker,missingPackMarker,missingPackRunnerMarker,ambiguousCreate,cleanupFailure}={}) {
   const calls=[],states=new Map(),writes=[],prepared={commit:'c'.repeat(40),schemaVersion:'202610270105',workspace:'/fixture/source',dependencies:'/fixture/dependencies',directory:'/fixture/evidence',sql:'-- actual schema input placeholder',migrationCount:110,inputHashes:[],sourceArchiveSha256:'d'.repeat(64)};
   let counter=0;
   const execute=(command,args,options)=>{
@@ -32,8 +33,10 @@ function fixture({fail,drift,missingMarker,missingAggregate,missingOwnerMarker,m
       if(args.includes('--attach')){
         const invocation=calls.find(call=>call.args[2]==='create'&&call.args[call.args.indexOf('--name')+1]===args.at(-1));
         const scenario=invocation.args.at(-1);
-        if(fail==='journey'||fail==='paid-journey'&&scenario==='PAID_SEARCH'||fail==='employer-journey'&&scenario==='EMPLOYER_RULE')throw new Error('route assertion failed');
+        if(fail==='journey'||fail==='paid-journey'&&scenario==='PAID_SEARCH'||fail==='employer-journey'&&scenario==='EMPLOYER_RULE'||fail==='pack-journey'&&scenario==='PACK_PACKET')throw new Error('route assertion failed');
         if(missingMarker)return 'schema only\n';
+        if(scenario==='PACK_PACKET')return packMarkers.filter(marker=>marker!==missingPackMarker).map(marker=>`${marker} {"hostedProof":false}\n`).join('')
+          +(missingPackRunnerMarker?'':'PACK_PACKET_ROUTE_DATABASE_JOURNEY_OK: fictional boundary; real routes\n');
         if(scenario==='EMPLOYER_RULE')return (missingOwnerMarker?'':'EMPLOYER_RULE_OWNER_NATIVE_JOURNEY_OK\n')+(missingEmployerRunnerMarker?'':'EMPLOYER_RULE_ROUTE_DATABASE_JOURNEY_OK: fictional boundary; real routes\n');
         return scenario==='PAID_SEARCH'?'PAID_SEARCH_ROUTE_DATABASE_JOURNEY_OK: fictional boundary; real routes\n'
           :'RESEARCH_ROUTE_DATABASE_JOURNEY_OK: fictional boundary; real routes\n'+(scenario==='LIMITED'&&!missingAggregate?'RESEARCH_CLARIFICATION_NOTIFICATION_JOURNEYS_OK\n':'');
@@ -49,17 +52,17 @@ function fixture({fail,drift,missingMarker,missingAggregate,missingOwnerMarker,m
   const run=(args=[],environment={},platform='linux')=>runResearchPostgres17(args,{execute,environment,platform,uuid:()=>`11111111-2222-4333-8444-${String(++counter).padStart(12,'0')}`,inputs:()=>prepared,write:(...args)=>writes.push(args)});
   return {calls,run,states,writes};
 }
-test('runs four scenarios in separate owned networkless namespaces and cleans all eight containers',()=>{
+test('runs five scenarios in separate owned networkless namespaces and cleans all ten containers',()=>{
   const f=fixture(),receipt=f.run([],{PATH:'/bin',AWS_SECRET_ACCESS_KEY:'fictional',STRIPE_SECRET_KEY:'fictional'});
-  assert.deepEqual(receipt.results.map(value=>value.scenario),['QUALIFIED','LIMITED','PAID_SEARCH','EMPLOYER_RULE']);assert.equal(receipt.hostedProof,false);assert.equal(receipt.providerCalls,0);assert.equal(f.states.size,0);
-  const created=f.calls.filter(call=>call.args[2]==='create');assert.equal(created.length,8);
+  assert.deepEqual(receipt.results.map(value=>value.scenario),['QUALIFIED','LIMITED','PAID_SEARCH','EMPLOYER_RULE','PACK_PACKET']);assert.equal(receipt.hostedProof,false);assert.equal(receipt.providerCalls,0);assert.equal(f.states.size,0);
+  const created=f.calls.filter(call=>call.args[2]==='create');assert.equal(created.length,10);
   const servers=created.filter(call=>call.args.includes('none')),nodes=created.filter(call=>call.args.some(value=>value.startsWith('container:')));
-  assert.equal(servers.length,4);assert.equal(nodes.length,4);assert.equal(new Set(nodes.map(node=>node.args[node.args.indexOf('--network')+1])).size,4);
+  assert.equal(servers.length,5);assert.equal(nodes.length,5);assert.equal(new Set(nodes.map(node=>node.args[node.args.indexOf('--network')+1])).size,5);
   for(const {args}of nodes){assert(args.includes('AP_RESEARCH_TEST_MODE=CONTAINER_PG17'));assert(args.includes('AP_RESEARCH_TEST_PORT=5432'));const mounts=args.filter(value=>value.startsWith('type=bind'));assert(mounts.every(value=>value.endsWith(',readonly')));assert(!mounts.some(value=>value.includes('.env')||value.includes('docker.sock')));}
   assert(f.calls.every(call=>call.options.env.AWS_SECRET_ACCESS_KEY===undefined&&call.options.env.STRIPE_SECRET_KEY===undefined));
-  assert.equal(f.calls.filter(call=>call.args.includes('/usr/lib/postgresql/17/bin/psql')).length,4);
+  assert.equal(f.calls.filter(call=>call.args.includes('/usr/lib/postgresql/17/bin/psql')).length,5);
   assert(f.calls.filter(call=>call.args.includes('--attach')).every(call=>call.options.timeout===330000));
-  assert.equal(f.writes.length,4);assert(receipt.results.every(value=>value.teardownVerified));
+  assert.equal(f.writes.length,5);assert(receipt.results.every(value=>value.teardownVerified));
 });
 test('paid-search failure fails the aggregate and tears down all three isolated scenarios',()=>{
   const f=fixture({fail:'paid-journey'});assert.throws(()=>f.run(),/route assertion failed/u);assert.equal(f.states.size,0);
@@ -72,6 +75,18 @@ test('employer-rule failure fails the aggregate after all four isolated scenario
 for(const [option,reason]of [['missingOwnerMarker','EMPLOYER_RULE_OWNER_MARKER'],['missingEmployerRunnerMarker','RESEARCH_ROUTE_MARKER']])test(`employer-rule requires ${option} independently and still cleans all owned containers`,()=>{
   const f=fixture({[option]:true});assert.throws(()=>f.run(),new RegExp(reason,'u'));assert.equal(f.states.size,0);
   assert.equal(f.calls.filter(call=>call.args[2]==='create').length,8);
+});
+test('pack-packet failure fails the aggregate after all five isolated scenarios and cleans its pair',()=>{
+  const f=fixture({fail:'pack-journey'});assert.throws(()=>f.run(),/route assertion failed/u);assert.equal(f.states.size,0);
+  assert.equal(f.calls.filter(call=>call.args[2]==='create').length,10);assert(f.writes.some(([path])=>path.replaceAll('\\','/').endsWith('/pack_packet-failure.log')));
+});
+for(const missingPackMarker of packMarkers)test(`pack-packet requires ${missingPackMarker} despite the remaining stage and runner markers`,()=>{
+  const f=fixture({missingPackMarker});assert.throws(()=>f.run(),new RegExp(`PACK_PACKET_STAGE_MARKER:${missingPackMarker}`,'u'));assert.equal(f.states.size,0);
+  assert.equal(f.calls.filter(call=>call.args[2]==='create').length,10);
+});
+test('pack-packet stage receipts without its runner marker cannot pass the aggregate',()=>{
+  const f=fixture({missingPackRunnerMarker:true});assert.throws(()=>f.run(),/RESEARCH_ROUTE_MARKER/u);assert.equal(f.states.size,0);
+  assert.equal(f.calls.filter(call=>call.args[2]==='create').length,10);
 });
 test('LIMITED requires the full three-stage completion marker',()=>{
   const f=fixture({missingAggregate:true});assert.throws(()=>f.run(),/RESEARCH_AGGREGATE_MARKER/u);assert.equal(f.states.size,0);
@@ -117,6 +132,28 @@ for(const response of [{status:0,stdout:'PAID_SEARCH_ROUTE_DELIVERY_RECEIPT\nRES
  {status:null,error:new Error('child timeout'),stdout:'EMPLOYER_RULE_OWNER_NATIVE_JOURNEY_OK\n'}])test('employer-rule runner rejects missing owner completion, failed exit or timeout without emitting success',()=>{
  const f=nativeJourney('EMPLOYER_RULE',[response]);assert.equal(f.status,1);assert.equal(f.calls.length,1);assert.deepEqual(f.logs,[]);
 });
+test('pack-packet runs its one combined test on the fresh database without separately repeating search or owner',()=>{
+ const output=packMarkers.map(marker=>`${marker} {"realProviderCalls":0}\n`).join('');
+ const f=nativeJourney('PACK_PACKET',[{status:0,stdout:output}]);assert.equal(f.status,0);assert.equal(f.calls.length,1);
+ const [,args,options]=f.calls[0];assert(args.includes('vitest.research-container.config.mjs'));assert.equal(options.env.AP_RESEARCH_TEST_CASE,'PACK_PACKET');assert.equal(options.env.AP_RESEARCH_JOURNEY_STAGE,'PACK_PACKET');
+ assert.equal(options.timeout,300000);assert.deepEqual(options.stdio,['ignore','pipe','pipe']);assert.equal(options.maxBuffer,16*1024*1024);
+ assert.equal(f.logs.length,1);assert(f.logs[0].startsWith('PACK_PACKET_ROUTE_DATABASE_JOURNEY_OK:'));assert.deepEqual(f.output,[output]);
+ assert(!f.calls.some(([, , value])=>['PAID_SEARCH','EMPLOYER_RULE'].includes(value.env.AP_RESEARCH_JOURNEY_STAGE)));
+});
+test('pack-packet accepts exact receipt lines with harmless terminal styling',()=>{
+ const output=packMarkers.map(marker=>`\u001b[32m${marker} {"realProviderCalls":0}\u001b[39m\n`).join('');
+ const f=nativeJourney('PACK_PACKET',[{status:0,stdout:output}]);assert.equal(f.status,0);assert.deepEqual(f.output,[output]);assert.equal(f.logs.length,1);
+});
+for(const missing of packMarkers)test(`pack-packet native runner rejects absent ${missing} even when parent and runner completion text is supplied`,()=>{
+ const output=packMarkers.filter(marker=>marker!==missing).map(marker=>`${marker}\n`).join('')+'PACK_PACKET_ROUTE_DATABASE_JOURNEY_OK: untrusted child text\n';
+ const f=nativeJourney('PACK_PACKET',[{status:0,stdout:output}]);assert.equal(f.status,1);assert.equal(f.calls.length,1);assert.deepEqual(f.logs,[]);
+});
+for(const output of [packMarkers.map(marker=>`${marker}_extra\n`).join(''),packMarkers.join('\n')+'\n'+packMarkers[1]+'\n'])test('pack-packet rejects suffixed or duplicate stage receipts',()=>{
+ const f=nativeJourney('PACK_PACKET',[{status:0,stdout:output}]);assert.equal(f.status,1);assert.deepEqual(f.logs,[]);
+});
+for(const response of [{status:1,stdout:packMarkers.join('\n')+'\n'}, {status:null,error:new Error('child timeout'),stdout:packMarkers.join('\n')+'\n'}])test('pack-packet failed exit or timeout cannot emit success despite all receipts',()=>{
+ const f=nativeJourney('PACK_PACKET',[response]);assert.equal(f.status,1);assert.equal(f.calls.length,1);assert.deepEqual(f.logs,[]);
+});
 for(const [scenario,stages]of [['QUALIFIED',['RESEARCH']],['LIMITED',['RESEARCH','CLARIFICATION','NOTIFICATION']],['PAID_SEARCH',['PAID_SEARCH']]])test(`original ${scenario} stage sequence and inherited output remain unchanged`,()=>{
  const f=nativeJourney(scenario,stages.map(()=>({status:0})));assert.equal(f.status,0);assert.deepEqual(f.calls.map(([, , options])=>options.env.AP_RESEARCH_JOURNEY_STAGE),stages);
  assert(f.calls.every(([, , options])=>options.stdio==='inherit'&&options.timeout===300000));
@@ -140,7 +177,9 @@ test('source preparation archives only committed allowlisted bytes and excludes 
   'tests/integration/intake-notification-native-journey.test.ts','tests/integration/verified-intake-ownership.sql',
   'tests/integration/verified-intake-payment.sql','tests/integration/reviewed-source-fixture.sql',
   'tests/integration/verified-paid-search-native-journey.test.ts','tests/integration/verified-paid-search-setup.ts','tests/integration/paid-search-provider-fixture.ts',
-  'tests/integration/employer-rule-owner-native-journey.test.ts','tests/integration/employer-question-source-fixture.ts','supabase/migrations/202610270105_fictional.sql'];
+  'tests/integration/employer-rule-owner-native-journey.test.ts','tests/integration/employer-question-source-fixture.ts',
+  'tests/integration/verified-employer-rule-owner-setup.ts','tests/integration/verified-paid-pack-setup.ts',
+  'tests/integration/verified-paid-pack-packet-setup.ts','tests/integration/employer-question-pack-native-journey.test.ts','supabase/migrations/202610270105_fictional.sql'];
  try {
   for(const path of files){mkdirSync(dirname(join(directory,path)),{recursive:true});writeFileSync(join(directory,path),path.endsWith('.sql')?'select 1;\n':'committed bytes\n');}
   const git=args=>execFileSync('git',args,{cwd:directory,stdio:'pipe',timeout:30000});

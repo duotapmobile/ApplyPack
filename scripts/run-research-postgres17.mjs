@@ -19,7 +19,9 @@ const selections=Object.freeze(['src','supabase/migrations','package.json','pack
   'tests/integration/intake-notification-native-journey.test.ts','tests/integration/verified-intake-ownership.sql',
   'tests/integration/verified-intake-payment.sql','tests/integration/reviewed-source-fixture.sql',
   'tests/integration/verified-paid-search-native-journey.test.ts','tests/integration/verified-paid-search-setup.ts','tests/integration/paid-search-provider-fixture.ts',
-  'tests/integration/employer-rule-owner-native-journey.test.ts','tests/integration/employer-question-source-fixture.ts']);
+  'tests/integration/employer-rule-owner-native-journey.test.ts','tests/integration/employer-question-source-fixture.ts',
+  'tests/integration/verified-employer-rule-owner-setup.ts','tests/integration/verified-paid-pack-setup.ts',
+  'tests/integration/verified-paid-pack-packet-setup.ts','tests/integration/employer-question-pack-native-journey.test.ts']);
 
 /** Exact Git bytes only. The fixture never mounts a developer checkout or .env. */
 export function prepareResearchPostgresInputs({execute=execFileSync, environment={PATH:process.env.PATH},repositoryRoot=root}={}) {
@@ -121,7 +123,7 @@ export function runResearchPostgres17(args=[],{execute=execFileSync,environment=
   const pg=JSON.parse(docker(['image','inspect',RESEARCH_POSTGRES_IMAGE]))[0], node=JSON.parse(docker(['image','inspect',RESEARCH_NODE_IMAGE]))[0];
   const volumes=image(pg,RESEARCH_POSTGRES_IMAGE,'postgres');image(node,RESEARCH_NODE_IMAGE,'node');
   const results=[];
-  for(const scenario of ['QUALIFIED','LIMITED','PAID_SEARCH','EMPLOYER_RULE']) {
+  for(const scenario of ['QUALIFIED','LIMITED','PAID_SEARCH','EMPLOYER_RULE','PACK_PACKET']) {
     const runId=uuid();assert(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(runId),'RESEARCH_RUN_ID');
     const pgName=`applypack-research-pg-${runId}`, nodeName=`applypack-research-node-${runId}`, marker=runId.replaceAll('-','');
     const attempted=[], common=['--pull','never','--read-only','--user','65534:65534','--cap-drop','ALL','--security-opt','no-new-privileges','--cpus','2'];
@@ -151,9 +153,14 @@ export function runResearchPostgres17(args=[],{execute=execFileSync,environment=
       phase='actual-route-journey';
       const output=docker(['start','--attach',nodeName],undefined,330000);
       write(join(prepared.directory,`${scenario.toLowerCase()}.log`),output);
-      const requiredMarker=scenario==='EMPLOYER_RULE'?'EMPLOYER_RULE_ROUTE_DATABASE_JOURNEY_OK:':scenario==='PAID_SEARCH'?'PAID_SEARCH_ROUTE_DATABASE_JOURNEY_OK:':'RESEARCH_ROUTE_DATABASE_JOURNEY_OK:';
+      const requiredMarker=scenario==='PACK_PACKET'?'PACK_PACKET_ROUTE_DATABASE_JOURNEY_OK:':scenario==='EMPLOYER_RULE'?'EMPLOYER_RULE_ROUTE_DATABASE_JOURNEY_OK:':scenario==='PAID_SEARCH'?'PAID_SEARCH_ROUTE_DATABASE_JOURNEY_OK:':'RESEARCH_ROUTE_DATABASE_JOURNEY_OK:';
       assert(output.split(/\r?\n/u).some(line=>line.startsWith(requiredMarker)),'RESEARCH_ROUTE_MARKER');
       if(scenario==='EMPLOYER_RULE')assert(stripVTControlCharacters(output).split(/\r?\n/u).some(line=>/^EMPLOYER_RULE_OWNER_NATIVE_JOURNEY_OK(?: |$)/u.test(line.trim())),'EMPLOYER_RULE_OWNER_MARKER');
+      if(scenario==='PACK_PACKET') {
+        const lines=stripVTControlCharacters(output).split(/\r?\n/u).map(line=>line.trim());
+        for(const marker of ['EMPLOYER_QUESTION_PACK_NATIVE_JOURNEY_OK','PAID_PACK_ROUTE_DELIVERY_OBLIGATION_RECEIPT','PAID_PACK_PREPARE_PACKET_RECEIPT'])
+          assert.equal(lines.filter(line=>line===marker||line.startsWith(`${marker} `)).length,1,`PACK_PACKET_STAGE_MARKER:${marker}`);
+      }
       if(scenario==='LIMITED')assert(output.split(/\r?\n/u).some(line=>line==='RESEARCH_CLARIFICATION_NOTIFICATION_JOURNEYS_OK'),'RESEARCH_AGGREGATE_MARKER');
       const stopped=inspect(nodeName);owned(stopped,nodeName,runId);isolated(stopped,node.Id,`container:${pgState.Id}`,binds);
       assert(stopped.State?.Running===false&&stopped.State?.ExitCode===0&&stopped.State?.OOMKilled===false,'RESEARCH_ROUTE_EXIT');

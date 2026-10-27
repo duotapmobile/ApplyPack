@@ -29,7 +29,7 @@ function prepareHistoricalWorkspace(maximumVersion) {
   }
   return historicalWorkspace;
 }
-function run(command, args, input) {
+function run(command, args, input, includeSuccessfulStderr = false) {
   const result = spawnSync(command, args, {
     cwd: process.cwd(), encoding: "utf8", input, stdio: ["pipe", "pipe", "pipe"], timeout: 600_000,
   });
@@ -38,10 +38,10 @@ function run(command, args, input) {
     if (result.stderr) process.stderr.write(result.stderr);
     throw result.error ?? new Error(`${command} failed with exit ${result.status}`);
   }
-  return result.stdout;
+  return includeSuccessfulStderr ? result.stdout + result.stderr : result.stdout;
 }
-function sql(input) {
-  return run("docker", ["exec", "-i", container, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"], input);
+function sql(input, { includeNotices = false } = {}) {
+  return run("docker", ["exec", "-i", container, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"], input, includeNotices);
 }
 let failure;
 try {
@@ -252,10 +252,10 @@ try {
     const historical104 = run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs", "--historical-104"]);
     if (!historical104.includes("Database contract fixtures passed: 21. Schema phase: 202610270104.")) throw new Error("Historical104 lifecycle proof missing");
     const sourceBindingFixture = readFileSync(new URL("../tests/integration/verified-source-run-binding.sql", import.meta.url), "utf8");
-    const sourceSeed = sql(verifiedSourceRunSeedFixture(sourceBindingFixture));
+    const sourceSeed = sql(verifiedSourceRunSeedFixture(sourceBindingFixture), { includeNotices: true });
     if (!sourceSeed.includes("VERIFIED_SOURCE_RUN_BINDING_104_SEEDED")) throw new Error("Source105 historical seed marker missing");
     run("supabase", ["migration", "up", "--local", "--workdir", source105Workspace]);
-    const sourcePreservation = sql(sourceBindingFixture);
+    const sourcePreservation = sql(sourceBindingFixture, { includeNotices: true });
     if (!sourcePreservation.includes("VERIFIED_SOURCE_RUN_BINDING_105_UPGRADE_PRESERVED")) throw new Error("Source105 historical preservation marker missing");
     sql(current105LockedPhaseSql);
     const result = sql(`

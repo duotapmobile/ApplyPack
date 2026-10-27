@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import test from "node:test";
@@ -125,6 +126,53 @@ test("105 runners demand the actual seed, preservation and paid-context fixture 
   assert.equal((seed.match(/^commit;$/gmu) || []).length, 1);
   assert.equal((seed.match(/^rollback;\r?$/gmu) || []).length, 0);
 });
+
+function historicalProcessFunctions() {
+  const source = readFileSync(new URL("./run-supabase-rehearsal-upgrade-test.mjs", import.meta.url), "utf8");
+  return source.slice(source.indexOf("function run("), source.indexOf("let failure;"));
+}
+
+test("the historical runner preserves stdout-only defaults and explicitly captures successful notices", () => {
+  const writes = [];
+  const context = {
+    spawnSync, container: "supabase_db_applypack",
+    process: { cwd: () => process.cwd(), stdout: { write: (value) => writes.push(value) }, stderr: { write: (value) => writes.push(value) } },
+  };
+  const { run } = runInNewContext(`${historicalProcessFunctions()}\n({ run });`, context);
+  const args = ["-e", "process.stdout.write('SQL result'); process.stderr.write('NOTICE: fixture passed');"];
+  assert.equal(run(process.execPath, args), "SQL result");
+  assert.equal(run(process.execPath, args, undefined, true), "SQL resultNOTICE: fixture passed");
+  assert.deepEqual(writes, []);
+  assert.throws(() => run(process.execPath, ["-e", "process.stderr.write('NOTICE: fixture passed'); process.exit(1);"], undefined, true), /failed with exit 1/u);
+  assert.deepEqual(writes, ["NOTICE: fixture passed"]);
+});
+
+for (const scenario of ["stderr-only", "missing-seed", "missing-preservation", "nonzero-seed", "nonzero-preservation"])
+  test(`105 historical marker checks handle ${scenario} without accepting failed SQL`, () => {
+    const source = readFileSync(new URL("./run-supabase-rehearsal-upgrade-test.mjs", import.meta.url), "utf8");
+    const block = source.slice(source.indexOf("    const sourceBindingFixture ="), source.indexOf("    sql(current105LockedPhaseSql);"));
+    const calls = [];
+    const context = {
+      URL, container: "supabase_db_applypack", source105Workspace: "/fictional/local105", verifiedSourceRunSeedFixture,
+      readFileSync: (path) => readFileSync(path, "utf8"),
+      process: { cwd: () => process.cwd(), stdout: { write() {} }, stderr: { write() {} } },
+      spawnSync: (command, args, options) => {
+        calls.push({ command, args, input: options.input });
+        if (command === "supabase") return { status: 0, stdout: "", stderr: "unrelated successful migration notice" };
+        assert.equal(command, "docker");
+        assert(args.includes("ON_ERROR_STOP=1"));
+        const stage = options.input.includes("set applypack.fixture_source_run_binding_seed='true';") ? "seed" : "preservation";
+        const marker = stage === "seed" ? "VERIFIED_SOURCE_RUN_BINDING_104_SEEDED" : "VERIFIED_SOURCE_RUN_BINDING_105_UPGRADE_PRESERVED";
+        return { status: scenario === `nonzero-${stage}` ? 1 : 0, stdout: "DO\n", stderr: scenario === `missing-${stage}` ? "" : `NOTICE: ${marker}\n` };
+      },
+    };
+    const invoke = () => runInNewContext(`${historicalProcessFunctions()}\n${block.replaceAll("import.meta.url", JSON.stringify(import.meta.url))}`, context);
+    if (scenario === "stderr-only") { invoke(); assert.equal(calls.length, 3); }
+    else {
+      assert.throws(invoke, scenario.startsWith("nonzero") ? /docker failed with exit 1/u : /historical (?:seed|preservation) marker missing/u);
+      assert.equal(calls.length, scenario.endsWith("seed") ? 1 : 3);
+    }
+  });
 
 test("native105 keeps its retained core in one session and resets before each optional current fixture", () => {
   const native = readFileSync(new URL("./test-database-native.ps1", import.meta.url), "utf8");

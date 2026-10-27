@@ -186,6 +186,54 @@ describe("confirmed clarification drafting provenance", () => {
 });
 
 describe("immutable drafting evidence", () => {
+  it("preserves the pre-change legacy packet bytes and authority digest", () => {
+    const packet = fixture().build();
+    // Captured from the unmodified builder before the nullable paid-row fix.
+    expect(packet.packetSha256).toBe("1dd3380fdbb2ed3d3ced2c2b4d4f8b0b9483636613de29026acb31c748d455ce");
+    expect(packet.evidenceSha256).toBe("92c0b79230a0da9dbe7f3992ce7c7ec8f837ab103c80086dc99a788be06a6e0f");
+    expect(createHash("sha256").update(serializeDraftingEvidencePacket(packet), "utf8").digest("hex")).toBe(packet.packetSha256);
+  });
+  it("binds actual checkout completion for a null purchase timestamp without moving delayed-webhook deadlines", () => {
+    const f = fixture(), original = structuredClone(f.r);
+    f.r.purchase.completed_at = null;
+    f.r.intent.completed_at = "2026-10-25T11:30:00.000Z";
+    const packet = f.build();
+    expect(Date.parse(f.r.intent.completed_at)).toBeGreaterThan(Date.parse(f.r.revision.started_at));
+    expect(packet.binding.dueAt).toBe(original.revision.due_at);
+    expect(f.r.purchase.completed_at).toBeNull();
+    expect(f.r.line).toEqual(original.line); expect(f.r.revision).toEqual(original.revision);
+    const repeated = f.build(); expect(repeated.packetSha256).toBe(packet.packetSha256);
+    f.r.intent.completed_at = "2026-10-25T11:40:00.000Z";
+    expect(f.build().evidenceSha256).not.toBe(packet.evidenceSha256);
+    expect(f.build().packetSha256).not.toBe(packet.packetSha256);
+    expect(f.build().binding.dueAt).toBe(original.revision.due_at);
+  });
+  it.each<[string, unknown, string]>([
+    ["missing", undefined, "PAYMENT_COMPLETION_INVALID"], ["null", null, "SHAPE_INVALID"],
+    ["malformed", "not-a-time", "SHAPE_INVALID"], ["future", due, "DEADLINE_INVALID"],
+  ])("rejects %s bound intent completion when the purchase timestamp is null", (_kind, value, code) => {
+    const f = fixture(); f.r.purchase.completed_at = null; Object.assign(f.r.intent, { completed_at: value });
+    expect(() => f.build()).toThrow(`DRAFTING_EVIDENCE_${code}`);
+  });
+  it("does not treat a missing purchase timestamp field as a persisted null", () => {
+    const f = fixture(); Reflect.deleteProperty(f.r.purchase, "completed_at"); f.r.intent.completed_at = before;
+    expect(() => f.build()).toThrow("DRAFTING_EVIDENCE_SHAPE_INVALID");
+  });
+  it.each([before, due, undefined])("rejects an extra legacy intent completion field even when its value is %s", (value) => {
+    const f = fixture(); Object.assign(f.r.intent, { completed_at: value });
+    expect(() => f.build()).toThrow("DRAFTING_EVIDENCE_PAYMENT_COMPLETION_INVALID");
+  });
+  it.each<[string, (f: Fixture) => void, string]>([
+    ["customer", (f) => { f.r.intent.customer_id = id(99); }, "OWNER_MISMATCH"],
+    ["checkout", (f) => { f.r.intent.id = id(99); }, "PAYMENT_BINDING_INVALID"],
+    ["purchase", (f) => { f.r.intent.purchase_id = id(99); }, "PAYMENT_BINDING_INVALID"],
+    ["payment", (f) => { f.r.intent.payment_attempt_id = id(99); }, "PAYMENT_BINDING_INVALID"],
+    ["amount", (f) => { f.r.intent.amount_cents = 1598; }, "PAYMENT_BINDING_INVALID"],
+    ["uncompleted state", (f) => { Object.assign(f.r.intent, { state: "OPEN" }); }, "SHAPE_INVALID"],
+  ])("rejects a valid completion timestamp on a mismatched %s", (_kind, mutate, code) => {
+    const f = fixture(); f.r.purchase.completed_at = null; f.r.intent.completed_at = before; mutate(f);
+    expect(() => f.build()).toThrow(`DRAFTING_EVIDENCE_${code}`);
+  });
   it("retains the exact evidence packet while its paid line advances through rendering and approval", () => {
     const f = fixture(), saved = serializeDraftingEvidencePacket(f.build());
     for (const state of ["GENERATING", "HUMAN_REVIEW", "READY_TO_RELEASE"] as const) {
@@ -461,6 +509,34 @@ function fakeAdmin(f: Fixture, onRead?: (table: string, count: number) => void) 
   return { admin: { from, rpc } as unknown as Parameters<typeof loadDraftingEvidencePacket>[0], from, rpc, counts, selections, tables, managedJob, authority };
 }
 describe("connected drafting evidence loader", () => {
+  it("selects actual intent completion only for the null-purchase authority branch", async () => {
+    const f = fixture(); f.r.purchase.completed_at = null; f.r.intent.completed_at = "2026-10-25T11:30:00.000Z";
+    const db = fakeAdmin(f), original = structuredClone(f.r), packet = await loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now });
+    expect(serializeDraftingEvidencePacket(packet)).toBe(serializeDraftingEvidencePacket(f.build()));
+    expect(db.selections.some((columns) => columns.includes("state,completed_at,line_count"))).toBe(true);
+    expect(f.r).toEqual(original); expect(packet.binding.dueAt).toBe(due);
+  });
+  it("keeps the historical loader packet byte-identical when the newly selected intent timestamp is present", async () => {
+    const f = fixture(); f.r.intent.completed_at = "2026-10-25T11:30:00.000Z";
+    const db = fakeAdmin(f), packet = await loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now });
+    // Captured from the actual pre-change loader, including its rule evidence.
+    expect(packet.packetSha256).toBe("9569180931b03c376fac0f6013837adef194470562c928ede59667be3e416474");
+    expect(packet.evidenceSha256).toBe("ded0a0683082a0ccd274d85275f7eb1b6bb0df68104f2c5657b400cdf84322a2");
+    expect(createHash("sha256").update(serializeDraftingEvidencePacket(packet), "utf8").digest("hex")).toBe(packet.packetSha256);
+  });
+  it.each<[string, unknown, string]>([
+    ["missing", undefined, "PAYMENT_COMPLETION_INVALID"], ["null", null, "SHAPE_INVALID"],
+    ["malformed", "not-a-time", "SHAPE_INVALID"], ["future", due, "DEADLINE_INVALID"],
+  ])("rejects %s actual intent completion for a null persisted purchase", async (_kind, value, code) => {
+    const f = fixture(); f.r.purchase.completed_at = null; Object.assign(f.r.intent, { completed_at: value });
+    const db = fakeAdmin(f);
+    await expect(loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now })).rejects.toThrow(`DRAFTING_EVIDENCE_${code}`);
+  });
+  it("detects the new bound completion timestamp changing between reads", async () => {
+    const f = fixture(); f.r.purchase.completed_at = null; f.r.intent.completed_at = before;
+    const db = fakeAdmin(f, (table, count) => { if (table === "ap_material_checkout_intents" && count === 2) f.r.intent.completed_at = fresh; });
+    await expect(loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now })).rejects.toThrow("DRAFTING_EVIDENCE_READ_CHANGED");
+  });
   function preparedSourceNode(f: Fixture) {
     const version = "employer-instruction-source-v1", source = f.r.job.captured_listing as { text: string };
     const hash = createHash("sha256").update(`${version}:${f.r.job.id}:${f.r.job.content_sha256}`, "utf8").digest("hex");
