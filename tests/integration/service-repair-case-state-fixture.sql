@@ -238,9 +238,9 @@ select pg_temp.assert_true((select required->>'requiredSchemaVersion' in('202610
 select pg_temp.assert_true(not has_table_privilege('service_role','public.ap_material_draft_permits','INSERT')
  and not has_table_privilege('service_role','public.ap_material_draft_versions','UPDATE')
  and not has_function_privilege('authenticated','public.ap_claim_material_draft_jobs(uuid,integer)','EXECUTE'),'draft boundary allows caller mutation');
-select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs),'paid confirmed revision was not enqueued');
+select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'paid confirmed revision was not enqueued');
 select public.ap_material_draft_enqueue('b5000000-0000-4000-8000-000000000001');
-select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs),'enqueue replay duplicated obligation');
+select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'enqueue replay duplicated obligation');
 update public.ap_retention_restore_lock set locked=true;
 select pg_temp.assert_true(public.ap_claim_material_draft_jobs(gen_random_uuid(),1)='[]'::jsonb,'restored job was claimable while locked');
 update public.ap_retention_restore_lock set locked=false;
@@ -501,7 +501,7 @@ do $$ declare w fixture_service_state; decision jsonb; begin
   'EDITORIAL_REQUEST','WORDING_OR_SELECTION_PREFERENCE',w.evidence,'[]'),'service_error_accepted_repair_unfinished');
  perform pg_temp.reject(format('delete from public.ap_service_error_decisions where id=%L',decision->>'decisionId'),'service_error_history_immutable');
 end $$;
-select pg_temp.assert_true((select count(*)=2 from public.ap_generated_file_versions) and (select count(*)=2 from public.ap_releases),
+select pg_temp.assert_true((select count(*)=2 from public.ap_generated_file_versions where artifact_id in(select id from public.ap_generated_artifacts where material_line_id='b5000000-0000-4000-8000-000000000001')) and (select count(*)=2 from public.ap_releases where order_id='25000000-0000-4000-8000-000000000001'),
  'triage generated or sent files');
 select pg_temp.assert_true(public.ap_service_error_triage_schema_installed(), '096 reporting and review schema missing');
 select pg_temp.assert_true((public.ap_material_service_error_context('15000000-0000-4000-8000-000000000001','b5000000-0000-4000-8000-000000000001'))#>>'{existingReport,requestId}'='b0960000-0000-4000-8000-000000000001',

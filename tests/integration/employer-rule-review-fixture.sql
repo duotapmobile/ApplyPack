@@ -118,7 +118,7 @@ insert into public.jobs(
   'b1040000-0000-4000-8000-000000000003',clock_timestamp()
 );
 
-create temporary table fixture_job_snapshot_input(
+create temporary table b104_fixture_job_snapshot_input(
   id,legacy_job_id,origin,discovery_source,external_job_id,canonical_application_url,
   application_host_type,canonical_employer_listing_url,source_url,company,exact_title,
   normalized_fingerprint,captured_listing,retrieved_at,posted_on,posted_date_unknown,
@@ -145,7 +145,7 @@ select
 from current_source;
 
 select pg_temp.verify_fixture_snapshot(to_jsonb(template),'b1040000-0000-4000-8000-000000000003')
-from fixture_job_snapshot_input template;
+from b104_fixture_job_snapshot_input template;
 select pg_temp.assert_true(exists(select 1 from public.ap_current_source_verifications('b1040004-0000-4000-8000-000000000001')),
  'fixture manual review must create current immutable source evidence');
 
@@ -309,6 +309,6 @@ begin
  execute format('insert into public.jobs(%s) select %s from jsonb_populate_record(null::public.jobs,$1) r',writable_columns,writable_columns) using job_input;
  select to_jsonb(j)||jsonb_build_object('id',snapshot_id,'legacy_job_id',legacy_id,'external_job_id','EMPLOYER-RULE-'||suffix,
  'canonical_application_url',application_url,'canonical_employer_listing_url',listing_url,'source_url',listing_url,
- 'normalized_fingerprint',encode(extensions.digest('employer-rule-'||suffix,'sha256'),'hex')) into snapshot from fixture_job_snapshot_input j;
+ 'normalized_fingerprint',encode(extensions.digest('employer-rule-'||suffix,'sha256'),'hex')) into snapshot from b104_fixture_job_snapshot_input j;
  return pg_temp.verify_fixture_snapshot(snapshot,current_setting('employer_test.actor')::uuid);
 end $$;

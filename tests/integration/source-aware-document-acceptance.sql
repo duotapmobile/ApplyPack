@@ -240,9 +240,9 @@ select pg_temp.assert_true((select required->>'requiredSchemaVersion' in ('20261
 select pg_temp.assert_true(not has_table_privilege('service_role','public.ap_material_draft_permits','INSERT')
  and not has_table_privilege('service_role','public.ap_material_draft_versions','UPDATE')
  and not has_function_privilege('authenticated','public.ap_claim_material_draft_jobs(uuid,integer)','EXECUTE'),'draft boundary allows caller mutation');
-select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs),'paid confirmed revision was not enqueued');
+select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'paid confirmed revision was not enqueued');
 select public.ap_material_draft_enqueue('b5000000-0000-4000-8000-000000000001');
-select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs),'enqueue replay duplicated obligation');
+select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'enqueue replay duplicated obligation');
 update public.ap_retention_restore_lock set locked=true;
 select pg_temp.assert_true(public.ap_claim_material_draft_jobs(gen_random_uuid(),1)='[]'::jsonb,'restored job was claimable while locked');
 update public.ap_retention_restore_lock set locked=false;
@@ -473,7 +473,7 @@ update public.ap_generated_file_versions set checksum_sha256=repeat('b',64);
 select pg_temp.reject(format('select public.ap_assert_current_artifact_facts(%L)',id),'source_aware_document_pair_invalid') from public.ap_generated_artifacts;
 rollback to savepoint changed_source_claim;
 savepoint required_reference;
-update public.ap_material_lines set selected_reference_sheet=true;
+update public.ap_material_lines set selected_reference_sheet=true where id='b5000000-0000-4000-8000-000000000001';
 select pg_temp.reject(format('select public.ap_assert_material_draft_members_current(%L)',version_id),'material_draft_pair_incomplete') from fixture_draft_state;
 rollback to savepoint required_reference;
 

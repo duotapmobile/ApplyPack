@@ -99,7 +99,7 @@ test('source preparation archives only committed allowlisted bytes and excludes 
   'tests/integration/material-clarification-route-journey.test.ts','tests/integration/material-clarification-confirmation.sql',
   'tests/integration/intake-notification-native-journey.test.ts','tests/integration/verified-intake-ownership.sql',
   'tests/integration/verified-intake-payment.sql','tests/integration/reviewed-source-fixture.sql',
-  'tests/integration/verified-paid-search-native-journey.test.ts','tests/integration/paid-search-provider-fixture.ts','supabase/migrations/202610270104_fictional.sql'];
+  'tests/integration/verified-paid-search-native-journey.test.ts','tests/integration/verified-paid-search-setup.ts','tests/integration/paid-search-provider-fixture.ts','supabase/migrations/202610270104_fictional.sql'];
  try {
   for(const path of files){mkdirSync(dirname(join(directory,path)),{recursive:true});writeFileSync(join(directory,path),path.endsWith('.sql')?'select 1;\n':'committed bytes\n');}
   const git=args=>execFileSync('git',args,{cwd:directory,stdio:'pipe',timeout:30000});

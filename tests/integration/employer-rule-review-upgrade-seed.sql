@@ -121,7 +121,7 @@ insert into public.jobs(
   'c1040000-0000-4000-8000-000000000003',clock_timestamp()
 );
 
-create temporary table fixture_job_snapshot_input(
+create temporary table c104_fixture_job_snapshot_input(
   id,legacy_job_id,origin,discovery_source,external_job_id,canonical_application_url,
   application_host_type,canonical_employer_listing_url,source_url,company,exact_title,
   normalized_fingerprint,captured_listing,retrieved_at,posted_on,posted_date_unknown,
@@ -148,7 +148,7 @@ select
 from current_source;
 
 select pg_temp.verify_fixture_snapshot(to_jsonb(template),'c1040000-0000-4000-8000-000000000003')
-from fixture_job_snapshot_input template;
+from c104_fixture_job_snapshot_input template;
 select pg_temp.assert_true(exists(select 1 from public.ap_current_source_verifications('c1040004-0000-4000-8000-000000000001')),
  'fixture manual review must create current immutable source evidence');
 
@@ -294,6 +294,34 @@ do $$ declare j public.ap_material_draft_jobs; basis jsonb; begin
  '{"applicationAccessReviewed":true,"liveListingOpened":true,"submissionInstructionsCompared":true,"unchangedRuleConfirmed":true}','c1040000-0000-4000-8000-000000000003');
  perform set_config('employer_test.paid_job',j.id::text,true);
  perform set_config('employer_test.paid_context',public.ap_material_draft_context_sha256(j.id),true);
+end $$;
+-- Model a genuine prior worker failure without discarding the paid obligation.
+-- The existing API acquires its lease and records PROVIDER_UNAVAILABLE; no
+-- provider attempt or budget reservation is created. Later current-contract
+-- schedulers must leave this owner-held work intact, not claim it as their own.
+do $$ declare j public.ap_material_draft_jobs; claimed jsonb; token uuid;
+ line_before jsonb; revision_before jsonb; payment_before jsonb; attempts_before jsonb;
+begin
+ select * into j from public.ap_material_draft_jobs where id=current_setting('employer_test.paid_job')::uuid;
+ select to_jsonb(l) into line_before from public.ap_material_lines l where id=j.material_line_id;
+ select to_jsonb(r) into revision_before from public.ap_material_line_revisions r where id=j.line_revision_id;
+ select to_jsonb(p) into payment_before from public.ap_payment_attempts p where id=(line_before->>'payment_attempt_id')::uuid;
+ select coalesce(jsonb_agg(to_jsonb(a) order by a.id),'[]'::jsonb) into attempts_before from public.ap_material_draft_attempts a where job_id=j.id;
+ perform pg_temp.assert_true(attempts_before='[]'::jsonb,'owner-held seed unexpectedly has provider attempts');
+ claimed:=public.ap_claim_material_draft_jobs('c104f007-0000-4000-8000-000000000001',1);
+ token:=(claimed->0->>'lease_token')::uuid;
+ perform pg_temp.assert_true(jsonb_array_length(claimed)=1 and (claimed->0->>'id')::uuid=j.id and token is not null
+  and (claimed->0->>'lease_owner')::uuid='c104f007-0000-4000-8000-000000000001','owner-held seed did not claim exact paid job');
+ perform pg_temp.assert_true(public.ap_fail_material_draft_job(j.id,token,'PROVIDER_UNAVAILABLE')='OWNER_EXCEPTION','owner-held seed failure transition missing');
+ perform pg_temp.assert_true((select state='OWNER_EXCEPTION' and error_code='PROVIDER_UNAVAILABLE' and lease_token is null
+  and lease_expires_at is null and claim_count=j.claim_count+1 and lease_generation=j.lease_generation+1
+  and active_version_id is not distinct from j.active_version_id from public.ap_material_draft_jobs where id=j.id),'owner-held seed lease/history incorrect');
+ perform pg_temp.assert_true((select to_jsonb(l)=line_before from public.ap_material_lines l where id=j.material_line_id)
+  and (select to_jsonb(r)=revision_before from public.ap_material_line_revisions r where id=j.line_revision_id)
+  and (select to_jsonb(p)=payment_before from public.ap_payment_attempts p where id=(line_before->>'payment_attempt_id')::uuid)
+  and (select coalesce(jsonb_agg(to_jsonb(a) order by a.id),'[]'::jsonb)=attempts_before from public.ap_material_draft_attempts a where job_id=j.id)
+  and public.ap_material_draft_context_sha256(j.id)=current_setting('employer_test.paid_context'),
+  'owner-held seed changed paid obligation, deadline, provider spend or valid context');
 end $$;
 create table public.employer_rule_104_preservation_fixture(kind text,identity text,body_sha256 text);
 do $$ declare item record; digest text; begin

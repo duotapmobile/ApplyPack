@@ -237,9 +237,9 @@ select pg_temp.assert_true((select required->>'requiredSchemaVersion' in ('20261
 select pg_temp.assert_true(not has_table_privilege('service_role','public.ap_material_draft_permits','INSERT')
  and not has_table_privilege('service_role','public.ap_material_draft_versions','UPDATE')
  and not has_function_privilege('authenticated','public.ap_claim_material_draft_jobs(uuid,integer)','EXECUTE'),'draft boundary allows caller mutation');
-select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs),'paid confirmed revision was not enqueued');
+select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'paid confirmed revision was not enqueued');
 select public.ap_material_draft_enqueue('b5000000-0000-4000-8000-000000000001');
-select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs),'enqueue replay duplicated obligation');
+select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'enqueue replay duplicated obligation');
 update public.ap_retention_restore_lock set locked=true;
 select pg_temp.assert_true(public.ap_claim_material_draft_jobs(gen_random_uuid(),1)='[]'::jsonb,'restored job was claimable while locked');
 update public.ap_retention_restore_lock set locked=false;
@@ -465,7 +465,7 @@ rollback to savepoint historical_expected_release;
 savepoint before_unresolved_refresh;
 insert into public.ap_material_draft_attempts(id,customer_id,material_line_id,job_id,draft_version_id,policy_id,lease_generation,state,input_token_cap,output_token_cap,reserved_microusd)
 select gen_random_uuid(),customer_id,material_line_id,job_id,draft_version_id,policy_id,lease_generation,'RESULT_UNKNOWN',100,100,200
-from public.ap_material_draft_attempts where state='RESULT_RECORDED';
+from public.ap_material_draft_attempts where material_line_id='b5000000-0000-4000-8000-000000000001' and state='RESULT_RECORDED';
 do $$ declare w fixture_draft_state; begin
  select * into w from fixture_draft_state;
  perform pg_temp.reject(format('select public.ap_refresh_material_draft_packet(%L,%L,%L,%L,%L,%L)',w.job_id,w.version_id,'e9100000-0000-4000-8000-000000000004',repeat('4',64),w.context_sha256,'15000000-0000-4000-8000-000000000003'),'material_draft_result_unresolved');
@@ -473,10 +473,10 @@ end $$;
 rollback to savepoint before_unresolved_refresh;
 savepoint before_packet_refresh;
 do $$ declare w fixture_draft_state; fresh_context text; replacement uuid; attempts bigint; check_id uuid:=gen_random_uuid(); begin
- select * into w from fixture_draft_state;select count(*) into attempts from public.ap_material_draft_attempts;
+ select * into w from fixture_draft_state;select count(*) into attempts from public.ap_material_draft_attempts where material_line_id='b5000000-0000-4000-8000-000000000001';
  perform public.ap_record_material_draft_listing_check(w.job_id,w.version_id,check_id,'BEFORE_GENERATION',repeat('4',64),'ACTIVE','15000000-0000-4000-8000-000000000003');
  perform public.ap_record_material_draft_listing_check(w.job_id,w.version_id,check_id,'BEFORE_GENERATION',repeat('4',64),'ACTIVE','15000000-0000-4000-8000-000000000003');
- perform pg_temp.assert_true((select count(*)=2 from public.ap_material_listing_checks where phase='BEFORE_GENERATION'),'same evidence recheck rewrote history or duplicate replay');
+ perform pg_temp.assert_true((select count(*)=2 from public.ap_material_listing_checks where material_line_id='b5000000-0000-4000-8000-000000000001' and phase='BEFORE_GENERATION'),'same evidence recheck rewrote history or duplicate replay');
  perform pg_temp.reject(format('select public.ap_record_material_draft_listing_check(%L,%L,%L,%L,%L,%L,%L)',w.job_id,w.version_id,check_id,'BEFORE_GENERATION',repeat('4',64),'CLOSED','15000000-0000-4000-8000-000000000003'),'material_draft_listing_check_conflict');
  perform pg_temp.reject(format('update public.ap_material_listing_checks set checked_at=clock_timestamp() where id=%L',check_id),'immutable_record');
  fresh_context:=public.ap_material_draft_context_sha256(w.job_id);
@@ -486,7 +486,7 @@ do $$ declare w fixture_draft_state; fresh_context text; replacement uuid; attem
  perform pg_temp.assert_true(replacement=public.ap_refresh_material_draft_packet(w.job_id,w.version_id,'e9100000-0000-4000-8000-000000000004',repeat('4',64),fresh_context,'15000000-0000-4000-8000-000000000003'),'refresh replay created another version');
  perform pg_temp.assert_true((select supersedes_id=w.version_id and encrypted_payload_id is null and claim_review_sha256 is null and approval_sha256 is null from public.ap_material_draft_versions where id=replacement),'refresh copied old source or approval');
  perform pg_temp.assert_true((select invalidated_at is not null and encrypted_payload_id is not null and approval_sha256 is not null from public.ap_material_draft_versions where id=w.version_id),'refresh destroyed history');
- perform pg_temp.assert_true((select count(*)=attempts from public.ap_material_draft_attempts) and (select lease_token is null and state='READY' from public.ap_material_draft_jobs where id=w.job_id),'refresh implicitly dispatched or retained stale lease');
+ perform pg_temp.assert_true((select count(*)=attempts from public.ap_material_draft_attempts where material_line_id='b5000000-0000-4000-8000-000000000001') and (select lease_token is null and state='READY' from public.ap_material_draft_jobs where id=w.job_id),'refresh implicitly dispatched or retained stale lease');
 end $$;
 rollback to savepoint before_packet_refresh;
 
@@ -529,7 +529,7 @@ do $$ declare w fixture_draft_state; request uuid:=gen_random_uuid(); purge uuid
  select * into w from fixture_draft_state;
  insert into public.ap_material_draft_attempts(id,customer_id,material_line_id,job_id,draft_version_id,policy_id,lease_generation,state,input_token_cap,output_token_cap,reserved_microusd)
  select request,customer_id,material_line_id,job_id,draft_version_id,policy_id,lease_generation,'RESULT_UNKNOWN',100,100,200
- from public.ap_material_draft_attempts where state='RESULT_RECORDED';
+ from public.ap_material_draft_attempts where material_line_id='b5000000-0000-4000-8000-000000000001' and state='RESULT_RECORDED';
  update public.ap_material_draft_jobs set state='RESULT_UNKNOWN' where id=w.job_id;
  insert into public.ap_service_retention_claims(id,customer_id,order_ids,state,redaction_sha256,completed_at)
  values(purge,'15000000-0000-4000-8000-000000000001',array['25000000-0000-4000-8000-000000000001'::uuid],'COMPLETE',repeat('e',64),clock_timestamp());

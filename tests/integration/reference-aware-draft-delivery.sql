@@ -244,7 +244,7 @@ values('d9530000-0000-4000-8000-000000000001','ae910000-0000-4000-8000-000000000
  '75000000-0000-4000-8000-000000000001','c5500000-0000-4000-8000-000000000001',true,true,'CHECKOUT_ELIGIBLE');
 insert into public.ap_material_checkout_references(checkout_item_id,reference_permission_id,position)
 select 'd9530000-0000-4000-8000-000000000001',('d9520000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,n from generate_series(1,3) n;
-update public.ap_material_lines set selected_reference_sheet=true;
+update public.ap_material_lines set selected_reference_sheet=true where id='b5000000-0000-4000-8000-000000000001';
 
 create temporary table fixture_draft_state(job_id uuid,lease_token uuid,version_id uuid,context_sha256 text,policy_id uuid,claim_id uuid,member_sha256 text,approval_sha256 text);
 
@@ -261,9 +261,9 @@ select pg_temp.assert_true((select required->>'requiredSchemaVersion' in ('20261
 select pg_temp.assert_true(not has_table_privilege('service_role','public.ap_material_draft_permits','INSERT')
  and not has_table_privilege('service_role','public.ap_material_draft_versions','UPDATE')
  and not has_function_privilege('authenticated','public.ap_claim_material_draft_jobs(uuid,integer)','EXECUTE'),'draft boundary allows caller mutation');
-select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs),'paid confirmed revision was not enqueued');
+select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'paid confirmed revision was not enqueued');
 select public.ap_material_draft_enqueue('b5000000-0000-4000-8000-000000000001');
-select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs),'enqueue replay duplicated obligation');
+select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'enqueue replay duplicated obligation');
 update public.ap_retention_restore_lock set locked=true;
 select pg_temp.assert_true(public.ap_claim_material_draft_jobs(gen_random_uuid(),1)='[]'::jsonb,'restored job was claimable while locked');
 update public.ap_retention_restore_lock set locked=false;
@@ -425,10 +425,10 @@ end $$;
 -- No rendering allowance is spent while a required reference is missing.
 savepoint reference_shortage;
 delete from public.ap_material_checkout_references where position=3;
-update public.ap_material_draft_jobs set lease_expires_at=clock_timestamp()-interval '1 second';
-create temporary table fixture_claim_count as select claim_count from public.ap_material_draft_jobs;
+update public.ap_material_draft_jobs set lease_expires_at=clock_timestamp()-interval '1 second' where material_line_id='b5000000-0000-4000-8000-000000000001';
+create temporary table fixture_claim_count as select claim_count from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001';
 select pg_temp.assert_true(public.ap_claim_material_draft_stage(gen_random_uuid(),'RENDER',1)='[]','shortage was renderable');
-select pg_temp.assert_true((select state='OWNER_EXCEPTION' and claim_count=(select claim_count from fixture_claim_count) from public.ap_material_draft_jobs),'shortage consumed a claim or lacked owner hold');
+select pg_temp.assert_true((select state='OWNER_EXCEPTION' and claim_count=(select claim_count from fixture_claim_count) from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'shortage consumed a claim or lacked owner hold');
 rollback to savepoint reference_shortage;
 -- Exact field identity is mandatory in review, not merely a permitted UUID.
 do $$ declare w fixture_draft_state; bad jsonb; begin select * into w from fixture_draft_state;

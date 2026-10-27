@@ -220,7 +220,7 @@ from public.ap_candidate_facts f where id='e9100000-0000-4000-8000-000000000005'
 select pg_temp.assert_true(not public.ap_material_draft_checkout_contact_matches('b5000000-0000-4000-8000-000000000001','15000000-0000-4000-8000-000000000001',
  '45000000-0000-4000-8000-000000000001','e9100000-0000-4000-8000-000000000004'),'wrong protected payload received contact exception');
 create temporary table stage_fixture_state(job_id uuid,version_id uuid,policy_id uuid,worker_id uuid default gen_random_uuid());
-insert into stage_fixture_state(job_id) select id from public.ap_material_draft_jobs;
+insert into stage_fixture_state(job_id) select id from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001';
 select pg_temp.assert_true(public.ap_material_draft_stage_claiming_schema_installed(),'094 schema not installed');
 select pg_temp.assert_true(public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' in('202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102','202610260103','202610270104'),'094 schema floor missing');
 select pg_temp.reject('select public.ap_claim_material_draft_stage(null,''PREPARE'',1)','material_draft_stage_claim_invalid');
@@ -229,12 +229,12 @@ select pg_temp.reject('select public.ap_claim_material_draft_stage(gen_random_uu
 select pg_temp.assert_true(not has_function_privilege('anon','public.ap_claim_material_draft_stage(uuid,text,integer)','EXECUTE')
  and not has_function_privilege('authenticated','public.ap_claim_material_draft_stage(uuid,text,integer)','EXECUTE'),'public queue claim privilege');
 select pg_temp.assert_true(public.ap_claim_material_draft_stage(gen_random_uuid(),'PREPARE',1)='[]','missing initial listing consumed claim');
-select pg_temp.assert_true((select claim_count=0 and lease_token is null from public.ap_material_draft_jobs),'human wait mutated initial lease/count');
+select pg_temp.assert_true((select claim_count=0 and lease_token is null from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'human wait mutated initial lease/count');
 select public.ap_record_material_draft_listing_check(job_id,null,gen_random_uuid(),'BEFORE_GENERATION',repeat('4',64),'ACTIVE','15000000-0000-4000-8000-000000000003') from stage_fixture_state;
 savepoint initial_ready;
 update public.ap_retention_restore_lock set locked=true;
 select pg_temp.assert_true(public.ap_claim_material_draft_stage(gen_random_uuid(),'PREPARE',1)='[]','restore lock failed');
-select pg_temp.assert_true((select claim_count=0 and lease_token is null from public.ap_material_draft_jobs),'restore lock consumed claim');
+select pg_temp.assert_true((select claim_count=0 and lease_token is null from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'restore lock consumed claim');
 rollback to savepoint initial_ready;
 
 do $$ declare s stage_fixture_state; claimed jsonb; token uuid; v uuid; begin
@@ -250,10 +250,10 @@ do $$ declare s stage_fixture_state; claimed jsonb; token uuid; v uuid; begin
  v:=public.ap_attach_material_draft_packet(s.job_id,token,'e9100000-0000-4000-8000-000000000001',repeat('1',64),public.ap_material_draft_context_sha256(s.job_id));
  update stage_fixture_state set version_id=v;
 end $$;
-update public.ap_material_draft_jobs set lease_expires_at=clock_timestamp()-interval '1 second';
+update public.ap_material_draft_jobs set lease_expires_at=clock_timestamp()-interval '1 second' where material_line_id='b5000000-0000-4000-8000-000000000001';
 savepoint packet_ready;
 select pg_temp.assert_true(public.ap_claim_material_draft_stage(gen_random_uuid(),'GENERATE',1)='[]','disabled provider consumed claim');
-select pg_temp.assert_true((select claim_count=1 from public.ap_material_draft_jobs),'disabled provider changed count');
+select pg_temp.assert_true((select claim_count=1 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'disabled provider changed count');
 -- Fictional policies are metadata only. No provider/network calls occur.
 do $$ declare p uuid; begin
  p:=public.ap_register_material_draft_policy(jsonb_build_object('provider','fictional','model','never-called','privacyReferenceSha256',repeat('a',64),
@@ -271,7 +271,7 @@ do $$ declare p uuid; begin
  'inputMicrousdPerMillion',1000000,'outputMicrousdPerMillion',1000000,'maxAttemptMicrousd',200,'rollingDayMicrousd',199,'maxAttempts',3),'15000000-0000-4000-8000-000000000003');
  perform public.ap_set_material_draft_runtime(true,p,'15000000-0000-4000-8000-000000000003');
  perform pg_temp.assert_true(public.ap_claim_material_draft_stage(gen_random_uuid(),'GENERATE',1)='[]','day budget exhausted but claimed');
- perform pg_temp.assert_true((select claim_count=1 from public.ap_material_draft_jobs),'policy waits consumed claims');
+ perform pg_temp.assert_true((select claim_count=1 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'policy waits consumed claims');
 end $$;
 rollback to savepoint packet_ready;
 do $$ declare p uuid; begin
@@ -312,11 +312,11 @@ do $$ declare clone uuid; version uuid; policy uuid; claim jsonb; target uuid; b
   end loop;
  end loop;
  insert into public.ap_material_draft_reconciliations(request_id,actual_microusd,no_result,evidence_sha256,reviewed_by)
- select a.id,0,true,repeat('a',64),'15000000-0000-4000-8000-000000000003' from public.ap_material_draft_attempts a;
+ select a.id,0,true,repeat('a',64),'15000000-0000-4000-8000-000000000003' from public.ap_material_draft_attempts a where a.customer_id='15000000-0000-4000-8000-000000000001';
  target:=pg_temp.stage_clone_ready();
  claim:=public.ap_claim_material_draft_stage(gen_random_uuid(),'GENERATE',1);
  perform pg_temp.assert_true(jsonb_array_length(claim)=1 and (claim->0->>'id')::uuid=target,'25 exhausted predecessors starved eligible job');
- perform pg_temp.assert_true((select count(*)=25 from public.ap_material_draft_jobs where id<>target and claim_count<=1 and (lease_expires_at is null or lease_expires_at<clock_timestamp())),'exhausted predecessors consumed claims');
+ perform pg_temp.assert_true((select count(*)=25 from public.ap_material_draft_jobs where customer_id='15000000-0000-4000-8000-000000000001' and id<>target and claim_count<=1 and (lease_expires_at is null or lease_expires_at<clock_timestamp())),'exhausted predecessors consumed claims');
 end $$;
 rollback to savepoint generate_ready;
 -- Inactive dispatched records remain financial obligations, but cannot occupy
@@ -338,13 +338,13 @@ do $$ declare ids uuid[]:='{}'; clone uuid; target uuid; policy uuid; begin
  perform pg_temp.assert_true(public.ap_claim_material_draft_stage(gen_random_uuid(),'PREPARE',1)='[]','unknown recovery returned a work claim');
  perform pg_temp.assert_true((select state='RESULT_UNKNOWN' and claim_count=0 from public.ap_material_draft_jobs where id=target),'inactive predecessors starved active expired dispatch');
  perform pg_temp.assert_true((select count(*)=25 from public.ap_material_draft_attempts where job_id=any(ids) and state='DISPATCHED' and reserved_microusd=200),'inactive financial evidence was silently changed');
- perform pg_temp.assert_true((select sum(reserved_microusd)=5200 from public.ap_material_draft_attempts),'recovery released unknown financial reservations');
+ perform pg_temp.assert_true((select sum(reserved_microusd)=5200 from public.ap_material_draft_attempts where customer_id='15000000-0000-4000-8000-000000000001'),'recovery released unknown financial reservations');
 end $$;
 rollback to savepoint generate_ready;
 -- A changed current check changes context even when its result remains ACTIVE.
 select public.ap_record_material_draft_listing_check(job_id,version_id,gen_random_uuid(),'BEFORE_GENERATION',repeat('4',64),'ACTIVE','15000000-0000-4000-8000-000000000003') from stage_fixture_state;
 select pg_temp.assert_true(public.ap_claim_material_draft_stage(gen_random_uuid(),'GENERATE',1)='[]','stale packet claimed');
-select pg_temp.assert_true((select state='OWNER_EXCEPTION' and error_code='EVIDENCE_STALE' and claim_count=1 from public.ap_material_draft_jobs),'stale packet did not surface without a claim');
+select pg_temp.assert_true((select state='OWNER_EXCEPTION' and error_code='EVIDENCE_STALE' and claim_count=1 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'stale packet did not surface without a claim');
 rollback to savepoint generate_ready;
 -- A settled financial result remains in the rolling budget; a fresh policy
 -- never resets that shared spend. Reconciliation alone grants no new budget.
@@ -353,14 +353,14 @@ do $$ declare s stage_fixture_state; claim jsonb; request uuid:=gen_random_uuid(
  claim:=public.ap_claim_material_draft_stage(s.worker_id,'GENERATE',1);token:=(claim->0->>'lease_token')::uuid;
  perform pg_temp.assert_true(jsonb_array_length(claim)=1 and claim->0->>'state'='READY' and (claim->0->>'active_version_id')::uuid=s.version_id,'generate exact claim shape');
  perform public.ap_begin_material_draft_request(s.job_id,token,s.version_id,request,s.policy_id,100,100);
- update public.ap_material_draft_jobs set lease_expires_at=clock_timestamp()-interval '1 second';
+ update public.ap_material_draft_jobs set lease_expires_at=clock_timestamp()-interval '1 second' where material_line_id='b5000000-0000-4000-8000-000000000001';
  perform pg_temp.assert_true(public.ap_claim_material_draft_stage(gen_random_uuid(),'RENDER',1)='[]','expired dispatch rendered');
- perform pg_temp.assert_true((select state='RESULT_UNKNOWN' and claim_count=2 and lease_token is null from public.ap_material_draft_jobs),'expired dispatch not fenced');
+ perform pg_temp.assert_true((select state='RESULT_UNKNOWN' and claim_count=2 and lease_token is null from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'expired dispatch not fenced');
  perform pg_temp.assert_true((select state='RESULT_UNKNOWN' and reserved_microusd=200 from public.ap_material_draft_attempts where id=request),'unknown spend changed');
  perform pg_temp.assert_true(public.ap_claim_material_draft_stage(gen_random_uuid(),'GENERATE',1)='[]','unknown dispatch reissued');
  perform public.ap_reconcile_material_draft_attempt(request,200,true,repeat('a',64),'15000000-0000-4000-8000-000000000003');
  perform pg_temp.assert_true(public.ap_claim_material_draft_stage(gen_random_uuid(),'GENERATE',1)='[]','known spend evaded day budget');
- perform pg_temp.assert_true((select claim_count=2 from public.ap_material_draft_jobs),'budget hold consumed allowance');
+ perform pg_temp.assert_true((select claim_count=2 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'budget hold consumed allowance');
 end $$;
 rollback to savepoint generate_ready;
 -- Complete the ordinary saved-proposal path, then show that owner wording review
@@ -370,9 +370,9 @@ do $$ declare s stage_fixture_state; claim jsonb; request uuid:=gen_random_uuid(
  claim:=public.ap_claim_material_draft_stage(s.worker_id,'GENERATE',1);token:=(claim->0->>'lease_token')::uuid;
  perform public.ap_begin_material_draft_request(s.job_id,token,s.version_id,request,s.policy_id,100,100);
  perform public.ap_record_material_draft_result(s.job_id,token,request,'e9100000-0000-4000-8000-000000000002',repeat('2',64));
- update public.ap_material_draft_jobs set lease_expires_at=clock_timestamp()-interval '1 second';
+ update public.ap_material_draft_jobs set lease_expires_at=clock_timestamp()-interval '1 second' where material_line_id='b5000000-0000-4000-8000-000000000001';
  perform pg_temp.assert_true(public.ap_claim_material_draft_stage(gen_random_uuid(),'RENDER',1)='[]','unreviewed source claimed for rendering');
- perform pg_temp.assert_true((select claim_count=2 from public.ap_material_draft_jobs),'human wording wait consumed allowance');
+ perform pg_temp.assert_true((select claim_count=2 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'human wording wait consumed allowance');
  perform public.ap_record_material_draft_claim_review(s.version_id,repeat('1',64),repeat('2',64),'e9100000-0000-4000-8000-000000000003',repeat('3',64),
   jsonb_build_array(jsonb_build_object('claimId',gen_random_uuid(),'decision','APPROVED','kind','NARRATIVE','qualification','NONFACTUAL',
    'wordingSha256',encode(extensions.digest('Thank you for your consideration.','sha256'),'hex'),'factRefs','[]'::jsonb,'jobEvidenceIds','[]'::jsonb,'referencePermissionIds','[]'::jsonb)),
@@ -397,12 +397,12 @@ do $$ declare clone uuid; target uuid; draft_version uuid; claims jsonb; begin
  end loop;
  update public.profiles set role='customer' where id='15000000-0000-4000-8000-000000000002';
  perform pg_temp.assert_true((public.ap_claim_material_draft_stage(gen_random_uuid(),'RENDER',1)->0->>'id')::uuid=target,'25 revoked reviewers starved later render-ready job');
- perform pg_temp.assert_true((select count(*)=25 from public.ap_material_draft_jobs where id<>target and state='SOURCE_READY' and claim_count=0),'revoked-reviewer waits consumed claims');
+ perform pg_temp.assert_true((select count(*)=25 from public.ap_material_draft_jobs where customer_id='15000000-0000-4000-8000-000000000001' and id<>target and state='SOURCE_READY' and claim_count=0),'revoked-reviewer waits consumed claims');
 end $$;
 rollback to savepoint render_ready;
-update public.ap_material_lines set selected_reference_sheet=true;
+update public.ap_material_lines set selected_reference_sheet=true where id='b5000000-0000-4000-8000-000000000001';
 select pg_temp.assert_true(public.ap_claim_material_draft_stage(gen_random_uuid(),'RENDER',1)='[]','required third artifact was ignored');
-select pg_temp.assert_true((select claim_count=2 from public.ap_material_draft_jobs),'reference hold consumed count');
+select pg_temp.assert_true((select claim_count=2 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'reference hold consumed count');
 rollback to savepoint render_ready;
 update public.profiles set role='customer' where id='15000000-0000-4000-8000-000000000003';
 select pg_temp.assert_true(public.ap_claim_material_draft_stage(gen_random_uuid(),'RENDER',1)='[]','revoked reviewer accepted');
@@ -411,14 +411,14 @@ do $$ declare claim jsonb; begin
  claim:=public.ap_claim_material_draft_stage(gen_random_uuid(),'RENDER',1);
  perform pg_temp.assert_true(jsonb_array_length(claim)=1 and claim->0->>'state'='SOURCE_READY' and (claim->0->>'claim_count')::integer=3,'reviewed render claim missing');
  perform pg_temp.assert_true(public.ap_claim_material_draft_stage(gen_random_uuid(),'RENDER',1)='[]','active render lease stolen');
- update public.ap_material_draft_jobs set state='RENDERING',lease_expires_at=clock_timestamp()-interval '1 second';
+ update public.ap_material_draft_jobs set state='RENDERING',lease_expires_at=clock_timestamp()-interval '1 second' where material_line_id='b5000000-0000-4000-8000-000000000001';
  claim:=public.ap_claim_material_draft_stage(gen_random_uuid(),'RENDER',1);
  perform pg_temp.assert_true(jsonb_array_length(claim)=1 and (claim->0->>'claim_count')::integer=4,'expired render retry not bounded and resumable');
 end $$;
 rollback to savepoint render_ready;
-update public.ap_material_draft_jobs set claim_count=30;
+update public.ap_material_draft_jobs set claim_count=30 where material_line_id='b5000000-0000-4000-8000-000000000001';
 select pg_temp.assert_true(public.ap_claim_material_draft_stage(gen_random_uuid(),'RENDER',1)='[]','claim maximum bypassed');
-select pg_temp.assert_true((select claim_count=30 and state='OWNER_EXCEPTION' and error_code='ATTEMPTS_EXHAUSTED' from public.ap_material_draft_jobs),'exhausted claim not held');
+select pg_temp.assert_true((select claim_count=30 and state='OWNER_EXCEPTION' and error_code='ATTEMPTS_EXHAUSTED' from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'exhausted claim not held');
 rollback to savepoint generate_ready;
 select 'MATERIAL_DRAFT_STAGE_FILTERS_OK';
 -- BEGIN ISOLATED POSTGRES STAGE RACES
@@ -443,21 +443,21 @@ select pg_temp.wait_for_stage_lock();
 select pg_temp.assert_true(public.ap_claim_material_draft_stage(gen_random_uuid(),'GENERATE',1)='[]','concurrent claim duplicated leased stage');
 select pg_temp.assert_true(jsonb_array_length(result::jsonb)=1,'first concurrent claim missing') from extensions.dblink_get_result('stage_racer') as r(result text);
 select result from extensions.dblink_get_result('stage_racer') as r(result text);
-select pg_temp.assert_true((select claim_count=2 and lease_owner='94000000-0000-4000-8000-000000000001' from public.ap_material_draft_jobs),'concurrent workers consumed duplicate count');
+select pg_temp.assert_true((select claim_count=2 and lease_owner='94000000-0000-4000-8000-000000000001' from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'concurrent workers consumed duplicate count');
 -- The final dispatch is intentionally ambiguous. Concurrent recovery never
 -- issues a new request or releases its durable budget reservation.
 do $$ declare j public.ap_material_draft_jobs; p uuid; begin
- select * into j from public.ap_material_draft_jobs;
+ select * into j from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001';
  select policy_id into p from public.ap_material_draft_runtime where singleton;
  perform public.ap_begin_material_draft_request(j.id,j.lease_token,j.active_version_id,'94000000-0000-4000-8000-000000000002',p,100,100);
- update public.ap_material_draft_jobs set lease_expires_at=clock_timestamp()-interval '1 second';
+ update public.ap_material_draft_jobs set lease_expires_at=clock_timestamp()-interval '1 second' where material_line_id='b5000000-0000-4000-8000-000000000001';
 end $$;
 select extensions.dblink_send_query('stage_racer','select public.stage_fixture_claim_delay()');
 select pg_temp.wait_for_stage_lock();
 select pg_temp.assert_true(public.ap_claim_material_draft_stage(gen_random_uuid(),'GENERATE',1)='[]','concurrent unknown recovery dispatched');
 select pg_temp.assert_true(result::jsonb='[]'::jsonb,'unknown recovery returned claim') from extensions.dblink_get_result('stage_racer') as r(result text);
 select result from extensions.dblink_get_result('stage_racer') as r(result text);
-select pg_temp.assert_true((select state='RESULT_UNKNOWN' and claim_count=2 and lease_token is null from public.ap_material_draft_jobs),'unknown recovery changed claim count or retained lease');
-select pg_temp.assert_true((select count(*)=1 and min(state)='RESULT_UNKNOWN' and sum(reserved_microusd)=200 from public.ap_material_draft_attempts),'unknown recovery duplicated or released spend');
+select pg_temp.assert_true((select state='RESULT_UNKNOWN' and claim_count=2 and lease_token is null from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'unknown recovery changed claim count or retained lease');
+select pg_temp.assert_true((select count(*)=1 and min(state)='RESULT_UNKNOWN' and sum(reserved_microusd)=200 from public.ap_material_draft_attempts where material_line_id='b5000000-0000-4000-8000-000000000001'),'unknown recovery duplicated or released spend');
 select extensions.dblink_disconnect('stage_racer');
 select 'MATERIAL_DRAFT_STAGE_CONCURRENCY_OK';

@@ -17,7 +17,7 @@ const selections=Object.freeze(['src','supabase/migrations','package.json','pack
   'tests/integration/material-clarification-route-journey.test.ts','tests/integration/material-clarification-confirmation.sql',
   'tests/integration/intake-notification-native-journey.test.ts','tests/integration/verified-intake-ownership.sql',
   'tests/integration/verified-intake-payment.sql','tests/integration/reviewed-source-fixture.sql',
-  'tests/integration/verified-paid-search-native-journey.test.ts','tests/integration/paid-search-provider-fixture.ts']);
+  'tests/integration/verified-paid-search-native-journey.test.ts','tests/integration/verified-paid-search-setup.ts','tests/integration/paid-search-provider-fixture.ts']);
 
 /** Exact Git bytes only. The fixture never mounts a developer checkout or .env. */
 export function prepareResearchPostgresInputs({execute=execFileSync, environment={PATH:process.env.PATH},repositoryRoot=root}={}) {

@@ -241,6 +241,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         <StagingBoardMaterialReview initialJobs={stagingBoardReviewJobs} />
         <Chunk5MaterialStaffQueue lines={materialStaffLines} />
         <p><Link href="/admin/document-drafts">Review document drafts</Link></p>
+        <p><Link href="/admin/submission-rules">Review employer submission instructions</Link></p>
         <AdminOperations searchOrders={searchOrders} applyItems={applyItems} conflicts={conflicts} corrections={corrections} capacityLimits={capacityLimits} />
         <MatchingWorkbench intakes={[...new Map([
           ...(pendingSnapshots || []).map((snapshot) => [snapshot.id, { id: snapshot.id,

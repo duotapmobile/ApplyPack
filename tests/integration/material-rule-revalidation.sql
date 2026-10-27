@@ -228,7 +228,7 @@ create function pg_temp.rule_review_checklist() returns jsonb language sql as $$
  select jsonb_build_object('applicationAccessReviewed',true,'liveListingOpened',true,'submissionInstructionsCompared',true,'unchangedRuleConfirmed',true);
 $$;
 do $$ declare j public.ap_material_draft_jobs; evidence jsonb; response jsonb; receipt_id uuid:=gen_random_uuid(); old_checked timestamptz; deadline timestamptz; initial_check_time timestamptz; begin
- select * into j from public.ap_material_draft_jobs;
+ select * into j from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001';
  perform pg_temp.assert_true(j.active_version_id is null and not exists(select 1 from public.ap_material_listing_checks where material_line_id=j.material_line_id and phase='BEFORE_GENERATION'),'initial check fixture already had a packet or check');
  perform pg_temp.reject(format('select public.ap_record_material_draft_listing_check(%L,null,%L,''BEFORE_RELEASE'',%L,''ACTIVE'',%L)',j.id,gen_random_uuid(),repeat('a',64),'15000000-0000-4000-8000-000000000003'),'material_draft_listing_check_invalid');
  perform pg_temp.reject(format('select public.ap_record_material_draft_listing_check(%L,%L,%L,''BEFORE_GENERATION'',%L,''ACTIVE'',%L)',j.id,gen_random_uuid(),gen_random_uuid(),repeat('a',64),'15000000-0000-4000-8000-000000000003'),'material_draft_listing_check_invalid');
@@ -284,9 +284,9 @@ select pg_temp.assert_true((select required->>'requiredSchemaVersion' in ('20261
 select pg_temp.assert_true(not has_table_privilege('service_role','public.ap_material_draft_permits','INSERT')
  and not has_table_privilege('service_role','public.ap_material_draft_versions','UPDATE')
  and not has_function_privilege('authenticated','public.ap_claim_material_draft_jobs(uuid,integer)','EXECUTE'),'draft boundary allows caller mutation');
-select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs),'paid confirmed revision was not enqueued');
+select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'paid confirmed revision was not enqueued');
 select public.ap_material_draft_enqueue('b5000000-0000-4000-8000-000000000001');
-select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs),'enqueue replay duplicated obligation');
+select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'enqueue replay duplicated obligation');
 update public.ap_retention_restore_lock set locked=true;
 select pg_temp.assert_true(public.ap_claim_material_draft_jobs(gen_random_uuid(),1)='[]'::jsonb,'restored job was claimable while locked');
 update public.ap_retention_restore_lock set locked=false;
@@ -440,7 +440,7 @@ rollback to savepoint before_changed_source;
 do $$ declare w fixture_draft_state; saved fixture_rule_receipts; evidence jsonb; response jsonb; receipt_id uuid:=gen_random_uuid(); fresh_context text; replacement uuid;
  attempts bigint; previous_generation bigint; begin
  select * into w from fixture_draft_state; select * into saved from fixture_rule_receipts;
- select count(*) into attempts from public.ap_material_draft_attempts;
+ select count(*) into attempts from public.ap_material_draft_attempts where material_line_id='b5000000-0000-4000-8000-000000000001';
  select lease_generation into previous_generation from public.ap_material_draft_jobs where id=w.job_id;
  -- Replaying the earlier receipt does not change its time or revoke newer work.
  perform public.ap_revalidate_material_draft_rule(w.job_id,null,saved.receipt_id,saved.basis,pg_temp.rule_review_checklist(),'15000000-0000-4000-8000-000000000003');
@@ -462,6 +462,6 @@ do $$ declare w fixture_draft_state; saved fixture_rule_receipts; evidence jsonb
   '15000000-0000-4000-8000-000000000003'),'material_rule_review_version_changed');
  perform pg_temp.assert_true((select checked_at=saved.original_checked_at from public.ap_employer_submission_rules where id='c5500000-0000-4000-8000-000000000001')
   and (select materials_due_at=saved.original_due_at from public.ap_material_lines where id='b5000000-0000-4000-8000-000000000001')
-  and (select count(*)=attempts from public.ap_material_draft_attempts),'revalidation changed rule history, contractual deadline or provider attempts');
+  and (select count(*)=attempts from public.ap_material_draft_attempts where material_line_id='b5000000-0000-4000-8000-000000000001'),'revalidation changed rule history, contractual deadline or provider attempts');
 end $$;
 rollback;

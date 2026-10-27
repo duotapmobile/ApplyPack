@@ -27,6 +27,18 @@ const saved = (request: SubmissionRuleConfirmation, current = true) => ({ reques
     citations: Object.entries(request.fieldEvidence).filter(([, quote]) => quote !== null).map(([field, quote]) => ({ field, startByte: Buffer.byteLength(text.slice(0, text.indexOf(quote!))),
       endByte: Buffer.byteLength(text.slice(0, text.indexOf(quote!))) + Buffer.byteLength(quote!), quoteSha256: createHash("sha256").update(quote!).digest("hex") })) } });
 describe("normal owner employer-instruction review", () => {
+  it("keeps unsupported manual quotes editable before a pending save identity is created", async () => {
+    await open();
+    fireEvent.change(screen.getByLabelText("Exact captured wording for resume"), { target: { value: "Cover letter optional." } });
+    checkAll(); fireEvent.click(screen.getByRole("button", { name: "Confirm reviewed employer instructions" }));
+    await screen.findByText(/Check the exact captured wording for each choice/);
+    expect(fetchMock).toHaveBeenCalledTimes(1); expect(screen.queryByRole("button", { name: "Check saved confirmation" })).toBeNull();
+    expect(screen.getByLabelText("Exact captured wording for resume")).not.toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Exact captured wording for resume"), { target: { value: "Resume required." } });
+    checkAll(); fetchMock.mockImplementationOnce(async (_url, options) => response({ saved: saved(JSON.parse(options.body)) }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm reviewed employer instructions" }));
+    await screen.findByText(/Employer instructions confirmed for a new checkout/);
+  });
   it("requires an explicit source-preparation action before a fresh read, without confirmation or automatic mutation", async () => {
     fetchMock.mockResolvedValueOnce(response({ status: "PREPARATION_REQUIRED", jobSnapshotId: jobId, title: "Support Specialist", company: "Fictional Employer" }));
     render(<SubmissionRuleReview jobSnapshotId={jobId} />); fireEvent.click(screen.getByRole("button", { name: "Load current employer instructions" }));
@@ -91,6 +103,17 @@ describe("normal owner employer-instruction review", () => {
     const request = JSON.parse(fetchMock.mock.calls[1][1].body); fetchMock.mockResolvedValueOnce(response({ saved: saved(request, false) }));
     fireEvent.click(screen.getByRole("button", { name: "Check saved confirmation" })); await screen.findByText(/original confirmation was saved, but its source or freshness has changed/);
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+  it("explains a paid rule change while retaining exact request reconciliation and retry", async () => {
+    await open(); checkAll(); fetchMock.mockResolvedValueOnce(response({ code: "PAID_RULE_CHANGE_REQUIRED" }, 409));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm reviewed employer instructions" })); await screen.findByText(/A checkout or paid Apply Pack already uses different instructions/);
+    const original = fetchMock.mock.calls[1][1].body;
+    expect(screen.getByRole("button", { name: "Load current employer instructions" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Retry the same confirmation" })).toBeDisabled();
+    fetchMock.mockResolvedValueOnce(response({ saved: null })); fireEvent.click(screen.getByRole("button", { name: "Check saved confirmation" })); await screen.findByText(/No saved confirmation was found/);
+    fetchMock.mockResolvedValueOnce(response({ code: "PAID_RULE_CHANGE_REQUIRED" }, 409)); fireEvent.click(screen.getByRole("button", { name: "Retry the same confirmation" }));
+    await screen.findByText(/A checkout or paid Apply Pack already uses different instructions/); expect(fetchMock.mock.calls[3][1].body).toBe(original);
+    expect(fetchMock.mock.calls[2][0]).toContain(JSON.parse(original).requestId);
   });
   it("rejects a mismatched receipt and keeps the original request locked", async () => {
     await open(); checkAll(); fetchMock.mockImplementationOnce(async (_url, options) => response({ saved: { ...saved(JSON.parse(options.body)), jobSnapshotId: id(30) } }));

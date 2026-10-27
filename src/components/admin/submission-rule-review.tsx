@@ -1,6 +1,6 @@
 "use client";
 import { useId, useState } from "react";
-import { initialRuleChoices, matchesSavedRule, ruleReviewChecklistLabels, submissionRuleConfirmationSchema, submissionRulePreparationSchema, submissionRuleReviewViewSchema,
+import { initialRuleChoices, matchesSavedRule, ruleReviewChecklistLabels, submissionRuleConfirmationSchema, submissionRulePreparationSchema, submissionRuleReviewViewSchema, validateRuleFieldEvidence,
   type RuleChoiceField, type RuleFieldEvidence, type SubmissionRuleChoices, type SubmissionRuleConfirmation, type SubmissionRuleReviewView } from "@/lib/documents/submission-rule-proposal";
 
 const labels: Record<RuleChoiceField, string> = {
@@ -69,6 +69,9 @@ function RuleReview({ jobSnapshotId }: { jobSnapshotId: string }) {
     try {
       const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request), signal: AbortSignal.timeout(50_000) });
       const value = await response.json();
+      if (response.status === 409 && value.code === "PAID_RULE_CHANGE_REQUIRED") {
+        setMessage("A checkout or paid Apply Pack already uses different instructions. Review the change in the existing Apply Pack document workflow before continuing. You can check this pending confirmation again here."); return;
+      }
       if (response.status === 409 && value.code === "REVIEW_CHANGED" && value.saved === null) {
         setPending(null); setView(null); setChoices(null); setChecks(emptyChecklist());
         setMessage("The job, source or saved instructions changed. Reload and review the current evidence before confirming."); return;
@@ -92,6 +95,8 @@ function RuleReview({ jobSnapshotId }: { jobSnapshotId: string }) {
     expectedBasis: view.basis, choices, fieldEvidence: quotes, checklist: checks }) : null;
   function submit() {
     if (!candidate?.success || busy || pending || view?.blockers.length) return;
+    try { validateRuleFieldEvidence(candidate.data.choices, candidate.data.fieldEvidence, view!.sourceText); }
+    catch { setMessage("Check the exact captured wording for each choice. It must support that choice and include the complete source lines."); return; }
     void save({ ...candidate.data, requestId: crypto.randomUUID() });
   }
   function sourceChoice(field: RuleChoiceField) {

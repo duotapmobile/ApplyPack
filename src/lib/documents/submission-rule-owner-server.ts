@@ -182,6 +182,15 @@ export function createSubmissionRuleOwnerServer(port: SubmissionRuleOwnerPort, r
       const raw = await port.receipt(requestId, reviewerId);
       return raw === null ? null : savedResult(raw, reviewerId, jobSnapshotId, requestId);
     },
+    async reconcile(input: unknown) {
+      const parsed = submissionRuleConfirmationSchema.safeParse(input);
+      if (!parsed.success) return fail("INVALID");
+      const request = parsed.data, raw = await port.receipt(request.requestId, reviewerId);
+      if (raw === null) return null;
+      const saved = savedResult(raw, reviewerId, request.jobSnapshotId, request.requestId);
+      if (!matchesOriginal(saved, request)) return fail("RECEIPT_CONFLICT");
+      return saved;
+    },
     async confirm(input: unknown) {
       const parsed = submissionRuleConfirmationSchema.safeParse(input);
       if (!parsed.success) return fail("INVALID");
@@ -192,7 +201,9 @@ export function createSubmissionRuleOwnerServer(port: SubmissionRuleOwnerPort, r
         return saved;
       }
       const loaded = await load(request.jobSnapshotId);
-      if (!same(loaded.view.basis, request.expectedBasis)) fail("REVIEW_CHANGED");
+      // Keep the submitted basis. SQL serializes this request, reconciles an
+      // earlier commit, then rejects a stale basis before any mutation. A
+      // pre-write JavaScript comparison cannot prove an uncertain save absent.
       if (!loaded.sourceEvidenceId || loaded.view.blockers.length) return fail("SOURCE_BLOCKED");
       const reviewEvidence = canonicalRuleCitations(loaded.sourceEvidenceId, loaded.view.sourceText, request.choices, request.fieldEvidence);
       const confirmedRules = confirmedRulesSchema.parse({ ...request.choices, sourceEvidenceIds: [loaded.sourceEvidenceId], applicationQuestions: loaded.applicationQuestions,

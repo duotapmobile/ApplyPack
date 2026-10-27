@@ -86,12 +86,24 @@ describe("source-bound owner submission-rule service", () => {
       .mockResolvedValueOnce({ basis: { ...basis, sourceAuthoritySha256: "f".repeat(64) }, sourceEvidenceId: nodeId, currentRule: null, effectivePrepurchaseCheckedAt: null });
     await expect(server().review(jobId)).rejects.toMatchObject({ code: "REVIEW_CHANGED" });
   });
-  it("rejects stale browser basis, missing quotes and unsupported client authority before save", async () => {
+  it("leaves stale basis rejection to serialized SQL while rejecting unsupported client authority and quotes", async () => {
     await expect(server().confirm({ ...request(), checkedAt: now.toISOString() })).rejects.toMatchObject({ code: "INVALID" });
     const stale = request(); stale.expectedBasis.sourceAuthoritySha256 = "f".repeat(64);
-    await expect(server().confirm(stale)).rejects.toMatchObject({ code: "REVIEW_CHANGED" });
+    port.confirm.mockRejectedValueOnce(new Error("SQL_STALE_BASIS"));
+    await expect(server().confirm(stale)).rejects.toThrow("SQL_STALE_BASIS");
+    expect(port.confirm.mock.calls[0][0].expectedBasis).toEqual(stale.expectedBasis);
+    port.confirm.mockClear();
     const invented = request(); invented.fieldEvidence.allowedFormats = "Accepted formats: DOCX and PDF.";
     await expect(server().confirm(invented)).rejects.toThrow("submission_rule_field_evidence_missing"); expect(port.confirm).not.toHaveBeenCalled();
+  });
+  it("reconciles only the exact original request without reading changed sources", async () => {
+    await server().confirm(request()); const receipt = outcome(port.confirm.mock.calls[0][0]);
+    port.receipt.mockResolvedValue(receipt); port.source.mockClear(); port.basis.mockClear(); port.confirm.mockClear();
+    expect(await server().reconcile(request())).toMatchObject({ requestId, ruleId: id(5) });
+    expect(port.source).not.toHaveBeenCalled(); expect(port.basis).not.toHaveBeenCalled(); expect(port.confirm).not.toHaveBeenCalled();
+    const changed = request(); changed.choices.coverLetterRequirement = "REQUIRED";
+    await expect(server().reconcile(changed)).rejects.toMatchObject({ code: "RECEIPT_CONFLICT" });
+    port.receipt.mockResolvedValue(null); expect(await server().reconcile(request())).toBeNull();
   });
   it("will not confirm a literal contradiction or map unrelated source wording to a rule", async () => {
     const wrong = request(); wrong.choices.resumeRequirement = "OPTIONAL";

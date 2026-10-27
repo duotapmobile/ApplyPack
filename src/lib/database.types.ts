@@ -2394,6 +2394,76 @@ export type Database = {
           },
         ]
       }
+      ap_employer_rule_review_receipts: {
+        Row: {
+          checked_at: string
+          confirmed_rules: Json
+          confirmed_rules_sha256: string
+          created_at: string
+          expected_basis: Json
+          job_snapshot_id: string
+          receipt_sha256: string
+          request_id: string
+          review_checklist: Json
+          review_evidence: Json
+          reviewer_id: string
+          rule_content_sha256: string
+          rule_id: string
+        }
+        Insert: {
+          checked_at: string
+          confirmed_rules: Json
+          confirmed_rules_sha256: string
+          created_at?: string
+          expected_basis: Json
+          job_snapshot_id: string
+          receipt_sha256: string
+          request_id: string
+          review_checklist: Json
+          review_evidence: Json
+          reviewer_id: string
+          rule_content_sha256: string
+          rule_id: string
+        }
+        Update: {
+          checked_at?: string
+          confirmed_rules?: Json
+          confirmed_rules_sha256?: string
+          created_at?: string
+          expected_basis?: Json
+          job_snapshot_id?: string
+          receipt_sha256?: string
+          request_id?: string
+          review_checklist?: Json
+          review_evidence?: Json
+          reviewer_id?: string
+          rule_content_sha256?: string
+          rule_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_employer_rule_review_receipts_job_snapshot_id_fkey"
+            columns: ["job_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ap_job_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_employer_rule_review_receipts_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_employer_rule_review_receipts_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "ap_employer_submission_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_employer_submission_rules: {
         Row: {
           allowed_formats: string[]
@@ -15495,6 +15565,18 @@ export type Database = {
         }
         Returns: number
       }
+      ap_confirm_employer_submission_rules: {
+        Args: {
+          p_confirmed_rules: Json
+          p_expected_basis: Json
+          p_job_snapshot_id: string
+          p_request_id: string
+          p_review_checklist: Json
+          p_review_evidence: Json
+          p_reviewer_id: string
+        }
+        Returns: Json
+      }
       ap_confirm_reference_version: {
         Args: { p_customer_id: string; p_reference_version_id: string }
         Returns: boolean
@@ -15720,6 +15802,42 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      ap_employer_rule_basis_value: {
+        Args: { p_job_snapshot_id: string }
+        Returns: Json
+      }
+      ap_employer_rule_fields: {
+        Args: {
+          p_rule: Database["public"]["Tables"]["ap_employer_submission_rules"]["Row"]
+        }
+        Returns: Json
+      }
+      ap_employer_rule_matching_requirements: {
+        Args: { p_job_snapshot_id: string }
+        Returns: Json
+      }
+      ap_employer_rule_precheckout_checked_at: {
+        Args: { p_rule_id: string }
+        Returns: string
+      }
+      ap_employer_rule_receipt_current: {
+        Args: {
+          p_receipt: Database["public"]["Tables"]["ap_employer_rule_review_receipts"]["Row"]
+        }
+        Returns: boolean
+      }
+      ap_employer_rule_review_basis: {
+        Args: { p_job_snapshot_id: string; p_reviewer_id: string }
+        Returns: Json
+      }
+      ap_employer_rule_review_receipt: {
+        Args: { p_request_id: string; p_reviewer_id: string }
+        Returns: Json
+      }
+      ap_employer_rule_review_schema_installed: {
+        Args: never
+        Returns: boolean
       }
       ap_enqueue_board_job_recompute: {
         Args: { p_change_key: string; p_job_id: string; p_reason_code: string }
@@ -16117,6 +16235,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      ap_lock_employer_rule_review: {
+        Args: { p_job_snapshot_id: string }
+        Returns: undefined
+      }
       ap_lock_material_clarification: {
         Args: { p_snapshot_id: string }
         Returns: {
@@ -16357,6 +16479,10 @@ export type Database = {
         Args: { p_customer_id: string; p_material_line_id: string }
         Returns: Json
       }
+      ap_normalize_employer_review_rules: {
+        Args: { p_rules: Json }
+        Returns: Json
+      }
       ap_observe_archive_retention_absence: {
         Args: {
           p_id: string
@@ -16521,6 +16647,10 @@ export type Database = {
       }
       ap_prepare_claimed_payment_notification: {
         Args: { p_lease_owner: string; p_message_id: string }
+        Returns: Json
+      }
+      ap_prepare_employer_rule_source_evidence: {
+        Args: { p_job_snapshot_id: string; p_reviewer_id: string }
         Returns: Json
       }
       ap_prepare_intake_clarification_notification: {
@@ -17672,6 +17802,18 @@ export type Database = {
         }
         Returns: string
       }
+      ap_store_employer_rule_review: {
+        Args: {
+          p_checked_at: string
+          p_expected_rule_id: string
+          p_guarded: boolean
+          p_job_snapshot_id: string
+          p_legacy_content_sha256?: string
+          p_reviewer_id: string
+          p_rules: Json
+        }
+        Returns: string
+      }
       ap_supersede_manual_launch_canary_designation: {
         Args: {
           p_actor_id: string
@@ -17731,6 +17873,10 @@ export type Database = {
           p_work_sample_instruction: string
         }
         Returns: string
+      }
+      ap_validate_employer_rule_citations: {
+        Args: { p_evidence: Json; p_job_snapshot_id: string; p_rules: Json }
+        Returns: Json
       }
       ap_verified_intake_email: {
         Args: { p_customer_id: string; p_expected_email?: string }

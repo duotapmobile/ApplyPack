@@ -237,9 +237,9 @@ select pg_temp.assert_true((select required->>'requiredSchemaVersion' in ('20261
 select pg_temp.assert_true(not has_table_privilege('service_role','public.ap_material_draft_permits','INSERT')
  and not has_table_privilege('service_role','public.ap_material_draft_versions','UPDATE')
  and not has_function_privilege('authenticated','public.ap_claim_material_draft_jobs(uuid,integer)','EXECUTE'),'draft boundary allows caller mutation');
-select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs),'paid confirmed revision was not enqueued');
+select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'paid confirmed revision was not enqueued');
 select public.ap_material_draft_enqueue('b5000000-0000-4000-8000-000000000001');
-select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs),'enqueue replay duplicated obligation');
+select pg_temp.assert_true((select count(*)=1 from public.ap_material_draft_jobs where material_line_id='b5000000-0000-4000-8000-000000000001'),'enqueue replay duplicated obligation');
 update public.ap_retention_restore_lock set locked=true;
 select pg_temp.assert_true(public.ap_claim_material_draft_jobs(gen_random_uuid(),1)='[]'::jsonb,'restored job was claimable while locked');
 update public.ap_retention_restore_lock set locked=false;
@@ -465,7 +465,7 @@ rollback to savepoint historical_expected_release;
 savepoint before_unresolved_refresh;
 insert into public.ap_material_draft_attempts(id,customer_id,material_line_id,job_id,draft_version_id,policy_id,lease_generation,state,input_token_cap,output_token_cap,reserved_microusd)
 select gen_random_uuid(),customer_id,material_line_id,job_id,draft_version_id,policy_id,lease_generation,'RESULT_UNKNOWN',100,100,200
-from public.ap_material_draft_attempts where state='RESULT_RECORDED';
+from public.ap_material_draft_attempts where material_line_id='b5000000-0000-4000-8000-000000000001' and state='RESULT_RECORDED';
 do $$ declare w fixture_draft_state; begin
  select * into w from fixture_draft_state;
  perform pg_temp.reject(format('select public.ap_refresh_material_draft_packet(%L,%L,%L,%L,%L,%L)',w.job_id,w.version_id,'e9100000-0000-4000-8000-000000000004',repeat('4',64),w.context_sha256,'15000000-0000-4000-8000-000000000003'),'material_draft_result_unresolved');
@@ -473,10 +473,10 @@ end $$;
 rollback to savepoint before_unresolved_refresh;
 savepoint before_packet_refresh;
 do $$ declare w fixture_draft_state; fresh_context text; replacement uuid; attempts bigint; check_id uuid:=gen_random_uuid(); begin
- select * into w from fixture_draft_state;select count(*) into attempts from public.ap_material_draft_attempts;
+ select * into w from fixture_draft_state;select count(*) into attempts from public.ap_material_draft_attempts where material_line_id='b5000000-0000-4000-8000-000000000001';
  perform public.ap_record_material_draft_listing_check(w.job_id,w.version_id,check_id,'BEFORE_GENERATION',repeat('4',64),'ACTIVE','15000000-0000-4000-8000-000000000003');
  perform public.ap_record_material_draft_listing_check(w.job_id,w.version_id,check_id,'BEFORE_GENERATION',repeat('4',64),'ACTIVE','15000000-0000-4000-8000-000000000003');
- perform pg_temp.assert_true((select count(*)=2 from public.ap_material_listing_checks where phase='BEFORE_GENERATION'),'same evidence recheck rewrote history or duplicate replay');
+ perform pg_temp.assert_true((select count(*)=2 from public.ap_material_listing_checks where material_line_id='b5000000-0000-4000-8000-000000000001' and phase='BEFORE_GENERATION'),'same evidence recheck rewrote history or duplicate replay');
  perform pg_temp.reject(format('select public.ap_record_material_draft_listing_check(%L,%L,%L,%L,%L,%L,%L)',w.job_id,w.version_id,check_id,'BEFORE_GENERATION',repeat('4',64),'CLOSED','15000000-0000-4000-8000-000000000003'),'material_draft_listing_check_conflict');
  perform pg_temp.reject(format('update public.ap_material_listing_checks set checked_at=clock_timestamp() where id=%L',check_id),'immutable_record');
  fresh_context:=public.ap_material_draft_context_sha256(w.job_id);
@@ -486,7 +486,7 @@ do $$ declare w fixture_draft_state; fresh_context text; replacement uuid; attem
  perform pg_temp.assert_true(replacement=public.ap_refresh_material_draft_packet(w.job_id,w.version_id,'e9100000-0000-4000-8000-000000000004',repeat('4',64),fresh_context,'15000000-0000-4000-8000-000000000003'),'refresh replay created another version');
  perform pg_temp.assert_true((select supersedes_id=w.version_id and encrypted_payload_id is null and claim_review_sha256 is null and approval_sha256 is null from public.ap_material_draft_versions where id=replacement),'refresh copied old source or approval');
  perform pg_temp.assert_true((select invalidated_at is not null and encrypted_payload_id is not null and approval_sha256 is not null from public.ap_material_draft_versions where id=w.version_id),'refresh destroyed history');
- perform pg_temp.assert_true((select count(*)=attempts from public.ap_material_draft_attempts) and (select lease_token is null and state='READY' from public.ap_material_draft_jobs where id=w.job_id),'refresh implicitly dispatched or retained stale lease');
+ perform pg_temp.assert_true((select count(*)=attempts from public.ap_material_draft_attempts where material_line_id='b5000000-0000-4000-8000-000000000001') and (select lease_token is null and state='READY' from public.ap_material_draft_jobs where id=w.job_id),'refresh implicitly dispatched or retained stale lease');
 end $$;
 rollback to savepoint before_packet_refresh;
 
@@ -524,13 +524,13 @@ select pg_temp.reject(format('select pg_temp.request_change(%L,%L,%L)',gen_rando
 savepoint unresolved_attempt;
 insert into public.ap_material_draft_attempts(id,customer_id,material_line_id,job_id,draft_version_id,policy_id,lease_generation,state,input_token_cap,output_token_cap,reserved_microusd)
  select gen_random_uuid(),customer_id,material_line_id,job_id,draft_version_id,policy_id,lease_generation,'RESULT_UNKNOWN',100,100,200
- from public.ap_material_draft_attempts where state='RESULT_RECORDED';
+ from public.ap_material_draft_attempts where material_line_id='b5000000-0000-4000-8000-000000000001' and state='RESULT_RECORDED';
 select pg_temp.reject(format('select pg_temp.request_change(%L)',gen_random_uuid()),'material_draft_result_unresolved');
 rollback to savepoint unresolved_attempt;
 savepoint exhausted_attempts;
 insert into public.ap_material_draft_attempts(id,customer_id,material_line_id,job_id,draft_version_id,policy_id,lease_generation,state,input_token_cap,output_token_cap,reserved_microusd)
  select gen_random_uuid(),a.customer_id,a.material_line_id,a.job_id,a.draft_version_id,a.policy_id,a.lease_generation,'NO_RESULT_CONFIRMED',100,100,200
- from public.ap_material_draft_attempts a cross join generate_series(1,2) where state='RESULT_RECORDED';
+ from public.ap_material_draft_attempts a cross join generate_series(1,2) where a.material_line_id='b5000000-0000-4000-8000-000000000001' and state='RESULT_RECORDED';
 select pg_temp.reject(format('select pg_temp.request_change(%L)',gen_random_uuid()),'material_draft_attempt_limit');
 rollback to savepoint exhausted_attempts;
 
@@ -551,7 +551,7 @@ create temporary table fixture_change_receipt(request_id uuid, successor uuid);
 do $$ declare w fixture_draft_state; request_id uuid:=gen_random_uuid(); successor uuid; original_deadline timestamptz; attempts bigint; old_claims integer; begin
  select * into w from fixture_draft_state;
  select due_at into original_deadline from public.ap_material_line_revisions where id='c5000000-0000-4000-8000-000000000001';
- select count(*) into attempts from public.ap_material_draft_attempts;
+ select count(*) into attempts from public.ap_material_draft_attempts where material_line_id='b5000000-0000-4000-8000-000000000001';
  select claim_count into old_claims from public.ap_material_draft_jobs where id=w.job_id;
  successor:=pg_temp.request_change(request_id); insert into fixture_change_receipt values(request_id,successor);
  perform pg_temp.assert_true((select supersedes_id=w.version_id and encrypted_payload_id is null and source_sha256 is null
@@ -559,7 +559,7 @@ do $$ declare w fixture_draft_state; request_id uuid:=gen_random_uuid(); success
   and packet_sha256=repeat('1',64) and context_sha256=w.context_sha256 from public.ap_material_draft_versions where id=successor),'successor copied old work or lost packet');
  perform pg_temp.assert_true((select invalidated_at is not null and encrypted_payload_id is not null and approval_sha256 is not null from public.ap_material_draft_versions where id=w.version_id),'request destroyed prior approved history');
  perform pg_temp.assert_true((select state='READY' and active_version_id=successor and lease_token is null and lease_owner is null and lease_expires_at is null and claim_count=old_claims from public.ap_material_draft_jobs where id=w.job_id),'request retained lease or reset claim cap');
- perform pg_temp.assert_true((select count(*)=attempts from public.ap_material_draft_attempts),'request dispatched or reset attempts');
+ perform pg_temp.assert_true((select count(*)=attempts from public.ap_material_draft_attempts where material_line_id='b5000000-0000-4000-8000-000000000001'),'request dispatched or reset attempts');
  perform pg_temp.assert_true((select due_at=original_deadline from public.ap_material_line_revisions where id='c5000000-0000-4000-8000-000000000001'),'request moved deadline');
  perform pg_temp.assert_true(not exists(select 1 from public.ap_material_draft_members where draft_version_id=successor),'request copied files');
  perform pg_temp.assert_true(not exists(select 1 from public.ap_artifact_quality_reviews q join public.ap_material_draft_members m on m.file_version_id=q.file_version_id where m.draft_version_id=w.version_id and q.invalidated_at is null),'old QA remained current');
@@ -580,7 +580,7 @@ do $$ declare w fixture_draft_state; receipt fixture_change_receipt; refreshed u
  result:=public.ap_begin_material_draft_request_with_changes(w.job_id,token,refreshed,attempt,w.policy_id,50,50,receipt.request_id,repeat('4',64));
  perform pg_temp.assert_true(result->>'dispatchAuthorized'='true','exact instruction-aware reservation failed');
  perform pg_temp.assert_true(public.ap_begin_material_draft_request_with_changes(w.job_id,token,refreshed,attempt,w.policy_id,50,50,receipt.request_id,repeat('4',64))->>'dispatchAuthorized'='false','reservation replay authorized duplicate provider request');
- perform pg_temp.assert_true((select count(*)=3 from public.ap_material_draft_attempts),'new request reset or duplicated global attempt history');
+ perform pg_temp.assert_true((select count(*)=3 from public.ap_material_draft_attempts where material_line_id='b5000000-0000-4000-8000-000000000001'),'new request reset or duplicated global attempt history');
 end $$;
 rollback to savepoint inherited_request;
 
