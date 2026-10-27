@@ -192,4 +192,3 @@ export async function verifyEmployerRuleOwnerJourney(graph: VerifiedPaidSearchSe
     sourceRequests: fixture.requests.length, realProviderCalls: 0, paidSearchHistoryPreserved: true, paidPackContextProven: false }) + "\n");
   return { graph, jobSnapshotId, ruleId: rule.id, sourceRunId: run.id, capture, insights, saved: checked };
 }
-
