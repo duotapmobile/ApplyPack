@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { z } from "zod";
+import { excludeEmployerInstructionSourceNodes } from "@/lib/matching/evidence-derived";
 import { loadDraftReferenceMetadata } from "./draft-owner-references";
 import { materialRuleEvidenceProjectionSchema, materialRuleProjectionForPacket } from "./material-rule-evidence";
 import { buildDraftingEvidencePacket, draftingEvidenceExpectationSchema, DraftingEvidenceError,
@@ -50,16 +51,19 @@ async function readRecords(admin: Admin, expected: DraftingEvidenceExpectation, 
   ]);
   if (!purchase.checkout_intent_id || !revision.source_snapshot_id || !revision.job_snapshot_id || !revision.employer_rule_snapshot_id) fail("SOURCE_BINDING_INVALID");
   if (draftJob.source_snapshot_id !== revision.source_snapshot_id) fail("DRAFT_JOB_BINDING_INVALID");
-  const [snapshot, intent, job, rule, listingCheck, successors, ownsSnapshot] = await Promise.all([
+  const [snapshot, intent, jobSource, rule, listingCheck, successors, ownsSnapshot] = await Promise.all([
     result(admin.from("ap_intake_snapshots").select("id,customer_id,draft_id,schema_version,canonicalization_version,content_sha256,sensitive_payload_id,finalized_at,confirmed_review,parent_snapshot_id").eq("id", revision.source_snapshot_id).abortSignal(signal).single()),
     result(admin.from("ap_material_checkout_intents").select("id,customer_id,purchase_id,payment_attempt_id,delivered_order_id,delivered_release_id,source_snapshot_id,state,line_count,amount_cents,currency,selection_sha256,document_contact_confirmed,document_facts_confirmed,contact_payload_id,career_break_choice,career_break_custom_label,cover_letter_break_consent").eq("id", purchase.checkout_intent_id).abortSignal(signal).single()),
-    result(admin.from("ap_job_snapshots").select("id,legacy_job_id,content_sha256,company,exact_title,canonical_application_url,source_url,captured_listing,retrieved_at,live_verified_at,discovery_source,external_job_id,source_run_id,source_authorization_id,listing_activity_result,application_path_result,legitimacy_result").eq("id", revision.job_snapshot_id).abortSignal(signal).single()),
+    result(admin.from("ap_job_snapshots").select("id,legacy_job_id,content_sha256,company,exact_title,canonical_application_url,source_url,captured_listing,retrieved_at,live_verified_at,discovery_source,external_job_id,source_run_id,source_authorization_id,listing_activity_result,application_path_result,legitimacy_result,application_host_type").eq("id", revision.job_snapshot_id).abortSignal(signal).single()),
     result(admin.from("ap_employer_submission_rules").select("id,job_snapshot_id,content_sha256,checked_at,human_confirmed_at,human_confirmed_by,is_current,superseded_at,injection_scan_state,hard_block_reason,allowed_formats,resume_page_limit,cover_letter_page_limit,resume_requirement,cover_letter_requirement,resume_filename_instruction,cover_letter_filename_instruction,reference_timing,reference_count,source_evidence_ids,application_questions").eq("id", revision.employer_rule_snapshot_id).abortSignal(signal).single()),
     result(admin.from("ap_material_listing_checks").select("id,material_line_id,line_revision_id,job_snapshot_id,submission_rule_id,evidence_sha256,phase,result,checked_at")
       .eq("material_line_id", line.id).eq("line_revision_id", revision.id).eq("phase", "BEFORE_GENERATION").order("checked_at", { ascending: false }).order("id", { ascending: false }).limit(1).abortSignal(signal).single()),
     result(admin.from("ap_job_snapshots").select("id").eq("supersedes_job_snapshot_id", revision.job_snapshot_id).limit(1).abortSignal(signal)),
     result(admin.rpc("ap_customer_owns_snapshot", { p_customer_id: expected.customerId, p_snapshot_id: revision.source_snapshot_id }).abortSignal(signal)),
   ]);
+  // Host metadata validates only the protected source node. Keep the historical
+  // packet's job shape unchanged after that validation.
+  const { application_host_type: applicationHostType, ...job } = jobSource;
   if (snapshot.schema_version !== "applypack-intake-v4" || !snapshot.confirmed_review) fail("LEGACY_INTAKE_UNSUPPORTED");
   if (!snapshot.draft_id || !snapshot.sensitive_payload_id || !job.legacy_job_id) fail("SOURCE_BINDING_INVALID");
   if (rule.source_evidence_ids.length > 100) fail("TOO_LARGE");
@@ -73,7 +77,7 @@ async function readRecords(admin: Admin, expected: DraftingEvidenceExpectation, 
     ]);
     return { run, authorization, head };
   })() : null;
-  const [draft, sourcePayload, contact, contactFact, facts, documents, factReviews, requirements, reviews, questionSourceNodes, verified, originalReferences] = await Promise.all([
+  const [draft, sourcePayload, contact, contactFact, facts, documents, factReviews, requirementRows, reviews, questionSourceNodes, verified, originalReferences] = await Promise.all([
     result(admin.from("ap_anonymous_drafts").select("id,converted_customer_id,finalized_snapshot_id,version,confirmation_receipt,answers,retention_state").eq("id", snapshot.draft_id).abortSignal(signal).single()),
     result(admin.from("ap_sensitive_payloads").select("id,customer_id,draft_id,content_sha256,retention_state").eq("id", snapshot.sensitive_payload_id).abortSignal(signal).single()),
     result(admin.from("ap_sensitive_payloads").select("id,customer_id,content_sha256,retention_state").eq("id", intent.contact_payload_id).abortSignal(signal).single()),
@@ -82,13 +86,31 @@ async function readRecords(admin: Admin, expected: DraftingEvidenceExpectation, 
     result(admin.from("ap_candidate_facts").select(FACT_COLUMNS).eq("snapshot_id", snapshot.id).neq("semantic_key", "document_contact.confirmed").is("superseded_at", null).limit(501).abortSignal(signal)),
     result(admin.rpc("ap_effective_intake_documents", { p_draft_id: snapshot.draft_id }).select("id,draft_id,customer_id,kind,version,content_sha256:sha256,retention_state").limit(101).abortSignal(signal)),
     result(admin.from("ap_fact_review_history").select("id,draft_id,snapshot_id,fact_id,correction_fact_id,decision,reviewed_at").eq("snapshot_id", snapshot.id).limit(501).abortSignal(signal)),
-    result(admin.from("ap_requirement_nodes").select("id,job_snapshot_id,node_kind,stable_criterion_id,source_excerpt,source_locator,requirement_strength,typed_value,position").eq("job_snapshot_id", job.id).eq("node_kind", "CRITERION").limit(201).abortSignal(signal)),
+    result(admin.from("ap_requirement_nodes").select("id,job_snapshot_id,parent_id,position,node_kind,criterion_type,stable_criterion_id,semantic_key,requirement_strength,source_locator,source_excerpt,parser_certainty,criterion_version,classification_method,importance,human_correction_history,typed_value")
+      .eq("job_snapshot_id", job.id).limit(502).abortSignal(signal)),
     result(admin.from("ap_human_review_records").select("id,snapshot_id,customer_id,job_snapshot_id,review_kind,reviewer_id,created_at,invalidated_at,rationale,decision")
       .eq("snapshot_id", snapshot.id).eq("job_snapshot_id", job.id).in("review_kind", ["MATCH_EVIDENCE", "ADJACENT_EQUIVALENCE"]).is("invalidated_at", null).limit(401).abortSignal(signal)),
     result(admin.from("ap_requirement_nodes").select("id,job_snapshot_id,source_excerpt").in("id", rule.source_evidence_ids).eq("job_snapshot_id", job.id).limit(101).abortSignal(signal)),
     result(admin.rpc("ap_current_verified_job_snapshots", { p_job_ids: [job.legacy_job_id] }).abortSignal(signal)),
     result(admin.from("ap_material_checkout_references").select("reference_permission_id").eq("checkout_item_id", item.id).limit(21).abortSignal(signal)),
   ]);
+  // The DB context permits 500 ordinary tree rows. Leave room for exactly one
+  // protected source row and one overflow sentinel without truncating criteria.
+  if (requirementRows.length > 501) fail("TOO_LARGE");
+  const requirements = (() => {
+    try {
+      // Read the bounded complete tree so a forged parent/child marker cannot
+      // disappear. Only the exact 104 source node is removed, before the 16KB
+      // qualification schema or provider projection sees its whole-source text.
+      const rows = requirementRows.map((row) => ({ ...row, node_kind: z.enum(["ALL_OF", "ANY_OF", "CRITERION"]).parse(row.node_kind) }));
+      const ordinary = excludeEmployerInstructionSourceNodes(rows, { id: job.id, content_sha256: job.content_sha256, captured_listing: job.captured_listing, application_host_type: applicationHostType });
+      if (ordinary.length > 500) fail("TOO_LARGE");
+      return ordinary
+        .filter((row) => row.node_kind === "CRITERION")
+        .map(({ id, job_snapshot_id, node_kind, stable_criterion_id, source_excerpt, source_locator, requirement_strength, typed_value, position }) =>
+          ({ id, job_snapshot_id, node_kind, stable_criterion_id, source_excerpt, source_locator, requirement_strength, typed_value, position }));
+    } catch (error) { if (error instanceof DraftingEvidenceError) throw error; return fail("REQUIREMENT_SOURCE_INVALID"); }
+  })();
   if (factReviews.length > 500 || documents.length > 100) fail("TOO_LARGE");
   const lineageResult = await admin.rpc("ap_intake_source_lineage", { p_draft_id: snapshot.draft_id }).abortSignal(signal);
   if (lineageResult.error || signal.aborted) fail("SOURCE_UNAVAILABLE");

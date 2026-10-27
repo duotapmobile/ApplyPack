@@ -225,7 +225,7 @@ describe("retired paid filtered job board", () => {
     const schema = readFileSync("src/lib/operations/launch-schema.ts", "utf8");
     expect(runbook).toContain("migrations 077 through 084");
     expect(runbook).toContain("schema `202610190084`");
-    expect(schema).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610260103"');
+    expect(schema).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610270104"');
   });
 
   it("separates reconciliation from signed ordering and restricts cross-tenant entitlement checks", () => {

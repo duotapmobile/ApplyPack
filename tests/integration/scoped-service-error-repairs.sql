@@ -233,7 +233,7 @@ select pg_temp.assert_true((select p.proname like 'ap_rr_%' and t.tgenabled='O'
  'actual contact file trigger lost its retention permit or exact contact predicate');
 select pg_temp.assert_true(not has_function_privilege('service_role','public.ap_material_draft_checkout_contact_matches(uuid,uuid,uuid,uuid)','EXECUTE'),
  'private contact exception helper became externally callable');
-select pg_temp.assert_true((select required->>'requiredSchemaVersion' in ('202610250099','202610250100','202610250101','202610260102','202610260103') from (select public.ap_manual_launch_schema_readiness() required) r),'099 readiness floor missing');
+select pg_temp.assert_true((select required->>'requiredSchemaVersion' in ('202610250099','202610250100','202610250101','202610260102','202610260103','202610270104') from (select public.ap_manual_launch_schema_readiness() required) r),'099 readiness floor missing');
 select pg_temp.assert_true(not has_table_privilege('service_role','public.ap_material_draft_permits','INSERT')
  and not has_table_privilege('service_role','public.ap_material_draft_versions','UPDATE')
  and not has_function_privilege('authenticated','public.ap_claim_material_draft_jobs(uuid,integer)','EXECUTE'),'draft boundary allows caller mutation');

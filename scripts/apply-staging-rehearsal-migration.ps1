@@ -25,7 +25,8 @@ param(
     [string]$ExpectedMaterialClarificationMigrationSha256,
     [string]$ExpectedRepairCaseStateMigrationSha256,
     [string]$ExpectedClarificationResumeMigrationSha256,
-    [ValidateSet('202610220085', '202610230086', '202610240087', '202610250088', '202610250089', '202610250090', '202610250091', '202610250092', '202610250093', '202610250094', '202610250095', '202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102','202610260103')]
+    [string]$ExpectedEmployerRuleReviewMigrationSha256,
+    [ValidateSet('202610220085', '202610230086', '202610240087', '202610250088', '202610250089', '202610250090', '202610250091', '202610250092', '202610250093', '202610250094', '202610250095', '202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102','202610260103','202610270104')]
     [string]$TargetSchemaVersion = '202610220085',
     [string]$BackupReceiptPath,
     [string]$RestoreReceiptPath
@@ -150,7 +151,8 @@ foreach ($forward in @(
     @('202610250100','automatic_research_preparation','AUTOMATIC_RESEARCH_PREPARATION','202610250099','SCOPED_SERVICE_ERROR_REPAIRS'),
     @('202610250101','material_clarification_confirmation','MATERIAL_CLARIFICATION_CONFIRMATION','202610250100','AUTOMATIC_RESEARCH_PREPARATION'),
     @('202610260102','service_repair_case_state_cas','SERVICE_REPAIR_CASE_STATE_CAS','202610250101','MATERIAL_CLARIFICATION_CONFIRMATION'),
-    @('202610260103','material_clarification_resume','MATERIAL_CLARIFICATION_RESUME','202610260102','SERVICE_REPAIR_CASE_STATE_CAS')
+    @('202610260103','material_clarification_resume','MATERIAL_CLARIFICATION_RESUME','202610260102','SERVICE_REPAIR_CASE_STATE_CAS'),
+    @('202610270104','employer_rule_review_confirmation','EMPLOYER_RULE_REVIEW_CONFIRMATION','202610260103','MATERIAL_CLARIFICATION_RESUME')
 )) {
     if ($TargetSchemaVersion -cge $forward[0]) {
         $script:RunnerVersion = 6
@@ -784,9 +786,9 @@ declare readiness jsonb; checkout_unlocked boolean;
 begin
   if (select max(version) from supabase_migrations.schema_migrations) is distinct from '202610190084'
     or __PREDECESSOR_LEDGER_CHECKS__
-    or (select count(*) from supabase_migrations.schema_migrations where version in ('202610220085','202610230086','202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102','202610260103'))<>0
+    or (select count(*) from supabase_migrations.schema_migrations where version in ('202610220085','202610230086','202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102','202610260103','202610270104'))<>0
     or (select count(*) from public.ap_migration_checkpoints where migration_id='202610190084' and checkpoint='LEGACY_BOARD_TERMINAL_EVENT_ORDERING')<>1
-    or (select count(*) from public.ap_migration_checkpoints where migration_id in ('202610220085','202610230086','202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102','202610260103'))<>0
+    or (select count(*) from public.ap_migration_checkpoints where migration_id in ('202610220085','202610230086','202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102','202610260103','202610270104'))<>0
     or exists (
       select 1
       from pg_catalog.pg_index index_row
@@ -1310,7 +1312,7 @@ function Get-RehearsalExpectedAuthorization {
         $expectedAuthorization = "apply084to087:$($script:ProjectRef):$($Release.releaseSha):$($actual.ToLowerInvariant()):$($activationHash.ToLowerInvariant()):$($retentionHash.ToLowerInvariant())"
     }
     if ($script:PostSchemaVersion -cge '202610250088') {
-        $provided = @($ExpectedCleanupMigrationSha256,$ExpectedConfirmedIntakeMigrationSha256,$ExpectedMatchingMigrationSha256,$ExpectedDraftPairMigrationSha256,$ExpectedRuleRevalidationMigrationSha256,$ExpectedSourceAwareDocumentMigrationSha256,$ExpectedDraftStageMigrationSha256,$ExpectedReferenceDraftMigrationSha256,$ExpectedServiceErrorMigrationSha256,$ExpectedDraftChangeMigrationSha256,$ExpectedArchiveLifecycleMigrationSha256,$ExpectedServiceRepairMigrationSha256,$ExpectedAutomaticResearchMigrationSha256,$ExpectedMaterialClarificationMigrationSha256,$ExpectedRepairCaseStateMigrationSha256,$ExpectedClarificationResumeMigrationSha256)
+        $provided = @($ExpectedCleanupMigrationSha256,$ExpectedConfirmedIntakeMigrationSha256,$ExpectedMatchingMigrationSha256,$ExpectedDraftPairMigrationSha256,$ExpectedRuleRevalidationMigrationSha256,$ExpectedSourceAwareDocumentMigrationSha256,$ExpectedDraftStageMigrationSha256,$ExpectedReferenceDraftMigrationSha256,$ExpectedServiceErrorMigrationSha256,$ExpectedDraftChangeMigrationSha256,$ExpectedArchiveLifecycleMigrationSha256,$ExpectedServiceRepairMigrationSha256,$ExpectedAutomaticResearchMigrationSha256,$ExpectedMaterialClarificationMigrationSha256,$ExpectedRepairCaseStateMigrationSha256,$ExpectedClarificationResumeMigrationSha256,$ExpectedEmployerRuleReviewMigrationSha256)
         for ($index=3; $index -lt $script:MigrationPlan.Count; $index++) {
             $expectedHash = [string]$Release.hashes[[string]$script:MigrationPlan[$index].relativePath]
             if ($provided[$index-3] -cnotmatch '^[A-Fa-f0-9]{64}$' -or $provided[$index-3].ToUpperInvariant() -cne $expectedHash) { Throw-Controlled 'REHEARSAL_APPROVAL_BINDING_INVALID' }
@@ -1663,7 +1665,7 @@ function Invoke-SelfTest {
         $syntheticHashes = [ordered]@{}
         foreach ($migration in $script:MigrationPlan) { $syntheticHashes[[string]$migration.relativePath] = $migrationHashes[[string]$migration.version] }
         $syntheticRelease = [pscustomobject]@{ releaseSha=('a' * 40); hashes=$syntheticHashes }
-        $approvalNames = @('ExpectedMigrationSha256','ExpectedSandboxActivationMigrationSha256','ExpectedRetentionMigrationSha256','ExpectedCleanupMigrationSha256','ExpectedConfirmedIntakeMigrationSha256','ExpectedMatchingMigrationSha256','ExpectedDraftPairMigrationSha256','ExpectedRuleRevalidationMigrationSha256','ExpectedSourceAwareDocumentMigrationSha256','ExpectedDraftStageMigrationSha256','ExpectedReferenceDraftMigrationSha256','ExpectedServiceErrorMigrationSha256','ExpectedDraftChangeMigrationSha256','ExpectedArchiveLifecycleMigrationSha256','ExpectedServiceRepairMigrationSha256','ExpectedAutomaticResearchMigrationSha256','ExpectedMaterialClarificationMigrationSha256','ExpectedRepairCaseStateMigrationSha256','ExpectedClarificationResumeMigrationSha256')
+        $approvalNames = @('ExpectedMigrationSha256','ExpectedSandboxActivationMigrationSha256','ExpectedRetentionMigrationSha256','ExpectedCleanupMigrationSha256','ExpectedConfirmedIntakeMigrationSha256','ExpectedMatchingMigrationSha256','ExpectedDraftPairMigrationSha256','ExpectedRuleRevalidationMigrationSha256','ExpectedSourceAwareDocumentMigrationSha256','ExpectedDraftStageMigrationSha256','ExpectedReferenceDraftMigrationSha256','ExpectedServiceErrorMigrationSha256','ExpectedDraftChangeMigrationSha256','ExpectedArchiveLifecycleMigrationSha256','ExpectedServiceRepairMigrationSha256','ExpectedAutomaticResearchMigrationSha256','ExpectedMaterialClarificationMigrationSha256','ExpectedRepairCaseStateMigrationSha256','ExpectedClarificationResumeMigrationSha256','ExpectedEmployerRuleReviewMigrationSha256')
         for ($index=0; $index -lt $script:MigrationPlan.Count; $index++) { Set-Variable -Name $approvalNames[$index] -Value $migrationHashes[[string]$script:MigrationPlan[$index].version] }
         $boundAuthorization = Get-RehearsalExpectedAuthorization -Release $syntheticRelease
         foreach ($migration in $script:MigrationPlan) {

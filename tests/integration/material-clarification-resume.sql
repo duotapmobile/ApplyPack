@@ -71,8 +71,8 @@ select pg_temp.resume_current_assert(not public.ap_research_snapshot_current('a1
 select pg_temp.resume_current_assert((select state='STALE' from public.ap_research_preparations where snapshot_id='a1060000-0000-4000-8000-000000000060'),'old preparation not fenced');
 
 select pg_temp.resume_current_assert(public.ap_material_clarification_resume_schema_installed()
- and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610260103'
- and jsonb_array_length(public.ap_manual_launch_schema_readiness()->'requiredMigrations')=27,'resume103 readiness incomplete');
+ and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' in('202610260103','202610270104')
+ and jsonb_array_length(public.ap_manual_launch_schema_readiness()->'requiredMigrations')=case public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' when '202610270104' then 28 else 27 end,'resume103 readiness incomplete');
 select public.ap_answer_material_clarification((select id from resume_current_question),'a1060000-0000-4000-8000-000000000061',repeat('26',32),null,
  'I answered customer calls.','a1060000-0000-4000-8000-000000000005',repeat('b6',32));
 select * from public.ap_save_four_step_draft('a1060000-0000-4000-8000-000000000005',repeat('b6',32),

@@ -10,8 +10,8 @@ import { DATABASE_RECOVERY_REQUIRED_TABLES } from "./lib/database-recovery-sourc
 
 test("snapshot inspection requires the database-only workflow tables separately from file aliases", () => {
   const sql = databaseSnapshotQuery("inspect");
-  assert.equal(DATABASE_RECOVERY_REQUIRED_TABLES.length, 35);
-  assert.equal(new Set(DATABASE_RECOVERY_REQUIRED_TABLES).size, 35);
+  assert.equal(DATABASE_RECOVERY_REQUIRED_TABLES.length, 36);
+  assert.equal(new Set(DATABASE_RECOVERY_REQUIRED_TABLES).size, 36);
   for (const table of ["ap_service_error_contracts", "ap_service_error_reports", "ap_service_error_decisions",
     "ap_service_error_affected_members", "ap_material_draft_change_requests", "ap_archive_writer_runs", "ap_archive_retention_runs", "ap_archive_retention_versions", "ap_archive_lifecycle_configuration", "ap_archive_fence_relations", "ap_archive_fence_function_contracts", "ap_service_repair_jobs", "ap_service_repair_versions", "ap_service_repair_files", "ap_service_repair_releases", "ap_service_repair_case_events", "ap_service_repair_feedback",
     "ap_intake_clarifications", "ap_intake_inherited_documents", "ap_intake_clarification_answers",

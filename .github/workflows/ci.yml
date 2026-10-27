@@ -139,6 +139,8 @@ jobs:
         run: npm run test:repair-case-state-migration
       - name: Material clarification resume migration self-test
         run: npm run test:material-clarification-resume-migration
+      - name: Employer rule review migration self-test
+        run: npm run test:employer-rule-review-migration
       - name: Confirmed clarification and case-state integration
         run: npm run test:material-clarification-integration
       - name: Validate098 default-disabled protected archive lifecycle controls
@@ -308,6 +310,7 @@ jobs:
           - '202610250100'
           - '202610250101'
           - '202610260102'
+          - '202610260103'
     steps:
       - uses: actions/checkout@v4
         with:

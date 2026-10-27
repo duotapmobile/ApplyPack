@@ -4,7 +4,7 @@
 -- existing historical intake claimed by the new verified flow; the separate
 -- verified-intake-ownership fixture proves new v4 creation and full review.
 begin;
-create function pg_temp.assert_true(value boolean,message text) returns void language plpgsql as $$
+create function pg_temp.payment_assert(value boolean,message text) returns void language plpgsql as $$
 begin if value is not true then raise exception '%',message; end if; end $$;
 create function pg_temp.payment_reject(statement text,expected text) returns void language plpgsql as $$
 begin begin execute statement; exception when others then if sqlerrm=expected then return; end if; raise; end;
@@ -36,7 +36,7 @@ update public.ap_document_versions set processing_state='SCANNING'
 where id='a1100003-0000-4000-8000-000000000001';
 update public.ap_document_versions set processing_state='EXTRACTING'
 where id='a1100003-0000-4000-8000-000000000001';
-select pg_temp.assert_true(public.ap_apply_document_pipeline_result(
+select pg_temp.payment_assert(public.ap_apply_document_pipeline_result(
   'a1100003-0000-4000-8000-000000000001',1,'READY','CLEAN','SUCCEEDED','CLEAR','CLEAR',
   'fixture-parser','{"pageLimit":20}','fixture-model-policy',null
 ), 'ready resume pipeline fixture failed');
@@ -140,7 +140,7 @@ select public.ap_record_snapshot_legal_content_receipt(
   (select legal_acceptance_copy_version from public.ap_commerce_configuration where singleton),(select legal_acceptance_copy_sha256 from public.ap_commerce_configuration where singleton),
   'applypack-c14n-v1','applypack-legal-content-receipt-v1',repeat('70',32)
 );
-select pg_temp.assert_true(
+select pg_temp.payment_assert(
   (public.ap_read_current_feasibility('a1100002-0000-4000-8000-000000000001',repeat('a0',32))->>'checkoutEligible')='false',
   'checkout became eligible without capacity'
 );
@@ -152,7 +152,7 @@ values(
   'a110000c-0000-4000-8000-000000000001','a110000b-0000-4000-8000-000000000001',
   clock_timestamp()-interval '1 hour',clock_timestamp()+interval '2 days',3,'fixture-staffing-v1'
 );
-select pg_temp.assert_true(
+select pg_temp.payment_assert(
   (public.ap_read_current_feasibility('a1100002-0000-4000-8000-000000000001',repeat('a0',32))->>'checkoutEligible')='false',
   'public purchasing unlocked during authorized rehearsal'
 );
@@ -217,7 +217,7 @@ begin
  foreach message_id in array message_ids loop
   context_value:=public.ap_prepare_claimed_payment_notification(message_id,'owned-noorder-fixture');
   if claimed then
-   perform pg_temp.assert_true(context_value->>'claimed'='true'
+   perform pg_temp.payment_assert(context_value->>'claimed'='true'
     and context_value->>'customerId'='a1100001-0000-4000-8000-000000000001'
     and context_value->>'rootDraftId'='a1100002-0000-4000-8000-000000000001'
     and context_value->>'recipientEmail'='verified-changed@example.invalid'
@@ -226,7 +226,7 @@ begin
    perform pg_temp.payment_reject(format('update public.ap_outbox_messages set provider_idempotency_key=%L where id=%L',
     'forbidden-retarget',message_id),'claimed_delivery_pin_immutable');
   else
-   perform pg_temp.assert_true(context_value='{"claimed":false}'::jsonb,'historical no-order refund lost exact unclaimed receipt');
+   perform pg_temp.payment_assert(context_value='{"claimed":false}'::jsonb,'historical no-order refund lost exact unclaimed receipt');
   end if;
  end loop;
  if claimed then
@@ -242,8 +242,8 @@ end $$;
 
 savepoint historical_unclaimed_payment;
 select pg_temp.owned_payment_checkout(false);
-select pg_temp.assert_true(public.ap_intake_payment_identity('a1100002-0000-4000-8000-000000000001','a1100005-0000-4000-8000-000000000001')->>'claimed'='false','historical intake unexpectedly claimed');
-select pg_temp.assert_true(pg_temp.apply_owned_payment('a1100001-0000-4000-8000-000000000001')->>'outcome'='SEARCH_ACTIVE','historical unclaimed payment failed');
+select pg_temp.payment_assert(public.ap_intake_payment_identity('a1100002-0000-4000-8000-000000000001','a1100005-0000-4000-8000-000000000001')->>'claimed'='false','historical intake unexpectedly claimed');
+select pg_temp.payment_assert(pg_temp.apply_owned_payment('a1100001-0000-4000-8000-000000000001')->>'outcome'='SEARCH_ACTIVE','historical unclaimed payment failed');
 select pg_temp.assert_noorder_payment_notices(false);
 -- Older customer-owned snapshots have no anonymous draft. This valid
 -- historical graph must keep the original notification path; null draft is
@@ -263,18 +263,18 @@ insert into public.ap_outbox_messages(id,customer_id,order_id,message_kind,recip
  values('a1100043-0000-4000-8000-000000000001','a1100001-0000-4000-8000-000000000001','a1100041-0000-4000-8000-000000000001',
  'MATERIALS_DELIVERED','a1100040-0000-4000-8000-000000000001','fictional-historical-no-draft','fictional-historical-no-draft');
 select count(*) from public.ap_claim_outbox_messages('historical-no-draft-fixture',25);
-select pg_temp.assert_true(public.ap_prepare_claimed_payment_notification('a1100043-0000-4000-8000-000000000001','historical-no-draft-fixture')='{"claimed":false}'::jsonb,
+select pg_temp.payment_assert(public.ap_prepare_claimed_payment_notification('a1100043-0000-4000-8000-000000000001','historical-no-draft-fixture')='{"claimed":false}'::jsonb,
  'existing historical snapshot without anonymous draft lost its notification path');
 rollback to historical_unclaimed_payment;
 
 select pg_temp.owned_payment_checkout(true);
-select pg_temp.assert_true(exists(select 1 from public.ap_checkout_attempts c join public.ap_quotes q on q.id=c.quote_id
+select pg_temp.payment_assert(exists(select 1 from public.ap_checkout_attempts c join public.ap_quotes q on q.id=c.quote_id
  join public.ap_capacity_allocations a on a.id=c.capacity_allocation_id where c.id='a1100013-0000-4000-8000-000000000001'
  and c.state='OPEN' and c.customer_id='a1100001-0000-4000-8000-000000000001'
  and q.customer_id=c.customer_id and a.customer_id=c.customer_id and q.draft_id=c.draft_id and a.draft_id=c.draft_id),
  'claimed checkout quote and capacity did not retain the same verified owner');
 create temp table owned_checkout_retry as select pg_temp.owned_payment_retry() result;
-select pg_temp.assert_true((select result=pg_temp.owned_payment_retry() and result->>'access_email'='chunk4-customer@example.invalid' from owned_checkout_retry),'checkout retry changed pinned provider email/body');
+select pg_temp.payment_assert((select result=pg_temp.owned_payment_retry() and result->>'access_email'='chunk4-customer@example.invalid' from owned_checkout_retry),'checkout retry changed pinned provider email/body');
 create temp table owned_payment_original as select to_jsonb(s) body from public.ap_intake_snapshots s where id='a1100005-0000-4000-8000-000000000001';
 update auth.users set email='verified-changed@example.invalid' where id='a1100001-0000-4000-8000-000000000001';
 update public.profiles set email='verified-changed@example.invalid' where id='a1100001-0000-4000-8000-000000000001';
@@ -282,32 +282,32 @@ update auth.users set email='chunk4-customer@example.invalid' where id='a1100001
 update public.profiles set email='chunk4-customer@example.invalid' where id='a1100001-0000-4000-8000-000000000002';
 select pg_temp.payment_reject($s$select pg_temp.owned_payment_retry()$s$,'claimed_checkout_recipient_changed_reconcile');
 select pg_temp.payment_reject($s$select pg_temp.apply_owned_payment('a1100001-0000-4000-8000-000000000002')$s$,'access_identity_mismatch');
-select pg_temp.assert_true(not exists(select 1 from public.ap_provider_events where provider_event_id='evt_verified_intake_payment'),'rejected owner persisted a partial payment event');
+select pg_temp.payment_assert(not exists(select 1 from public.ap_provider_events where provider_event_id='evt_verified_intake_payment'),'rejected owner persisted a partial payment event');
 
 -- Expiry prevents unpaid private access, but it cannot transfer financial
 -- ownership or discard a charge that was already accepted by the provider.
 update public.ap_anonymous_drafts set expires_at=created_at+interval '1 microsecond' where id='a1100002-0000-4000-8000-000000000001';
-select pg_temp.assert_true(not public.ap_customer_owns_snapshot('a1100001-0000-4000-8000-000000000001','a1100005-0000-4000-8000-000000000001'),'expired unpaid snapshot retained private access');
-select pg_temp.assert_true(public.ap_intake_payment_identity('a1100002-0000-4000-8000-000000000001','a1100005-0000-4000-8000-000000000001')->>'customerId'='a1100001-0000-4000-8000-000000000001','expiry revived email fallback');
+select pg_temp.payment_assert(not public.ap_customer_owns_snapshot('a1100001-0000-4000-8000-000000000001','a1100005-0000-4000-8000-000000000001'),'expired unpaid snapshot retained private access');
+select pg_temp.payment_assert(public.ap_intake_payment_identity('a1100002-0000-4000-8000-000000000001','a1100005-0000-4000-8000-000000000001')->>'customerId'='a1100001-0000-4000-8000-000000000001','expiry revived email fallback');
 select pg_temp.payment_reject($s$select pg_temp.apply_owned_payment('a1100001-0000-4000-8000-000000000002')$s$,'access_identity_mismatch');
 create temp table owned_payment_result as select pg_temp.apply_owned_payment('a1100001-0000-4000-8000-000000000001') result;
-select pg_temp.assert_true((select result->>'outcome'='SEARCH_ACTIVE' from owned_payment_result),'claimed payment did not activate stable owner');
-select pg_temp.assert_true((select customer_id='a1100001-0000-4000-8000-000000000001' from public.orders where id='a1100021-0000-4000-8000-000000000001')
+select pg_temp.payment_assert((select result->>'outcome'='SEARCH_ACTIVE' from owned_payment_result),'claimed payment did not activate stable owner');
+select pg_temp.payment_assert((select customer_id='a1100001-0000-4000-8000-000000000001' from public.orders where id='a1100021-0000-4000-8000-000000000001')
  and (select customer_id='a1100001-0000-4000-8000-000000000001' from public.intakes where id='a1100020-0000-4000-8000-000000000001')
  and (select customer_id='a1100001-0000-4000-8000-000000000001' and settlement='PAID' from public.ap_payment_attempts where id='a1100014-0000-4000-8000-000000000001'),
  'settled order/intake/payment transferred to reused email');
-select pg_temp.assert_true(public.ap_customer_owns_snapshot('a1100001-0000-4000-8000-000000000001','a1100005-0000-4000-8000-000000000001'),'real paid access lost when draft expired');
-select pg_temp.assert_true(not public.ap_customer_owns_snapshot('a1100001-0000-4000-8000-000000000002','a1100005-0000-4000-8000-000000000001'),'reused email holder acquired paid private access');
-select pg_temp.assert_true((select body=to_jsonb(s) from owned_payment_original) ,'payment mutated immutable intake') from public.ap_intake_snapshots s where id='a1100005-0000-4000-8000-000000000001';
-select pg_temp.assert_true((select result||jsonb_build_object('replayed',true)=pg_temp.apply_owned_payment('a1100001-0000-4000-8000-000000000001') from owned_payment_result),'same event replay changed result or lost replay marker');
-select pg_temp.assert_true(pg_temp.apply_owned_payment('a1100001-0000-4000-8000-000000000001','evt_verified_intake_payment_reordered')->>'outcome'='SEARCH_ACTIVE','reordered completed event lost payment');
-select pg_temp.assert_true((select count(*)=1 from public.ap_search_services where original_snapshot_id='a1100005-0000-4000-8000-000000000001')
+select pg_temp.payment_assert(public.ap_customer_owns_snapshot('a1100001-0000-4000-8000-000000000001','a1100005-0000-4000-8000-000000000001'),'real paid access lost when draft expired');
+select pg_temp.payment_assert(not public.ap_customer_owns_snapshot('a1100001-0000-4000-8000-000000000002','a1100005-0000-4000-8000-000000000001'),'reused email holder acquired paid private access');
+select pg_temp.payment_assert((select body=to_jsonb(s) from owned_payment_original) ,'payment mutated immutable intake') from public.ap_intake_snapshots s where id='a1100005-0000-4000-8000-000000000001';
+select pg_temp.payment_assert((select result||jsonb_build_object('replayed',true)=pg_temp.apply_owned_payment('a1100001-0000-4000-8000-000000000001') from owned_payment_result),'same event replay changed result or lost replay marker');
+select pg_temp.payment_assert(pg_temp.apply_owned_payment('a1100001-0000-4000-8000-000000000001','evt_verified_intake_payment_reordered')->>'outcome'='SEARCH_ACTIVE','reordered completed event lost payment');
+select pg_temp.payment_assert((select count(*)=1 from public.ap_search_services where original_snapshot_id='a1100005-0000-4000-8000-000000000001')
  and (select count(*)=1 from public.orders where stripe_payment_intent_id='pi_verified_intake_payment')
  and (select count(*)=1 from public.ap_capacity_allocations where draft_id='a1100002-0000-4000-8000-000000000001' and debit_disposition='SPENT')
  and (select count(*)=1 from public.ap_outbox_messages where order_id='a1100021-0000-4000-8000-000000000001' and message_kind='PAYMENT_VERIFIED_SEARCH_STARTED'),
  'replay duplicated fulfillment/capacity/start notification');
-select pg_temp.assert_true(not exists(select 1 from public.ap_order_access_capabilities where order_id='a1100021-0000-4000-8000-000000000001' and kind='EMAIL_ACCESS'),'claimed payment issued an emailed bearer capability');
-select pg_temp.assert_true(public.ap_find_latest_access_order('chunk4-customer@example.invalid') is null,'email-only lookup exposed claimed order to reused address');
+select pg_temp.payment_assert(not exists(select 1 from public.ap_order_access_capabilities where order_id='a1100021-0000-4000-8000-000000000001' and kind='EMAIL_ACCESS'),'claimed payment issued an emailed bearer capability');
+select pg_temp.payment_assert(public.ap_find_latest_access_order('chunk4-customer@example.invalid') is null,'email-only lookup exposed claimed order to reused address');
 select pg_temp.payment_reject($s$select public.ap_issue_order_access_capability('a1100021-0000-4000-8000-000000000001',repeat('30',32),
  'a1100030-0000-4000-8000-000000000001','a1100004-0000-4000-8000-000000000001','a1100031-0000-4000-8000-000000000001')$s$,'claimed_order_requires_sign_in');
 savepoint historical_claimed_capability;
@@ -319,9 +319,9 @@ insert into public.ap_order_access_capabilities(id,checkout_attempt_id,order_id,
 select pg_temp.payment_reject($s$select public.ap_consume_order_access('a1100030-0000-4000-8000-000000000001',repeat('30',32))$s$,'claimed_order_requires_sign_in');
 rollback to historical_claimed_capability;
 select count(*) from public.ap_claim_outbox_messages('owned-payment-fixture',25);
-select pg_temp.assert_true(public.ap_prepare_claimed_payment_notification('a1100026-0000-4000-8000-000000000001','owned-payment-fixture')->>'recipientEmail'='verified-changed@example.invalid','paid notice selected old reused email');
+select pg_temp.payment_assert(public.ap_prepare_claimed_payment_notification('a1100026-0000-4000-8000-000000000001','owned-payment-fixture')->>'recipientEmail'='verified-changed@example.invalid','paid notice selected old reused email');
 select public.ap_pin_claimed_payment_delivery('a1100026-0000-4000-8000-000000000001','owned-payment-fixture',repeat('18',32));
-select pg_temp.assert_true(public.ap_pin_claimed_payment_delivery('a1100026-0000-4000-8000-000000000001','owned-payment-fixture',repeat('18',32))->>'payloadSha256'=repeat('18',32),'same paid envelope replay failed');
+select pg_temp.payment_assert(public.ap_pin_claimed_payment_delivery('a1100026-0000-4000-8000-000000000001','owned-payment-fixture',repeat('18',32))->>'payloadSha256'=repeat('18',32),'same paid envelope replay failed');
 select pg_temp.payment_reject($s$select public.ap_pin_claimed_payment_delivery('a1100026-0000-4000-8000-000000000001','owned-payment-fixture',repeat('28',32))$s$,'claimed_payment_envelope_changed');
 savepoint after_paid_recipient_pin;
 update auth.users set email='verified-changed-again@example.invalid' where id='a1100001-0000-4000-8000-000000000001';

@@ -12,6 +12,7 @@ import { databaseManifestSchema, databaseSnapshotSchema, DATABASE_RECOVERY_LIMIT
 export const ARCHIVE_DATABASE_READ_VERSIONS = Object.freeze([
   "202610250090", "202610250091", "202610250092", "202610250093", "202610250094", "202610250095",
   "202610250096", "202610250097", "202610250098", "202610250099", "202610250100", "202610250101", "202610260102", "202610260103",
+  "202610270104",
 ]);
 export const ARCHIVE_FILE_READ_TABLES = Object.freeze([
   "ap_document_versions", "ap_generated_file_versions", "ap_generated_artifacts", "ap_artifact_quality_reviews",

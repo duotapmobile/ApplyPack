@@ -461,6 +461,74 @@ function fakeAdmin(f: Fixture, onRead?: (table: string, count: number) => void) 
   return { admin: { from, rpc } as unknown as Parameters<typeof loadDraftingEvidencePacket>[0], from, rpc, counts, selections, tables, managedJob, authority };
 }
 describe("connected drafting evidence loader", () => {
+  function preparedSourceNode(f: Fixture) {
+    const version = "employer-instruction-source-v1", source = f.r.job.captured_listing as { text: string };
+    const hash = createHash("sha256").update(`${version}:${f.r.job.id}:${f.r.job.content_sha256}`, "utf8").digest("hex");
+    const nodeId = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+    const semanticKey = `employer-instruction-source:${f.r.job.id}`;
+    return { id: nodeId, job_snapshot_id: f.r.job.id, parent_id: null, position: 2147483646, node_kind: "CRITERION", criterion_type: "LISTING_APPLICATION_PATH",
+      stable_criterion_id: nodeId, semantic_key: semanticKey, requirement_strength: "INFORMATIONAL", source_locator: "captured_listing.text", source_excerpt: source.text,
+      parser_certainty: 1, criterion_version: version, classification_method: version, importance: 1, human_correction_history: [],
+      typed_value: { stableCriterionId: nodeId, semanticKey, strength: "INFORMATIONAL", sourceLocator: "captured_listing.text", parserCertainty: 1, version,
+        kind: "LISTING_APPLICATION_PATH", identity: `saved-listing:${f.r.job.id}`, activeStatus: "ACTIVE", sourceAuthorized: true, applicationPath: "ACTIONABLE", hostType: "EMPLOYER_HOSTED" } };
+  }
+  it("excludes only the authentic100KB source node while preserving original paid rule/question provenance and packet bytes", async () => {
+    const f = fixture(); apiQuestions(f);
+    const marker = "OWNER_ONLY_CAPTURED_INSTRUCTIONS_", prefix = "Organize office records\n";
+    const captured = f.r.job.captured_listing as Record<string, unknown>;
+    captured.text = prefix + marker + "x".repeat(100000 - prefix.length - marker.length);
+    expect((captured.text as string).length).toBe(100000);
+    f.r.job.content_sha256 = canonicalSha256(captured); f.seal();
+    const db = fakeAdmin(f); db.tables.ap_job_snapshots = [{ ...f.r.job, application_host_type: "EMPLOYER_HOSTED" }];
+    const original = await loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now });
+    const source = preparedSourceNode(f); db.tables.ap_requirement_nodes = [...db.tables.ap_requirement_nodes, source];
+    const after = await loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now });
+    expect(serializeDraftingEvidencePacket(after)).toBe(serializeDraftingEvidencePacket(original));
+    expect(after.ownerEvidence.requirements.map((node) => node.id)).toEqual([id(22)]);
+    expect(after.ownerEvidence.employerInstructions.source_evidence_ids).toEqual([id(22)]);
+    expect(after.employerQuestionInsights.questions).toEqual(original.employerQuestionInsights.questions);
+    expect(after.employerQuestionInsights.questions.length).toBeGreaterThan(0);
+    expect(JSON.stringify(after.providerView)).not.toContain(marker);
+    expect(JSON.stringify(after.providerView)).not.toContain(source.id);
+    expect((after.ownerEvidence.jobSource.capturedListing as Record<string, unknown>).text).toBe(captured.text);
+  });
+  it.each(["wrong digest identity", "wrong text", "required masquerade", "typed masquerade", "has a tree child", "duplicate source node"])("fails closed on a source marker with %s", async (variant) => {
+    const f = fixture(), db = fakeAdmin(f), source = preparedSourceNode(f);
+    db.tables.ap_job_snapshots = [{ ...f.r.job, application_host_type: "EMPLOYER_HOSTED" }];
+    if (variant === "wrong digest identity") source.id = id(900);
+    if (variant === "wrong text") source.source_excerpt = "Different employer instructions";
+    if (variant === "required masquerade") source.requirement_strength = "REQUIRED";
+    if (variant === "typed masquerade") source.typed_value.activeStatus = "CLOSED";
+    db.tables.ap_requirement_nodes = [...db.tables.ap_requirement_nodes, source];
+    if (variant === "has a tree child") db.tables.ap_requirement_nodes.push({ ...source, id: id(901), parent_id: source.id, node_kind: "ALL_OF", classification_method: "ordinary", criterion_version: "ordinary", semantic_key: "ordinary", typed_value: null });
+    if (variant === "duplicate source node") db.tables.ap_requirement_nodes.push({ ...source });
+    await expect(loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now })).rejects.toThrow("DRAFTING_EVIDENCE_REQUIREMENT_SOURCE_INVALID");
+  });
+  it("preserves all200 qualifications at the500-row tree boundary plus one source-only node", async () => {
+    const f = fixture(), original = f.r.requirements[0];
+    f.r.requirements = Array.from({ length: 200 }, (_, index) => index === 0 ? original : { ...original, id: id(2000 + index), stable_criterion_id: id(3000 + index), position: index });
+    const db = fakeAdmin(f); db.tables.ap_job_snapshots = [{ ...f.r.job, application_host_type: "EMPLOYER_HOSTED" }];
+    const groups = Array.from({ length: 300 }, (_, index) => ({ id: id(4000 + index), job_snapshot_id: f.r.job.id, parent_id: null, position: index,
+      node_kind: "ALL_OF", criterion_type: null, stable_criterion_id: null, semantic_key: `ordinary-group-${index}`, requirement_strength: null,
+      source_locator: null, source_excerpt: null, parser_certainty: null, criterion_version: "ordinary-listing", classification_method: "ordinary-listing",
+      importance: null, human_correction_history: [], typed_value: null }));
+    db.tables.ap_requirement_nodes = [...f.r.requirements, ...groups];
+    const before = await loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now });
+    db.tables.ap_requirement_nodes.push(preparedSourceNode(f));
+    const after = await loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now });
+    expect(after.ownerEvidence.requirements).toHaveLength(200);
+    expect(new Set(after.ownerEvidence.requirements.map((row) => row.id))).toEqual(new Set(f.r.requirements.map((row) => row.id)));
+    expect(serializeDraftingEvidencePacket(after)).toBe(serializeDraftingEvidencePacket(before));
+    db.tables.ap_requirement_nodes.push({ ...groups[0], id: id(4900) });
+    await expect(loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now })).rejects.toThrow("DRAFTING_EVIDENCE_TOO_LARGE");
+  });
+  it.each([201, 500])("still rejects%d ordinary qualifications instead of hiding excess rows behind source filtering", async (count) => {
+    const f = fixture(), original = f.r.requirements[0];
+    f.r.requirements = Array.from({ length: count }, (_, index) => index === 0 ? original : { ...original, id: id(2000 + index), stable_criterion_id: id(3000 + index), position: index });
+    const db = fakeAdmin(f); db.tables.ap_job_snapshots = [{ ...f.r.job, application_host_type: "EMPLOYER_HOSTED" }];
+    db.tables.ap_requirement_nodes = [...db.tables.ap_requirement_nodes, preparedSourceNode(f)];
+    await expect(loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now })).rejects.toThrow("DRAFTING_EVIDENCE_SHAPE_INVALID");
+  });
   it("preserves ordinary historical packet bytes when a separate revision has a parent", async () => {
     const f = fixture(), db = fakeAdmin(f);
     const before = await loadDraftingEvidencePacket(db.admin, f.expected, { now: () => now });

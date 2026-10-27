@@ -19,10 +19,11 @@ const historical099 = process.argv.length === 3 && process.argv[2] === "--histor
 const historical100 = process.argv.length === 3 && process.argv[2] === "--historical-100";
 const historical101 = process.argv.length === 3 && process.argv[2] === "--historical-101";
 const historical102 = process.argv.length === 3 && process.argv[2] === "--historical-102";
-if (process.argv.length > 3 || (process.argv.length === 3 && !historical085 && !historical086 && !historical087 && !historical091 && !historical092 && !historical093 && !historical094 && !historical095 && !historical096 && !historical097 && !historical098 && !historical099 && !historical100 && !historical101 && !historical102)) {
+const historical103 = process.argv.length === 3 && process.argv[2] === "--historical-103";
+if (process.argv.length > 3 || (process.argv.length === 3 && !historical085 && !historical086 && !historical087 && !historical091 && !historical092 && !historical093 && !historical094 && !historical095 && !historical096 && !historical097 && !historical098 && !historical099 && !historical100 && !historical101 && !historical102 && !historical103)) {
   throw new Error("DATABASE_FIXTURE_PHASE_INVALID");
 }
-const requiredSchemaVersion = historical085 ? "202610220085" : historical086 ? "202610230086" : historical087 ? "202610240087" : historical091 ? "202610250091" : historical092 ? "202610250092" : historical093 ? "202610250093" : historical094 ? "202610250094" : historical095 ? "202610250095" : historical096 ? "202610250096" : historical097 ? "202610250097" : historical098 ? "202610250098" : historical099 ? "202610250099" : historical100 ? "202610250100" : historical101 ? "202610250101" : historical102 ? "202610260102" : "202610260103";
+const requiredSchemaVersion = historical085 ? "202610220085" : historical086 ? "202610230086" : historical087 ? "202610240087" : historical091 ? "202610250091" : historical092 ? "202610250092" : historical093 ? "202610250093" : historical094 ? "202610250094" : historical095 ? "202610250095" : historical096 ? "202610250096" : historical097 ? "202610250097" : historical098 ? "202610250098" : historical099 ? "202610250099" : historical100 ? "202610250100" : historical101 ? "202610250101" : historical102 ? "202610260102" : historical103 ? "202610260103" : "202610270104";
 const phaseProbe = spawnSync("docker", ["exec", "-i", "supabase_db_applypack", "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"], {
   encoding: "utf8", input: `do $$ begin
     if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '${requiredSchemaVersion}'
@@ -45,6 +46,7 @@ const fixtures = !historical085 && !historical086 ? [
   ...(requiredSchemaVersion >= "202610250101" ? ["../tests/integration/material-clarification-confirmation.sql"] : []),
   ...(requiredSchemaVersion >= "202610260102" ? ["../tests/integration/service-repair-case-state.sql"] : []),
   ...(requiredSchemaVersion >= "202610260103" ? ["../tests/integration/material-clarification-resume.sql", "../tests/integration/verified-intake-ownership.sql", "../tests/integration/verified-intake-payment.sql"] : []),
+  ...(requiredSchemaVersion >= "202610270104" ? ["../tests/integration/employer-rule-review-confirmation.sql"] : []),
 ] : [
   "../tests/integration/unpaid-source-retention.sql",
   "../tests/integration/chunk1-foundation.sql",
@@ -69,8 +71,8 @@ const fixtures = !historical085 && !historical086 ? [
 for (const fixture of fixtures) {
   const sqlPath = fileURLToPath(new URL(fixture, import.meta.url));
   // stdin-fed psql cannot resolve repository-relative includes inside Docker.
-  // Expand this single reviewed, local helper; no arbitrary include paths.
-  let sql = readFileSync(sqlPath, "utf8").replace(/^\\ir (reviewed-source-fixture|rehearsal-checkout-attempts|rehearsal-material-checkout|service-repair-case-state-fixture)\.sql\r?$/gm,
+  // Expand only these reviewed local helpers; no arbitrary include paths.
+  let sql = readFileSync(sqlPath, "utf8").replace(/^\\ir (reviewed-source-fixture|rehearsal-checkout-attempts|rehearsal-material-checkout|service-repair-case-state-fixture|employer-rule-review-fixture)\.sql\r?$/gm,
     (_line, helper) => readFileSync(fileURLToPath(new URL(`../tests/integration/${helper}.sql`, import.meta.url)), "utf8"));
   sql = sql.replace(/^\\ir reviewed-source-fixture\.sql\r?$/gm, () => readFileSync(new URL("../tests/integration/reviewed-source-fixture.sql", import.meta.url), "utf8"));
   if (/^\s*\\/mu.test(sql)) throw new Error("DATABASE_FIXTURE_INCLUDE_FORBIDDEN");

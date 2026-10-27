@@ -7,7 +7,7 @@ select pg_temp.assert_true(not has_table_privilege('service_role','public.ap_res
 select pg_temp.assert_true(not has_function_privilege('authenticated','public.ap_prepare_automatic_research(uuid,uuid,jsonb)','EXECUTE'),'customer planning bypass');
 select pg_temp.assert_true(public.ap_archive_fence_coverage_current(),'new research tables missing archive fence');
 select pg_temp.assert_true(public.ap_automatic_research_schema_installed(),'research schema predicate missing');
-select pg_temp.assert_true(public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' in('202610250100','202610250101','202610260102','202610260103'),'research schema floor missing');
+select pg_temp.assert_true(public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' in('202610250100','202610250101','202610260102','202610260103','202610270104'),'research schema floor missing');
 savepoint readiness_guards;
 alter table public.ap_research_preparations disable trigger ap_service_retention_write;
 select pg_temp.assert_true(not public.ap_automatic_research_schema_installed(),'disabled research retention guard passed readiness');

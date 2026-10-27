@@ -20,6 +20,7 @@ param(
   [switch]$RepairCaseStateUpgrade,
   [switch]$ClarificationCaseUpgrade,
   [switch]$ClarificationResumeUpgrade,
+  [switch]$EmployerRuleReviewUpgrade,
   [switch]$LegalReceiptUpgrade,
   [string[]]$FixtureNames,
   [string]$MaximumMigrationVersion
@@ -205,6 +206,13 @@ if ($ClarificationResumeUpgrade) {
   if ($fixtures -notcontains 'verified-intake-ownership.sql') { $fixtures += 'verified-intake-ownership.sql' }
   if ($fixtures -notcontains 'verified-intake-payment.sql') { $fixtures += 'verified-intake-payment.sql' }
 }
+if ($EmployerRuleReviewUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $ServiceRepairUpgrade -or $ResearchPreparationUpgrade -or $MaterialClarificationUpgrade -or $RepairCaseStateUpgrade -or $ClarificationCaseUpgrade -or $ClarificationResumeUpgrade -or $LegalReceiptUpgrade -or $ResearchJourney -or
+      $MaximumMigrationVersion -cne '202610270104' -or $migrationFiles[-1].Name -cne '202610270104_employer_rule_review_confirmation.sql') { throw 'Employer rule review upgrade requires the exact isolated103-to104 sequence.' }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('employer-rule-review-upgrade-seed.sql','employer-rule-review-upgrade-preservation.sql')
+  if ($fixtures -notcontains 'employer-rule-review-confirmation.sql') { $fixtures += 'employer-rule-review-confirmation.sql' }
+}
 $inputs = @([pscustomobject]@{Kind='bootstrap'; Name='bootstrap.sql'; Path=$bootstrapPath})
 foreach ($migration in $migrationFiles) {
   $copy = Join-Path $inputPath $migration.Name
@@ -348,6 +356,32 @@ process.stdout.write(current103LockedPhaseSql);
   $inputs += [pscustomobject]@{Kind='helper'; Name='supabase-upgrade-phases.mjs'; Path=$phaseModule}
   $inputs += [pscustomobject]@{Kind='helper'; Name='export-current103-phase.mjs'; Path=$phaseExporter}
 }
+if ($EmployerRuleReviewUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610260103' }) +
+    @($inputs | Where-Object Name -eq 'employer-rule-review-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610270104' }) +
+    @($inputs | Where-Object Name -eq 'employer-rule-review-upgrade-preservation.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('employer-rule-review-upgrade-seed.sql','employer-rule-review-upgrade-preservation.sql') })
+  # Execute the same final phase as hosted-CI's disposable upgrade runner, with
+  # its exact module and generated SQL retained in this owned input manifest.
+  $phaseModule = Join-Path $inputPath 'supabase-upgrade-phases.mjs'
+  Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/lib/supabase-upgrade-phases.mjs') -Destination $phaseModule
+  $phaseExporter = Join-Path $inputPath 'export-current104-phase.mjs'
+  Set-Content -LiteralPath $phaseExporter -Encoding utf8 -Value @'
+import { pathToFileURL } from 'node:url';
+const { current104LockedPhaseSql } = await import(pathToFileURL(process.argv[2]).href);
+if (typeof current104LockedPhaseSql !== 'string' || !current104LockedPhaseSql.length) throw new Error('Exact104 phase required');
+process.stdout.write(current104LockedPhaseSql);
+'@
+  $phaseSql = & (Get-Command node -ErrorAction Stop).Source $phaseExporter $phaseModule
+  if ($LASTEXITCODE -ne 0) { throw 'Exact104 phase export failed.' }
+  $phasePath = Join-Path $inputPath 'native-current104-locked-phase.sql'
+  Set-Content -LiteralPath $phasePath -Encoding utf8 -Value $phaseSql
+  $inputs += [pscustomobject]@{Kind='fixture'; Name='native-current104-locked-phase.sql'; Path=$phasePath}
+  $inputs += [pscustomobject]@{Kind='helper'; Name='supabase-upgrade-phases.mjs'; Path=$phaseModule}
+  $inputs += [pscustomobject]@{Kind='helper'; Name='export-current104-phase.mjs'; Path=$phaseExporter}
+}
 if ($LegalReceiptUpgrade) {
   $bindingPath = Join-Path $repoRoot 'scripts/launch-legal-contract.mjs'
   $bindingJson = & node --input-type=module -e 'import {pathToFileURL} from "node:url"; const m=await import(pathToFileURL(process.argv[1])); process.stdout.write(JSON.stringify([m.HISTORICAL_086_LEGAL_BINDING,m.LAUNCH_LEGAL_BINDING]));' $bindingPath
@@ -447,6 +481,12 @@ if ($fixtures -contains 'service-repair-case-state.sql' -or $fixtures -contains 
   Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$caseStateFixture") -Destination $caseStateFixtureCopy
   $inputs += [pscustomobject]@{Kind='helper'; Name=$caseStateFixture; Path=$caseStateFixtureCopy}
 }
+if ($fixtures | Where-Object { $_ -like 'employer-rule-review-*.sql' }) {
+  $employerRuleFixture = 'employer-rule-review-fixture.sql'
+  $employerRuleFixtureCopy = Join-Path $inputPath $employerRuleFixture
+  Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$employerRuleFixture") -Destination $employerRuleFixtureCopy
+  $inputs += [pscustomobject]@{Kind='helper'; Name=$employerRuleFixture; Path=$employerRuleFixtureCopy}
+}
 if ($fixtures -contains 'protected-archive-limited-role.sql' -and $fixtures -notcontains 'protected-archive-lifecycle.sql') {
   $archiveFixture = 'protected-archive-lifecycle.sql'
   $archiveFixtureCopy = Join-Path $inputPath $archiveFixture
@@ -542,7 +582,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Capacity pressure failed; see process output.' }
   }
   if ($ResearchJourney) {
-    if ($LegacyBackfill -or $CapacityPressure -or $ServiceRepairUpgrade -or $ClarificationResumeUpgrade -or $MaximumMigrationVersion -cne '202610260103') { throw 'Research journey requires the explicit103 fictional fixture boundary.' }
+    if ($LegacyBackfill -or $CapacityPressure -or $ServiceRepairUpgrade -or $ClarificationResumeUpgrade -or $EmployerRuleReviewUpgrade -or $MaximumMigrationVersion -cne '202610270104') { throw 'Research journey requires the explicit104 fictional fixture boundary.' }
     $step = 'actual research routes against the owned loopback cluster'
     $researchMarker = [guid]::NewGuid().ToString('N')
     Invoke-Native 'psql.exe' @('-X', '-h', '127.0.0.1', '-p', "$port", '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', "create table public.ap_research_local_test_identity(marker text primary key); insert into public.ap_research_local_test_identity values('$researchMarker');") 30

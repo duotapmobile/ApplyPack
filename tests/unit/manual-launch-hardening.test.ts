@@ -286,10 +286,10 @@ describe("October 2 manual-launch hardening", () => {
       requiredMigrations: REQUIRED_LAUNCH_MIGRATIONS.filter((version) => version !== "202610250099"),
     })).toBe(false);
 
-    for (const missing of ["202610260102", "202610260103"] as const) {
+    for (const missing of ["202610260102", "202610260103", "202610270104"] as const) {
       expect(REQUIRED_LAUNCH_MIGRATIONS).toContain(missing);
       expect(launchSchemaReadinessIsCurrent({
-        ready: true, requiredSchemaVersion: "202610260103",
+        ready: true, requiredSchemaVersion: "202610270104",
         requiredMigrations: REQUIRED_LAUNCH_MIGRATIONS.filter((version) => version !== missing),
       })).toBe(false);
     }
@@ -887,7 +887,7 @@ describe("October 2 manual-launch hardening", () => {
     expect(rollbackCheck).toContain("intentIndex >= uploadIndex");
     expect(rollbackCheck).toContain("exact approved legal content");
     expect(rollbackCheck).toContain("ap_upgrade_completed_intake_legal_acceptance");
-    expect(rollbackCheck).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610260103"');
+    expect(rollbackCheck).toContain('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610270104"');
     expect(rollbackCheck).toContain('admin.rpc("ap_manual_launch_schema_readiness")');
     expect(rollbackCheck).toContain("launchSchemaReadinessIsCurrent(schemaReadiness)");
     expect(rollbackRunbook).toContain("minimum compatible application rollback commit is `aeae1dee597e153602febd6adfea5644e4628d20`");

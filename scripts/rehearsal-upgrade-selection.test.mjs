@@ -117,16 +117,17 @@ test("selection stays outside upgrade assertions and all local cleanup and concu
   assert(source.includes("await proveRehearsalCheckoutConcurrency()"));
   assert(source.includes('run("supabase", ["db", "reset", "--local", "--no-seed"])'));
   assert(source.includes('if (failure) throw failure;'));
-  assert(source.includes("All twenty-three launch upgrade predecessors passed"));
+  assert(source.includes("All twenty-four launch upgrade predecessors passed"));
   assert(source.includes("Selected launch upgrade predecessor ${predecessors[0]} passed"));
   const scripts = JSON.parse(read("../package.json")).scripts;
   assert(scripts["test:database"].endsWith("node scripts/run-supabase-rehearsal-upgrade-test.mjs"));
 });
 
 
-test("103 migration self-test remains mandatory alongside every earlier Windows gate", () => {
+test("104 migration self-test remains mandatory alongside every earlier Windows gate", () => {
   assert(workflow.includes("npm run test:material-clarification-resume-migration"));
+  assert(workflow.includes("npm run test:employer-rule-review-migration"));
   assert(workflow.includes("npm run test:repair-case-state-migration"));
-  assert.equal(REHEARSAL_TARGET_VERSION, "202610260103");
-  assert.equal(REHEARSAL_PREDECESSORS.at(-1), "202610260102");
+  assert.equal(REHEARSAL_TARGET_VERSION, "202610270104");
+  assert.equal(REHEARSAL_PREDECESSORS.at(-1), "202610260103");
 });

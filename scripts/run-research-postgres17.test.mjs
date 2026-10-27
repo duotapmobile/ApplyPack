@@ -10,7 +10,7 @@ import {researchFixtureIdentity} from './lib/research-fixture-identity.mjs';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const pgId=`sha256:${'a'.repeat(64)}`,nodeId=`sha256:${'b'.repeat(64)}`;
 function fixture({fail,drift,missingMarker,missingAggregate,ambiguousCreate,cleanupFailure}={}) {
-  const calls=[],states=new Map(),writes=[],prepared={commit:'c'.repeat(40),schemaVersion:'202610260103',workspace:'/fixture/source',dependencies:'/fixture/dependencies',directory:'/fixture/evidence',sql:'-- actual schema input placeholder',migrationCount:108,inputHashes:[],sourceArchiveSha256:'d'.repeat(64)};
+  const calls=[],states=new Map(),writes=[],prepared={commit:'c'.repeat(40),schemaVersion:'202610270104',workspace:'/fixture/source',dependencies:'/fixture/dependencies',directory:'/fixture/evidence',sql:'-- actual schema input placeholder',migrationCount:109,inputHashes:[],sourceArchiveSha256:'d'.repeat(64)};
   let counter=0;
   const execute=(command,args,options)=>{
     calls.push({command,args,options});assert.equal(command,'docker');assert.deepEqual(args.slice(0,2),['--host','unix:///var/run/docker.sock']);
@@ -99,7 +99,7 @@ test('source preparation archives only committed allowlisted bytes and excludes 
   'tests/integration/material-clarification-route-journey.test.ts','tests/integration/material-clarification-confirmation.sql',
   'tests/integration/intake-notification-native-journey.test.ts','tests/integration/verified-intake-ownership.sql',
   'tests/integration/verified-intake-payment.sql','tests/integration/reviewed-source-fixture.sql',
-  'tests/integration/verified-paid-search-native-journey.test.ts','tests/integration/paid-search-provider-fixture.ts','supabase/migrations/202610260103_fictional.sql'];
+  'tests/integration/verified-paid-search-native-journey.test.ts','tests/integration/paid-search-provider-fixture.ts','supabase/migrations/202610270104_fictional.sql'];
  try {
   for(const path of files){mkdirSync(dirname(join(directory,path)),{recursive:true});writeFileSync(join(directory,path),path.endsWith('.sql')?'select 1;\n':'committed bytes\n');}
   const git=args=>execFileSync('git',args,{cwd:directory,stdio:'pipe',timeout:30000});

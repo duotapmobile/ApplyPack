@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { credentialState, combineCredentialStates } from "./credential-state";
 import { canonicalSha256, overlapSafeCalendarDays, semanticComparisonKey, typedCriterionSchema, type CapabilityStatus, type TypedCriterion } from "@/lib/domain/foundation";
 import {
@@ -23,6 +24,7 @@ import { commuteGateKey, reviewedCommuteResult, COMMUTE_EVIDENCE_VERSION } from 
 
 export type PersistedRequirementRow = {
   id: string;
+  job_snapshot_id?: string;
   parent_id: string | null;
   position: number;
   node_kind: "ALL_OF" | "ANY_OF" | "CRITERION";
@@ -36,6 +38,8 @@ export type PersistedRequirementRow = {
   parser_certainty: number | null;
   importance: number | null;
   typed_value: unknown;
+  classification_method?: string | null;
+  human_correction_history?: unknown;
 };
 
 export type PersistedCandidateFact = {
@@ -116,6 +120,7 @@ export type PersistedJobForMatching = {
   listing_activity_result: string | null;
   application_path_result: string | null;
   material_source_qualities?: unknown;
+  captured_listing?: unknown;
 };
 
 export type CurrentSourceAuthorization = {
@@ -131,6 +136,44 @@ type EvidenceRelation = "DIRECT" | "ADJACENT" | "TRANSFERABLE" | "UNSUPPORTED";
 function object(value: unknown): DecisionRecord {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value as DecisionRecord;
+}
+
+export function excludeEmployerInstructionSourceNodes<T extends PersistedRequirementRow>(
+  rows: T[],
+  job: Pick<PersistedJobForMatching, "id" | "content_sha256" | "application_host_type" | "captured_listing">,
+) {
+  const version = "employer-instruction-source-v1";
+  const prefix = "employer-instruction-source:";
+  let sourceCount = 0;
+  return rows.filter((row) => {
+    const typed = object(row.typed_value);
+    const tagged = row.criterion_version === version || row.classification_method === version || typed.version === version
+      || row.semantic_key?.startsWith(prefix) || typeof typed.semanticKey === "string" && typed.semanticKey.startsWith(prefix);
+    if (!tagged) return true;
+    // The protected104 source node is document evidence only. Validate its
+    // entire identity before excluding it; historical informational criteria
+    // and malformed requirements must never disappear from matching.
+    const body = object(job.captured_listing).text;
+    const digest = createHash("sha256").update(`${version}:${job.id}:${job.content_sha256}`, "utf8").digest("hex");
+    const id = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-5${digest.slice(13, 16)}-a${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
+    const semanticKey = `${prefix}${job.id}`;
+    const expectedTyped = {
+      stableCriterionId: id, semanticKey, strength: "INFORMATIONAL", sourceLocator: "captured_listing.text", parserCertainty: 1,
+      version, kind: "LISTING_APPLICATION_PATH", identity: `saved-listing:${job.id}`, activeStatus: "ACTIVE",
+      sourceAuthorized: true, applicationPath: "ACTIONABLE", hostType: job.application_host_type,
+    };
+    if (++sourceCount !== 1 || row.id !== id || row.job_snapshot_id !== job.id || row.parent_id !== null || row.position !== 2147483646
+      || row.node_kind !== "CRITERION" || row.criterion_type !== "LISTING_APPLICATION_PATH" || row.stable_criterion_id !== id
+      || row.semantic_key !== semanticKey || row.requirement_strength !== "INFORMATIONAL" || row.source_locator !== "captured_listing.text"
+      || row.parser_certainty !== 1 || row.criterion_version !== version || row.classification_method !== version || row.importance !== 1
+      || !Array.isArray(row.human_correction_history) || row.human_correction_history.length !== 0
+      || typeof body !== "string" || !body.trim() || body.length > 200_000 || Array.from(body).length > 100_000 || row.source_excerpt !== body
+      || !["EMPLOYER_HOSTED", "APPROVED_THIRD_PARTY"].includes(job.application_host_type)
+      || Object.keys(typed).length !== Object.keys(expectedTyped).length
+      || Object.entries(expectedTyped).some(([key, value]) => typed[key] !== value)
+      || rows.some((child) => child.parent_id === row.id)) throw new Error("employer_instruction_source_evidence_invalid");
+    return false;
+  });
 }
 
 function strings(value: unknown) {
@@ -698,7 +741,8 @@ export function deriveEvaluationFromPersistedEvidence(input: {
   usefulnessReview: PersistedReview;
   compensationReview: PersistedReview | null;
 }) {
-  const { snapshot, job, sourceAuthorization, nodes, facts, evidenceReviews, customerCriteriaReviews, usefulnessReview, compensationReview } = input;
+  const { snapshot, job, sourceAuthorization, facts, evidenceReviews, customerCriteriaReviews, usefulnessReview, compensationReview } = input;
+  const nodes = excludeEmployerInstructionSourceNodes(input.nodes, job);
   if (job.requirement_completeness !== 100) throw new Error("listing_requirement_parse_incomplete");
   if (!["AUTHORIZED_AUTOMATED", "AUTHORIZED_MANUAL_ONLY"].includes(sourceAuthorization.state)) throw new Error("source_authorization_not_current");
   if (usefulnessReview.review_kind !== "CATEGORICAL_USEFULNESS" || usefulnessReview.invalidated_at) throw new Error("current_usefulness_review_required");
