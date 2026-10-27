@@ -13,7 +13,7 @@ param(
   [switch]$ArchiveLifecycleUpgrade,
   [switch]$ServiceRepairUpgrade,
   [switch]$ResearchJourney,
-  [ValidateSet('LIMITED','QUALIFIED','PAID_SEARCH')]
+  [ValidateSet('LIMITED','QUALIFIED','PAID_SEARCH','EMPLOYER_RULE')]
   [string]$ResearchJourneyCase = 'LIMITED',
   [switch]$ResearchPreparationUpgrade,
   [switch]$MaterialClarificationUpgrade,
@@ -21,6 +21,7 @@ param(
   [switch]$ClarificationCaseUpgrade,
   [switch]$ClarificationResumeUpgrade,
   [switch]$EmployerRuleReviewUpgrade,
+  [switch]$VerifiedSourceRunUpgrade,
   [switch]$LegalReceiptUpgrade,
   [string[]]$FixtureNames,
   [string]$MaximumMigrationVersion
@@ -213,6 +214,13 @@ if ($EmployerRuleReviewUpgrade) {
   $fixtures += @('employer-rule-review-upgrade-seed.sql','employer-rule-review-upgrade-preservation.sql')
   if ($fixtures -notcontains 'employer-rule-review-confirmation.sql') { $fixtures += 'employer-rule-review-confirmation.sql' }
 }
+if ($VerifiedSourceRunUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $ServiceRepairUpgrade -or $ResearchPreparationUpgrade -or $MaterialClarificationUpgrade -or $RepairCaseStateUpgrade -or $ClarificationCaseUpgrade -or $ClarificationResumeUpgrade -or $EmployerRuleReviewUpgrade -or $LegalReceiptUpgrade -or $ResearchJourney -or
+      $MaximumMigrationVersion -cne '202610270105' -or $migrationFiles[-1].Name -cne '202610270105_verified_source_run_binding.sql') { throw 'Source run binding upgrade requires the exact isolated103-to104-to105 sequence.' }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('employer-rule-review-upgrade-seed.sql','employer-rule-review-upgrade-preservation.sql')
+  if ($fixtures -notcontains 'verified-source-run-binding.sql') { $fixtures += 'verified-source-run-binding.sql' }
+}
 $inputs = @([pscustomobject]@{Kind='bootstrap'; Name='bootstrap.sql'; Path=$bootstrapPath})
 foreach ($migration in $migrationFiles) {
   $copy = Join-Path $inputPath $migration.Name
@@ -381,6 +389,50 @@ process.stdout.write(current104LockedPhaseSql);
   $inputs += [pscustomobject]@{Kind='fixture'; Name='native-current104-locked-phase.sql'; Path=$phasePath}
   $inputs += [pscustomobject]@{Kind='helper'; Name='supabase-upgrade-phases.mjs'; Path=$phaseModule}
   $inputs += [pscustomobject]@{Kind='helper'; Name='export-current104-phase.mjs'; Path=$phaseExporter}
+}
+if ($VerifiedSourceRunUpgrade) {
+  # Retain the actual paid103 context through104 before testing the old044
+  # verifier and forward105. Exact source and generated framing are hash-bound.
+  $phaseModule = Join-Path $inputPath 'supabase-upgrade-phases.mjs'
+  $seedModule = Join-Path $inputPath 'verified-source-run-fixture.mjs'
+  Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/lib/supabase-upgrade-phases.mjs') -Destination $phaseModule
+  Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/lib/verified-source-run-fixture.mjs') -Destination $seedModule
+  $exporter = Join-Path $inputPath 'export-source105-inputs.mjs'
+  Set-Content -LiteralPath $exporter -Encoding utf8 -Value @'
+import { readFileSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+const { verifiedSourceRunSeedFixture } = await import(pathToFileURL(process.argv[2]).href);
+const { current105LockedPhaseSql } = await import(pathToFileURL(process.argv[3]).href);
+if (typeof current105LockedPhaseSql !== 'string' || !current105LockedPhaseSql.length) throw new Error('Exact105 phase required');
+writeFileSync(process.argv[5], verifiedSourceRunSeedFixture(readFileSync(process.argv[4], 'utf8')));
+writeFileSync(process.argv[6], current105LockedPhaseSql);
+'@
+  $seedPath = Join-Path $inputPath 'native-verified-source-run-104-seed.sql'
+  $phasePath = Join-Path $inputPath 'native-current105-locked-phase.sql'
+  & (Get-Command node -ErrorAction Stop).Source $exporter $seedModule $phaseModule (Join-Path $inputPath 'verified-source-run-binding.sql') $seedPath $phasePath
+  if ($LASTEXITCODE -ne 0) { throw 'Exact105 source input export failed.' }
+  # Generic CI opens a new psql session for each current contract fixture.
+  # Reset temporary helpers only after the complete retained upgrade proof.
+  $sessionResetPath = Join-Path $inputPath 'native-source105-current-session.sql'
+  [IO.File]::WriteAllText($sessionResetPath, "\connect postgres`n", [Text.UTF8Encoding]::new($false))
+  $optionalCurrentInputs = @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('employer-rule-review-upgrade-seed.sql','employer-rule-review-upgrade-preservation.sql','verified-source-run-binding.sql') })
+  $currentInputsWithSessions = @(foreach ($currentInput in $optionalCurrentInputs) {
+    [pscustomobject]@{Kind='fixture'; Name='native-source105-current-session.sql'; Path=$sessionResetPath}
+    $currentInput
+  })
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610260103' }) +
+    @($inputs | Where-Object Name -eq 'employer-rule-review-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610270104' }) +
+    @($inputs | Where-Object Name -eq 'employer-rule-review-upgrade-preservation.sql') +
+    @([pscustomobject]@{Kind='fixture'; Name='native-verified-source-run-104-seed.sql'; Path=$seedPath}) +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610270105' }) +
+    @($inputs | Where-Object Name -eq 'verified-source-run-binding.sql') +
+    $currentInputsWithSessions
+  $inputs += [pscustomobject]@{Kind='fixture'; Name='native-current105-locked-phase.sql'; Path=$phasePath}
+  $inputs += [pscustomobject]@{Kind='helper'; Name='supabase-upgrade-phases.mjs'; Path=$phaseModule}
+  $inputs += [pscustomobject]@{Kind='helper'; Name='verified-source-run-fixture.mjs'; Path=$seedModule}
+  $inputs += [pscustomobject]@{Kind='helper'; Name='export-source105-inputs.mjs'; Path=$exporter}
 }
 if ($LegalReceiptUpgrade) {
   $bindingPath = Join-Path $repoRoot 'scripts/launch-legal-contract.mjs'
@@ -575,6 +627,12 @@ try {
   $step = 'batched migrations and fixtures; see validation.log for exact file'
   Write-Host "Running $($migrationFiles.Count) migrations and $($fixtures.Count) fixtures in one psql session."
   Invoke-Native 'psql.exe' @('-X', '-h', '127.0.0.1', '-p', "$port", '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-f', $batchPath) 600
+  if ($VerifiedSourceRunUpgrade) {
+    $source105Output = [IO.File]::ReadAllText($logPath)
+    foreach ($requiredMarker in @('VERIFIED_SOURCE_RUN_BINDING_104_SEEDED','VERIFIED_SOURCE_RUN_BINDING_105_UPGRADE_PRESERVED','VERIFIED_SOURCE_RUN_BINDING_PAID_CONTEXT_PRESERVED','VERIFIED_SOURCE_RUN_BINDING_OK')) {
+      if (!$source105Output.Contains($requiredMarker)) { throw "Source105 preservation marker missing: $requiredMarker" }
+    }
+  }
   if ($CapacityPressure) {
     if ($LegacyBackfill) { throw 'Capacity pressure requires the fresh synthetic fixture mode.' }
     $step = 'independent-connection synthetic capacity pressure'
@@ -582,7 +640,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Capacity pressure failed; see process output.' }
   }
   if ($ResearchJourney) {
-    if ($LegacyBackfill -or $CapacityPressure -or $ServiceRepairUpgrade -or $ClarificationResumeUpgrade -or $EmployerRuleReviewUpgrade -or $MaximumMigrationVersion -cne '202610270104') { throw 'Research journey requires the explicit104 fictional fixture boundary.' }
+    if ($LegacyBackfill -or $CapacityPressure -or $ServiceRepairUpgrade -or $ClarificationResumeUpgrade -or $EmployerRuleReviewUpgrade -or $VerifiedSourceRunUpgrade -or $MaximumMigrationVersion -cne '202610270105') { throw 'Research journey requires the explicit105 fictional fixture boundary.' }
     $step = 'actual research routes against the owned loopback cluster'
     $researchMarker = [guid]::NewGuid().ToString('N')
     Invoke-Native 'psql.exe' @('-X', '-h', '127.0.0.1', '-p', "$port", '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', "create table public.ap_research_local_test_identity(marker text primary key); insert into public.ap_research_local_test_identity values('$researchMarker');") 30

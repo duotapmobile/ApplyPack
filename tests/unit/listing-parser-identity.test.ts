@@ -10,6 +10,28 @@ function parsed(text = mixed) { return parseListingRequirements({ jobSnapshotId:
 function rows(text = mixed) { return requirementPersistenceRows(parsed(text), text) as PersistedRequirementRow[]; }
 
 describe("versioned typed requirement tree identities", () => {
+  it("reconstructs literal historical v6 records with unchanged IDs, meaning and bytes", () => {
+    const criterion: TypedCriterion = { stableCriterionId: "4146f350-4702-4fc0-a3eb-39ed80738afc",
+      semanticKey: "required: 3 years of customer operations experience.", strength: "REQUIRED", sourceLocator: "line:1",
+      parserCertainty: 1, version: "listing-requirements-v6", kind: "EXPERIENCE", responsibilityOrDomain: "customer operations experience.",
+      minimumMonths: 36, fteExplicit: false, permittedEquivalents: [], seniorityOrScope: null };
+    const historical = [{ id: "94d79a1c-0442-4594-9248-7880b2a19b26", parent_id: null, position: 0, node_kind: "ALL_OF",
+      semantic_key: `hard-root:${jobId}`, criterion_version: "listing-requirements-v6" },
+    { id: criterion.stableCriterionId, parent_id: "94d79a1c-0442-4594-9248-7880b2a19b26", position: 0, node_kind: "CRITERION",
+      stable_criterion_id: criterion.stableCriterionId, criterion_type: "EXPERIENCE", criterion_version: criterion.version,
+      semantic_key: criterion.semanticKey, source_locator: "line:1", source_excerpt: "Required: 3 years of customer operations experience.",
+      typed_value: criterion }] as PersistedRequirementRow[];
+    const before = JSON.stringify(historical);
+    expect(validateRequirementTree(reconstructPersistedRequirementTree(historical))).toEqual({
+      nodeId: "94d79a1c-0442-4594-9248-7880b2a19b26", semanticKey: `hard-root:${jobId}`, kind: "ALL_OF",
+      children: [{ nodeId: criterion.stableCriterionId, semanticKey: `EXPERIENCE:${criterion.semanticKey}`, kind: "CRITERION", criterion }],
+    });
+    expect(JSON.stringify(historical)).toBe(before);
+    for (const version of ["listing-requirements-v5", "listing-requirements-v7"]) {
+      const changed = structuredClone(historical); changed[1].criterion_version = version;
+      expect(() => reconstructPersistedRequirementTree(changed)).toThrow("mismatched_typed_requirement_version");
+    }
+  });
   it("keeps same-line typed facts distinct through persistence and reconstruction", () => {
     const result = parsed(), persisted = rows();
     expect(result.status).toBe("COMPLETE");
@@ -22,7 +44,7 @@ describe("versioned typed requirement tree identities", () => {
       expect(row.typed_value).toEqual(criterion);
       expect(row.semantic_key).toBe(criterion.semanticKey);
       expect(row.source_excerpt).toBe(mixed);
-      expect(row.source_locator).toBe("line:1");
+      expect(row.source_locator).toBe("line:1:statement:1");
     }
   });
 

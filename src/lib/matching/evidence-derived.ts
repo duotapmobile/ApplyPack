@@ -18,7 +18,7 @@ import {
   type FitComponentName,
 } from "@/lib/matching/evaluation-engine";
 import { evaluateRequirementTree, evaluateToolCapability, type EvaluatableRequirementNode, type LeafDecision } from "@/lib/matching/requirements";
-import { requirementNodeSemanticKey } from "./listing-parser";
+import { hasTypedRequirementIdentity, requirementNodeSemanticKey } from "./listing-parser";
 import { activityCatalog, dealbreakerCatalog, industryCatalog } from "@/lib/intake/four-step";
 import { commuteGateKey, reviewedCommuteResult, COMMUTE_EVIDENCE_VERSION } from "@/lib/matching/commute-evidence";
 
@@ -215,11 +215,11 @@ export function reconstructPersistedRequirementTree(rows: readonly PersistedRequ
       if (!criterion.success || criterion.data.strength !== "REQUIRED" || criterion.data.stableCriterionId !== row.stable_criterion_id) throw new Error("untyped_or_mismatched_hard_requirement");
       // Pre-v6 rows keep their original reconstruction contract. The new tree
       // identity is available only when both persisted version fields agree.
-      if ((row.criterion_version === "listing-requirements-v6" || criterion.data.version === "listing-requirements-v6")
+      if ((hasTypedRequirementIdentity(row.criterion_version) || hasTypedRequirementIdentity(criterion.data.version))
         && row.criterion_version !== criterion.data.version) throw new Error("mismatched_typed_requirement_version");
-      if (criterion.data.version === "listing-requirements-v6" && (row.criterion_type !== criterion.data.kind
+      if (hasTypedRequirementIdentity(criterion.data.version) && (row.criterion_type !== criterion.data.kind
         || row.semantic_key !== criterion.data.semanticKey)) throw new Error("mismatched_typed_requirement_identity");
-      return { nodeId: row.id, semanticKey: criterion.data.version === "listing-requirements-v6"
+      return { nodeId: row.id, semanticKey: hasTypedRequirementIdentity(criterion.data.version)
         ? requirementNodeSemanticKey({ ...criterion.data, semanticKey: row.semantic_key || criterion.data.semanticKey })
         : row.semantic_key || criterion.data.semanticKey, kind: "CRITERION", criterion: criterion.data };
     }

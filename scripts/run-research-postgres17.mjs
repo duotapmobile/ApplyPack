@@ -4,10 +4,11 @@ import {createHash, randomUUID} from 'node:crypto';
 import {existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync} from 'node:fs';
 import {join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {stripVTControlCharacters} from 'node:util';
 
 export const RESEARCH_POSTGRES_IMAGE='postgres:17-trixie@sha256:3518071376d0b6156b02e1db2747a78511b5b9dc3763cc79c506ebe2dc2ee71c';
 export const RESEARCH_NODE_IMAGE='node:22-bookworm-slim@sha256:ea11b74b986d520137cdef9a5346e447a00f275ecc4abc0055b7151226231e09';
-const schema='202610270104', label='research-route-postgres17', bin='/usr/lib/postgresql/17/bin/';
+const schema='202610270105', label='research-route-postgres17', bin='/usr/lib/postgresql/17/bin/';
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 const root=fileURLToPath(new URL('../',import.meta.url));
 const selections=Object.freeze(['src','supabase/migrations','package.json','package-lock.json','tsconfig.json',
@@ -17,7 +18,8 @@ const selections=Object.freeze(['src','supabase/migrations','package.json','pack
   'tests/integration/material-clarification-route-journey.test.ts','tests/integration/material-clarification-confirmation.sql',
   'tests/integration/intake-notification-native-journey.test.ts','tests/integration/verified-intake-ownership.sql',
   'tests/integration/verified-intake-payment.sql','tests/integration/reviewed-source-fixture.sql',
-  'tests/integration/verified-paid-search-native-journey.test.ts','tests/integration/verified-paid-search-setup.ts','tests/integration/paid-search-provider-fixture.ts']);
+  'tests/integration/verified-paid-search-native-journey.test.ts','tests/integration/verified-paid-search-setup.ts','tests/integration/paid-search-provider-fixture.ts',
+  'tests/integration/employer-rule-owner-native-journey.test.ts','tests/integration/employer-question-source-fixture.ts']);
 
 /** Exact Git bytes only. The fixture never mounts a developer checkout or .env. */
 export function prepareResearchPostgresInputs({execute=execFileSync, environment={PATH:process.env.PATH},repositoryRoot=root}={}) {
@@ -119,7 +121,7 @@ export function runResearchPostgres17(args=[],{execute=execFileSync,environment=
   const pg=JSON.parse(docker(['image','inspect',RESEARCH_POSTGRES_IMAGE]))[0], node=JSON.parse(docker(['image','inspect',RESEARCH_NODE_IMAGE]))[0];
   const volumes=image(pg,RESEARCH_POSTGRES_IMAGE,'postgres');image(node,RESEARCH_NODE_IMAGE,'node');
   const results=[];
-  for(const scenario of ['QUALIFIED','LIMITED','PAID_SEARCH']) {
+  for(const scenario of ['QUALIFIED','LIMITED','PAID_SEARCH','EMPLOYER_RULE']) {
     const runId=uuid();assert(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(runId),'RESEARCH_RUN_ID');
     const pgName=`applypack-research-pg-${runId}`, nodeName=`applypack-research-node-${runId}`, marker=runId.replaceAll('-','');
     const attempted=[], common=['--pull','never','--read-only','--user','65534:65534','--cap-drop','ALL','--security-opt','no-new-privileges','--cpus','2'];
@@ -149,8 +151,9 @@ export function runResearchPostgres17(args=[],{execute=execFileSync,environment=
       phase='actual-route-journey';
       const output=docker(['start','--attach',nodeName],undefined,330000);
       write(join(prepared.directory,`${scenario.toLowerCase()}.log`),output);
-      const requiredMarker=scenario==='PAID_SEARCH'?'PAID_SEARCH_ROUTE_DATABASE_JOURNEY_OK:':'RESEARCH_ROUTE_DATABASE_JOURNEY_OK:';
+      const requiredMarker=scenario==='EMPLOYER_RULE'?'EMPLOYER_RULE_ROUTE_DATABASE_JOURNEY_OK:':scenario==='PAID_SEARCH'?'PAID_SEARCH_ROUTE_DATABASE_JOURNEY_OK:':'RESEARCH_ROUTE_DATABASE_JOURNEY_OK:';
       assert(output.split(/\r?\n/u).some(line=>line.startsWith(requiredMarker)),'RESEARCH_ROUTE_MARKER');
+      if(scenario==='EMPLOYER_RULE')assert(stripVTControlCharacters(output).split(/\r?\n/u).some(line=>/^EMPLOYER_RULE_OWNER_NATIVE_JOURNEY_OK(?: |$)/u.test(line.trim())),'EMPLOYER_RULE_OWNER_MARKER');
       if(scenario==='LIMITED')assert(output.split(/\r?\n/u).some(line=>line==='RESEARCH_CLARIFICATION_NOTIFICATION_JOURNEYS_OK'),'RESEARCH_AGGREGATE_MARKER');
       const stopped=inspect(nodeName);owned(stopped,nodeName,runId);isolated(stopped,node.Id,`container:${pgState.Id}`,binds);
       assert(stopped.State?.Running===false&&stopped.State?.ExitCode===0&&stopped.State?.OOMKilled===false,'RESEARCH_ROUTE_EXIT');

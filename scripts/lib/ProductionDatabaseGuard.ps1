@@ -29,8 +29,8 @@ function Assert-ProductionDatabaseManifest {
         $Manifest.credentialTarget -cne 'ApplyPack/Supabase/Production/Database' -or
         $Manifest.caSha256 -cnotmatch '^[a-f0-9]{64}$' -or $Manifest.releaseSha -cnotmatch '^[a-f0-9]{40}$' -or
         $Manifest.expectedLedgerSha256 -cnotmatch '^[a-f0-9]{64}$' -or
-        $Manifest.expectedSchemaVersion -notin @('202610040080','202610190081','202610190082','202610190083','202610190084','202610220085','202610230086','202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102','202610260103') -or
-        $Manifest.postSchemaVersion -notin @('202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102','202610260103','202610270104') -or
+        $Manifest.expectedSchemaVersion -notin @('202610040080','202610190081','202610190082','202610190083','202610190084','202610220085','202610230086','202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102','202610260103','202610270104') -or
+        $Manifest.postSchemaVersion -notin @('202610240087','202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102','202610260103','202610270104','202610270105') -or
         $Manifest.expectedSchemaVersion -cge $Manifest.postSchemaVersion -or
         $Manifest.recoveryStrategy -notin @('TESTED_COMPATIBLE_SHA','LOCKED_FORWARD_RECOVERY')) {
         throw 'PRODUCTION_MANIFEST_INVALID'
@@ -83,6 +83,7 @@ function Assert-ProductionDatabaseManifest {
         '202610260102' = @('service_repair_case_state_cas','SERVICE_REPAIR_CASE_STATE_CAS')
         '202610260103' = @('material_clarification_resume','MATERIAL_CLARIFICATION_RESUME')
         '202610270104' = @('employer_rule_review_confirmation','EMPLOYER_RULE_REVIEW_CONFIRMATION')
+        '202610270105' = @('verified_source_run_binding','VERIFIED_SOURCE_RUN_BINDING')
     }
     $expected = @($known.Keys | Where-Object { $_ -cgt $Manifest.expectedSchemaVersion -and $_ -cle $Manifest.postSchemaVersion })
     if (@($Manifest.migrations).Count -ne $expected.Count) { throw 'PRODUCTION_MIGRATION_SCOPE_INVALID' }

@@ -5,10 +5,11 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { proveRehearsalCheckoutConcurrency } from "./rehearsal-checkout-concurrency.mjs";
 import { selectRehearsalPredecessors } from "./lib/rehearsal-upgrade-selection.mjs";
+import { verifiedSourceRunSeedFixture } from "./lib/verified-source-run-fixture.mjs";
 
 // Destructive operations are pinned to the project's disposable local stack.
 // No database URL, linked project or remote credentials are accepted.
-import { current091LockedPhaseSql, current092LockedPhaseSql, current093LockedPhaseSql, current094LockedPhaseSql, current095LockedPhaseSql, current096LockedPhaseSql, current097LockedPhaseSql, current098LockedPhaseSql, current099LockedPhaseSql, current100LockedPhaseSql, current101LockedPhaseSql, current102LockedPhaseSql, current103LockedPhaseSql, current104LockedPhaseSql } from "./lib/supabase-upgrade-phases.mjs";
+import { current091LockedPhaseSql, current092LockedPhaseSql, current093LockedPhaseSql, current094LockedPhaseSql, current095LockedPhaseSql, current096LockedPhaseSql, current097LockedPhaseSql, current098LockedPhaseSql, current099LockedPhaseSql, current100LockedPhaseSql, current101LockedPhaseSql, current102LockedPhaseSql, current103LockedPhaseSql, current104LockedPhaseSql, current105LockedPhaseSql } from "./lib/supabase-upgrade-phases.mjs";
 
 const predecessors = selectRehearsalPredecessors(process.argv.slice(2));
 const container = "supabase_db_applypack";
@@ -58,8 +59,9 @@ try {
   const case102Workspace = prepareHistoricalWorkspace("202610260102");
   const resume103Workspace = prepareHistoricalWorkspace("202610260103");
   const rule104Workspace = prepareHistoricalWorkspace("202610270104");
+  const source105Workspace = prepareHistoricalWorkspace("202610270105");
   for (const predecessor of predecessors) {
-    console.log(`Running isolated local upgrade ${predecessor} to 202610270104.`);
+    console.log(`Running isolated local upgrade ${predecessor} to 202610270105.`);
     run("supabase", ["db", "reset", "--local", "--no-seed", "--version", predecessor]);
     sql(`
       do $$ begin
@@ -237,6 +239,7 @@ try {
       const resumePreservation = sql(readFileSync(new URL("../tests/integration/material-clarification-resume-upgrade-verify.sql", import.meta.url), "utf8"));
       if (!resumePreservation.includes("MATERIAL_CLARIFICATION_RESUME_103_UPGRADE_PRESERVED")) throw new Error("Resume103 historical preservation marker missing");
     }
+    if (predecessor <= "202610260103") {
     sql(current103LockedPhaseSql);
     const historical103 = run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs", "--historical-103"]);
     if (!historical103.includes("Database contract fixtures passed: 20. Schema phase: 202610260103.")) throw new Error("Historical103 lifecycle proof missing");
@@ -244,10 +247,20 @@ try {
     run("supabase", ["migration", "up", "--local", "--workdir", rule104Workspace]);
     const rulePreservation = sql(readFileSync(new URL("../tests/integration/employer-rule-review-upgrade-preservation.sql", import.meta.url), "utf8"));
     if (!rulePreservation.includes("EMPLOYER_RULE_REVIEW_104_UPGRADE_PRESERVED")) throw new Error("Employer rule104 historical preservation marker missing");
+    }
     sql(current104LockedPhaseSql);
+    const historical104 = run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs", "--historical-104"]);
+    if (!historical104.includes("Database contract fixtures passed: 21. Schema phase: 202610270104.")) throw new Error("Historical104 lifecycle proof missing");
+    const sourceBindingFixture = readFileSync(new URL("../tests/integration/verified-source-run-binding.sql", import.meta.url), "utf8");
+    const sourceSeed = sql(verifiedSourceRunSeedFixture(sourceBindingFixture));
+    if (!sourceSeed.includes("VERIFIED_SOURCE_RUN_BINDING_104_SEEDED")) throw new Error("Source105 historical seed marker missing");
+    run("supabase", ["migration", "up", "--local", "--workdir", source105Workspace]);
+    const sourcePreservation = sql(sourceBindingFixture);
+    if (!sourcePreservation.includes("VERIFIED_SOURCE_RUN_BINDING_105_UPGRADE_PRESERVED")) throw new Error("Source105 historical preservation marker missing");
+    sql(current105LockedPhaseSql);
     const result = sql(`
       do $$ begin
-        if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610270104'
+        if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610270105'
           or public.ap_manual_launch_schema_readiness()->>'ready' is distinct from 'true'
           or not public.ap_one_off_retention_schema_installed()
           or not public.ap_material_draft_pair_schema_installed()
@@ -262,6 +275,7 @@ try {
           or not public.ap_service_repair_case_state_schema_installed()
           or not public.ap_material_clarification_resume_schema_installed()
           or not public.ap_employer_rule_review_schema_installed()
+          or not public.ap_verified_source_run_schema_installed()
           or not exists(select 1 from public.ap_research_preparation_configuration where singleton and not enabled)
           or not public.ap_protected_archive_schema_installed()
           or not exists(select 1 from public.ap_archive_lifecycle_configuration where singleton and not enabled)
@@ -271,7 +285,7 @@ try {
           or public.ap_manual_launch_schema_readiness()->'requiredMigrations' is distinct from jsonb_build_array(
             '202610040077','202610040078','202610040079','202610040080','202610190081',
             '202610190082','202610190083','202610190084','202610220085','202610230086','202610240087',
-            '202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102','202610260103','202610270104')
+            '202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102','202610260103','202610270104','202610270105')
           or not exists(select 1 from public.ap_checkout_mode_configuration where singleton and mode='LOCKED')
           or not exists(select 1 from public.ap_commerce_configuration where singleton and not checkout_enabled)
           or exists(select 1 from public.ap_checkout_initiations)
@@ -291,13 +305,13 @@ try {
           or has_table_privilege('service_role','public.ap_aws_temporary_cleanup','DELETE')
           then raise exception 'rehearsal_upgrade_contract_failed'; end if;
       end $$;
-       select 'REHEARSAL_UPGRADE_${predecessor}_TO_104_OK';
+       select 'REHEARSAL_UPGRADE_${predecessor}_TO_105_OK';
     `);
-    if (!result.includes(`REHEARSAL_UPGRADE_${predecessor}_TO_104_OK`)) throw new Error("Upgrade proof marker missing");
+    if (!result.includes(`REHEARSAL_UPGRADE_${predecessor}_TO_105_OK`)) throw new Error("Upgrade proof marker missing");
     const lifecycle = run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs"]);
     if (!lifecycle.includes("ONE_OFF_SERVICE_RETENTION_OK")
-      || !lifecycle.includes("Database contract fixtures passed: 21. Schema phase: 202610270104.")) throw new Error("Upgraded current schema fixture proof missing");
-    console.log(`PASS: isolated local upgrade ${predecessor} to 202610270104; paid history preserved; current clarification and reviewed case-state fixtures passed; purchasing remains locked.`);
+      || !lifecycle.includes("Database contract fixtures passed: 22. Schema phase: 202610270105.")) throw new Error("Upgraded current schema fixture proof missing");
+    console.log(`PASS: isolated local upgrade ${predecessor} to 202610270105; paid history preserved; current clarification and reviewed case-state fixtures passed; purchasing remains locked.`);
   }
   // Positive checkout concurrency belongs to the unchanged historical contract.
   // The historical087 fixture independently proves missing executors block checkout.
@@ -318,5 +332,5 @@ try {
 }
 if (failure) throw failure;
 console.log(process.argv.length === 2
-  ? "All twenty-four launch upgrade predecessors passed; latest disposable local schema restored."
+  ? "All twenty-five launch upgrade predecessors passed; latest disposable local schema restored."
   : `Selected launch upgrade predecessor ${predecessors[0]} passed; latest disposable local schema restored.`);

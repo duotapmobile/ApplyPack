@@ -18,7 +18,7 @@ type GreenhouseJob = {
 };
 
 export class GreenhouseAdapter implements JobSourceAdapter {
-  static readonly version = "greenhouse-v4";
+  static readonly version = "greenhouse-v5";
 
   constructor(readonly source: SourceDefinition) {
     if (!source.adapterKey) throw new Error(`Greenhouse source ${source.id} has no board token.`);
@@ -180,7 +180,34 @@ function secureConfiguredUrl(source: SourceDefinition, value: string | null): st
     return sourceUrlMatchesDefinition(source, url.toString()) ? url.toString() : null;
   } catch { return null; }
 }
-function stripHtml(value: string | null): string { return (value || "").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim(); }
+function stripHtml(value: string | null): string {
+  // Greenhouse documents entity-encoded editor HTML. Decode at most the two
+  // published layers; this is text processing only, never DOM execution.
+  const entities: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
+    ndash: "–", mdash: "—", lsquo: "‘", rsquo: "’", ldquo: "“", rdquo: "”", bull: "•", hellip: "…" };
+  let decoded = value || "";
+  for (let pass = 0; pass < 2; pass++) {
+    decoded = decoded.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z][a-z0-9]*);/giu, (_whole, entity: string) => {
+      const key = entity.toLowerCase();
+      if (!key.startsWith("#")) {
+        if (!Object.hasOwn(entities, key)) throw new Error("greenhouse_content_encoding_unsupported");
+        return entities[key];
+      }
+      const point = Number.parseInt(key.slice(key.startsWith("#x") ? 2 : 1), key.startsWith("#x") ? 16 : 10);
+      if (!Number.isSafeInteger(point) || point < 1 || point > 0x10ffff || point >= 0xd800 && point <= 0xdfff
+        || point < 32 && ![9, 10, 13].includes(point)) throw new Error("greenhouse_content_encoding_invalid");
+      return String.fromCodePoint(point);
+    });
+  }
+  if (/&(?:#[^\s&]*|(?:amp|lt|gt|quot|apos|nbsp)(?:;|\b)|[a-z][a-z0-9]*;)/iu.test(decoded)) throw new Error("greenhouse_content_encoding_unresolved");
+  const inert = decoded.replace(/<script\b[\s\S]*?<\/script\s*>/giu, " ").replace(/<style\b[\s\S]*?<\/style\s*>/giu, " ").replace(/<!--[\s\S]*?-->/gu, " ");
+  if (/<(?:script|style)\b|<!--/iu.test(inert)) throw new Error("greenhouse_content_markup_invalid");
+  const stripped = inert
+    .replace(/<\/?(?:p|div|section|article|h[1-6]|li|ul|ol|table|tr|blockquote|br)\b(?:"[^"]*"|'[^']*'|[^'">])*>/gi, "\n")
+    .replace(/<\/?[a-z][a-z0-9-]*\b(?:"[^"]*"|'[^']*'|[^'">])*>/gi, " ");
+  if (/<\/?[a-z!]/iu.test(stripped)) throw new Error("greenhouse_content_markup_invalid");
+  return stripped.split(/\r?\n/u).map(line => line.replace(/\s+/gu, " ").trim()).filter(Boolean).join("\n").trim();
+}
 
 function greenhouseBoardMatches(board: string, jobId: string, value: string) {
   const url = new URL(value);

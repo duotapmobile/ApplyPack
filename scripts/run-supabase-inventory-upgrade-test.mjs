@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { current104LockedPhaseSql, historical086PhaseSql, prepareHistorical086Workspace } from "./lib/supabase-upgrade-phases.mjs";
+import { current105LockedPhaseSql, historical086PhaseSql, prepareHistorical086Workspace } from "./lib/supabase-upgrade-phases.mjs";
 
 const fixture = fileURLToPath(new URL("../tests/integration/atomic-inventory-077-fixture.sql", import.meta.url));
 const cutoverBase = fileURLToPath(new URL("../tests/integration/atomic-inventory-cutover-base.sql", import.meta.url));
@@ -180,7 +180,7 @@ commit;
   }
   sqlText(`create table public.inventory_retention_upgrade_preservation_fixture as ${preservedInventoryRows};`, false);
   run("supabase", ["migration", "up", "--local"], undefined, false);
-  sqlText(`${current104LockedPhaseSql}
+  sqlText(`${current105LockedPhaseSql}
     do $$ begin
       if exists(
         (select * from public.inventory_retention_upgrade_preservation_fixture except all (${preservedInventoryRows}))

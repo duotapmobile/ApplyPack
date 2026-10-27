@@ -30,6 +30,7 @@ const commands = Object.freeze({
   "rehearsal-102": ["apply-staging-rehearsal-migration.ps1", "-Mode", "SelfTest", "-TargetSchemaVersion", "202610260102"],
   "rehearsal-103": ["apply-staging-rehearsal-migration.ps1", "-Mode", "SelfTest", "-TargetSchemaVersion", "202610260103"],
   "rehearsal-104": ["apply-staging-rehearsal-migration.ps1", "-Mode", "SelfTest", "-TargetSchemaVersion", "202610270104"],
+  "rehearsal-105": ["apply-staging-rehearsal-migration.ps1", "-Mode", "SelfTest", "-TargetSchemaVersion", "202610270105"],
   "staging-084-backup": ["staging-schema084-database-safeguard.ps1", "-Mode", "SelfTest"],
   "production-migration": ["apply-production-forward-migrations.ps1", "-Mode", "SelfTest"],
   "production-backup": ["production-database-safeguard.ps1", "-Mode", "SelfTest"],

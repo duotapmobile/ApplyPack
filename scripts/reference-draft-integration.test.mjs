@@ -16,7 +16,7 @@ test("095 has a distinct locked capability without rewriting the094 phase", () =
 test("the actual PG17 input includes the reference proof before committed race fixtures", () => {
   const input = loadRetentionPostgresInputs();
   const fixtures = input.hashes.filter((row) => row.kind === "fixture").map((row) => row.name);
-  assert.equal(input.migrationCount, 109);
+  assert.equal(input.migrationCount, 110);
   assert(fixtures.indexOf("reference-aware-draft-delivery.sql") < fixtures.indexOf("service-retention-races.sql"));
   assert(input.sql.includes("REFERENCE_AWARE_DRAFT_DELIVERY_OK"));
   assert(input.sql.includes("actual paid deadline has not passed"));

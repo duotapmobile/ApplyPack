@@ -13,7 +13,7 @@ begin
  select to_jsonb(heartbeat) into original_heartbeat from public.operational_heartbeats heartbeat
   where task_name='protected_recovery_retention';
  if not public.ap_protected_archive_schema_installed()
-  or public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' not in ('202610250098','202610250099','202610250100','202610250101','202610260102','202610260103','202610270104')
+  or public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' not in ('202610250098','202610250099','202610250100','202610250101','202610260102','202610260103','202610270104','202610270105')
   or not (public.ap_manual_launch_schema_readiness()->'requiredMigrations' @> '["202610250096","202610250097","202610250098"]'::jsonb)
  then raise exception 'archive schema checkpoint not installed'; end if;
  if not public.ap_archive_fence_coverage_current() then raise exception 'archive fence coverage missing'; end if;

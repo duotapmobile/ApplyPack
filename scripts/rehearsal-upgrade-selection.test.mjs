@@ -94,20 +94,24 @@ test("the actual research journey is isolated from generic integration and remai
   assert.match(generic, /exclude:\s*\[\s*\/\/[^\n]*\n\s*"tests\/integration\/research-preparation-journey\.test\.ts",/u);
   for (const path of ["../vitest.research-container.config.mjs", "../vitest.research-native.config.mts"]) {
     const isolated = read(path).replace(/\s+/gu, "").replaceAll('"', "'");
-    assert(isolated.includes("include:[process.env.AP_RESEARCH_JOURNEY_STAGE==='PAID_SEARCH'?'tests/integration/verified-paid-search-native-journey.test.ts':process.env.AP_RESEARCH_JOURNEY_STAGE==='NOTIFICATION'?'tests/integration/intake-notification-native-journey.test.ts':process.env.AP_RESEARCH_JOURNEY_STAGE==='CLARIFICATION'?'tests/integration/material-clarification-route-journey.test.ts':'tests/integration/research-preparation-journey.test.ts']"), path);
+    assert(isolated.includes("include:[process.env.AP_RESEARCH_JOURNEY_STAGE==='EMPLOYER_RULE'?'tests/integration/employer-rule-owner-native-journey.test.ts':process.env.AP_RESEARCH_JOURNEY_STAGE==='PAID_SEARCH'?'tests/integration/verified-paid-search-native-journey.test.ts':process.env.AP_RESEARCH_JOURNEY_STAGE==='NOTIFICATION'?'tests/integration/intake-notification-native-journey.test.ts':process.env.AP_RESEARCH_JOURNEY_STAGE==='CLARIFICATION'?'tests/integration/material-clarification-route-journey.test.ts':'tests/integration/research-preparation-journey.test.ts']"), path);
+    assert(isolated.includes("testTimeout:240_000") || isolated.includes("testTimeout:240000"));
   }
-  for (const fixture of ["material-clarification-route-journey.test.ts", "intake-notification-native-journey.test.ts", "verified-paid-search-native-journey.test.ts"])
+  for (const fixture of ["material-clarification-route-journey.test.ts", "intake-notification-native-journey.test.ts", "verified-paid-search-native-journey.test.ts", "employer-rule-owner-native-journey.test.ts"])
     assert(generic.includes(`"tests/integration/${fixture}"`));
   const stages = read("./run-research-native-journey.mjs");
   assert(stages.includes("scenario === 'LIMITED' ? ['RESEARCH', 'CLARIFICATION', 'NOTIFICATION'] : ['RESEARCH']"));
   assert(stages.includes("scenario === 'PAID_SEARCH' ? ['PAID_SEARCH']"));
-  assert(stages.includes("if (result.error || result.status !== 0) { process.exitCode = 1; break; }"));
-  assert(stages.includes("if (!process.exitCode && scenario === 'LIMITED') console.log('RESEARCH_CLARIFICATION_NOTIFICATION_JOURNEYS_OK')"));
+  assert(stages.includes("scenario === 'EMPLOYER_RULE' ? ['EMPLOYER_RULE']"));
+  assert(stages.includes("if (result.error || result.status !== 0) return 1;"));
+  assert(stages.includes("if (scenario === 'LIMITED') log('RESEARCH_CLARIFICATION_NOTIFICATION_JOURNEYS_OK')"));
+  assert(stages.includes('EMPLOYER_RULE_OWNER_NATIVE_JOURNEY_OK'));
+  assert(read('./test-database-native.ps1').includes("[ValidateSet('LIMITED','QUALIFIED','PAID_SEARCH','EMPLOYER_RULE')]"));
   const research = job("research-route-journey");
   assert(research.includes("node scripts/run-research-postgres17.mjs"));
   assert(!research.includes("continue-on-error") && !/^    if:/mu.test(research));
   const runner = read("./run-research-postgres17.mjs");
-  assert(runner.includes("for(const scenario of ['QUALIFIED','LIMITED','PAID_SEARCH'])"));
+  assert(runner.includes("for(const scenario of ['QUALIFIED','LIMITED','PAID_SEARCH','EMPLOYER_RULE'])"));
 });
 
 test("selection stays outside upgrade assertions and all local cleanup and concurrency checks remain", () => {
@@ -117,7 +121,7 @@ test("selection stays outside upgrade assertions and all local cleanup and concu
   assert(source.includes("await proveRehearsalCheckoutConcurrency()"));
   assert(source.includes('run("supabase", ["db", "reset", "--local", "--no-seed"])'));
   assert(source.includes('if (failure) throw failure;'));
-  assert(source.includes("All twenty-four launch upgrade predecessors passed"));
+  assert(source.includes("All twenty-five launch upgrade predecessors passed"));
   assert(source.includes("Selected launch upgrade predecessor ${predecessors[0]} passed"));
   const scripts = JSON.parse(read("../package.json")).scripts;
   assert(scripts["test:database"].endsWith("node scripts/run-supabase-rehearsal-upgrade-test.mjs"));
@@ -127,7 +131,8 @@ test("selection stays outside upgrade assertions and all local cleanup and concu
 test("104 migration self-test remains mandatory alongside every earlier Windows gate", () => {
   assert(workflow.includes("npm run test:material-clarification-resume-migration"));
   assert(workflow.includes("npm run test:employer-rule-review-migration"));
+  assert(workflow.includes("npm run test:verified-source-run-migration"));
   assert(workflow.includes("npm run test:repair-case-state-migration"));
-  assert.equal(REHEARSAL_TARGET_VERSION, "202610270104");
-  assert.equal(REHEARSAL_PREDECESSORS.at(-1), "202610260103");
+  assert.equal(REHEARSAL_TARGET_VERSION, "202610270105");
+  assert.equal(REHEARSAL_PREDECESSORS.at(-1), "202610270104");
 });

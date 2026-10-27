@@ -3,7 +3,7 @@ begin;
 
 select pg_temp.assert_true(public.ap_employer_rule_review_schema_installed(),'104 installation contract failed');
 select pg_temp.assert_true(public.ap_archive_fence_coverage_current(),'104 archive fence incomplete');
-select pg_temp.assert_true(public.ap_archive_snapshot_schema_supported('202610260103') and public.ap_archive_snapshot_schema_supported('202610270104'),'archive history not append-only');
+select pg_temp.assert_true(public.ap_archive_snapshot_schema_supported('202610260103') and public.ap_archive_snapshot_schema_supported('202610270104') and public.ap_archive_snapshot_schema_supported(public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'),'archive history not append-only');
 create temp table employer_paid_before(kind text,body jsonb);
 insert into employer_paid_before select 'rule',to_jsonb(r) from public.ap_employer_submission_rules r where id=current_setting('employer_test.rule')::uuid;
 insert into employer_paid_before select 'revision',to_jsonb(r) from public.ap_material_line_revisions r where line_id=current_setting('employer_test.line')::uuid;

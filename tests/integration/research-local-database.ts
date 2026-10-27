@@ -30,7 +30,8 @@ for (const name of ["ap_owned_intake_draft_context", "ap_owned_intake_drafts", "
   "ap_renew_outbox_lease", "ap_complete_outbox_message", "ap_fail_outbox_message", "ap_queue_search_refund",
   "ap_intake_payment_identity", "ap_read_current_feasibility", "ap_manual_launch_capacity_readiness", "ap_manual_launch_schema_readiness",
   "ap_current_source_readiness", "ap_begin_authorized_search_checkout", "ap_bind_checkout_initiation", "ap_reconcile_checkout_initiation",
-  "claim_stripe_webhook", "ap_apply_verified_search_payment", "claim_workflow_tasks", "ap_persist_match_selection", "ap_commit_exact_ten_release"]) rpcNames.add(name);
+  "claim_stripe_webhook", "ap_apply_verified_search_payment", "claim_workflow_tasks", "ap_persist_match_selection", "ap_commit_exact_ten_release",
+  "ap_employer_rule_review_basis", "ap_prepare_employer_rule_source_evidence", "ap_confirm_employer_submission_rules", "ap_employer_rule_review_receipt"]) rpcNames.add(name);
 const ident = (value: string) => { if (!/^[a-z_][a-z0-9_]*$/u.test(value)) throw new Error("local_identifier_rejected"); return `"${value}"`; };
 const literal = (value: unknown): string => value === null ? "null" : `'${String(value).replaceAll("'", "''")}'`;
 const json = (value: unknown) => `${literal(JSON.stringify(value))}::jsonb`;

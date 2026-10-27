@@ -30,20 +30,20 @@ function fixture({ failAt, alterState, missingMarker, ambiguousCreate, invalidIm
       const employerRule = options.input === "fictional employer rule SQL";
       if (isolated && failIsolated) throw new Error("isolated fixture failed");
       if (employerRule && failEmployerRule) throw new Error("employer rule fixture failed");
-      return (isolated ? [24, 21] : employerRule ? [26] : [...Array.from({ length: 20 }, (_, index) => index + 1), 22, 23, 25])
+      return (isolated ? [24, 21] : employerRule ? [26] : [...Array.from({ length: 20 }, (_, index) => index + 1), 22, 23, 25, 27])
         .filter(index => index !== missingMarker).map(index => ` RETENTION_PG17_FIXTURE_${index}_COMPLETE \n`).join("");
     }
     return "";
   };
   const run = (args = [], environment = {}) => runRetentionPostgres17(args, { execute, environment, platform: "linux", uuid: () => runId,
-    inputs: () => ({ sql: "fictional SQL", isolatedSql: "fictional isolated SQL", employerRuleSql: "fictional employer rule SQL", hashes: [{ kind: "fixture", name: "fictional.sql", sha256: "b".repeat(64) }], migrationCount: 109 }) });
+    inputs: () => ({ sql: "fictional SQL", isolatedSql: "fictional isolated SQL", employerRuleSql: "fictional employer rule SQL", hashes: [{ kind: "fixture", name: "fictional.sql", sha256: "b".repeat(64) }], migrationCount: 110 }) });
   return { calls, run, deleted: () => deleted };
 }
 
 test("builds all current migrations with exact source hashes and unchanged independent-connection fixture", () => {
   const inputs = loadRetentionPostgresInputs();
-  assert.equal(inputs.migrationCount, 109);
-  assert.equal(inputs.hashes.filter((entry) => entry.kind === "fixture").length, 26);
+  assert.equal(inputs.migrationCount, 110);
+  assert.equal(inputs.hashes.filter((entry) => entry.kind === "fixture").length, 27);
   assert(inputs.hashes.every((entry) => /^[a-f0-9]{64}$/u.test(entry.sha256)));
   assert.match(inputs.sql, /native_loopback_fixture_required/u);
   assert.match(inputs.sql, /dblink_send_query/u);
@@ -64,6 +64,9 @@ test("builds all current migrations with exact source hashes and unchanged indep
   assert.doesNotMatch(inputs.sql, /RETENTION_PG17_FIXTURE_26_COMPLETE/u);
   assert.doesNotMatch(inputs.isolatedSql, /RETENTION_PG17_FIXTURE_26_COMPLETE/u);
   assert.match(inputs.employerRuleSql, /RETENTION_PG17_FIXTURE_26_COMPLETE/u);
+  assert.match(inputs.sql, /RETENTION_PG17_FIXTURE_27_COMPLETE/u);
+  assert.doesNotMatch(inputs.isolatedSql, /RETENTION_PG17_FIXTURE_27_COMPLETE/u);
+  assert.doesNotMatch(inputs.employerRuleSql, /RETENTION_PG17_FIXTURE_27_COMPLETE/u);
   assert.doesNotMatch(inputs.employerRuleSql, /RETENTION_PG17_FIXTURE_(?:2[0-5])_COMPLETE/u);
   assert.match(inputs.employerRuleSql, /dblink_send_query/u);
   assert.match(inputs.employerRuleSql, /'202610270104','employer_rule_review_confirmation'/u);
@@ -198,4 +201,12 @@ for (const invalidImage of [
   (image) => { image.Config.Volumes = { "/host-data": {} }; },
 ]) test("rejects unpinned, wrong-major or unexpected-volume image before create", () => {
   const f = fixture({ invalidImage }); assert.throws(() => f.run()); assert(!f.calls.some(({ args }) => args[2] === "create"));
+});
+
+
+test("source-run105 contract is mandatory before the two later race clusters", () => {
+  const f = fixture({ missingMarker: 27 });
+  assert.throws(() => f.run(), /RETENTION_FIXTURE_MARKER_MISSING:RETENTION_PG17_FIXTURE_27_COMPLETE/u);
+  assert(f.deleted());
+  assert.equal(f.calls.filter(({ args }) => args.includes("/usr/lib/postgresql/17/bin/psql")).length, 1);
 });

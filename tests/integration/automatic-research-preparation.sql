@@ -7,7 +7,7 @@ select pg_temp.assert_true(not has_table_privilege('service_role','public.ap_res
 select pg_temp.assert_true(not has_function_privilege('authenticated','public.ap_prepare_automatic_research(uuid,uuid,jsonb)','EXECUTE'),'customer planning bypass');
 select pg_temp.assert_true(public.ap_archive_fence_coverage_current(),'new research tables missing archive fence');
 select pg_temp.assert_true(public.ap_automatic_research_schema_installed(),'research schema predicate missing');
-select pg_temp.assert_true(public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' in('202610250100','202610250101','202610260102','202610260103','202610270104'),'research schema floor missing');
+select pg_temp.assert_true(public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' in('202610250100','202610250101','202610260102','202610260103','202610270104','202610270105'),'research schema floor missing');
 savepoint readiness_guards;
 alter table public.ap_research_preparations disable trigger ap_service_retention_write;
 select pg_temp.assert_true(not public.ap_automatic_research_schema_installed(),'disabled research retention guard passed readiness');
@@ -103,16 +103,22 @@ rollback to savepoint retention_queue_order;
 create temp table claim as select * from public.ap_claim_research_preparation();
 select pg_temp.assert_true((select count(*)=1 from claim),'enabled confirmed request not claimable');
 select pg_temp.assert_true(not exists(select 1 from public.ap_claim_research_preparation()),'second claim reused live lease');
-do $$ declare c public.ap_research_preparations; family jsonb; plan uuid; begin
+create temp table automatic_research_prior_invitations as
+ select id,to_jsonb(i) as value from public.ap_search_checkout_invitations i;
+do $$ declare c public.ap_research_preparations; family jsonb; plan uuid;
+ prior_reviews jsonb; prior_verifications jsonb; begin
  select * into c from claim;
+ -- Planning must preserve all existing human evidence, including retained paid history.
+ select coalesce(jsonb_agg(to_jsonb(r) order by to_jsonb(r)::text),'[]'::jsonb) into prior_reviews from public.ap_research_cell_reviews r;
+ select coalesce(jsonb_agg(to_jsonb(v) order by to_jsonb(v)::text),'[]'::jsonb) into prior_verifications from public.ap_source_verifications v;
  family:=jsonb_build_array(jsonb_build_object('id','customer-support','fingerprint',repeat('a',64),'neutral',true,'responsibilities',jsonb_build_array('Helping customers')));
  begin perform public.ap_prepare_automatic_research(c.id,gen_random_uuid(),family); raise exception 'wrong lease accepted';
  exception when others then if sqlerrm<>'research_preparation_claim_changed' then raise; end if; end;
  plan:=public.ap_prepare_automatic_research(c.id,c.lease_token,family);
  perform pg_temp.assert_true(plan is not null,'plan not created');
  perform pg_temp.assert_true((select count(*)=1 from public.ap_research_rounds where snapshot_id=c.snapshot_id),'plan duplicated');
- perform pg_temp.assert_true(not exists(select 1 from public.ap_research_cell_reviews),'automation fabricated coverage review');
- perform pg_temp.assert_true(not exists(select 1 from public.ap_source_verifications),'automation fabricated source verification');
+ perform pg_temp.assert_true((select coalesce(jsonb_agg(to_jsonb(r) order by to_jsonb(r)::text),'[]'::jsonb) from public.ap_research_cell_reviews r)=prior_reviews,'automation fabricated or changed coverage review');
+ perform pg_temp.assert_true((select coalesce(jsonb_agg(to_jsonb(v) order by to_jsonb(v)::text),'[]'::jsonb) from public.ap_source_verifications v)=prior_verifications,'automation fabricated or changed source verification');
 end $$;
 truncate claim;
 insert into claim select * from public.ap_claim_research_preparation();
@@ -136,18 +142,22 @@ do $$ declare c public.ap_research_preparations; binding uuid; begin
  exception when others then if sqlerrm<>'research_preparation_coverage_not_reviewable' then raise; end if; end;
  perform pg_temp.assert_true(public.ap_complete_prepared_research_review(c.id,'a1000000-0000-4000-8000-000000000004','Reviewed the complete fictional empty source run; no matching jobs were observed.'),'coverage not recorded');
  perform pg_temp.assert_true(public.ap_research_preparation_ready(c.request_id),'reviewed empty coverage never ready for honest shortage');
- perform pg_temp.assert_true(not exists(select 1 from public.ap_search_checkout_invitations),'research created checkout invitation');
+ perform pg_temp.assert_true(not exists(select 1 from public.ap_search_checkout_invitations where snapshot_id=c.snapshot_id),'research created checkout invitation');
+ perform pg_temp.assert_true(
+  (select coalesce(jsonb_agg(to_jsonb(i) order by i.id),'[]'::jsonb) from public.ap_search_checkout_invitations i)
+  =(select coalesce(jsonb_agg(value order by id),'[]'::jsonb) from automatic_research_prior_invitations),
+  'research created or changed checkout invitation');
 end $$;
 savepoint existing_collision_path;
 insert into public.ap_feasibility_coverage_plans(snapshot_id,inventory_version_id,plan_version,typed_inputs,coverage_disposition,constraint_proof,content_sha256,created_at)
 select snapshot_id,inventory_version_id,'fictional-existing-collision',typed_inputs,'NOT_REQUIRED_CONSTRAINT_COLLISION',
  jsonb_build_object('kind','TYPED_CONTRADICTION','inputHash',repeat('c',64),'version','existing-contract'),repeat('b',64),clock_timestamp()
-from public.ap_feasibility_coverage_plans order by created_at desc limit 1;
+from public.ap_feasibility_coverage_plans where snapshot_id='a1000000-0000-4000-8000-000000000002' order by created_at desc limit 1;
 select pg_temp.assert_true(public.ap_research_preparation_ready((select id from public.ap_feasibility_requests where snapshot_id='a1000000-0000-4000-8000-000000000002')),'existing typed collision path incorrectly required source cells');
 insert into public.ap_feasibility_coverage_plans(snapshot_id,inventory_version_id,plan_version,typed_inputs,coverage_disposition,constraint_proof,content_sha256,created_at)
 select snapshot_id,inventory_version_id,'fictional-malformed-collision',typed_inputs,'NOT_REQUIRED_CONSTRAINT_COLLISION',
  jsonb_build_object('kind','TYPED_CONTRADICTION','inputHash','unverified','version','existing-contract'),repeat('d',64),clock_timestamp()
-from public.ap_feasibility_coverage_plans order by created_at desc limit 1;
+from public.ap_feasibility_coverage_plans where snapshot_id='a1000000-0000-4000-8000-000000000002' order by created_at desc limit 1;
 select pg_temp.assert_true(not public.ap_research_preparation_ready((select id from public.ap_feasibility_requests where snapshot_id='a1000000-0000-4000-8000-000000000002')),'malformed collision proof reached feasibility');
 rollback to savepoint existing_collision_path;
 select pg_temp.assert_true(public.ap_archive_snapshot_schema_supported('202610250100'),'registered100 archive schema rejected');

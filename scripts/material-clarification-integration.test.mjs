@@ -26,8 +26,8 @@ test("100 remains exact;101 and102 require their own guarded capabilities while 
 });
 
 test("all101 database metadata is required for recovery without inventing duplicate storage aliases", () => {
-  assert.equal(DATABASE_RECOVERY.schemaVersion, "202610270104");
-  assert.equal(DATABASE_RECOVERY_SOURCE.schemaVersion, "202610270104");
+  assert.equal(DATABASE_RECOVERY.schemaVersion, "202610270105");
+  assert.equal(DATABASE_RECOVERY_SOURCE.schemaVersion, "202610270105");
   assert.equal(DATABASE_RECOVERY_REQUIRED_TABLES.length, 36);
   assert.equal(new Set(DATABASE_RECOVERY_REQUIRED_TABLES).size, 36);
   assert.equal(RECOVERY_TABLES.length, 11);
@@ -45,9 +45,9 @@ test("all101 database metadata is required for recovery without inventing duplic
 });
 
 test("actual PG17 input retains every prior fixture and adds real101 and102 races with finite nested helpers", () => {
-  const input = loadRetentionPostgresInputs(); assert.equal(input.migrationCount, 109);
+  const input = loadRetentionPostgresInputs(); assert.equal(input.migrationCount, 110);
   const fixtures = input.hashes.filter(item => item.kind === "fixture").map(item => item.name);
-  assert.equal(fixtures.length, 26); assert.equal(new Set(fixtures).size, 26);
+  assert.equal(fixtures.length, 27); assert.equal(new Set(fixtures).size, 27);
   for (const name of ["material-clarification-confirmation.sql", "material-clarification-races.sql", "service-repair-case-state.sql",
     "service-repair-case-state-races.sql", "material-clarification-resume.sql", "verified-intake-ownership.sql", "verified-intake-payment.sql", "service-retention-races.sql", "protected-archive-limited-role.sql", "protected-archive-races.sql", "material-draft-stage-claiming.sql"])
     assert(fixtures.includes(name), name);
@@ -57,9 +57,9 @@ test("actual PG17 input retains every prior fixture and adds real101 and102 race
   assert(input.sql.includes("SERVICE_REPAIR_CASE_STATE_CAS"));
 });
 
-test("all24 predecessors preserve the exact100-to101-to102-to103 sequence before the current contract group", () => {
-  assert.equal(REHEARSAL_TARGET_VERSION, "202610270104"); assert.equal(REHEARSAL_PREDECESSORS.length, 24);
-  assert.deepEqual(REHEARSAL_PREDECESSORS.slice(-4), ["202610250100", "202610250101", "202610260102", "202610260103"]);
+test("all25 predecessors preserve the exact100-to101-to102-to103 sequence before the current contract group", () => {
+  assert.equal(REHEARSAL_TARGET_VERSION, "202610270105"); assert.equal(REHEARSAL_PREDECESSORS.length, 25);
+  assert.deepEqual(REHEARSAL_PREDECESSORS.slice(-5), ["202610250100", "202610250101", "202610260102", "202610260103", "202610270104"]);
   const runner = read("./run-supabase-rehearsal-upgrade-test.mjs");
   for (const text of ['prepareHistoricalWorkspace("202610250100")', 'prepareHistoricalWorkspace("202610250101")', 'prepareHistoricalWorkspace("202610260102")',
     '"--historical-100"', '"--historical-101"', "Database contract fixtures passed: 15. Schema phase: 202610250100.",
@@ -80,8 +80,8 @@ test("controlled Windows and actual committed route harness require exact final 
   const ci = read("../.github/workflows/ci.yml");
   for (const name of ["material-clarification-migration", "repair-case-state-migration", "material-clarification-resume-migration", "material-clarification-integration"]) assert(ci.includes(`npm run test:${name}`));
   const route = read("./run-research-postgres17.mjs");
-  assert(route.includes("schema='202610270104'"));
-  assert(route.includes("for(const scenario of ['QUALIFIED','LIMITED','PAID_SEARCH'])"));
+  assert(route.includes("schema='202610270105'"));
+  assert(route.includes("for(const scenario of ['QUALIFIED','LIMITED','PAID_SEARCH','EMPLOYER_RULE'])"));
   assert(route.includes("RESEARCH_GIT_BYTES_CHANGED"));
   assert(ci.includes("needs: [database-core, database-upgrade, research-route-journey]"));
 });

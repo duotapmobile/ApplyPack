@@ -20,10 +20,11 @@ const historical100 = process.argv.length === 3 && process.argv[2] === "--histor
 const historical101 = process.argv.length === 3 && process.argv[2] === "--historical-101";
 const historical102 = process.argv.length === 3 && process.argv[2] === "--historical-102";
 const historical103 = process.argv.length === 3 && process.argv[2] === "--historical-103";
-if (process.argv.length > 3 || (process.argv.length === 3 && !historical085 && !historical086 && !historical087 && !historical091 && !historical092 && !historical093 && !historical094 && !historical095 && !historical096 && !historical097 && !historical098 && !historical099 && !historical100 && !historical101 && !historical102 && !historical103)) {
+const historical104 = process.argv.length === 3 && process.argv[2] === "--historical-104";
+if (process.argv.length > 3 || (process.argv.length === 3 && !historical085 && !historical086 && !historical087 && !historical091 && !historical092 && !historical093 && !historical094 && !historical095 && !historical096 && !historical097 && !historical098 && !historical099 && !historical100 && !historical101 && !historical102 && !historical103 && !historical104)) {
   throw new Error("DATABASE_FIXTURE_PHASE_INVALID");
 }
-const requiredSchemaVersion = historical085 ? "202610220085" : historical086 ? "202610230086" : historical087 ? "202610240087" : historical091 ? "202610250091" : historical092 ? "202610250092" : historical093 ? "202610250093" : historical094 ? "202610250094" : historical095 ? "202610250095" : historical096 ? "202610250096" : historical097 ? "202610250097" : historical098 ? "202610250098" : historical099 ? "202610250099" : historical100 ? "202610250100" : historical101 ? "202610250101" : historical102 ? "202610260102" : historical103 ? "202610260103" : "202610270104";
+const requiredSchemaVersion = historical085 ? "202610220085" : historical086 ? "202610230086" : historical087 ? "202610240087" : historical091 ? "202610250091" : historical092 ? "202610250092" : historical093 ? "202610250093" : historical094 ? "202610250094" : historical095 ? "202610250095" : historical096 ? "202610250096" : historical097 ? "202610250097" : historical098 ? "202610250098" : historical099 ? "202610250099" : historical100 ? "202610250100" : historical101 ? "202610250101" : historical102 ? "202610260102" : historical103 ? "202610260103" : historical104 ? "202610270104" : "202610270105";
 const phaseProbe = spawnSync("docker", ["exec", "-i", "supabase_db_applypack", "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"], {
   encoding: "utf8", input: `do $$ begin
     if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '${requiredSchemaVersion}'
@@ -47,6 +48,7 @@ const fixtures = !historical085 && !historical086 ? [
   ...(requiredSchemaVersion >= "202610260102" ? ["../tests/integration/service-repair-case-state.sql"] : []),
   ...(requiredSchemaVersion >= "202610260103" ? ["../tests/integration/material-clarification-resume.sql", "../tests/integration/verified-intake-ownership.sql", "../tests/integration/verified-intake-payment.sql"] : []),
   ...(requiredSchemaVersion >= "202610270104" ? ["../tests/integration/employer-rule-review-confirmation.sql"] : []),
+  ...(requiredSchemaVersion >= "202610270105" ? ["../tests/integration/verified-source-run-binding.sql"] : []),
 ] : [
   "../tests/integration/unpaid-source-retention.sql",
   "../tests/integration/chunk1-foundation.sql",

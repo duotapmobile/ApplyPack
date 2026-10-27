@@ -139,6 +139,8 @@ select case when
   and public.ap_one_off_retention_schema_installed()
   and public.ap_material_clarification_resume_schema_installed()
   and public.ap_employer_rule_review_schema_installed()
+  and public.ap_verified_source_run_schema_installed()
+  and exists(select 1 from public.ap_migration_checkpoints where migration_id='202610270105' and checkpoint='VERIFIED_SOURCE_RUN_BINDING')
   and exists(select 1 from public.ap_migration_checkpoints where migration_id='202610270104' and checkpoint='EMPLOYER_RULE_REVIEW_CONFIRMATION')
   and exists(select 1 from public.ap_migration_checkpoints where migration_id='202610260103' and checkpoint='MATERIAL_CLARIFICATION_RESUME')
   and public.ap_manual_launch_schema_readiness()->>'ready'='true'
@@ -196,7 +198,7 @@ select case when
     where migration_id='202610250091' and checkpoint='MATERIAL_DRAFT_PAIR_WORKFLOW')
   and exists(select 1 from public.ap_material_draft_runtime where singleton and not enabled and policy_id is null)
   and not exists(select 1 from public.ap_material_draft_permits)
-  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610270104'
+  and public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion'='202610270105'
   and exists (
     select 1 from pg_proc procedure
     join pg_namespace namespace on namespace.oid=procedure.pronamespace

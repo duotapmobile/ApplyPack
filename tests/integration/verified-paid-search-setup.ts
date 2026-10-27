@@ -88,10 +88,20 @@ export function cleanupVerifiedPaidSearch() {
   for (const key of boundary.wrappedKeys.values()) key.fill(0); boundary.wrappedKeys.clear(); boundary.after.length = 0;
 }
 
+export type PaidSearchSourceFixture = {
+  sourceId: string;
+  allowedActions: ("ENUMERATE_JOBS" | "READ_APPLICATION_QUESTIONS")[];
+  allowedHosts: string[];
+  requestBound: number;
+  durationMsBound: number;
+  fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+};
+
 // Runs the complete original route/SDK/SQL journey once in a fresh owned database.
 // Keep its provider boundaries alive until the caller finishes any pack continuation;
 // each test must register cleanupVerifiedPaidSearch with afterEach, including failures.
-export async function setupVerifiedPaidSearch() {
+export async function setupVerifiedPaidSearch(options: { sourceFixture?: PaidSearchSourceFixture } = {}) {
+  const sourceFixture = options.sourceFixture;
   const database = await createResearchLocalDatabase(); boundary.admin = database.admin;
   const provider = paidSearchProviderFixture(); boundary.stripeFetch.mockImplementation(provider.fetch);
   // Only independently approved fictional configuration and auth identities are
@@ -130,23 +140,45 @@ export async function setupVerifiedPaidSearch() {
   expect(await database.sql(`select jsonb_build_object('schema',schema_version,'draftId',draft_id,'contact',document_contact_email) from public.ap_intake_snapshots where id='${snapshotId}'`, true))
     .toEqual({ schema: "applypack-intake-v4", draftId, contact: answers.documentContactEmail });
   expect(await database.sql(`select count(*)::int from public.ap_research_preparations where snapshot_id='${snapshotId}'`, true)).toBe(1);
-  const source = getSource("vipdesk-connect")!;
+  const source = getSource(sourceFixture?.sourceId ?? "vipdesk-connect")!;
+  if (sourceFixture) {
+    expect(source).toBeDefined();
+    expect(source.adapterKind).toBe("greenhouse");
+    expect(sourceFixture.allowedActions).toEqual(["ENUMERATE_JOBS", "READ_APPLICATION_QUESTIONS"]);
+    expect(sourceFixture.allowedHosts.every(host => /^[a-z0-9.-]+$/u.test(host))).toBe(true);
+    expect(sourceFixture.requestBound).toBe(11); expect(sourceFixture.durationMsBound).toBe(60000);
+  }
+  const allowedActions = sourceFixture?.allowedActions ?? ["ENUMERATE_JOBS"];
+  const allowedHosts = sourceFixture?.allowedHosts ?? ["api.lever.co", "jobs.lever.co"];
+  const requestBound = sourceFixture?.requestBound ?? 2, durationMsBound = sourceFixture?.durationMsBound ?? 10000;
   const scope = sourceCollectionScopeSha256({ source,
     authorization: { id: id(5), sourceId: source.id, state: "AUTHORIZED_AUTOMATED", accessMethod: "AUTOMATED", authorizationVersion: "paidsearch114-fixture",
-      allowedActions: ["ENUMERATE_JOBS"], allowedHosts: ["api.lever.co", "jobs.lever.co"] },
+      allowedActions, allowedHosts },
     schedule: { id: id(6), source_id: source.id, source_authorization_id: id(5), authorization_head_revision: 1, scope_sha256: "", result_bound: 20,
-      page_bound: 2, request_bound: 2, response_byte_bound: 100000, duration_ms_bound: 10000, host_concurrency_bound: 1, quota_unit_bound: 0,
+      page_bound: 2, request_bound: requestBound, response_byte_bound: 100000, duration_ms_bound: durationMsBound, host_concurrency_bound: 1, quota_unit_bound: 0,
       minimum_complete_misses: 2, visibility_window_seconds: 86400, enabled: true, paused_reason: null } });
-  const sourceFixture = await readFile("tests/integration/automatic-research-preparation.sql", "utf8");
-  const configStart = sourceFixture.indexOf("-- Local fictional permission fixture only."), configEnd = sourceFixture.indexOf("savepoint retention_queue_order;");
+  const sourceSqlFixture = await readFile("tests/integration/automatic-research-preparation.sql", "utf8");
+  const configStart = sourceSqlFixture.indexOf("-- Local fictional permission fixture only."), configEnd = sourceSqlFixture.indexOf("savepoint retention_queue_order;");
   expect(configStart).toBeGreaterThan(0); expect(configEnd).toBeGreaterThan(configStart);
-  const sourceConfiguration = sourceFixture.slice(configStart, configEnd).replaceAll("a1000000", "a1140000").replaceAll("research100-fixture", "paidsearch114-fixture")
+  let sourceConfiguration = sourceSqlFixture.slice(configStart, configEnd).replaceAll("a1000000", "a1140000").replaceAll("research100-fixture", "paidsearch114-fixture")
     .replaceAll("repeat('3',64)", `'${scope}'`).replaceAll('"resultBound":10', '"resultBound":20')
     .replaceAll('14400,10,2,2,', '14400,20,2,2,').replaceAll("interval '1 day',10,", "interval '1 day',20,");
+  if (sourceFixture) {
+    const sqlLiteral = (value: string) => `'${value.replaceAll("'", "''")}'`;
+    expect(sourceConfiguration).toContain("array['api.lever.co','jobs.lever.co'],array['ENUMERATE_JOBS']");
+    expect(sourceConfiguration).toContain('"requestBound":2'); expect(sourceConfiguration).toContain('"durationMsBound":10000');
+    expect(sourceConfiguration).toContain("14400,20,2,2,100000,10000");
+    sourceConfiguration = sourceConfiguration.replaceAll("'vipdesk-connect'", sqlLiteral(source.id))
+      .replaceAll("array['api.lever.co','jobs.lever.co'],array['ENUMERATE_JOBS']",
+        `array[${allowedHosts.map(sqlLiteral).join(",")}],array[${allowedActions.map(sqlLiteral).join(",")}]`)
+      .replaceAll('"requestBound":2', `"requestBound":${requestBound}`).replaceAll('"durationMsBound":10000', `"durationMsBound":${durationMsBound}`)
+      .replaceAll("14400,20,2,2,100000,10000", `14400,20,2,${requestBound},100000,${durationMsBound}`);
+  }
   await database.script(sourceConfiguration);
   expect(await processAutomaticResearchPreparation()).toEqual({ status: "ADVANCED", processed: 1 });
   const listing = "Remote full-time role in Virginia.\nRequired: proficient with Excel.\nResponsibilities: coordinate service recovery.\nSalary: $60000 per year.";
-  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+  if (sourceFixture) vi.stubGlobal("fetch", vi.fn(sourceFixture.fetch));
+  else vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.origin !== "https://api.lever.co" || url.pathname !== `/v0/postings/${source.adapterKey}`) throw new Error("unexpected_paid_search_external_request");
     return Response.json(Array.from({ length: 10 }, (_, index) => ({ id: `paidsearch114-${index}`, text: `Operations Coordinator ${index + 1}`, descriptionPlain: listing,

@@ -61,6 +61,15 @@ describe("verified source inventory bridge", () => {
     expect(() => buildVerifiedSourceInventory({ ...input, capturedText: unresolved.description! }, unresolved,
       { ...binding, observedHash: normalizeJob(unresolved, now).contentHash }, now)).toThrow("parser_review_required");
   });
+  it.each([
+    "Required: proficient with Excel. Must speak Spanish.",
+    "Remote role required; must satisfy the bespoke matrix.",
+    "Required: authorized to work " + "é".repeat(310),
+  ])("holds actual source promotion when a later clause or typed field is unresolved", (description) => {
+    const unresolved = { ...posting, description };
+    expect(() => buildVerifiedSourceInventory({ ...input, capturedText: description }, unresolved,
+      { ...binding, observedHash: normalizeJob(unresolved, now).contentHash }, now)).toThrow("parser_review_required");
+  });
   it("refuses partial collection before any promotion RPC", async () => {
     const rows: Record<string, unknown> = {
       job_source_listing_projections: { id: input.projectionId, run_id: "run", listing_key: "key", job_id: binding.jobId },

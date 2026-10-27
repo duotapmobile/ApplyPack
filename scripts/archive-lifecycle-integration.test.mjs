@@ -19,8 +19,8 @@ test("098 is a disabled, locked new phase without rewriting097", () => {
 });
 
 test("database recovery covers all six operational archive tables without inventing storage aliases", () => {
-  assert.equal(DATABASE_RECOVERY.schemaVersion, "202610270104");
-  assert.equal(DATABASE_RECOVERY_SOURCE.schemaVersion, "202610270104");
+  assert.equal(DATABASE_RECOVERY.schemaVersion, "202610270105");
+  assert.equal(DATABASE_RECOVERY_SOURCE.schemaVersion, "202610270105");
   assert.equal(DATABASE_RECOVERY_REQUIRED_TABLES.length, 36);
   for (const name of ["ap_archive_lifecycle_configuration", "ap_archive_writer_runs", "ap_archive_retention_runs",
     "ap_archive_retention_versions", "ap_archive_fence_relations", "ap_archive_fence_function_contracts"]) {
@@ -31,9 +31,9 @@ test("database recovery covers all six operational archive tables without invent
 
 test("current PG17 proof executes actual archive races before subsequent retained customer races", () => {
   const input = loadRetentionPostgresInputs();
-  assert.equal(input.migrationCount, 109);
+  assert.equal(input.migrationCount, 110);
   const fixtures = input.hashes.filter((item) => item.kind === "fixture").map((item) => item.name);
-  assert.equal(fixtures.length, 26);
+  assert.equal(fixtures.length, 27);
   for (const name of ["protected-archive-limited-role.sql", "protected-archive-lifecycle.sql", "protected-archive-races.sql", "service-retention-races.sql"])
     assert(fixtures.includes(name), name);
   assert(fixtures.indexOf("protected-archive-lifecycle.sql") < fixtures.indexOf("protected-archive-races.sql"));
@@ -46,7 +46,7 @@ test("the upgrade preserves exact097 before applying098 and keeps the former pro
   const runner = read("./run-supabase-rehearsal-upgrade-test.mjs");
   for (const part of ['prepareHistoricalWorkspace("202610250097")', 'prepareHistoricalWorkspace("202610250098")',
     '"--historical-097"', "Database contract fixtures passed: 12. Schema phase: 202610250097.",
-    "Database contract fixtures passed: 13. Schema phase: 202610250098.", "All twenty-four launch upgrade predecessors passed"])
+    "Database contract fixtures passed: 13. Schema phase: 202610250098.", "All twenty-five launch upgrade predecessors passed"])
     assert(runner.includes(part), part);
   assert(runner.indexOf("ARCHIVE_LIFECYCLE_098_UPGRADE_PRESERVED") > runner.indexOf("DRAFT_CHANGE_097_UPGRADE_PRESERVED"));
   const verify = read("../tests/integration/archive-lifecycle-upgrade-verify.sql");
@@ -56,7 +56,7 @@ test("the upgrade preserves exact097 before applying098 and keeps the former pro
   const guard = read("./test-production-database-guard.ps1");
   assert(guard.includes("GUARD_097_ONLY_SUFFIX_FIXTURE_INVALID"));
   assert(guard.includes("GUARD_098_ONLY_SUFFIX_FIXTURE_INVALID"));
-  assert(read("./run-supabase-rollback-test.mjs").includes('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610270104"'));
+  assert(read("./run-supabase-rollback-test.mjs").includes('REQUIRED_LAUNCH_SCHEMA_VERSION = "202610270105"'));
 });
 
 test("required CI covers098 and the independent monitor without replacing097", () => {
