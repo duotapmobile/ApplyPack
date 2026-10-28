@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { NormalizedJob } from "@/lib/jobs/types";
-import { assertPairwiseIndependent, duplicateEdgeReason, selectIndependentInventory, stableNormalizedJobId } from "@/lib/matching/deduplication";
+import { assertPairwiseIndependent, duplicateEdgeReason, persistedDuplicateEdgeReason, selectIndependentInventory, stableNormalizedJobId } from "@/lib/matching/deduplication";
 import { assessFeasibility, coverageComplete, createCoveragePlan, customerFeasibilityMessage, type CoverageCell, type PersistedInventoryEvaluation } from "@/lib/matching/feasibility";
 
 function job(id: string, change: Partial<NormalizedJob> = {}): NormalizedJob {
@@ -26,6 +26,33 @@ describe("Chunk 3 deduplication and feasibility", () => {
     const right = job("right", { canonicalEmployerId: "employer-b", officialApplicationUrl: "https://apply.example/jobs/42?utm_source=board", contentHash: "new" });
     expect(duplicateEdgeReason(left, right)).toBe("canonical_url");
     expect(stableNormalizedJobId(left)).toBe(stableNormalizedJobId({ ...left, contentHash: "revised-listing-content" }));
+  });
+
+  it("intersects persisted listing and application URL sets and limits fingerprint fallback to weak records", () => {
+    const left = {
+      externalJobId: "REQ-A",
+      canonicalEmployerDomain: "employer.invalid",
+      canonicalEmployerListingUrl: "https://employer.invalid/jobs/42",
+      canonicalApplicationUrl: "https://employer.invalid/apply/42",
+      normalizedFingerprint: "same-fingerprint",
+    };
+    const right = {
+      externalJobId: "REQ-B",
+      canonicalEmployerDomain: "employer.invalid",
+      canonicalEmployerListingUrl: "https://employer.invalid/jobs/99",
+      canonicalApplicationUrl: "https://employer.invalid/jobs/42?utm_source=board",
+      normalizedFingerprint: "different-fingerprint",
+    };
+    expect(persistedDuplicateEdgeReason(left, right)).toBe("canonical_url");
+    expect(persistedDuplicateEdgeReason(right, left)).toBe("canonical_url");
+    expect(persistedDuplicateEdgeReason(left, { ...right, canonicalApplicationUrl: "https://employer.invalid/apply/99", normalizedFingerprint: "same-fingerprint" })).toBeNull();
+    expect(persistedDuplicateEdgeReason(left, {
+      ...right,
+      externalJobId: null,
+      canonicalEmployerListingUrl: null,
+      canonicalApplicationUrl: null,
+      normalizedFingerprint: "same-fingerprint",
+    })).toBe("fingerprint");
   });
 
   it("keeps both strong endpoints in the non-transitive A-B, B-C, not-A-C chain", () => {

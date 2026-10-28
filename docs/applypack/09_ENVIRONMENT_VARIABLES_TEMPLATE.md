@@ -1,5 +1,7 @@
 # ApplyPack Environment Variables Template
 
+> Current intake and remedy authority: [October 25 amendment19](19_OCTOBER_25_CONFIRMED_INTAKE_AND_SERVICE_ERROR_AMENDMENT.md) requires adaptive intake (including outdated/no resume and career changes), contextual plain-language skills, targeted pre-submit clarification, complete section-editable review and immutable customer confirmation. The system researches and drafts; the owner approves delivery. New bound orders remedy ApplyPack-introduced errors only; customer mistakes, new/omitted facts and preferences do not automatically entitle rework. Earlier paid terms remain intact. Conflicting required-resume, manual-authorship and generic-correction instructions below are historical. See the [current completion plan](../launch/END_TO_END_COMPLETION_PLAN_2026-10-25.md) and [protocol](../runbooks/INTAKE_REVIEW_AND_SERVICE_ERROR_CORRECTIONS.md); this decision is not yet implemented or deployed.
+
 Last updated: September 1, 2026
 
 ## Rule
@@ -19,6 +21,8 @@ APP_CANONICAL_HOST=applypack.work
 APP_DISPLAY_TIMEZONE=America/New_York
 APP_TURNAROUND_HOURS=24
 APP_SOURCE_DOCUMENT_RETENTION_DAYS=30
+# This setting governs legacy/unpaid sources. New paid one_off_30d_v1 access
+# uses the fixed accepted contract in amendment18 and migration087.
 APP_CORRECTION_WINDOW_DAYS=3
 APP_CAPACITY_RESERVATION_MINUTES=20
 APP_SUPPORT_EMAIL=support@applypack.work

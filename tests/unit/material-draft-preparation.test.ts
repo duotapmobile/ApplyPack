@@ -34,13 +34,13 @@ describe("verified material draft preparation", () => {
     expect(generated.resume.provenance.claims.length).toBeGreaterThan(0);
     expect(generated.coverLetter.provenance.claims.length).toBeGreaterThan(0);
   });
-  it("does not pad a sparse customer record or pretend an unreviewed relationship is verified", () => {
+  it("does not pad a concise complete letter or pretend an unreviewed relationship is verified", () => {
     const input = preparationFixture();
     expect(() => prepareMaterialDraft({ ...input, reviews: [] })).toThrow("Current evidence-supported match reviews");
     const value = input.facts[0].typed_value as Record<string, unknown>;
     value.coverLetterEvidence = ["Maintained records.", "Updated records."];
     (input.facts[1].typed_value as Record<string, unknown>).coverLetterEvidence = ["Checked records."];
-    expect(() => prepareMaterialDraft(input)).toThrow("250–350 words without padding");
+    expect(() => prepareMaterialDraft(input)).not.toThrow();
   });
   it("rejects unbound additions and negation laundering inside compound paragraphs", () => {
     const input = preparationFixture();

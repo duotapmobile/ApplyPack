@@ -1,90 +1,70 @@
-import { createClient } from "@supabase/supabase-js";
+import { pathToFileURL } from "node:url";
 
-function fail(message) {
-  process.stderr.write(`${message}\n`);
-  process.exit(1);
-}
-
-const environment = (process.env.RAILWAY_ENVIRONMENT_NAME || process.env.RAILWAY_ENVIRONMENT || "").trim().toLowerCase();
-if (environment && environment !== "staging") fail("Refusing readiness report outside the staging environment.");
-
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const key = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!url || !key) fail("Staging Supabase runtime credentials are missing.");
-
-const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-const supabaseHost = new URL(url).hostname;
-const tables = [
-  "profiles", "intake_drafts", "intakes", "source_documents", "orders", "payments",
-  "apply_pack_carts", "apply_pack_items", "jobs", "job_matches", "job_source_runs",
-  "email_events", "audit_logs", "ap_intake_snapshots", "ap_board_profile_claims",
-  "ap_board_subscriptions", "ap_board_admissions", "ap_board_recompute_jobs",
-  "ap_board_material_orders",
-];
-
-const tableCounts = {};
-const probeColumns = { ap_board_profile_claims: "profile_snapshot_id" };
-for (const table of tables) {
-  const probe = await client.from(table).select(probeColumns[table] || "id").limit(1);
-  if (probe.error) {
-    tableCounts[table] = { available: false, code: probe.error.code || "query_failed" };
-    continue;
-  }
-  const { count, error } = await client.from(table).select("*", { count: "exact", head: true });
-  tableCounts[table] = error
-    ? { available: false, code: error.code || "query_failed" }
-    : { available: true, count: typeof count === "number" ? count : "unknown" };
-}
-
-const requiredVariables = [
-  "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_JOB_SEARCH_PRICE_ID",
-  "STRIPE_APPLY_PACK_PRICE_ID", "STRIPE_JOB_BOARD_WEEKLY_PRICE_ID",
-  "STRIPE_JOB_BOARD_MONTHLY_PRICE_ID", "STRIPE_JOB_BOARD_THREE_MONTH_PRICE_ID",
-  "RESEND_API_KEY", "CRON_SECRET", "APP_BOARD_WORKER_ID",
-  "APP_DOCUMENT_RENDERER_IDENTITY", "APP_MALWARE_SCANNER_IDENTITY",
-];
-const variablePresence = Object.fromEntries(requiredVariables.map((name) => [name, Boolean(process.env[name])]));
-
-const sourceQuery = await client.from("job_sources").select(
-  "id,source_name,adapter_kind,is_active,schedule_enabled,automation_status,ingestion_permission_status,paid_display_permission_status,last_successful_sync_at",
-);
-const runQuery = await client.from("job_source_runs").select(
-  "id,source_id,status,started_at,completed_at,fetched_count,accepted_count,rejected_count,error_code",
-).order("started_at", { ascending: false }).limit(10);
-const jobQuery = await client.from("jobs").select("source_id,is_active,listing_status");
-
-const sources = sourceQuery.data || [];
-const runs = runQuery.data || [];
-const jobs = jobQuery.data || [];
-const sourceEvidence = {
-  queryErrors: [sourceQuery.error?.code, runQuery.error?.code, jobQuery.error?.code].filter(Boolean),
-  registeredSources: sources.length,
-  scheduledSources: sources.filter((source) => source.schedule_enabled).length,
-  realAutomatedPaidDisplaySources: sources.filter((source) => source.id !== "synthetic-staging"
-    && source.is_active && source.schedule_enabled && source.automation_status === "automated"
-    && source.ingestion_permission_status === "approved_public_endpoint"
-    && source.paid_display_permission_status === "approved_public_endpoint").length,
-  realRuns: runs.filter((run) => run.source_id !== "synthetic-staging").length,
-  realActiveJobs: jobs.filter((job) => job.source_id !== "synthetic-staging" && job.is_active && job.listing_status?.toLowerCase() === "open").length,
-  syntheticActiveJobs: jobs.filter((job) => job.source_id === "synthetic-staging" && job.is_active && job.listing_status?.toLowerCase() === "open").length,
-  syntheticSource: sources.find((source) => source.id === "synthetic-staging") || null,
-  recentSyntheticRuns: runs.filter((run) => run.source_id === "synthetic-staging"),
+export const STAGING_ORIGIN = "https://applypack-staging-staging.up.railway.app";
+const modes = {
+  locked: { checkoutMode: "LOCKED_STAGING", restrictedCheckoutMode: null, sessionCreationConfigured: false },
+  rehearsal: { checkoutMode: "STAGING_REHEARSAL", restrictedCheckoutMode: "REHEARSAL", sessionCreationConfigured: true },
+  canary: { checkoutMode: "STAGING_CANARY", restrictedCheckoutMode: "CANARY", sessionCreationConfigured: true },
 };
+const requiredChecks = ["checkoutMode", "supabase", "commerceConfigured", "email", "publicOrigin", "fileSafety",
+  "encryption", "documentRendering", "maintenance", "database", "permittedInventoryReady", "releaseSha", "legalContent"];
 
-process.stdout.write(JSON.stringify({
-  generatedAt: new Date().toISOString(),
-  environment: environment || "unreported",
-  project: process.env.RAILWAY_PROJECT_NAME || "unreported",
-  service: process.env.RAILWAY_SERVICE_NAME || "unreported",
-  applicationUrl: process.env.NEXT_PUBLIC_APP_URL || null,
-  supabaseHost,
-  paymentMode: process.env.APP_PAYMENT_MODE || "disabled",
-  checkoutEnabled: process.env.APP_CHECKOUT_ENABLED === "true",
-  boardCheckoutEnabled: process.env.APP_JOB_BOARD_CHECKOUT_ENABLED === "true",
-  livePaymentsEnabled: process.env.APP_LIVE_PAYMENTS_ENABLED === "true",
-  sourceSyncEnabled: process.env.APP_JOB_SOURCE_SYNC_ENABLED === "true",
-  syntheticBoardEnabled: process.env.APP_STAGING_SYNTHETIC_JOBS === "true",
-  variablePresence,
-  tableCounts,
-  sourceEvidence,
-}, null, 2) + "\n");
+export async function collectStagingReadiness({ expectedSha, expectedMode = "locked", fetchImpl = fetch }) {
+  if (!/^[a-f0-9]{40}$/.test(expectedSha || "")) throw new Error("EXPECTED_FULL_RELEASE_SHA_REQUIRED");
+  if (!Object.hasOwn(modes, expectedMode)) throw new Error("EXPECTED_STAGING_MODE_INVALID");
+  async function probe(path, method = "GET") {
+    try {
+      const response = await fetchImpl(STAGING_ORIGIN + path, {
+        method, redirect: "error", cache: "no-store", signal: AbortSignal.timeout(15_000),
+        ...(method === "POST" ? { headers: { "content-type": "application/json", origin: STAGING_ORIGIN }, body: "{}" } : {}),
+      });
+      let data = null;
+      if (path === "/api/health") {
+        const content = await response.text();
+        if (content.length > 65_536) throw new Error("OVERSIZED_RESPONSE");
+        data = JSON.parse(content);
+      }
+      return { status: response.status, data };
+    } catch { return { status: null, data: null }; }
+  }
+  const [live, health, search, materials, board, boardMaterials] = await Promise.all([
+    probe("/api/live"), probe("/api/health"), probe("/api/checkout/search", "POST"),
+    probe("/api/checkout/apply-packs", "POST"), probe("/api/checkout/job-board", "POST"),
+    probe("/api/checkout/board-materials/10000000-0000-4000-8000-000000000001", "POST"),
+  ]);
+  const payload = health.data && typeof health.data === "object" ? health.data : {};
+  const checks = Object.fromEntries(requiredChecks.map((name) => [name, payload.checks?.[name] === true]));
+  const identityMatches = payload.releaseSha === expectedSha;
+  const modeMatches = Object.entries(modes[expectedMode]).every(([key, value]) => payload[key] === value);
+  const anonymousDenials = [search, materials].every(({ status }) => [400, 401, 403, 404, 409, 423, 503].includes(status));
+  const retiredCheckoutDenied = board.status === 410 && boardMaterials.status === 410;
+  const ready = live.status === 200 && health.status === 200 && payload.status === "ready"
+    && identityMatches && modeMatches && payload.acceptingOrders === false && payload.commerceConfigured === true
+    && Object.values(checks).every(Boolean) && anonymousDenials && retiredCheckoutDenied;
+  return {
+    observedAt: new Date().toISOString(), collector: "report-staging-readiness-v3", environment: "staging",
+    origin: STAGING_ORIGIN, expectedSha, expectedMode, ready,
+    observedSha: /^[a-f0-9]{40}$/.test(payload.releaseSha || "") ? payload.releaseSha : null,
+    identityMatches, modeMatches, publicAcceptanceDisabled: payload.acceptingOrders === false,
+    commerceConfigured: payload.commerceConfigured === true, checks,
+    probes: { liveness: live.status, health: health.status, anonymousSearch: search.status,
+      anonymousMaterials: materials.status, retiredBoard: board.status, retiredBoardMaterials: boardMaterials.status },
+    anonymousDenials, retiredCheckoutDenied,
+    limitations: [
+      "Anonymous negative probes do not prove denial for authenticated unauthorized customers or all deployed instances.",
+      "Provider receipts, authorized journeys, document approval, recovery and human/device acceptance remain separate evidence.",
+    ],
+    freshness: "Point-in-time only; refresh after code, schema, configuration, provider identity or phase changes and before activation.",
+  };
+}
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    const report = await collectStagingReadiness({ expectedSha: process.env.APP_EXPECTED_RELEASE_SHA,
+      expectedMode: process.env.APPLYPACK_READINESS_MODE || "locked" });
+    process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+    if (!report.ready) process.exitCode = 1;
+  } catch {
+    process.stderr.write("Readiness reporting requires APP_EXPECTED_RELEASE_SHA (40 lowercase hex characters) and APPLYPACK_READINESS_MODE (locked, rehearsal or canary).\n");
+    process.exitCode = 1;
+  }
+}

@@ -74,7 +74,7 @@ test("homepage example, process, and FAQ controls respond to keyboard activation
   await step.focus();
   await page.keyboard.press("Enter");
   await expect(step).toHaveAttribute("aria-expanded", "true");
-  await expect(page.locator("#process-step-detail")).toContainText("$8 per selected job");
+  await expect(page.locator("#process-step-detail")).toContainText("$7.99 per selected job");
   const question = page.locator(".brief-faq details").filter({ hasText: "Does ApplyPack apply to jobs for me?" });
   await question.locator("summary").focus();
   await page.keyboard.press("Enter");

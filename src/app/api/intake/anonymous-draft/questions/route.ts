@@ -1,23 +1,38 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { anonymousDraftContext } from "@/lib/drafts/anonymous-server";
 import { isSameOriginRequest } from "@/lib/security/origin";
-const headers={"Cache-Control":"private, no-store"};
-export async function GET(){
- const c=await anonymousDraftContext();if(!c)return NextResponse.json({error:"Draft unavailable"},{status:404,headers});
- const draft=await c.admin.from("ap_anonymous_drafts").select("finalized_snapshot_id").eq("id",c.capability.draftId).eq("capability_secret_hash",c.secretHash).gt("expires_at",new Date().toISOString()).maybeSingle();
- if(draft.error||!draft.data?.finalized_snapshot_id)return NextResponse.json({questions:[]},{headers});
- const contextAdmin=c.admin;
- const from=contextAdmin.from.bind(contextAdmin) as unknown as (table:string)=>ReturnType<typeof contextAdmin.from>;
- const result=await from("ap_candidate_questions").select("id,prompt,created_at").eq("snapshot_id",draft.data.finalized_snapshot_id);
- return NextResponse.json(result.error?{error:"Questions unavailable"}:{questions:result.data},{status:result.error?503:200,headers});
+import { serializeDraftCapability } from "@/lib/security/draft-capability";
+import { clarificationRequestSchema } from "@/lib/intake/clarification-contract";
+import { boundedIntakeJson } from "@/lib/intake/confirmed-review-server";
+import { newIntakeRecoveryHold } from "@/lib/operations/protected-recovery-readiness";
+import { answerMaterialClarification, clarificationErrorResponse, loadClarificationQuestions } from "@/lib/intake/clarification-server";
+const headers = { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" };
+export async function GET() {
+  try {
+    const context = await anonymousDraftContext();
+    if (!context) return NextResponse.json({ error: "Draft unavailable." }, { status: 404, headers });
+    const questions = await loadClarificationQuestions(context.admin, { kind: "ANONYMOUS", capability: context.capability });
+    return NextResponse.json({ questions }, { headers });
+  } catch (error) { const mapped = clarificationErrorResponse(error); return NextResponse.json(mapped.body, { status: mapped.status, headers }); }
 }
-export async function POST(request:Request){
- if(!isSameOriginRequest(request))return NextResponse.json({error:"Origin rejected"},{status:403,headers});
- const c=await anonymousDraftContext();if(!c)return NextResponse.json({error:"Draft unavailable"},{status:404,headers});
- const input=z.object({questionId:z.string().uuid(),answer:z.string().trim().min(1).max(5000),confirmed:z.literal(true)}).strict().safeParse(await request.json().catch(()=>null));
- if(!input.success)return NextResponse.json({error:"Confirm your factual answer."},{status:400,headers});
- const rpc=c.admin.rpc.bind(c.admin) as unknown as (name:string,args:Record<string,unknown>)=>Promise<{data:unknown;error:unknown}>;
- const result=await rpc("ap_answer_candidate_question",{p_question_id:input.data.questionId,p_draft_id:c.capability.draftId,p_secret_hash:c.secretHash,p_answer:input.data.answer});
- return NextResponse.json(result.error?{error:"Answer unavailable or already recorded. Contact support for a correction."}:{factId:result.data,state:"REVIEW_REQUIRED"},{status:result.error?409:201,headers});
+export async function POST(request: Request) {
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: "Origin rejected." }, { status: 403, headers });
+  if (Number(request.headers.get("content-length") || 0) > 24_000) return NextResponse.json({ error: "This answer is too large." }, { status: 413, headers });
+  const input = clarificationRequestSchema.safeParse(await boundedIntakeJson(request));
+  if (!input.success) return NextResponse.json({ error: "Confirm your factual answer or select the saved review." }, { status: 400, headers });
+  try {
+    const context = await anonymousDraftContext();
+    if (!context) return NextResponse.json({ error: "Draft unavailable." }, { status: 404, headers });
+    const hold = await newIntakeRecoveryHold(context.admin); if (hold) return hold;
+    const result = await answerMaterialClarification(context.admin, { kind: "ANONYMOUS", capability: context.capability }, input.data);
+    const response = NextResponse.json(result.receipt, { status: result.receipt.state === "FULL_REVIEW_REQUIRED" && result.receipt.replayed ? 200 : 201, headers });
+    if (result.capability && result.receipt.state === "FULL_REVIEW_REQUIRED") {
+      const remaining = Math.floor((Date.parse(result.receipt.expiresAt) - Date.now()) / 1_000);
+      if (remaining < 1) throw new Error("clarification_expired");
+      response.cookies.set(context.settings.name, serializeDraftCapability(result.capability), {
+        ...context.settings, maxAge: Math.min(context.settings.maxAge, remaining), expires: new Date(result.receipt.expiresAt),
+      });
+    }
+    return response;
+  } catch (error) { const mapped = clarificationErrorResponse(error); return NextResponse.json(mapped.body, { status: mapped.status, headers }); }
 }

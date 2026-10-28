@@ -1,77 +1,44 @@
-# Test-mode orchestration runbook
+# Restricted staging rehearsal
 
-Last updated: September 2, 2026
+Current authority: [amendment 19](../applypack/19_OCTOBER_25_CONFIRMED_INTAKE_AND_SERVICE_ERROR_AMENDMENT.md), then amendments 18, 17, 16, 14 and 12 for their retained subjects. Work only in `C:\Users\mskir\Desktop\Apply_Pack\applypack-production-v2`; verify its canonical Git remote and record branch/full SHA before execution. This runbook is not provider-change, migration, live-payment or activation approval.
 
-## Safety boundary
+## Prerequisites
 
-This workflow remains in Stripe test mode. `APP_PAYMENT_MODE=test`, a Stripe test credential, a test webhook event, fixed test price IDs, and `APP_CHECKOUT_ENABLED=true` must all agree. Live mode also requires `APP_LIVE_PAYMENTS_ENABLED=true`, every launch gate, the resolved tax classification, and the explicitly authorized smoke-test phase.
+Use the approved staging origin `https://applypack-staging-staging.up.railway.app`, staging Supabase project `fmugizadzdnqfckujqlw`, test Stripe credentials and allowlisted synthetic recipients. Verify these identities from current provider evidence. Follow [Launch database operations](LAUNCH_DATABASE_OPERATIONS.md) for protected backup/restore and only the verified missing forward migrations through `202610240087`. The dedicated staging runner supports 084 through 087 while preserving historical 085/086 contracts. A historical command, receipt or permission is not authorization for a new migration operation.
 
-The public Railway service currently uses a restricted Stripe test key. Do not replace it with a live key during this runbook.
+Current 087 readiness deliberately remains closed while the required new-order cleanup/redaction and restore-sanitization executors are unavailable. Their specific implementation authorization and the separate protected-archive pruning boundary remain unresolved; this runbook or continuation of the launch goal does not supply them. Follow [One-off retention](ONE_OFF_RETENTION.md) and [Protected backup retention](PROTECTED_RECOVERY_RETENTION_APPROVAL.md). Keep purchasing locked until implementation and required evidence pass.
 
-## Implemented flow
+Amendment 19 adds another required pre-launch implementation gate: thorough, low-friction confirmed intake and a complete service-error-only repair workflow for newly bound orders. `confirmed-intake-v1`, `service-error-only-v1`, Terms `manual-launch-terms-2026-10-25-v4` and Privacy `privacy-2026-10-25-v4` are reserved prospective identifiers, not currently active code or receipts. Finalize the legal text/hashes, forward migration identifier, runtime/UI, versioned receipts, generated types, readiness, migration tooling and any retention/restore protocol changes before freezing the candidate. Preserve all older accepted terms and positive historical fixtures. The current report/revocation path is not proof of repair, regeneration or redelivery.
 
-1. A new upload is placed in private quarantine and recorded in `source_documents`.
-2. The zero-cost baseline validates each PDF or DOCX type, signature, size, structure, expansion, and active content; unknown and failed results remain locked. This is not an antivirus scan.
-3. The $20 checkout is unavailable until every current source document is `clean`.
-4. A verified test payment queues `search_discovery` exactly once.
-5. The worker synchronizes only registered automated official sources, applies normalization, exclusions, default filters, deduplication, and ranking, and stores reviewable candidates.
-6. The admin receives a link to the MFA-protected review queue. Fewer than 10 candidates is shown honestly and requires verified manual additions.
-7. Only the existing admin delivery action releases exactly 10 jobs and emails the customer.
-8. A verified $8-per-job test payment queues one `document_draft` task per selected job.
-9. ApplyPack creates private, editable first-party DOCX drafts from the customer's structured intake facts. Both drafts pass the configured document-safety checks and remain in the MFA-protected operator queue. The existing admin upload/review action is still the only path to customer delivery.
+The exact candidate must have healthy file validation/isolation, AWS KMS, current four-face Liberation Sans renderer approval, permitted system research with human-reviewed inventory, consent, capacity, maintenance and email controls. Source providers, coverage and any new spending require their existing approval/evidence gates. Structural document validation is not an antivirus scan. Do not invent or bypass provider proof.
 
-## Stripe test prices
+## Mode and authorization
 
-The setup script is idempotent and refuses every non-test key. The current restricted sandbox key uses these least-privilege permissions:
+All transitions pass through LOCKED in both deployed configuration and the database mode record. Public checkout, canary, board checkout, automated source schedules and live-payment permission are false for rehearsal. Enable only `APP_REHEARSAL_CHECKOUT_ENABLED=true`, with `APP_PAYMENT_MODE=test`, exact expected release SHA, staging hostname and project binding. Verify every deployed instance.
 
-- Charges and Refunds: Write
-- Products: Write
-- Prices: Write
-- Checkout Sessions: Write
+An administrator records an exact customer, product and resource authorization through the rehearsal admin endpoint with fresh TOTP and same-origin protection. The operator role alone cannot authorize rehearsal. Expiry is at most 30 minutes. Rehearsal does not create a CANARY/PUBLIC activation or approve sales; it bypasses only the final activation-evidence dependency. Use a separate authorization per product/resource. The durable attempt is recorded before Stripe; retries use that same attempt and idempotency key.
 
-Stripe's permission control allows only `None`, `Read`, or `Write`; `Write` is the correct single selection and includes the reads needed to verify what was created. Do not try to select Read and Write together.
+Authorization expiry is the deadline to initiate, not Stripe Session expiry. Stripe requires at least 30 minutes after Session creation. Reservation/session lifetimes are separately persisted and reconciled. Never replace an unknown-outcome attempt with a second purchase intent. Revoke/expiry blocks initiation and requests expiration/reconciliation of any open Session; payment that won the race still receives normal fulfillment/refund accounting.
 
-To verify or repair the fixed test prices, run:
+## Test journey
 
-```powershell
-cd C:\Users\mskir\Desktop\Apply_Pack\site
-$railway = railway variables --json | ConvertFrom-Json
-$env:STRIPE_SECRET_KEY = $railway.STRIPE_SECRET_KEY
-npm.cmd run stripe:configure:test
-```
+1. Complete the proposed guided intake, test current/outdated upload, career-change, unreadable-file fallback and no-resume answers, resolve missing/conflicting facts and review a readable complete summary. Explicitly confirm the factual snapshot and exact new legal receipt before payment; material edits require renewed confirmation. Adequate facts and service feasibility are mandatory at the same price. Have the service find permitted candidates, then have the owner verify at least ten current suitable opportunities, atomically reserve one search slot and issue the single-use invitation.
+2. Authorize the exact draft/customer SEARCH rehearsal. Verify a one-time USD 1899-cent Session with automatic tax disabled and no added fees. Only a verified webhook activates the paid order and its fixed 24-clock-hour deadline.
+3. Exercise repeated requests, simultaneous retries, lost response, webhook-before-response, cancellation and authorization revocation. Prove one intent/Session/payment/capacity allocation/deadline/email.
+4. Complete owner review and release exactly ten distinct current jobs with immutable history. Prove the system-research path and its permitted source coverage; do not use quota filler or substitute routine owner research for that acceptance. Synthetic listings are UI fixtures and never satisfy real inventory acceptance.
+5. Authorize the exact delivered job/customer MATERIALS rehearsal. Verify 799 cents per eligible selected job; separately test a two-pack cart at 1598 cents with all-or-nothing two-unit capacity. Check job-specific inputs and clock start.
+6. Have the service generate job-specific drafts from the confirmed facts, then complete readable owner content review and actual rendered-document approval before delivery. Do not substitute manual raw-JSON authoring for the target workflow. PDF is normal delivery; genuine DOCX requires an approved exception and immutable provenance. Applicant preference never overrides employer prohibition. Verify owner download and wrong-user/version/link denial.
+7. Report a qualifying ApplyPack error within three calendar days and prove the complete private report-read, eligibility, regeneration, owner approval, redelivery and resolution path. One grouped request is allowed; a failed repair stays open in that same case. Separately deny customer mistakes/omissions in confirmed facts, new facts/preferences or a new target without regeneration or a new entitlement. Exercise preserved historical correction rights, late/second-request denial, criteria conflicts, replacement, service-failure refunds, retention, worker/email failure recovery and deadline displays. A completed refunded order does not automatically free rolling capacity.
+8. Disable rehearsal, lock the database mode and all instances, revoke unused authorizations, expire/reconcile Sessions and account for reservations without deleting paid history. Keep webhook/refund/customer-download processing available.
 
-Layman's explanation: the first command opens the project folder; the second and third temporarily copy the existing Railway test key into this PowerShell window without printing it; the last command creates or reuses the locked $20 and $8 test prices. It will stop rather than touch live-mode Stripe data.
+The required test matrix includes actual API-to-database paths for matching approval/release and correction redelivery, not only manually seeded eligible records. Prove replay and concurrent report handling, stale confirmation/approval rejection, unauthorized report reads, lost responses, failed generation/delivery, no duplicate fulfillment/email, and no false case resolution. Investigate ambiguous discrepancies without automatic denial; a report alone must not revoke unaffected downloads or regenerate documents. Check a common service defect across actually affected packs. Retention and recovery tests must protect timely unresolved work and historical/shared references without reopening expired customer access. This journey remains unproven until those implementations and hosted checks pass.
 
-The test price IDs are already stored in Railway. If they ever need to be saved again, keep all payment switches fail-closed and prevent an automatic deployment:
+## Evidence
 
-```powershell
-railway variable set "STRIPE_JOB_SEARCH_PRICE_ID=price_REPLACE" "STRIPE_APPLY_PACK_PRICE_ID=price_REPLACE" "APP_PAYMENT_MODE=test" "APP_CHECKOUT_ENABLED=false" "APP_LIVE_PAYMENTS_ENABLED=false" --skip-deploys
-```
+Run `npm.cmd run staging:readiness` with `APP_EXPECTED_RELEASE_SHA` set to the reviewed full SHA and `APPLYPACK_READINESS_MODE` set to `locked`, `rehearsal` or `canary`. The reporter reads liveness, exact-SHA health and anonymous/retired checkout denials. It uses no database secret. Those probes are not authenticated authorization proof, all-instance proof, or approval to launch.
 
-Layman's explanation: this saves only sandbox price references, keeps both checkout and live payments off, and does not restart the running website.
+Keep provider receipts, signed webhook outcomes, permitted source/research and owner inventory-review evidence, exact document versions and sanitized test counts separately. Physical iPhone/VoiceOver and human document signoff remain human checkpoints, alongside the independent reviews required by amendment 17. Staging CANARY compatibility remains test-only; new production CANARY activation, checkout authorization and special test refunds are prohibited. Preserve historical reconciliation and ordinary refunds.
 
-## Document-safety baseline
+Amendment 17 replaces mandatory live test charges/refunds with complete sandbox validation and a genuine first-customer pilot. Follow the [read-only sandbox proof flow](PAID_LAUNCH_EXECUTION_2026-10-23.md#read-only-sandbox-proof): bind the final deployed SHA, verified sandbox account/project, test mode, exact 1899/799-cent purchases, deliveries and successful full refunds in the strict receipt. Import `evidence.sandboxValidation` with `activationContractVersion: sandbox-proof-live-pilot-v1` through fresh administrator MFA, with verification refreshed within 24 hours of production activation. This reviewed evidence does not itself unlock purchasing. The owner must accept all launch evidence and approve go-live before inviting the first genuine customer; an Apply Pack remains optional and ordinary refund policy applies.
 
-Set `APP_FILE_SCAN_MODE=document_validation` in local, staging, and production environments. Run the unit fixtures that accept ordinary PDF/DOCX files and reject signature mismatch, path traversal, expansion bombs, macros, ActiveX, embedded objects, PDF JavaScript/actions, rich media, XFA, and encryption.
-
-Do not provision a hosted ClamAV service for this rehearsal. If a later cost and privacy review approves ClamAV, use its existing optional integration test as additional evidence and keep the private port inaccessible from the public network.
-
-## Required test-mode rehearsal
-
-Use only a synthetic customer, synthetic résumé, Stripe's documented test payment method, and an email listed in `APP_SAFE_TEST_EMAILS`.
-
-1. Apply migrations to a disposable Supabase project or the local stack.
-2. Enable document_validation and verify all accepted and hostile document fixtures.
-3. Configure the two test prices and a test webhook secret.
-4. Set `APP_PAYMENT_MODE=test`, `APP_CHECKOUT_ENABLED=true`, and keep `APP_LIVE_PAYMENTS_ENABLED=false`.
-5. Complete one $20 checkout and verify one payment, one confirmed capacity reservation, one 24-hour deadline, one search task, and one confirmation email event.
-6. Replay the signed webhook and verify no duplicate work, payment, capacity, deadline, or email.
-7. Review and release exactly 10 synthetic jobs from `/admin`.
-8. Complete one $8 checkout and verify one order and one document task for each selected job.
-9. Verify one private resume draft and one private cover-letter draft are generated and structurally validated for every selected job; download them as the operator, edit/review them, and verify the customer still cannot access them before the delivery confirmation.
-10. Replay simultaneous checkout attempts and confirm they resolve to one database intent and one Stripe Checkout Session.
-11. Keep production checkout disabled after the rehearsal.
-
-## Stop conditions
-
-Stop immediately if a key is live mode, a webhook has `livemode=true`, an email is not allowlisted, a source document did not pass the configured safety checks, a price differs from $20/$8 USD, or the database is not disposable test data.
+Stop and stay locked for wrong identity/mode/SHA/price, non-allowlisted recipients, unapproved rendering, missing safety/consent/capacity, uncertain provider outcomes or unreconciled payments. Never run protected `site` checkout commands, use historical prices for new sales, or enable public checkout to test.

@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { waitForHydration } from "./helpers/hydration";
+import { gotoStable, waitForHydration } from "./helpers/hydration";
 
 const routes = [
   "/", "/why-apply-pack", "/how-it-works", "/job-search-help", "/experience-connections",
@@ -12,7 +12,7 @@ const routes = [
 
 for (const route of routes) {
   test(route + " renders a unique page", async ({ page }) => {
-    const response = await page.goto(route);
+    const response = await gotoStable(page, route);
     expect(response?.status()).toBe(200);
     await expect(page.locator("main h1")).toHaveCount(1);
     await expect(page).toHaveTitle(/Apply ?Pack/);
@@ -21,26 +21,26 @@ for (const route of routes) {
 
 test("homepage has no serious automated accessibility violations", async ({ page }) => {
   test.setTimeout(120_000);
-  await page.goto("/");
+  await gotoStable(page, "/");
   await waitForHydration(page);
   const results = await new AxeBuilder({ page }).exclude("script").analyze();
-  expect(results.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
+  expect(results.violations.filter((item) => ["moderate", "serious", "critical"].includes(item.impact || ""))).toEqual([]);
 });
 
 test("sign-in starts with the six-digit email-code flow", async ({ page }) => {
   test.setTimeout(90_000);
-  await page.goto("/sign-in");
+  await gotoStable(page, "/sign-in");
   await expect(page.getByLabel("Email address")).toBeVisible();
   await page.getByLabel("Email address").fill("person@example.com");
   await expect(page.getByRole("button", { name: /send.*code/i })).toBeEnabled();
 });
 
-test("the anonymous four-step intake is accessible and starts no checkout", async ({ page }) => {
+test("the four-step intake fixture is accessible and starts no checkout", async ({ page }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 320, height: 760 });
-  await page.goto("/get-started");
+  await gotoStable(page, "/get-started");
   await expect(page.getByText("STEP 1 OF 4")).toBeVisible();
-  await expect(page.getByText(/No account or payment in this intake/)).toBeVisible();
+  await expect(page.getByText(/Your verified account protects this intake/)).toBeVisible();
   await page.getByRole("button", { name: /save and continue/i }).click();
   const errorSummary = page.locator(".intake-errors");
   await expect(errorSummary).toBeFocused();
@@ -49,31 +49,34 @@ test("the anonymous four-step intake is accessible and starts no checkout", asyn
   await nameErrorLink.click();
   await expect(page.getByLabel("Full name required")).toBeFocused();
   await page.getByLabel("Full name required").fill("E2E Customer");
-  await page.getByLabel("Email address required").fill("e2e@example.invalid");
-  await page.getByLabel("Current resume required").setInputFiles({ name: "resume.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7\n%%EOF") });
+  await page.getByLabel("Account access email required").fill("e2e@example.invalid");
+  await page.getByLabel("Resume required").setInputFiles({ name: "resume.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7\n%%EOF") });
   await page.getByRole("button", { name: /save and continue/i }).click();
   await expect(page.getByText("STEP 2 OF 4")).toBeVisible();
   await page.getByRole("checkbox", { name: /Coordinating projects/ }).first().check();
   await page.getByRole("button", { name: /save and continue/i }).click();
   await expect(page.getByText("STEP 3 OF 4")).toBeVisible();
+  await page.getByLabel(/I checked for missing or outdated/).check();
   await page.getByRole("button", { name: /save and continue/i }).click();
   await expect(page.getByText("STEP 4 OF 4")).toBeVisible();
   await page.getByRole("checkbox", { name: "Remote" }).check();
   await page.getByLabel("U.S. state or District of Columbia required").selectOption("VA");
   await page.getByRole("checkbox", { name: "Full Time" }).check();
   await page.getByLabel(/I agree to/).check();
-  await page.getByRole("button", { name: "Finish intake" }).click();
+  await page.getByRole("button", { name: "Review my information" }).click();
+  await page.getByLabel(/I reviewed the actual information/).check();
+  await page.getByRole("button", { name: "Confirm and submit intake" }).click();
   await expect(page.getByText(/Feasibility review is pending. No payment was started/)).toBeVisible();
   expect(await findOverflow(page)).toEqual([]);
   await waitForHydration(page);
   const axe = await new AxeBuilder({ page }).exclude("script").analyze();
-  expect(axe.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
+  expect(axe.violations.filter((item) => ["moderate", "serious", "critical"].includes(item.impact || ""))).toEqual([]);
 });
 
 for (const width of [320, 360, 390, 430, 768, 1024, 1440]) {
   test(`four-step intake has no horizontal overflow at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: width < 500 ? 780 : 900 });
-    await page.goto("/get-started");
+    await gotoStable(page, "/get-started");
     await expect(page.getByText("STEP 1 OF 4")).toBeVisible();
     expect(await findOverflow(page), `${width}px`).toEqual([]);
   });
@@ -81,7 +84,7 @@ for (const width of [320, 360, 390, 430, 768, 1024, 1440]) {
 
 test("intake honors reduced motion and forced colors", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce", forcedColors: "active" });
-  await page.goto("/get-started");
+  await gotoStable(page, "/get-started");
   const duration = await page.locator(".wizard-progress i").evaluate((element) => getComputedStyle(element).transitionDuration);
   expect(Number.parseFloat(duration)).toBeLessThanOrEqual(0.001);
 });
@@ -93,10 +96,12 @@ test("security headers are present", async ({ request }) => {
 });
 
 test("320px layout has no horizontal page overflow", async ({ page }) => {
-  test.setTimeout(120_000);
+  // This intentionally visits every public route. Cold Next.js dev compilation
+  // can take longer than two minutes on Windows even when each route is healthy.
+  test.setTimeout(240_000);
   await page.setViewportSize({ width: 320, height: 760 });
   for (const route of routes) {
-    await page.goto(route);
+    await gotoStable(page, route);
     const overflow = await findOverflow(page);
     expect(overflow, route + "\n" + JSON.stringify(overflow, null, 2)).toEqual([]);
   }

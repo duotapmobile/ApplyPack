@@ -48,3 +48,49 @@ export function hasBoardAccess(entitlement: Pick<BoardEntitlement, "state" | "ac
     && Boolean(entitlement.accessEndsAt)
     && Date.parse(entitlement.accessEndsAt!) > now.getTime();
 }
+
+export type LegacyBoardEntitlement = Pick<BoardEntitlement, "state" | "accessEndsAt" | "lastProviderEventCreated"> & {
+  providerCustomerId: string | null;
+  providerSubscriptionId: string | null;
+  lastProviderEventId: string | null;
+  refundState: "NONE" | "PARTIAL" | "FULL" | "FAILED";
+  providerDisputeId: string | null;
+};
+
+export function hasProviderConfirmedLegacyBoardAccess(entitlement: LegacyBoardEntitlement, now = new Date()) {
+  return hasBoardAccess(entitlement, now)
+    && Boolean(entitlement.providerCustomerId?.trim())
+    && Boolean(entitlement.providerSubscriptionId?.trim())
+    && Boolean(entitlement.lastProviderEventId?.trim())
+    && entitlement.lastProviderEventCreated > 0
+    && !["PARTIAL", "FULL"].includes(entitlement.refundState)
+    && !entitlement.providerDisputeId;
+}
+
+type PersistableBoardState = "PENDING" | "ACTIVE" | "CANCEL_AT_PERIOD_END" | "PAST_DUE" | "CANCELED";
+
+export function legacyBoardProviderProjection(input: {
+  requestedState: PersistableBoardState;
+  subscriptionStatus: string;
+  cancelAtPeriodEnd: boolean;
+  periodEnd: string;
+  currentState: BoardSubscriptionState;
+  refundState: "NONE" | "PARTIAL" | "FULL" | "FAILED";
+  providerDisputeId: string | null;
+}) {
+  const terminalFinancialState = ["REFUNDED", "DISPUTED"].includes(input.currentState)
+    || ["PARTIAL", "FULL"].includes(input.refundState)
+    || Boolean(input.providerDisputeId);
+  const providerState: PersistableBoardState = ["canceled", "incomplete_expired"].includes(input.subscriptionStatus)
+    ? "CANCELED"
+    : input.requestedState === "ACTIVE" && input.cancelAtPeriodEnd
+      ? "CANCEL_AT_PERIOD_END"
+      : input.requestedState;
+  const state = terminalFinancialState ? input.currentState : providerState;
+  return {
+    state,
+    accessEndsAt: terminalFinancialState || !["ACTIVE", "CANCEL_AT_PERIOD_END"].includes(state)
+      ? null
+      : input.periodEnd,
+  };
+}

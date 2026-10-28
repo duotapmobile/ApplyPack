@@ -1,28 +1,42 @@
 "use client";
 import { SourceAnnotation } from "@/components/intake/source-annotation";
+import { GuidedExperienceEditor } from "@/components/intake/guided-experience-editor";
+import { FactFieldsEditor } from "@/components/intake/fact-fields-editor";
+import { buildConfirmedReview, type ConfirmationReceipt, type ReviewSection } from "@/lib/intake/confirmed-review";
+import { privateIntakeRequest } from "@/lib/intake/private-request";
+import { parseInvitationFragment, type CheckoutInvitation } from "@/lib/commerce/invitation-fragment";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, LockKeyhole, Plus, RefreshCw, Trash2 } from "lucide-react";
-import { feasibilityPresentation, SEARCH_CHECKOUT_CTA, type FeasibilityView } from "@/lib/commerce/presentation";
+import { cloneElement, isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, Check, LockKeyhole, RefreshCw, Trash2 } from "lucide-react";
+import { canRecheckInvitedSearch, feasibilityPresentation, SEARCH_CHECKOUT_CTA, type FeasibilityView } from "@/lib/commerce/presentation";
+import { LEGAL_ACCEPTANCE_PRESENTATION } from "@/lib/legal/presentation";
 import {
   activityCatalog, breadthChoices, businessSystemTasks, capabilityChoices, dealbreakerCatalog,
-  emptyFactCorrection, emptyFourStepDraft, employmentTypes, excelTasks, experienceKindLabels,
-  factCorrectionCategories, factTiers, formatCompensation, hardEmployerCriteria, industryCatalog,
+  emptyFactCorrection, emptyFourStepDraft, employmentTypes, excelTasks,
+  factCorrectionCategories, factTiers, hardEmployerCriteria, industryCatalog,
   normalizedFourStepDraft, parseCompensationInput, recommendedFactCorrectionCategory, relevantToolFamilies,
-  stateOrDcOptions, unknownPolicyFieldId, validateFourStep, type ExperienceAddition, type FactCorrection,
+  stateOrDcOptions, unknownPolicyFieldId, validateFourStep, type FactCorrection,
   type FactSuggestion, type FourStepDraft, type IntakeDocument, type StepError,
 } from "@/lib/intake/four-step";
 
 type ServerDraft = { id: string; version: number; state: string; currentStep: number; answers: FourStepDraft;
+  finalizedSnapshotId?: string | null; legalContentAccepted?: boolean; confirmedIntake?: boolean;
   documents: IntakeDocument[]; facts: FactSuggestion[]; presentedFactIds: string[] };
 type SaveState = "LOADING" | "SAVING" | "SAVED" | "ERROR" | "CONFLICT" | "READY";
+type PendingFinalization = { expectedVersion: number; answers: FourStepDraft; confirmation: ConfirmationReceipt; factsConfirmed: true };
 const labels = Object.fromEntries([...activityCatalog, ...industryCatalog.map(([id, label]) => [id, label] as const), ...breadthChoices]);
 const draftSignature = (value: FourStepDraft, currentStep: number) => JSON.stringify([currentStep, value]);
 
-export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean }) {
+export function IntakeWizard({ fixtureMode = false, expectedDraftId, accessEmail, invitation }: { fixtureMode?: boolean; expectedDraftId?: string; accessEmail?: string; invitation?: CheckoutInvitation | null }) {
   const router = useRouter();
+  const request = useCallback((path: string, init?: RequestInit) => privateIntakeRequest(expectedDraftId || "", path, init), [expectedDraftId]);
+  const assertSelectedDraft = useCallback((value: ServerDraft) => {
+    if (!fixtureMode && (!expectedDraftId || value.id !== expectedDraftId || value.answers.email.trim().normalize("NFC").toLocaleLowerCase("en-US") !== accessEmail)) {
+      throw new Error("The selected intake changed. Open your saved intake again before continuing.");
+    }
+  }, [accessEmail, expectedDraftId, fixtureMode]);
   const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
   const [draft, setDraft] = useState<FourStepDraft>(emptyFourStepDraft);
   const [serverDraft, setServerDraft] = useState<ServerDraft | null>(null);
@@ -32,9 +46,19 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   const [busyDocument, setBusyDocument] = useState<"RESUME" | "PRIOR_COVER_LETTER" | null>(null);
   const [presented, setPresented] = useState<Set<string>>(new Set());
   const [finalized, setFinalized] = useState(false);
+  const [legalContentAccepted, setLegalContentAccepted] = useState(true);
+  const [legalAcceptanceBusy, setLegalAcceptanceBusy] = useState(false);
   const [feasibility, setFeasibility] = useState<FeasibilityView | null>(null);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [checkoutInvitation, setCheckoutInvitation] = useState<{ id: string; secret: string } | null>(null);
   const [returnToReview, setReturnToReview] = useState(false);
+  const [confirmedReview, setConfirmedReview] = useState<{ sections: ReviewSection[]; receipt: ConfirmationReceipt } | null>(null);
+  const [factsConfirmed, setFactsConfirmed] = useState(false);
+  const [submissionPending, setSubmissionPending] = useState(false);
+  const reviewRevision = useRef(0);
+  const saving = useRef(false);
+  const loading = saveState === "LOADING";
+  const confirmedIntake = finalized && serverDraft?.confirmedIntake === true;
   const headingRef = useRef<HTMLHeadingElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const readyRef = useRef(false);
@@ -42,34 +66,70 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   const lastPersisted = useRef("");
   const presentingFacts = useRef<Set<string>>(new Set());
   const pendingEditFocus = useRef<string | null>(null);
+  const pendingFinalization = useRef<PendingFinalization | null>(null);
+  const fixtureLegalFailureConsumed = useRef(false);
 
   const hydrate = useCallback((value: ServerDraft, restored = false) => {
-    const nextDraft = normalizedFourStepDraft({ ...emptyFourStepDraft, ...value.answers });
-    const nextStep = Math.max(0, Math.min(3, value.currentStep)) as 0 | 1 | 2 | 3;
+    assertSelectedDraft(value);
+    const completed = ["COMPLETE", "LOCKED_TO_CHECKOUT"].includes(value.state);
+    const contentAccepted = !completed || value.legalContentAccepted === true;
+    const nextDraft = normalizedFourStepDraft({ ...emptyFourStepDraft, ...value.answers,
+      termsAccepted: contentAccepted ? value.answers.termsAccepted : false });
+    const nextStep = completed && value.confirmedIntake ? 3 : Math.max(0, Math.min(3, value.currentStep)) as 0 | 1 | 2 | 3;
     setServerDraft(value); setDraft(nextDraft); setStep(nextStep);
     setPresented(new Set(value.presentedFactIds || [])); setSaveState("READY");
-    setFinalized(["COMPLETE", "LOCKED_TO_CHECKOUT"].includes(value.state));
+    setFinalized(completed); setLegalContentAccepted(contentAccepted);
+    pendingFinalization.current = null;
+    setConfirmedReview(null); setFactsConfirmed(false); reviewRevision.current += 1;
     lastPersisted.current = draftSignature(nextDraft, nextStep);
-    if (restored) setNotice("Your saved intake was restored on this device session.");
+    if (restored) setNotice("Your selected saved intake is open in this browser.");
     readyRef.current = true;
-  }, []);
+  }, [assertSelectedDraft]);
 
   const load = useCallback(async () => {
     setSaveState("LOADING");
-    if (fixtureMode) { hydrate({ id: "23000000-0000-0000-0000-000000000099", version: 1, state: "IN_PROGRESS", currentStep: 0,
-      answers: emptyFourStepDraft, documents: [], facts: [], presentedFactIds: [] }); return; }
+    if (fixtureMode) {
+      const legalFixture = new URLSearchParams(window.location.search).get("legal");
+      if (new URLSearchParams(window.location.search).get("source") === "compound") {
+        const factId = "23000000-0000-4000-8000-000000000197";
+        const documentId = "23000000-0000-4000-8000-000000000196";
+        hydrate({ id: "23000000-0000-0000-0000-000000000099", version: 2, state: "IN_PROGRESS", currentStep: 2,
+          answers: { ...emptyFourStepDraft, fullName: "Synthetic Customer", email: "synthetic@example.invalid", desiredActivities: ["SUPPORTING_CUSTOMERS"] },
+          documents: [{ id: documentId, version: 1, kind: "RESUME", name: "synthetic-resume.pdf", size: 128, mimeType: "application/pdf", processingState: "REVIEW_READY", failureCode: null }],
+          facts: [{ id: factId, documentVersionId: documentId, semanticKey: "annotated:EMPLOYMENT:synthetic", displayLabel: "Employment record", displayValue: "Employer: Old Store; Historical title: Cashier; Dates: 2020–2022; Phone: 555 0100", tier: "SEARCH_CRITICAL", verification: "EXTRACTED_UNCONFIRMED", sourceLocator: "Synthetic fixture page 1", editableValues: { employer: "Old Store", historicalTitle: "Cashier", dates: "2020–2022", phone: "555 0100" } }],
+          presentedFactIds: [factId] });
+        return;
+      }
+      if (legalFixture?.startsWith("legacy")) {
+        hydrate({ id: "23000000-0000-0000-0000-000000000099", version: 2,
+          state: legalFixture === "legacy-locked" ? "LOCKED_TO_CHECKOUT" : "COMPLETE", currentStep: 3,
+          answers: { ...emptyFourStepDraft, termsAccepted: true },
+          finalizedSnapshotId: "23000000-0000-4000-8000-000000000101", legalContentAccepted: false,
+          documents: [], facts: [], presentedFactIds: [] });
+        return;
+      }
+      hydrate({ id: "23000000-0000-0000-0000-000000000099", version: 1, state: "IN_PROGRESS", currentStep: 0,
+        answers: emptyFourStepDraft, documents: [], facts: [], presentedFactIds: [] });
+      return;
+    }
     try {
-      let response = await fetch("/api/intake/anonymous-draft", { cache: "no-store" });
-      let result = await response.json();
-      if (response.ok && !result.draft) { response = await fetch("/api/intake/anonymous-draft", { method: "POST" }); result = await response.json(); }
+      const response = await request("/api/intake/anonymous-draft", { cache: "no-store" });
+      const result = await response.json();
       if (!response.ok || !result.draft) throw new Error(result.error || "Your secure intake could not be opened.");
       hydrate(result.draft, result.draft.version > 1);
     } catch (error) { setSaveState("ERROR"); setNotice(error instanceof Error ? error.message : "Your secure intake could not be opened."); }
-  }, [fixtureMode, hydrate]);
+  }, [fixtureMode, hydrate, request]);
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
   useEffect(() => {
-    if (!finalized) return;
+    const timer = window.setTimeout(() => {
+      setCheckoutInvitation(invitation === undefined ? parseInvitationFragment(window.location.hash) : invitation);
+      if (window.location.hash) window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [invitation]);
+  useEffect(() => {
+    if (!finalized || !legalContentAccepted) return;
     if (fixtureMode) {
       const requested = new URLSearchParams(window.location.search).get("feasibility") || "pending";
       const fixture: Record<string, FeasibilityView> = {
@@ -87,7 +147,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     let active = true;
     let timer: number | undefined;
     async function read() {
-      const response = await fetch("/api/intake/anonymous-draft/feasibility", { cache: "no-store" });
+      const response = await request("/api/intake/anonymous-draft/feasibility", { cache: "no-store" });
       const result = await response.json().catch(() => ({}));
       if (!active) return;
       if (!response.ok || !result.feasibility) {
@@ -99,31 +159,40 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     }
     void read();
     return () => { active = false; if (timer) window.clearTimeout(timer); };
-  }, [finalized, fixtureMode]);
-  useEffect(() => {
+  }, [finalized, fixtureMode, legalContentAccepted, request]);
+  useLayoutEffect(() => {
+    if (loading) return;
     const controlId = pendingEditFocus.current;
     pendingEditFocus.current = null;
-    requestAnimationFrame(() => {
-      if (controlId) document.getElementById(controlId)?.focus();
-      else headingRef.current?.focus();
-    });
-  }, [step]);
+    // Set the new step's focus before keyboard input can reach its controls.
+    // A deferred frame can otherwise steal focus between Space down and up.
+    if (controlId) document.getElementById(controlId)?.focus();
+    else headingRef.current?.focus();
+  }, [loading, step]);
+  useLayoutEffect(() => {
+    if (confirmedReview) document.getElementById("review-title")?.focus();
+  }, [confirmedReview]);
   useEffect(() => { void fetch("/api/intake/event", { method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ event: "STEP_VIEWED", step: step + 1 }) }).catch(() => undefined); }, [step]);
 
   const save = useCallback(async (nextDraft = draft, nextStep = step) => {
     if (!serverDraft || finalized) return serverDraft;
+    if (saving.current) return null;
     if (fixtureMode) { const value = { ...serverDraft, answers: nextDraft, currentStep: nextStep, version: serverDraft.version + 1 };
       lastPersisted.current = draftSignature(nextDraft, nextStep); setServerDraft(value); setSaveState("SAVED"); return value; }
-    setSaveState("SAVING");
-    const response = await fetch("/api/intake/anonymous-draft", { method: "PUT", headers: { "content-type": "application/json" },
+    saving.current = true; setSaveState("SAVING");
+    try {
+    const response = await request("/api/intake/anonymous-draft", { method: "PUT", headers: { "content-type": "application/json" },
       body: JSON.stringify({ expectedVersion: serverDraft.version, currentStep: nextStep, answers: nextDraft }) });
     const result = await response.json();
     if (response.status === 409) { setSaveState("CONFLICT"); setNotice(result.error); return null; }
     if (!response.ok) { setSaveState("ERROR"); setNotice(result.error || "Your changes could not be saved."); return null; }
+    assertSelectedDraft(result.draft);
     lastPersisted.current = draftSignature(nextDraft, nextStep);
     setServerDraft(result.draft); setSaveState("SAVED"); return result.draft as ServerDraft;
-  }, [draft, finalized, fixtureMode, serverDraft, step]);
+    } catch { setSaveState("ERROR"); setNotice("Your changes could not be saved. Check your connection and try again."); return null; }
+    finally { saving.current = false; }
+  }, [assertSelectedDraft, draft, finalized, fixtureMode, request, serverDraft, step]);
 
   useEffect(() => {
     if (!readyRef.current || !serverDraft || finalized || busyDocument || lastPersisted.current === draftSignature(draft, step)) return;
@@ -141,7 +210,11 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
   const titleSuggestions = useMemo(() => facts.filter((fact) => /title|role/i.test(fact.semanticKey)).map((fact) => fact.displayValue), [facts]);
 
   function update<K extends keyof FourStepDraft>(key: K, value: FourStepDraft[K]) {
-    setDraft((current) => normalizedFourStepDraft({ ...current, [key]: value })); setErrors([]); setNotice("");
+    if (confirmedIntake && key !== "termsAccepted") return;
+    pendingFinalization.current = null;
+    setConfirmedReview(null); setFactsConfirmed(false); reviewRevision.current += 1;
+    setDraft((current) => normalizedFourStepDraft({ ...current, [key]: value,
+      ...(["experienceAdditions", "factReviews", "factCorrections", "entryMode", "noPriorEmployment"].includes(key) ? { backgroundReviewed: false } : {}) })); setErrors([]); setNotice("");
   }
   function toggle<K extends "desiredActivities" | "avoidedActivities" | "targetTitles" | "industryInterests" | "blockedIndustries" | "workModes" | "employmentTypes" | "schedules" | "dealbreakers">(key: K, value: FourStepDraft[K][number]) {
     const values = draft[key] as string[]; update(key, (values.includes(value) ? values.filter((item) => item !== value) : [...values, value]) as FourStepDraft[K]);
@@ -152,6 +225,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     setErrors(next); setNotice(""); requestAnimationFrame(() => errorRef.current?.focus());
   }
   async function move(next: 0 | 1 | 2 | 3) {
+    pendingFinalization.current = null;
     const movingForward = next > step;
     const nextErrors = movingForward ? validateFourStep(step, draft, { resume, facts, presentedFactIds: presented }) : [];
     if (nextErrors.length) return showErrors(nextErrors);
@@ -161,10 +235,13 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
     if (saved) { setStep(destination); setReturnToReview(false); setErrors([]); setNotice("Progress saved securely."); }
   }
   async function editSection(target: 0 | 1 | 2 | 3, controlId: string, editAll = false) {
+    if (confirmedIntake) return;
+    pendingFinalization.current = null;
+    setConfirmedReview(null); setFactsConfirmed(false); reviewRevision.current += 1;
     if (finalized && !fixtureMode) {
       setSaveState("SAVING");
       setNotice("Closing the prior feasibility and Checkout before editing.");
-      const response = await fetch("/api/checkout/search/edit", { method: "POST" });
+      const response = await request("/api/checkout/search/edit", { method: "POST" });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || typeof result.draftVersion !== "number") {
         setSaveState("ERROR");
@@ -182,14 +259,16 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
 
   async function upload(kind: "resume" | "prior_cover_letter", file: File | null) {
     if (!file || !serverDraft) return;
+    pendingFinalization.current = null;
+    invalidateSourceReview(kind);
     if (kind === "prior_cover_letter") setDraft((current) => ({ ...current, priorCoverLetterUse: "FACT_EXTRACTION_ONLY" }));
     setBusyDocument(kind === "resume" ? "RESUME" : "PRIOR_COVER_LETTER"); setNotice(`${file.name} is uploading to private storage.`);
     if (fixtureMode) { const document: IntakeDocument = { id: crypto.randomUUID(), version: 1, kind: kind === "resume" ? "RESUME" : "PRIOR_COVER_LETTER",
       name: file.name, size: file.size, mimeType: file.type, processingState: "QUARANTINED", failureCode: null };
-      setServerDraft({ ...serverDraft, version: serverDraft.version + 1, documents: [...serverDraft.documents.filter((item) => item.kind !== document.kind), document] });
+      setServerDraft((current) => current && ({ ...current, version: current.version + 1, documents: [...current.documents.filter((item) => item.kind !== document.kind), document] }));
       setNotice(`${file.name} was saved privately and is quarantined for safety checks.`); setBusyDocument(null); return; }
     const form = new FormData(); form.set("kind", kind); form.set("file", file); form.set("expectedVersion", String(serverDraft.version));
-    try { const response = await fetch("/api/intake/anonymous-draft/document", { method: "POST", body: form }); const result = await response.json();
+    try { const response = await request("/api/intake/anonymous-draft/document", { method: "POST", body: form }); const result = await response.json();
       if (!response.ok) { if (response.status === 409) setSaveState("CONFLICT"); throw new Error(result.error); }
       setServerDraft((current) => current && ({ ...current, version: result.draftVersion,
         documents: [...current.documents.filter((item) => item.kind !== result.document.kind), result.document] }));
@@ -200,11 +279,13 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
 
   async function remove(kind: "resume" | "prior_cover_letter") {
     if (!serverDraft) return; setBusyDocument(kind === "resume" ? "RESUME" : "PRIOR_COVER_LETTER");
+    pendingFinalization.current = null;
+    invalidateSourceReview(kind);
     if (kind === "prior_cover_letter") setDraft((current) => ({ ...current, priorCoverLetterUse: "NEITHER" }));
-    if (fixtureMode) { setServerDraft({ ...serverDraft, version: serverDraft.version + 1, documents: serverDraft.documents.filter((item) => item.kind !== (kind === "resume" ? "RESUME" : "PRIOR_COVER_LETTER")) }); setBusyDocument(null); return; }
-    const response = await fetch(`/api/intake/anonymous-draft/document?kind=${kind}&expectedVersion=${serverDraft.version}`, { method: "DELETE" });
+    if (fixtureMode) { setServerDraft((current) => current && ({ ...current, version: current.version + 1, documents: current.documents.filter((item) => item.kind !== (kind === "resume" ? "RESUME" : "PRIOR_COVER_LETTER")) })); setBusyDocument(null); return; }
+    const response = await request(`/api/intake/anonymous-draft/document?kind=${kind}&expectedVersion=${serverDraft.version}`, { method: "DELETE" });
     const result = await response.json();
-    if (response.ok) { setServerDraft({ ...serverDraft, version: result.draftVersion, documents: serverDraft.documents.filter((item) => item.id !== result.documentId) }); setNotice("The document was removed. Its superseded history follows the configured retention policy."); }
+    if (response.ok) { setServerDraft((current) => current && ({ ...current, version: result.draftVersion, documents: current.documents.filter((item) => item.id !== result.documentId) })); setNotice("The document was removed. Its superseded history follows the configured retention policy."); }
     else { setNotice(result.error || "The document could not be removed."); if (response.status === 409) setSaveState("CONFLICT"); }
     setBusyDocument(null);
   }
@@ -216,12 +297,36 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
 
   async function retryDocument(kind: "resume" | "prior_cover_letter") {
     if (!serverDraft) return;
+    pendingFinalization.current = null;
+    invalidateSourceReview(kind);
     if (fixtureMode) { setServerDraft({ ...serverDraft, version: serverDraft.version + 1, documents: serverDraft.documents.map((item) => item.kind === (kind === "resume" ? "RESUME" : "PRIOR_COVER_LETTER") ? { ...item, processingState: "QUARANTINED", failureCode: null } : item) }); return; }
-    const response = await fetch("/api/intake/anonymous-draft/document/retry", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedVersion: serverDraft.version, kind }) });
+    const response = await request("/api/intake/anonymous-draft/document/retry", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedVersion: serverDraft.version, kind }) });
     const result = await response.json();
     if (!response.ok) { setNotice(result.error || "The safety checks could not be retried."); if (response.status === 409) setSaveState("CONFLICT"); return; }
     setServerDraft({ ...serverDraft, version: result.draftVersion, documents: serverDraft.documents.map((item) => item.kind === (kind === "resume" ? "RESUME" : "PRIOR_COVER_LETTER") ? { ...item, processingState: "QUARANTINED", failureCode: null } : item) });
     setNotice("The document was returned to quarantine for another safety-check attempt.");
+  }
+  function invalidateSourceReview(kind: "resume" | "prior_cover_letter") {
+    const document = kind === "resume" ? resume : cover;
+    const ids = new Set(facts.filter((fact) => fact.documentVersionId === document?.id).map((fact) => fact.id));
+    setConfirmedReview(null); setFactsConfirmed(false); reviewRevision.current += 1;
+    setDraft((current) => ({ ...current, backgroundReviewed: false,
+      factReviews: Object.fromEntries(Object.entries(current.factReviews).filter(([id]) => !ids.has(id))),
+      factCorrections: Object.fromEntries(Object.entries(current.factCorrections).filter(([id]) => !ids.has(id))) }));
+    setServerDraft((current) => current && ({ ...current, facts: current.facts.filter((fact) => !ids.has(fact.id)) }));
+  }
+  async function refreshDocuments() {
+    if (fixtureMode) return;
+    try {
+      const response = await request("/api/intake/anonymous-draft", { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok || !result.draft) throw new Error();
+      assertSelectedDraft(result.draft);
+      if (result.draft.version !== serverDraft?.version) { setSaveState("CONFLICT"); setNotice("This intake changed. Reload its saved version before continuing."); return; }
+      setServerDraft((current) => current && ({ ...current, documents: result.draft.documents, facts: result.draft.facts, presentedFactIds: result.draft.presentedFactIds }));
+      setConfirmedReview(null); setFactsConfirmed(false); reviewRevision.current += 1;
+      setNotice("Document status and extracted facts refreshed. Review the current facts before submitting.");
+    } catch { setNotice("Document status is temporarily unavailable. Your saved answers are unchanged."); }
   }
   useEffect(() => {
     if (step !== 2 || !serverDraft) return;
@@ -229,7 +334,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
       if (presented.has(fact.id) || presentingFacts.current.has(fact.id)) return;
       if (fixtureMode) { setPresented((current) => new Set(current).add(fact.id)); return; }
       presentingFacts.current.add(fact.id);
-      void fetch("/api/intake/anonymous-draft/fact-presentation", { method: "POST", headers: { "content-type": "application/json" },
+      void request("/api/intake/anonymous-draft/fact-presentation", { method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ expectedVersion: serverDraft.version, factId: fact.id, controlId: `fact-${fact.id}` }) })
         .then(async (response) => {
           if (response.ok) { setPresented((current) => new Set(current).add(fact.id)); return; }
@@ -240,55 +345,148 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
         .catch(() => setNotice("A resume suggestion could not be prepared for review."))
         .finally(() => presentingFacts.current.delete(fact.id));
     });
-  }, [facts, fixtureMode, presented, serverDraft, step]);
+  }, [facts, fixtureMode, presented, request, serverDraft, step]);
+
+  async function prepareReview() {
+    const nextErrors = [0, 1, 2, 3].flatMap((number) => validateFourStep(number as 0 | 1 | 2 | 3, draft, { resume, facts, presentedFactIds: presented }));
+    if (nextErrors.length) return showErrors(nextErrors);
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    const revision = reviewRevision.current;
+    const saved = await save(normalizedFourStepDraft(draft), 3); if (!saved) return;
+    if (fixtureMode) {
+      setConfirmedReview({ sections: buildConfirmedReview(draft, saved.documents, saved.facts), receipt: { id: "23000000-0000-4000-8000-000000000198", contractVersion: "applypack-confirmed-intake-v1", draftVersion: saved.version, sourceSha256: "0".repeat(64), reviewSha256: "0".repeat(64), answersSha256: "0".repeat(64), preparedAt: new Date().toISOString(), entryMode: draft.entryMode } });
+      setFactsConfirmed(false); return;
+    }
+    setSaveState("SAVING");
+    try {
+      const response = await request("/api/intake/anonymous-draft/review", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedVersion: saved.version }) });
+      const result = await response.json();
+      if (revision !== reviewRevision.current) { setSaveState("READY"); setNotice("Your answers changed. Prepare a new review when you finish editing."); return; }
+      if (!response.ok) { if (Array.isArray(result.errors)) showErrors(result.errors); setSaveState(response.status === 409 ? "CONFLICT" : "ERROR"); setNotice(result.error || "The review is unavailable."); return; }
+      setConfirmedReview({ sections: result.sections, receipt: result.receipt }); setFactsConfirmed(false); setSaveState("SAVED");
+      setNotice("Review every section below. You can edit anything before confirming.");
+    } catch { setSaveState("ERROR"); setNotice("The review was interrupted. Your saved answers are still available."); }
+  }
 
   async function finalize() {
     const nextErrors = validateFourStep(3, draft, { resume, facts, presentedFactIds: presented });
+    if (!confirmedReview || !factsConfirmed) nextErrors.push({ fieldId: "facts-confirmed", message: "Review the complete saved information and confirm it before submitting." });
     if (nextErrors.length) return showErrors(nextErrors);
-    if (!serverDraft) return;
+    if (!serverDraft || submissionPending) return;
     setSaveState("SAVING");
     if (fixtureMode) { setFinalized(true); setSaveState("SAVED"); setNotice("Your intake is saved. Feasibility review is pending. No payment was started."); return; }
-    const saved = await save(draft, 3); if (!saved) return;
-    const response = await fetch("/api/intake/anonymous-draft/finalize", { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ expectedVersion: saved.version, answers: draft }) });
-    const result = await response.json();
-    if (!response.ok) { setSaveState(response.status === 409 ? "CONFLICT" : "ERROR"); setNotice(result.error || "The intake could not be finalized."); return; }
-    setFeasibility({ state: "PENDING", outcome: null, checkoutEligible: false, snapshotId: result.snapshotId });
-    setFinalized(true); setSaveState("SAVED"); setNotice(result.feasibility.message + " No payment was started.");
+    let command = pendingFinalization.current;
+    if (!command) {
+      const answers = normalizedFourStepDraft(draft);
+      if (!confirmedReview) return;
+      command = { expectedVersion: confirmedReview.receipt.draftVersion, answers, confirmation: confirmedReview.receipt, factsConfirmed: true };
+      pendingFinalization.current = command;
+    }
+    setSubmissionPending(true);
+    try {
+      const response = await request("/api/intake/anonymous-draft/finalize", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify(command) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status < 500) pendingFinalization.current = null;
+        setSaveState(response.status === 409 ? "CONFLICT" : "ERROR");
+        setNotice(result.error || (response.status >= 500
+          ? "Finalization was interrupted. Select Confirm and submit intake again to safely check the same request."
+          : "The intake could not be finalized."));
+        return;
+      }
+      pendingFinalization.current = null;
+      setServerDraft((current) => current && ({ ...current, version: result.draftVersion, state: "COMPLETE", currentStep: 3, finalizedSnapshotId: result.snapshotId, confirmedIntake: true }));
+      setFeasibility({ state: "PENDING", outcome: null, checkoutEligible: false, snapshotId: result.snapshotId });
+      setFinalized(true); setLegalContentAccepted(true); setSaveState("SAVED"); setNotice(result.feasibility.message + " No payment was started.");
+    } catch {
+      setSaveState("ERROR");
+      setNotice("Finalization was interrupted. Select Confirm and submit intake again to safely check the same request.");
+    } finally { setSubmissionPending(false); }
   }
 
   async function startCheckout() {
-    if (!feasibility?.snapshotId || !feasibility.assessmentId || !feasibility.checkoutEligible) return;
-    setCheckoutBusy(true); setNotice("Reserving current capacity and preparing secure checkout. No payment has started yet.");
-    if (fixtureMode) { router.push("/e2e/chunk4?state=confirming"); return; }
-    const response = await fetch("/api/checkout/search", { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ snapshotId: feasibility.snapshotId, assessmentId: feasibility.assessmentId }) });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || typeof result.url !== "string") {
-      setCheckoutBusy(false); setNotice(result.error || "Secure checkout could not be prepared. No payment was started.");
+    if (!feasibility || !canRecheckInvitedSearch(feasibility, checkoutInvitation !== null)) return;
+    if (!checkoutInvitation) {
+      setNotice("Your intake is ready for operator review. Checkout remains locked until a short-lived, single-use invitation is issued.");
       return;
     }
-    window.location.assign(result.url);
+    setCheckoutBusy(true); setNotice("Validating your reserved capacity and preparing secure checkout. No payment has started yet.");
+    try {
+      if (fixtureMode) { router.push("/e2e/chunk4?state=confirming"); return; }
+      const response = await request("/api/checkout/search", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ snapshotId: feasibility.snapshotId, assessmentId: feasibility.assessmentId,
+          invitationId: checkoutInvitation.id, invitationSecret: checkoutInvitation.secret }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || typeof result.url !== "string") {
+        setNotice(result.error || "Secure checkout could not be confirmed. Check this invitation again before starting another payment.");
+        return;
+      }
+      window.location.assign(result.url);
+    } catch {
+      setNotice("We could not confirm checkout. Try this invitation again to check the same payment request; do not start a separate payment.");
+    } finally { setCheckoutBusy(false); }
+  }
+
+  async function confirmCurrentLegalContent() {
+    if (!finalized || legalContentAccepted || !draft.termsAccepted) {
+      setNotice("Confirm the current Terms and Privacy Policy before continuing.");
+      return;
+    }
+    setLegalAcceptanceBusy(true); setSaveState("SAVING");
+    try {
+      if (fixtureMode) {
+        const requested = new URLSearchParams(window.location.search).get("legal");
+        if (requested === "legacy-error" && !fixtureLegalFailureConsumed.current) {
+          fixtureLegalFailureConsumed.current = true;
+          throw new Error("The current legal terms could not be confirmed. Please try again.");
+        }
+        setLegalContentAccepted(true);
+        setFeasibility({ state: "PENDING", outcome: null, checkoutEligible: false,
+          snapshotId: serverDraft?.finalizedSnapshotId || undefined });
+        setSaveState("SAVED"); setNotice("The current Terms and Privacy Policy were confirmed. No payment was started.");
+        return;
+      }
+      const response = await request("/api/intake/anonymous-draft/legal-acceptance", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ accepted: true }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "The current legal terms could not be confirmed.");
+      setLegalContentAccepted(true);
+      setFeasibility({ state: "PENDING", outcome: null, checkoutEligible: false,
+        snapshotId: typeof result.snapshotId === "string" ? result.snapshotId : serverDraft?.finalizedSnapshotId || undefined });
+      setSaveState("SAVED"); setNotice("The current Terms and Privacy Policy were confirmed. No payment was started.");
+    } catch (error) {
+      setSaveState("ERROR"); setNotice(error instanceof Error ? error.message : "The current legal terms could not be confirmed.");
+    } finally { setLegalAcceptanceBusy(false); }
   }
 
   if (saveState === "LOADING") return <main id="main-content" className="wizard-page"><section className="wizard-loading" aria-live="polite"><p className="eyebrow">SECURE INTAKE</p><h1>Loading your saved intake…</h1></section></main>;
 
   return <main id="main-content" className="wizard-page"><div className="page-frame wizard-layout">
     <aside className="wizard-aside"><p className="eyebrow eyebrow--light">YOUR JOB SEARCH</p><h1>Find work that fits.</h1>
-      <p>Complete four short steps. You will review everything before feasibility.</p><div className="wizard-price"><strong>$20</strong><span>once<br />no subscription required</span></div>
-      <p className="wizard-security"><LockKeyhole aria-hidden="true" /> Private documents. 10 researched matches. No account or payment before review.</p></aside>
+      <p>Complete four short steps. You will review everything before feasibility.</p><div className="wizard-price"><strong>$18.99</strong><span>once<br />no subscription</span></div>
+      <p className="wizard-security"><LockKeyhole aria-hidden="true" /> Private documents. Verified account access. No payment before review.</p></aside>
     <section className="wizard-panel" aria-labelledby="wizard-title">
       <div className="wizard-progress" role="progressbar" aria-label="Intake progress" aria-valuemin={1} aria-valuemax={4} aria-valuenow={step + 1} aria-valuetext={`Step ${step + 1} of 4`}><span>STEP {step + 1} OF 4</span><div><i style={{ width: `${(step + 1) * 25}%` }} /></div></div>
       <SaveNotice state={saveState} notice={notice} onReload={load} />
       {errors.length > 0 && <div className="intake-errors" ref={errorRef} tabIndex={-1} role="alert" aria-labelledby="error-title"><strong id="error-title">Please fix {errors.length === 1 ? "this item" : "these items"}:</strong><ul>{errors.map((error) => <li key={error.fieldId}><a href={`#${error.fieldId}`} onClick={(event) => { event.preventDefault(); document.getElementById(error.fieldId)?.focus(); }}>{error.message}</a></li>)}</ul></div>}
 
+      <fieldset className="wizard-input-lock" disabled={submissionPending} aria-busy={submissionPending}><legend className="sr-only">Your intake information</legend>
       {step === 0 && <Step headingRef={headingRef} title="Start with your documents" help="See the offer and privacy boundary before sharing anything.">
-        <div className="intake-offer"><strong>$20 once for 10 researched job matches.</strong><span>No subscription is required for Top 10. No account or payment in this intake.</span></div>
+        <div className="intake-offer"><strong>$18.99 once for exactly 10 current, human-reviewed job matches.</strong><span>No subscription. Your verified account protects this intake. Payment requires an operator-issued invitation.</span></div>
         <p className="privacy-note"><LockKeyhole aria-hidden="true" /> Your files use private storage and a separate secure browser session. Document bytes never go into browser local storage. Remove unnecessary sensitive information before upload.</p>
         <div className="field-grid"><Field id="full-name" label="Full name" required errors={errors}><input id="full-name" autoComplete="name" value={draft.fullName} onChange={(e) => update("fullName", e.target.value)} /></Field>
-        <Field id="email" label="Email address" required help="Used to resume and, after payment, access your order." errors={errors}><input id="email" type="email" autoComplete="email" value={draft.email} aria-describedby="email-help" onChange={(e) => update("email", e.target.value)} /></Field></div><ErrorFor errors={errors} fieldId="full-name" /><ErrorFor errors={errors} fieldId="email" />
-        <UploadField id="resume" label="Current resume" required document={resume} errors={errors} busy={busyDocument === "RESUME"} onUpload={(file) => upload("resume", file)} onRemove={() => remove("resume")} onRetry={() => retryDocument("resume")} /><ErrorFor errors={errors} fieldId="resume" />
+        <Field id="email" label="Account access email" required help="The verified email linked when this intake was saved. Your account keeps access to this intake and its orders." errors={errors}><input id="email" type="email" autoComplete="email" value={draft.email} aria-describedby="email-help" readOnly={!fixtureMode} onChange={fixtureMode ? (e) => update("email", e.target.value) : undefined} /></Field></div><ErrorFor errors={errors} fieldId="full-name" /><ErrorFor errors={errors} fieldId="email" />
+        <Field id="document-contact-email" label="Different email for your resume and cover letter (optional)" help="Leave blank to use the access email above. You will confirm your document contact details before buying an Apply Pack. This does not change your account or where ApplyPack sends updates." errors={errors}><input id="document-contact-email" type="email" autoComplete="email" value={draft.documentContactEmail || ""} aria-describedby="document-contact-email-help" onChange={e => update("documentContactEmail", e.target.value)} /></Field><ErrorFor errors={errors} fieldId="document-contact-email" />
+        <Field id="phone" label="Phone for your documents (optional)" help="Enter it exactly as you want it shown."><input id="phone" type="tel" autoComplete="tel" value={draft.phone} onChange={(event) => update("phone", event.target.value)} /></Field>
+        <fieldset><legend>How would you like to start?</legend><Radio name="entry-mode" value="CURRENT_RESUME" checked={draft.entryMode} onChange={(value) => update("entryMode", value)} label="Use my current resume" /><Radio name="entry-mode" value="OUTDATED_RESUME" checked={draft.entryMode} onChange={(value) => update("entryMode", value)} label="Use an older resume and add what changed" /><Radio name="entry-mode" value="GUIDED" checked={draft.entryMode} onChange={(value) => update("entryMode", value)} label="Build my background without a resume" /></fieldset>
+        {(draft.entryMode !== "GUIDED" || resume) && <UploadField id="resume" label="Resume" required={draft.entryMode !== "GUIDED"} document={resume} errors={errors} busy={busyDocument === "RESUME"} onUpload={(file) => upload("resume", file)} onRemove={() => remove("resume")} onRetry={() => retryDocument("resume")} />}<ErrorFor errors={errors} fieldId="resume" />
+        {draft.entryMode === "GUIDED" && <p>No resume is required. We will help you record your actual background in short, editable answers.</p>}
+        <label className="confirm"><input type="checkbox" checked={draft.careerChange} onChange={(event) => update("careerChange", event.target.checked)} /><span>I am considering a career change.</span></label>
+        <label className="confirm"><input id="no-prior-employment" type="checkbox" checked={draft.noPriorEmployment} onChange={(event) => update("noPriorEmployment", event.target.checked)} /><span>I have not had a paid job. Education, projects and volunteering can still be included.</span></label><ErrorFor errors={errors} fieldId="no-prior-employment" />
         <UploadField id="prior-cover-letter" label="Previous cover letter" document={cover} busy={busyDocument === "PRIOR_COVER_LETTER"} onUpload={(file) => upload("prior_cover_letter", file)} onRemove={() => remove("prior_cover_letter")} onRetry={() => retryDocument("prior_cover_letter")} />
+        {(resume || cover) && <button type="button" className="text-button" disabled={!!busyDocument} onClick={() => void refreshDocuments()}>Refresh document status and extracted facts</button>}
         {cover && <fieldset><legend>How may we use the previous cover letter?</legend><Radio name="cover-use" value="FACT_EXTRACTION_ONLY" checked={draft.priorCoverLetterUse} onChange={(value) => void choosePriorCoverLetterUse(value)} label="Facts only (recommended)" />
           <Radio name="cover-use" value="FACT_EXTRACTION_AND_VOICE" checked={draft.priorCoverLetterUse} onChange={(value) => void choosePriorCoverLetterUse(value)} label="Facts and writing voice" />
           <Radio name="cover-use" value="NEITHER" checked={draft.priorCoverLetterUse} onChange={(value) => void choosePriorCoverLetterUse(value)} label="Do not use it and remove it" /></fieldset>}
@@ -297,7 +495,7 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
       {step === 1 && <Step headingRef={headingRef} title="Choose the work you want" help="Activities guide matching. Avoided activities are preferences unless you mark them as dealbreakers in Step 4.">
         <CheckCatalog id="desired-activities" legend="What would you like to do?" options={activityOptions} errors={errors} values={draft.desiredActivities} onToggle={(value) => toggle("desiredActivities", value)} /><ErrorFor errors={errors} fieldId="desired-activities" />
         <label className="confirm"><input type="checkbox" checked={draft.guidanceRequested} onChange={(e) => update("guidanceRequested", e.target.checked)} /><span><strong>Help me decide from my experience.</strong> We will use the editable adjacent-opportunities starting point; this does not confirm any resume fact.</span></label>
-        <CheckCatalog id="avoided-activities" legend="What would you rather avoid?" options={activityOptions} values={draft.avoidedActivities} onToggle={(value) => toggle("avoidedActivities", value)} />{draft.avoidedActivities.length > 0 && <PreferenceSelects id="avoided-preference-strength" items={draft.avoidedActivities.map((value) => [`activity:${value}`, labels[value] || value])} values={draft.workConditionPreferences} onChange={(key, value) => update("workConditionPreferences", { ...draft.workConditionPreferences, [key]: value })} intro="Avoided activities remain optional preferences unless you explicitly choose Do not show me or Dealbreaker. They never rank the subscription board." />}
+        <CheckCatalog id="avoided-activities" legend="What would you rather avoid?" options={activityOptions} values={draft.avoidedActivities} onToggle={(value) => toggle("avoidedActivities", value)} />{draft.avoidedActivities.length > 0 && <PreferenceSelects id="avoided-preference-strength" items={draft.avoidedActivities.map((value) => [`activity:${value}`, labels[value] || value])} values={draft.workConditionPreferences} onChange={(key, value) => update("workConditionPreferences", { ...draft.workConditionPreferences, [key]: value })} intro="Avoided activities remain optional preferences unless you explicitly choose Do not show me or Dealbreaker. They are applied only to your private search criteria." />}
         <Field id="target-titles" label="Titles you have in mind" help="Optional retrieval hints, not proof that you qualify."><input id="target-titles" value={draft.targetTitles.join(", ")} onChange={(e) => list("targetTitles", e.target.value)} placeholder="Operations coordinator, project assistant" /></Field>{titleSuggestions.length > 0 && <div className="suggestion-chips" aria-label="Resume-suggested titles">{titleSuggestions.map((title) => <button type="button" key={title} onClick={() => update("targetTitles", [...new Set([...draft.targetTitles, title])])}>Add {title}</button>)}</div>}{draft.targetTitles.length > 0 && <div className="suggestion-chips" aria-label="Selected title hints">{draft.targetTitles.map((title) => <button type="button" key={title} onClick={() => update("targetTitles", draft.targetTitles.filter((item) => item !== title))}>{title} ×</button>)}</div>}
         {draft.searchBreadth === "CLOSE_TO_PREVIOUS_WORK" && draft.targetTitles.length > 0 && <label className="confirm"><input type="checkbox" checked={draft.titleRestrictionConfirmed} onChange={(e) => update("titleRestrictionConfirmed", e.target.checked)} /><span>Limit this narrow search to the title families I entered.</span></label>}
         <CheckCatalog id="industry-interests" legend="Industries you are interested in (optional)" options={industryCatalog.map(([id, name, description]) => [id, name, description] as const)} values={draft.industryInterests} onToggle={(value) => toggle("industryInterests", value)} />
@@ -306,18 +504,32 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
       </Step>}
 
       {step === 2 && <Step headingRef={headingRef} title="Confirm experience and skills" help="Resume text is a suggestion, not a verified claim. Confirm only what is accurate; skip and reject are different.">
-        {facts.length === 0 ? <div className="processing-card"><strong>{resume?.processingState === "FAILED" ? "Extraction needs attention." : "Resume extraction is not ready yet."}</strong><p>We will not invent facts or send reference details to a model. You can add truthful structured experience below and return later.</p></div> : factTiers.map((tier) => <FactGroup key={tier} tier={tier} facts={facts} draft={draft} update={update} errors={errors} />)}
-        <SourceAnnotation facts={facts} onSaved={async () => {
-          const response = await fetch("/api/intake/anonymous-draft", { cache: "no-store" });
+        {draft.clarifications && <fieldset id="clarification-answers" tabIndex={-1}><legend>Clarify your background</legend>
+          <p>Your earlier submission is preserved. Review these answers and every other section before confirming this updated intake. Say when you are unsure; do not guess.</p>
+          {draft.clarifications.map((clarification) => <div key={clarification.questionId}>
+            <Field id={`clarification-${clarification.questionId}`} label={clarification.prompt} required errors={errors}>
+              <textarea id={`clarification-${clarification.questionId}`} maxLength={5_000} value={clarification.answer}
+                onChange={(event) => update("clarifications", draft.clarifications?.map((item) => item.questionId === clarification.questionId ? { ...item, answer: event.target.value } : item))} />
+            </Field><ErrorFor errors={errors} fieldId={`clarification-${clarification.questionId}`} />
+          </div>)}
+        </fieldset>}
+        {facts.length === 0 ? <div className="processing-card"><strong>{draft.entryMode === "GUIDED" ? "Your answers are the starting point." : resume?.processingState === "FAILED" ? "Extraction needs attention." : "Resume extraction is not ready yet."}</strong><p>{draft.entryMode === "GUIDED" ? "Include actual experience, education, projects or volunteering you want used. If you have not had a paid job, keep that choice and leave work history empty. We will not invent qualifications." : "We will not invent facts or send reference details to a model. You can add truthful structured experience below and return later."}</p></div> : factTiers.map((tier) => <FactGroup key={tier} tier={tier} facts={facts} draft={draft} update={update} errors={errors} />)}
+        {resume && <details><summary>Add a missing fact from an uploaded document (optional)</summary><SourceAnnotation facts={facts} expectedDraftId={expectedDraftId || ""} onSaved={async () => {
+          const response = await request("/api/intake/anonymous-draft", { cache: "no-store" });
           const result = await response.json();
           if (!response.ok || !result.draft) throw new Error("Refresh the page to see the saved fact.");
+          setConfirmedReview(null); setFactsConfirmed(false); reviewRevision.current += 1;
           setServerDraft(current => current ? { ...current, facts: result.draft.facts, documents: result.draft.documents } : current);
-        }} />
-        <ExperienceEditor value={draft.experienceAdditions} errors={errors} onChange={(value) => update("experienceAdditions", value)} />
+        }} /></details>}
+        <GuidedExperienceEditor value={draft.experienceAdditions} errors={errors} onChange={(value) => update("experienceAdditions", value)} />
+        <ErrorFor errors={errors} fieldId="experience-additions" />
+        <label className="confirm"><input id="background-reviewed" type="checkbox" checked={draft.backgroundReviewed} onChange={(event) => update("backgroundReviewed", event.target.checked)} /><span>I checked for missing or outdated roles, duties, dates, education and credentials, and added the updates I want used. The full review comes next.</span></label><ErrorFor errors={errors} fieldId="background-reviewed" />
         {(toolFamilies.excel || toolFamilies.systems) && <div className="adaptive-skills"><h3>Task-based tool check</h3><p>Choose what you can actually do. Using a CRM never implies SQL or administration.</p>{toolFamilies.excel && <CapabilityGroup legend="Excel and spreadsheet tasks" options={excelTasks} values={draft.capabilities} onChange={(key, value) => update("capabilities", { ...draft.capabilities, [key]: value })} />}{toolFamilies.systems && <CapabilityGroup legend="Business-system tasks" options={businessSystemTasks} values={draft.capabilities} onChange={(key, value) => update("capabilities", { ...draft.capabilities, [key]: value })} />}</div>}
       </Step>}
 
       {step === 3 && <Step headingRef={headingRef} title="Set requirements and review" help="The launch search covers the 50 United States and District of Columbia. Nothing required below is silently selected.">
+        {confirmedIntake && <p>Your confirmed intake is preserved. If we ask for clarification, answer the saved question and review the complete updated intake before confirming it.</p>}
+        {!confirmedIntake && <>
         <CheckCatalog id="work-modes" legend="Accepted work modes" errors={errors} options={[["REMOTE","Remote"],["HYBRID","Hybrid"],["ONSITE","On-site"]] as const} values={draft.workModes} onToggle={(value) => toggle("workModes", value)} /><ErrorFor errors={errors} fieldId="work-modes" />
         {draft.workModes.length > 1 && <Field id="preferred-work-mode" label="Preferred work mode"><select id="preferred-work-mode" value={draft.preferredWorkMode} onChange={(e) => update("preferredWorkMode", e.target.value as FourStepDraft["preferredWorkMode"])}><option value="">No preference</option>{draft.workModes.map((value) => <option key={value} value={value}>{value === "ONSITE" ? "On-site" : titleCase(value)}</option>)}</select></Field>}
         <Field id="state-or-dc" label="U.S. state or District of Columbia" required help="Some remote employers limit hiring by state." errors={errors}><select id="state-or-dc" value={draft.stateOrDc} onChange={(e) => update("stateOrDc", e.target.value)}><option value="">Choose one</option>{stateOrDcOptions.map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></Field><ErrorFor errors={errors} fieldId="state-or-dc" />
@@ -329,31 +541,38 @@ export function IntakeWizard({ fixtureMode = false }: { fixtureMode?: boolean })
         <fieldset id="leave-out" tabIndex={-1}><legend>What should we leave out of your search?</legend><div className="choice-grid">{dealbreakerCatalog.map(([value, label]) => <label className="choice" key={value}><input type="checkbox" checked={draft.dealbreakers.includes(value)} onChange={() => toggle("dealbreakers", value)} /><span><Check aria-hidden="true" />{label}</span></label>)}</div></fieldset>
         {draft.dealbreakers.includes("SOMETHING_ELSE") && <><Field id="custom-dealbreaker" label="What else should we leave out?" required errors={errors}><textarea id="custom-dealbreaker" value={draft.customDealbreaker} onChange={(e) => update("customDealbreaker", e.target.value)} /></Field><ErrorFor errors={errors} fieldId="custom-dealbreaker" /></>}
         {unknownCriteria.map((criterion) => { const fieldId = unknownPolicyFieldId(criterion.key); return <fieldset key={criterion.key} id={fieldId} tabIndex={-1} aria-invalid={hasError(errors, fieldId) || undefined} aria-describedby={hasError(errors, fieldId) ? errorId(fieldId) : undefined}><legend>If an employer does not state {criterion.label.toLowerCase()}, what should we do?</legend><Radio name={`unknown-${criterion.key}`} value="EXCLUDE_IF_UNKNOWN" checked={draft.employerUnknownPolicies[criterion.key] || ""} onChange={(next) => update("employerUnknownPolicies", { ...draft.employerUnknownPolicies, [criterion.key]: next })} label="Exclude it if unknown" /><Radio name={`unknown-${criterion.key}`} value="ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING" checked={draft.employerUnknownPolicies[criterion.key] || ""} onChange={(next) => update("employerUnknownPolicies", { ...draft.employerUnknownPolicies, [criterion.key]: next })} label="Include it with an unknown warning" /><ErrorFor errors={errors} fieldId={fieldId} /></fieldset>; })}
-        <Review draft={draft} resume={resume} cover={cover} onEdit={editSection} />
-        {finalized && feasibility && <FeasibilityResult value={feasibility} checkoutBusy={checkoutBusy}
-          onCheckout={() => void startCheckout()} onEdit={() => editSection(3, "work-modes", true)} />}
+        </>}
+        <Review sections={confirmedReview?.sections ?? buildConfirmedReview(draft, serverDraft?.documents ?? [], facts)} prepared={confirmedReview !== null} onEdit={confirmedIntake ? undefined : editSection} />
+        {confirmedReview && !finalized && <><label className="confirm"><input id="facts-confirmed" type="checkbox" checked={factsConfirmed} onChange={(event) => setFactsConfirmed(event.target.checked)} /><span>I reviewed the actual information shown in every section, corrected inaccuracies, and confirm this is the information ApplyPack should use.</span></label><ErrorFor errors={errors} fieldId="facts-confirmed" /></>}
+        {finalized && legalContentAccepted && feasibility && <FeasibilityResult value={feasibility} checkoutBusy={checkoutBusy} invitationAvailable={checkoutInvitation !== null}
+          onCheckout={() => void startCheckout()} onEdit={confirmedIntake ? undefined : () => editSection(3, "work-modes", true)} />}
         <div className="deadline-note"><strong>Service boundary</strong><p>ApplyPack researches public listings and provides 10 matches after feasibility, capacity, and payment. We do not contact employers, submit applications, or guarantee interviews, offers, salary, employment, or continued listing availability.</p></div>
-        <ErrorFor errors={errors} fieldId="terms-accepted" /><label className="confirm legal-agreement"><input id="terms-accepted" type="checkbox" aria-invalid={hasError(errors, "terms-accepted") || undefined} aria-describedby={hasError(errors, "terms-accepted") ? errorId("terms-accepted") : undefined} checked={draft.termsAccepted} onChange={(e) => update("termsAccepted", e.target.checked)} /><span>I agree to the <Link href="/terms" target="_blank">Terms</Link> and <Link href="/privacy" target="_blank">Privacy Policy</Link>.</span></label>
+        <ErrorFor errors={errors} fieldId="terms-accepted" /><label className="confirm legal-agreement"><input id="terms-accepted" type="checkbox" aria-invalid={hasError(errors, "terms-accepted") || undefined} aria-describedby={hasError(errors, "terms-accepted") ? errorId("terms-accepted") : undefined} checked={draft.termsAccepted} onChange={(e) => update("termsAccepted", e.target.checked)} /><span>{LEGAL_ACCEPTANCE_PRESENTATION.prefix}<Link href={LEGAL_ACCEPTANCE_PRESENTATION.termsHref} target="_blank">{LEGAL_ACCEPTANCE_PRESENTATION.termsLabel}</Link>{LEGAL_ACCEPTANCE_PRESENTATION.conjunction}<Link href={LEGAL_ACCEPTANCE_PRESENTATION.privacyHref} target="_blank">{LEGAL_ACCEPTANCE_PRESENTATION.privacyLabel}</Link>{LEGAL_ACCEPTANCE_PRESENTATION.suffix}</span></label>
       </Step>}
 
-      <div className="wizard-actions"><button className="wizard-back" type="button" disabled={step === 0 || saveState === "SAVING"} onClick={() => void move((step - 1) as 0 | 1 | 2)}><ArrowLeft aria-hidden="true" />Back</button>
+      </fieldset>
+      <div className="wizard-actions"><button className="wizard-back" type="button" disabled={confirmedIntake || step === 0 || saveState === "SAVING"} onClick={() => void move((step - 1) as 0 | 1 | 2)}><ArrowLeft aria-hidden="true" />Back</button>
         {step < 3 ? <button className="wizard-next" type="button" disabled={saveState === "SAVING"} onClick={() => void move((step + 1) as 1 | 2 | 3)}>{saveState === "SAVING" ? "Saving…" : returnToReview ? "Save and return to review" : "Save and continue"}<ArrowRight aria-hidden="true" /></button>
-          : <button className="wizard-next" type="button" disabled={saveState === "SAVING" || finalized} onClick={() => void finalize()}>{finalized ? "Intake finalized" : saveState === "SAVING" ? "Saving…" : "Finish intake"}<ArrowRight aria-hidden="true" /></button>}</div>
+          : finalized && !legalContentAccepted
+            ? <button className="wizard-next" type="button" disabled={legalAcceptanceBusy || !draft.termsAccepted} onClick={() => void confirmCurrentLegalContent()}>{legalAcceptanceBusy ? "Confirming…" : "Confirm current Terms"}<ArrowRight aria-hidden="true" /></button>
+            : <button className="wizard-next" type="button" disabled={saveState === "SAVING" || finalized || (!!confirmedReview && !factsConfirmed)} onClick={() => void (confirmedReview ? finalize() : prepareReview())}>{finalized ? "Intake finalized" : saveState === "SAVING" ? "Saving…" : confirmedReview ? "Confirm and submit intake" : "Review my information"}<ArrowRight aria-hidden="true" /></button>}</div>
     </section></div></main>;
 }
 
-function FeasibilityResult({ value, checkoutBusy, onCheckout, onEdit }: {
-  value: FeasibilityView; checkoutBusy: boolean; onCheckout: () => void; onEdit: () => void;
+function FeasibilityResult({ value, checkoutBusy, invitationAvailable, onCheckout, onEdit }: {
+  value: FeasibilityView; checkoutBusy: boolean; invitationAvailable: boolean; onCheckout: () => void; onEdit?: () => void;
 }) {
-  const presentation = feasibilityPresentation(value);
+  const presentation = feasibilityPresentation(value, invitationAvailable);
   return <section className={`feasibility-result feasibility-result--${value.state.toLowerCase()}`} aria-live="polite" aria-labelledby="feasibility-title">
     <p className="eyebrow">FEASIBILITY RESULT</p>
     <h3 id="feasibility-title">{presentation.title}</h3>
     <p>{presentation.message}</p>
     {typeof value.preliminarilyDeliverableCount === "number" && <p><strong>{value.preliminarilyDeliverableCount}</strong> current candidates passed the preliminary evidence gates. Human release review is still required.</p>}
     <div className="admin-buttons">
-      {presentation.canCheckout && <button className="wizard-next" type="button" disabled={checkoutBusy} onClick={onCheckout}>{checkoutBusy ? "Preparing secure checkout…" : SEARCH_CHECKOUT_CTA}<ArrowRight aria-hidden="true" /></button>}
-      {presentation.showEdit && <button className="secondary-button" type="button" onClick={onEdit}>Edit my settings</button>}
+      {presentation.canCheckout && invitationAvailable && <p><strong>$18.99 total.</strong> The displayed total is fixed. ApplyPack does not add tax at checkout.</p>}
+      {presentation.canCheckout && invitationAvailable && <button className="wizard-next" type="button" disabled={checkoutBusy} onClick={onCheckout}>{checkoutBusy ? "Preparing secure checkout…" : SEARCH_CHECKOUT_CTA}<ArrowRight aria-hidden="true" /></button>}
+      {presentation.canCheckout && !invitationAvailable && <p>Your intake is ready for operator review. Checkout remains locked until capacity and ten suitable opportunities are verified and a single-use invitation is issued.</p>}
+      {presentation.showEdit && onEdit && <button className="secondary-button" type="button" onClick={onEdit}>Edit my settings</button>}
       {presentation.showHumanReview && <Link href="/help?topic=feasibility-review">Request human review</Link>}
       {presentation.showLeave && <Link href="/">Leave without paying</Link>}
     </div>
@@ -384,17 +603,17 @@ function SaveNotice({ state, notice, onReload }: { state: SaveState; notice: str
 function FactGroup({ tier, facts, draft, update, errors }: { tier: typeof factTiers[number]; facts: FactSuggestion[]; draft: FourStepDraft; errors: StepError[]; update: <K extends keyof FourStepDraft>(key: K, value: FourStepDraft[K]) => void }) {
   const selected = facts.filter((fact) => fact.tier === tier);
   if (!selected.length) return null;
-  const heading = tier === "SEARCH_CRITICAL" ? "Search-critical facts — review now" : tier === "MATCH_ENHANCING" ? "Match-enhancing facts — optional" : "Document-only facts — deferred";
+  const heading = tier === "SEARCH_CRITICAL" ? "Search-critical facts — review now" : tier === "MATCH_ENHANCING" ? "Other background facts" : "Facts for your documents";
   return <section className="fact-tier"><h3>{heading}</h3>{selected.map((fact) => {
     const fieldId = `fact-${fact.id}`;
     const invalid = hasError(errors, fieldId);
     const choose = (decision: FourStepDraft["factReviews"][string]) => {
       update("factReviews", { ...draft.factReviews, [fact.id]: decision });
       if (decision === "CORRECT" && !draft.factCorrections[fact.id]) {
-        update("factCorrections", { ...draft.factCorrections, [fact.id]: emptyFactCorrection(recommendedFactCorrectionCategory(fact)) });
+        update("factCorrections", { ...draft.factCorrections, [fact.id]: fact.editableValues && Object.keys(fact.editableValues).length ? { category: "FIELD_EDITS", fields: { ...fact.editableValues } } : emptyFactCorrection(recommendedFactCorrectionCategory(fact)) });
       }
     };
-    return <fieldset id={fieldId} key={fact.id} tabIndex={-1} aria-invalid={invalid || undefined} aria-describedby={mergeIds(`fact-help-${fact.id}`, invalid ? errorId(fieldId) : undefined)}><legend>{fact.displayLabel}: <strong>{fact.displayValue}</strong></legend><p id={`fact-help-${fact.id}`} className="field-help">Resume suggestion · {fact.sourceLocator} · unconfirmed until you choose Confirm.</p>{tier === "DOCUMENT_ONLY" ? <p>Deferred to materials setup.</p> : <><Radio name={fieldId} value="CONFIRM" checked={draft.factReviews[fact.id] || ""} onChange={choose} label="Confirm accurate" /><Radio name={fieldId} value="REJECT" checked={draft.factReviews[fact.id] || ""} onChange={choose} label="Not accurate" /><Radio name={fieldId} value="SKIP" checked={draft.factReviews[fact.id] || ""} onChange={choose} label="Skip for now" /><Radio name={fieldId} value="CORRECT" checked={draft.factReviews[fact.id] || ""} onChange={choose} label="Correct it" />{draft.factReviews[fact.id] === "CORRECT" && <FactCorrectionEditor fact={fact} value={draft.factCorrections[fact.id] ?? emptyFactCorrection(recommendedFactCorrectionCategory(fact))} errors={errors} onChange={(correction) => update("factCorrections", { ...draft.factCorrections, [fact.id]: correction })} />}</>}<ErrorFor errors={errors} fieldId={fieldId} /><ErrorFor errors={errors} fieldId={`fact-correction-${fact.id}`} /></fieldset>;
+    return <fieldset id={fieldId} key={fact.id} tabIndex={-1} aria-invalid={invalid || undefined} aria-describedby={mergeIds(`fact-help-${fact.id}`, invalid ? errorId(fieldId) : undefined)}><legend>{fact.displayLabel}: <strong>{fact.displayValue}</strong></legend><p id={`fact-help-${fact.id}`} className="field-help">Resume suggestion · {fact.sourceLocator} · unconfirmed until you choose Confirm.</p><><Radio name={fieldId} value="CONFIRM" checked={draft.factReviews[fact.id] || ""} onChange={choose} label="Confirm accurate" /><Radio name={fieldId} value="REJECT" checked={draft.factReviews[fact.id] || ""} onChange={choose} label="Not accurate" /><Radio name={fieldId} value="SKIP" checked={draft.factReviews[fact.id] || ""} onChange={choose} label={tier === "SEARCH_CRITICAL" ? "Not sure — needs clarification" : "Leave out of my confirmed information"} /><Radio name={fieldId} value="CORRECT" checked={draft.factReviews[fact.id] || ""} onChange={choose} label="Correct it" />{draft.factReviews[fact.id] === "CORRECT" && <FactCorrectionEditor fact={fact} value={draft.factCorrections[fact.id] ?? emptyFactCorrection(recommendedFactCorrectionCategory(fact))} errors={errors} onChange={(correction) => update("factCorrections", { ...draft.factCorrections, [fact.id]: correction })} />}</><ErrorFor errors={errors} fieldId={fieldId} /><ErrorFor errors={errors} fieldId={`fact-correction-${fact.id}`} /></fieldset>;
   })}</section>;
 }
 
@@ -403,7 +622,8 @@ function FactCorrectionEditor({ fact, value, errors, onChange }: { fact: FactSug
   const invalid = hasError(errors, fieldId);
   const describedBy = invalid ? errorId(fieldId) : undefined;
   return <div id={fieldId} className="fact-correction" tabIndex={-1} aria-invalid={invalid || undefined} aria-describedby={describedBy}>
-    <label htmlFor={`${fieldId}-category`}>What needs correction?<select id={`${fieldId}-category`} value={value.category} onChange={(event) => onChange(emptyFactCorrection(event.target.value as FactCorrection["category"]))}>{factCorrectionCategories.map((category) => <option key={category} value={category}>{titleCase(category).replace("Or Credential", "or credential").replace("Or Organization", "or organization")}</option>)}</select></label>
+    <label htmlFor={`${fieldId}-category`}>What needs correction?<select id={`${fieldId}-category`} value={value.category} onChange={(event) => onChange(event.target.value === "FIELD_EDITS" ? { category: "FIELD_EDITS", fields: { ...fact.editableValues } } : emptyFactCorrection(event.target.value as FactCorrection["category"]))}>{factCorrectionCategories.filter((category) => category !== "FIELD_EDITS" || (fact.editableValues && Object.keys(fact.editableValues).length)).map((category) => <option key={category} value={category}>{category === "FIELD_EDITS" ? "Edit the fields in this record" : titleCase(category).replace("Or Credential", "or credential").replace("Or Organization", "or organization")}</option>)}</select></label>
+    {value.category === "FIELD_EDITS" && <FactFieldsEditor key={fact.id} value={value.fields} onChange={(fields) => onChange({ category: "FIELD_EDITS", fields })} />}
     {value.category === "EMPLOYER_OR_ORGANIZATION" && <label>Correct employer or organization<input aria-describedby={describedBy} value={value.employerOrOrganization} onChange={(event) => onChange({ ...value, employerOrOrganization: event.target.value })} /></label>}
     {value.category === "ROLE_OR_RELATIONSHIP" && <label>Correct role or relationship<input aria-describedby={describedBy} value={value.roleOrRelationship} onChange={(event) => onChange({ ...value, roleOrRelationship: event.target.value })} /></label>}
     {value.category === "DATE_RANGE" && <div className="field-grid"><label>Correct start date<input type="date" aria-describedby={describedBy} value={value.startsOn} onChange={(event) => onChange({ ...value, startsOn: event.target.value })} /></label><label>Correct end date<input type="date" aria-describedby={describedBy} value={value.endsOn} onChange={(event) => onChange({ ...value, endsOn: event.target.value })} /></label><label>Date precision<select aria-describedby={describedBy} value={value.datePrecision} onChange={(event) => onChange({ ...value, datePrecision: event.target.value as typeof value.datePrecision })}><option value="EXACT_DAY">Exact day</option><option value="MONTH">Month</option><option value="YEAR">Year</option><option value="UNKNOWN">Unknown</option></select></label></div>}
@@ -414,45 +634,13 @@ function FactCorrectionEditor({ fact, value, errors, onChange }: { fact: FactSug
     {value.category === "OTHER_STRUCTURED_FACT" && <div className="field-grid"><label>Fact label<input aria-describedby={describedBy} value={value.factLabel} onChange={(event) => onChange({ ...value, factLabel: event.target.value })} /></label><label>Correct value<input aria-describedby={describedBy} value={value.factValue} onChange={(event) => onChange({ ...value, factValue: event.target.value })} /></label></div>}
   </div>;
 }
-function ExperienceEditor({ value, errors, onChange }: { value: ExperienceAddition[]; errors: StepError[]; onChange: (value: ExperienceAddition[]) => void }) {
-  function add() { onChange([...value, { clientId: crypto.randomUUID(), kind: "PAID_EMPLOYMENT", organizationOrProject: "", roleOrRelationship: "", startsOn: "", endsOn: "", datePrecision: "MONTH", responsibilities: [], tools: [], scope: "", outcome: "", intensityPercent: null, educationLevel: "", educationField: "", completionStatus: "", certifications: [], relevantCoursework: [], optionalDetail: "" }]); }
-  function change(index: number, next: Partial<ExperienceAddition>) { onChange(value.map((item, itemIndex) => itemIndex === index ? { ...item, ...next } : item)); }
-  return <section id="experience-additions" className="experience-editor" tabIndex={-1}><h3>Add experience the documents missed</h3><p>Use its real identity. Caregiving is never converted into occupational experience, and no disclosure or metric is required.</p>{value.map((item, index) => <fieldset key={item.clientId}><legend>Experience {index + 1}</legend>
-    <div className="field-grid"><label>Type<select value={item.kind} onChange={(e) => change(index, { kind: e.target.value as ExperienceAddition["kind"] })}>{Object.entries(experienceKindLabels).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}</select></label>
-    <label id={`experience-${item.clientId}-organization`} tabIndex={-1}>Real employer, organization, business, or project<input aria-invalid={hasError(errors, `experience-${item.clientId}-organization`) || undefined} aria-describedby={hasError(errors, `experience-${item.clientId}-organization`) ? errorId(`experience-${item.clientId}-organization`) : undefined} value={item.organizationOrProject} onChange={(e) => change(index, { organizationOrProject: e.target.value })} /></label><ErrorFor errors={errors} fieldId={`experience-${item.clientId}-organization`} />
-    <label>Real role or relationship<input value={item.roleOrRelationship} onChange={(e) => change(index, { roleOrRelationship: e.target.value })} /></label>
-    <label>Date precision<select value={item.datePrecision} onChange={(e) => change(index, { datePrecision: e.target.value as ExperienceAddition["datePrecision"] })}><option value="EXACT_DAY">Exact day</option><option value="MONTH">Month</option><option value="YEAR">Year</option><option value="UNKNOWN">Unknown</option></select></label>
-    <label>Start date<input type="date" value={item.startsOn} onChange={(e) => change(index, { startsOn: e.target.value })} /></label><label id={`experience-${item.clientId}-end`} tabIndex={-1}>End date<input type="date" aria-invalid={hasError(errors, `experience-${item.clientId}-end`) || undefined} aria-describedby={hasError(errors, `experience-${item.clientId}-end`) ? errorId(`experience-${item.clientId}-end`) : undefined} value={item.endsOn} onChange={(e) => change(index, { endsOn: e.target.value })} /></label><ErrorFor errors={errors} fieldId={`experience-${item.clientId}-end`} />
-    <label>Intensity, if material (%)<input type="number" min="0" max="100" value={item.intensityPercent ?? ""} onChange={(e) => change(index, { intensityPercent: e.target.value ? Number(e.target.value) : null })} /></label></div>
-    <label>Responsibilities (comma-separated)<input value={item.responsibilities.join(", ")} onChange={(e) => change(index, { responsibilities: split(e.target.value) })} /></label><label>Tools actually used (comma-separated)<input value={item.tools.join(", ")} onChange={(e) => change(index, { tools: split(e.target.value) })} /></label>
-    <label>Scope, if known<textarea value={item.scope} onChange={(e) => change(index, { scope: e.target.value })} /></label><label>Outcome, if known<textarea value={item.outcome} onChange={(e) => change(index, { outcome: e.target.value })} /></label>
-    {item.kind === "EDUCATION_CERTIFICATION" && <div id={`experience-${item.clientId}-education`} className="field-grid" tabIndex={-1} aria-invalid={hasError(errors, `experience-${item.clientId}-education`) || undefined} aria-describedby={hasError(errors, `experience-${item.clientId}-education`) ? errorId(`experience-${item.clientId}-education`) : undefined}><label>Actual degree or education level<input value={item.educationLevel} onChange={(e) => change(index, { educationLevel: e.target.value })} /></label><label>Actual field<input value={item.educationField} onChange={(e) => change(index, { educationField: e.target.value })} /></label><label>Completion status<input value={item.completionStatus} onChange={(e) => change(index, { completionStatus: e.target.value })} /></label><label>Certifications (comma-separated)<input value={item.certifications.join(", ")} onChange={(e) => change(index, { certifications: split(e.target.value) })} /></label><label>Relevant coursework actually supplied<input value={item.relevantCoursework.join(", ")} onChange={(e) => change(index, { relevantCoursework: split(e.target.value) })} /></label></div>}<ErrorFor errors={errors} fieldId={`experience-${item.clientId}-education`} />
-    {["CAREGIVING","OTHER_RELEVANT_LIFE_CONTEXT"].includes(item.kind) && <label>Optional context; no disclosure required<textarea value={item.optionalDetail} onChange={(e) => change(index, { optionalDetail: e.target.value })} /></label>}
-    <button type="button" className="text-button" onClick={() => onChange(value.filter((_, itemIndex) => itemIndex !== index))}><Trash2 aria-hidden="true" /> Remove</button></fieldset>)}<button type="button" className="secondary-button" onClick={add}><Plus aria-hidden="true" /> Add experience</button></section>;
-}
 function CapabilityGroup({ legend, options, values, onChange }: { legend: string; options: readonly (readonly [string,string])[]; values: Record<string,string>; onChange: (key: string, value: FourStepDraft["capabilities"][string]) => void }) { return <fieldset><legend>{legend}</legend>{options.map(([key, label]) => <label key={key}>{label}<select value={values[key] || ""} onChange={(e) => onChange(key, e.target.value as FourStepDraft["capabilities"][string])}><option value="">Choose if relevant</option>{capabilityChoices.map(([value, text]) => <option value={value} key={value}>{text}</option>)}</select></label>)}</fieldset>; }
 
 function PreferenceSelects({ id, items, values, onChange, intro }: { id: string; items: readonly (readonly [string,string])[]; values: Record<string,string>; onChange: (key: string, value: FourStepDraft["workConditionPreferences"][string]) => void; intro: string }) { return <fieldset id={id} tabIndex={-1}><legend>Preference strength</legend><p className="field-help">{intro}</p>{items.map(([key,label]) => <label key={key}>{label}<select value={values[key] || ""} onChange={(e) => onChange(key, e.target.value as FourStepDraft["workConditionPreferences"][string])}><option value="">No selection</option><option value="MUST_HAVE">Must have</option><option value="WOULD_PREFER">Would prefer</option><option value="OPEN_TO">Open to</option><option value="DO_NOT_SHOW">Do not show me</option><option value="DEALBREAKER">Dealbreaker</option></select></label>)}</fieldset>; }
 function BenefitPreferences({ value, onChange }: { value: FourStepDraft["benefits"]; onChange: (value: FourStepDraft["benefits"]) => void }) { const options=["Health insurance","Paid time off","Retirement benefits"]; const groups=[["mustHave","Must have"],["wouldPrefer","Would prefer"],["openTo","Open to"]] as const; return <fieldset id="benefits-preferences" tabIndex={-1}><legend>Benefits that affect matching (optional)</legend>{groups.map(([key,label]) => <fieldset key={key}><legend>{label}</legend>{options.map((option) => <label className="confirm" key={option}><input type="checkbox" checked={value[key].includes(option)} onChange={() => onChange({ ...value, [key]: value[key].includes(option) ? value[key].filter((item) => item !== option) : [...value[key],option] })} /><span>{option}</span></label>)}</fieldset>)}</fieldset>; }
 function Compensation({ draft, update, errors }: { draft: FourStepDraft; update: <K extends keyof FourStepDraft>(key: K, value: FourStepDraft[K]) => void; errors: StepError[] }) { const hasPay = draft.salaryTargetCents !== null || draft.salaryHardMinimumCents !== null; return <fieldset id="compensation" tabIndex={-1}><legend>Compensation (optional)</legend><p className="field-help">Your target is a preference. A firm hard minimum is a gate and is never silently lowered.</p><div className="field-grid"><label htmlFor="salary-target">Target compensation<input id="salary-target" inputMode="decimal" aria-invalid={hasError(errors, "salary-target") || undefined} aria-describedby={hasError(errors, "salary-target") ? errorId("salary-target") : undefined} defaultValue={draft.salaryTargetCents === null ? "" : String(draft.salaryTargetCents / 100)} onBlur={(e) => { const value = parseCompensationInput(e.target.value); if (!Number.isNaN(value)) update("salaryTargetCents", value); }} /></label><label htmlFor="salary-minimum">Hard minimum<input id="salary-minimum" inputMode="decimal" defaultValue={draft.salaryHardMinimumCents === null ? "" : String(draft.salaryHardMinimumCents / 100)} onBlur={(e) => { const value = parseCompensationInput(e.target.value); if (!Number.isNaN(value)) update("salaryHardMinimumCents", value); }} /></label></div>{hasPay && <div className="field-grid"><label htmlFor="salary-period">Pay period <Required /><select id="salary-period" aria-invalid={hasError(errors, "salary-period") || undefined} aria-describedby={hasError(errors, "salary-period") ? errorId("salary-period") : undefined} value={draft.salaryPeriod} onChange={(e) => update("salaryPeriod", e.target.value as FourStepDraft["salaryPeriod"])}><option value="">Choose one</option><option value="YEAR">Annual</option><option value="HOUR">Hourly</option></select></label><label htmlFor="salary-basis">Pay meaning <Required /><select id="salary-basis" aria-invalid={hasError(errors, "salary-basis") || undefined} aria-describedby={hasError(errors, "salary-basis") ? errorId("salary-basis") : undefined} value={draft.salaryBasis} onChange={(e) => update("salaryBasis", e.target.value as FourStepDraft["salaryBasis"])}><option value="">Choose one</option><option value="BASE">Base pay</option><option value="GUARANTEED_TOTAL">Guaranteed total pay</option></select></label></div>}<label className="confirm"><input type="checkbox" checked={draft.salaryMinimumFlexible} onChange={(e) => update("salaryMinimumFlexible", e.target.checked)} /><span>Pay is flexible.</span></label><Policy name="unpublished" label="Jobs with unpublished pay" value={draft.salaryUnpublishedPolicy} onChange={(value) => update("salaryUnpublishedPolicy", value)} /><Policy name="overlap" label="Ranges that start below but reach my minimum" value={draft.salaryOverlapPolicy} onChange={(value) => update("salaryOverlapPolicy", value)} />{hasPay && <Policy name="variable" label="Materially variable compensation" value={draft.salaryVariablePayPolicy} onChange={(value) => update("salaryVariablePayPolicy", value)} />}</fieldset>; }
 function Policy({ name, label, value, onChange }: { name: string; label: string; value: "EXCLUDE" | "INCLUDE_WITH_WARNING"; onChange: (value: "EXCLUDE" | "INCLUDE_WITH_WARNING") => void }) { return <fieldset><legend>{label}</legend><Radio name={name} value="EXCLUDE" checked={value} onChange={onChange} label="Do not show me" /><Radio name={name} value="INCLUDE_WITH_WARNING" checked={value} onChange={onChange} label="Open to, with a clear warning" /></fieldset>; }
-function Review({ draft, resume, cover, onEdit }: { draft: FourStepDraft; resume: IntakeDocument | null; cover: IntakeDocument | null; onEdit: (step: 0 | 1 | 2 | 3, controlId: string, editAll?: boolean) => void }) {
-  const list = (values: readonly string[], empty: string) => values.map((value) => labels[value] || titleCase(value)).join(", ") || empty;
-  const preferenceList = Object.entries(draft.workConditionPreferences).map(([key, value]) => `${key.startsWith("activity:") ? labels[key.slice(9)] || key.slice(9) : titleCase(key)}: ${titleCase(value)}`).join("; ") || "No optional work conditions set";
-  const benefitList = [...draft.benefits.mustHave.map((value) => `${value}: Must have`), ...draft.benefits.wouldPrefer.map((value) => `${value}: Would prefer`), ...draft.benefits.openTo.map((value) => `${value}: Open to`)].join("; ") || "No benefit preferences set";
-  const rows: { title: string; text: string; target: 0 | 1 | 2 | 3; controlId: string }[] = [
-    { title: "Contact and documents", text: `${draft.fullName || "Not set"}; ${draft.email || "not set"}; ${resume?.name || "resume missing"}${cover ? `; ${cover.name}` : ""}`, target: 0, controlId: "full-name" },
-    { title: "Search direction", text: `${list(draft.desiredActivities, "Guidance requested")}; ${labels[draft.searchBreadth]}; titles ${list(draft.targetTitles, "not limited")}; industries ${list(draft.industryInterests, "open")}`, target: 1, controlId: "desired-activities" },
-    { title: "Experience and skills", text: `${Object.values(draft.factReviews).filter((value) => value === "CONFIRM").length} resume suggestions confirmed; ${Object.values(draft.factReviews).filter((value) => value === "CORRECT").length} structured corrections; ${draft.experienceAdditions.length} additions`, target: 2, controlId: "experience-additions" },
-    { title: "Work modes and location", text: `${list(draft.workModes, "Work mode missing")}${draft.preferredWorkMode ? `; prefer ${titleCase(draft.preferredWorkMode)}` : ""}; ${draft.stateOrDc || "state missing"}${draft.zipCode ? `; commute from ${draft.zipCode} within ${draft.commuteDistanceMiles} miles` : ""}`, target: 3, controlId: "work-modes" },
-    { title: "Employment type and schedule", text: `${list(draft.employmentTypes, "Employment type missing")}${draft.preferredEmploymentType ? `; prefer ${titleCase(draft.preferredEmploymentType)}` : ""}; ${list(draft.schedules, "no schedule preference")}`, target: 3, controlId: "employment-types" },
-    { title: "Benefits", text: benefitList, target: 3, controlId: "benefits-preferences" },
-    { title: "Work conditions", text: preferenceList, target: 3, controlId: "work-condition-preferences" },
-    { title: "Compensation", text: `Target ${formatCompensation(draft.salaryTargetCents, draft.salaryPeriod)}; hard minimum ${formatCompensation(draft.salaryHardMinimumCents, draft.salaryPeriod)}${draft.salaryMinimumFlexible ? "; flexible" : "; firm"}`, target: 3, controlId: "compensation" },
-    { title: "Exclusions and unknown details", text: `${list(draft.dealbreakers, "No fast exclusions")}; blocked industries ${list(draft.blockedIndustries, "none")}; ${hardEmployerCriteria(draft).length} criterion-specific unknown choices`, target: 3, controlId: "leave-out" },
-    { title: "Terms and service boundary", text: draft.termsAccepted ? "Terms and Privacy Policy accepted" : "Agreement required before finalization", target: 3, controlId: "terms-accepted" },
-  ];
-  return <section className="review-list" aria-labelledby="review-title"><div className="review-heading"><h3 id="review-title">Review your search</h3><button type="button" onClick={() => onEdit(0, "full-name", true)}>Edit all answers</button></div>{rows.map(({ title, text, target, controlId }) => <div key={title}><p><strong>{title}</strong><span>{text}</span></p><button type="button" aria-label={`Edit ${title.toLowerCase()}`} onClick={() => onEdit(target, controlId)}>Edit</button></div>)}</section>;
+function Review({ sections, prepared, onEdit }: { sections: ReviewSection[]; prepared: boolean; onEdit?: (step: 0 | 1 | 2 | 3, controlId: string, editAll?: boolean) => void }) {
+  return <section className="review-list" aria-labelledby="review-title"><div className="review-heading"><h3 id="review-title" tabIndex={-1}>{prepared ? "Confirm your saved information" : "Review your search"}</h3>{onEdit && <button type="button" onClick={() => onEdit(0, "full-name", true)}>Edit all answers</button>}</div><p>Read the actual facts and choices below. Excluded document suggestions will not be treated as confirmed facts. {onEdit ? "Edit any section before you submit." : "This is your confirmed information."}</p>{sections.map(({ title, lines, step, controlId }) => <div key={title}><section aria-label={title}><h4>{title}</h4><ul>{lines.map((line, index) => <li key={index}>{line}</li>)}</ul></section>{onEdit && <button type="button" aria-label={`Edit ${title.toLowerCase()}`} onClick={() => onEdit(step, controlId)}>Edit</button>}</div>)}</section>;
 }
-function split(value: string) { return value.split(",").map((item) => item.trim()).filter(Boolean); }
 function titleCase(value: string) { return value.toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }

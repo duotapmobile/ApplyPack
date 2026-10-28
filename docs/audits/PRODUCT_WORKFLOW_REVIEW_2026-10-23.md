@@ -1,0 +1,37 @@
+# Product and workflow review — October 23, 2026
+
+Status: NOT READY. Source review and local repairs do not establish deployed acceptance.
+
+Reviewed the canonical `applypack-production-v2` checkout, branch `codex/manual-launch-hardening-2026-10-02`, base commit `a3de4a447d499fb7d416e1a1d167e281372903b2`, with the existing uncommitted hardening work preserved. Authority is amendment 17 and the owner's approved paid-launch plan. The initial review covered existing product/workflow code outside this reviewer's newly implemented sandbox activation proof. The reviewer then implemented the findings below at the release owner's direction; another agent independently reviewed the resulting ownership, authentication and invitation controls.
+
+## Findings and source repairs
+
+1. **P1 — Completed intake had no usable invitation action.** The admin page loaded only pending feasibility requests; the completed eligible intake disappeared from that table. The secure invitation endpoint existed but had no operator caller. Added a separate server-loaded queue for current completed intakes and latest eligible assessments, followed by a labeled review confirmation and rationale. The form calls the existing fresh-MFA, same-origin invitation endpoint, reserves the existing capacity atomically, and shows a private 15-minute link for manual sharing. Existing active invitations prevent duplicate issuance; an uncertain response requires a queue refresh. Approval state resets when the draft, snapshot or assessment changes. Files: `src/lib/commerce/search-invitation-queue.ts`, `src/components/admin/search-checkout-invitations.tsx`, `src/app/admin/page.tsx`.
+
+2. **P1 — Legacy delivered documents were universally unavailable.** The historical download route returned 410 and the portal offered only a support message. Canonical history contains `apply_pack_delivery_revisions`, including original and correction deliveries with owner/order/item-bound paths and reviewed delivery metadata. Restored read access using those records: verified authentication within 15 minutes, explicit customer ownership, reviewed revision, exact historical path shape, bounded DOCX container checks, existing isolated structural inspection, and short-lived private links. The customer can select preserved versions. Unsafe, missing or unverifiable objects return controlled errors and retain their records. No legacy upload, correction, fulfillment or payment write was restored. Expired browser sessions return through sign-in to the same portal delivery. Files: `src/app/api/customer/deliveries/[id]/route.ts`, `src/lib/materials/legacy-delivery.ts`, `src/components/portal/delivery-actions.tsx`.
+
+3. **P2 — Refunded search copy could deny a completed delivery.** A successful refund always claimed no search release had been committed, including a delivered-then-refunded journey. Status now distinguishes actual delivered history from an undelivered refund. Files: `src/lib/commerce/customer-search-state.ts`, `src/app/my-applypack/page.tsx`.
+
+## Product rules verified in source
+
+- Fixed search price is 1,899 cents for exactly ten distinct human-reviewed jobs. Checkout totals and selected quantities are server controlled; the release route and database verify persisted eligibility and an exact-ten package.
+- Each selected Apply Pack line is 799 cents for a tailored resume and cover letter. Selection is customer-owned and tied to delivered eligible matches. Payment and confirmed-input/capacity timestamps retain the existing 24-hour deadline rules.
+- Database admission retains one search and two Apply Pack lines per rolling 24 hours. The operator capacity API enables/disables these fixed resources rather than expanding the approved cap.
+- Public source advertises the approved prices and no subscription. Historical board entitlement, billing management and the read-only paid archive remain separate from new purchasing.
+- Current canonical document history remains authorization-bound. The additional legacy read route does not reopen retired write endpoints or alter payment/release history.
+
+## Validation and remaining evidence
+
+Focused unit coverage exercises completed/expired/invalidated assessments, unavailable queue dependencies, operator review and rationale, changed-assessment reset, lost invitation responses, ownership and authentication rejection, historical revision/path binding, DOCX bounds and malformed content, unavailable isolated inspection/storage, sign-in return paths, history controls and delivered/refunded copy. The five focused suites passed 48 tests with one worker; changed-file ESLint and the tracked diff whitespace check passed. Final integrated typechecking and release checks remain the release owner's responsibility after concurrent edits finish.
+
+Production's historical inventory and stored objects were not inspected in this review because production database access was unavailable. Do not infer that production contains legacy deliveries or that every stored file is safe/available. Inventory and representative owned-download verification remain part of provider acceptance. A file with incomplete legacy review metadata, an unexpected stored path, a missing object or failed structural inspection stays unavailable pending support review; its records remain intact.
+
+Required before launch: final-SHA hosted sandbox customer/operator journey, real approved job evidence, human review of generated documents, email and private-download delivery, normal refund/reconciliation, measured recovery, actual maintenance/alert cycles, keyboard and screen-reader checks, physical-phone checks, provider onboarding/configuration verification and the owner's final go-live decision. The genuine first customer must receive the actual service under normal policy before invitations expand. Local fixtures do not replace those gates.
+
+## Separate review of guided research controls
+
+Performed an independent product pass over another agent's `matching-workbench.tsx`, `matching-guided-controls.tsx`, `matching-review-form.tsx`, and `manual-source-observation.tsx`, together with the existing manual-research controls and matching research/review/evaluation endpoints. No critical or high-severity source finding remained in that review.
+
+The forms select actual intake, inventory, criterion, candidate fact and review identifiers. Review dispositions start unresolved; no-padding, equivalent-experience, live-listing and final-operation approvals require explicit action. Unstated listing facts stay unknown. Only current manual source permission is offered, with server authorization checked again. Matching evaluations submit saved review identifiers and retain server-derived eligibility, scores and explanations. The UI does not waive customer requirements, expand source authority, invent candidate experience or release a job.
+
+The workbench freezes a prepared operation until confirmation or cancellation. An uncertain non-idempotent result requires refreshed evidence; unchanged manual-observation retries retain their observation identifier. Every successful packet refresh remounts the review controls, clearing old approvals even when the selected intake remains the same. Listing text changes separately clear live verification checks. A minor readability suggestion was sent to the author: display the typed fact value when older confirmed facts have no customer-facing display metadata. Final integrated tests and actual operator acceptance remain release gates.

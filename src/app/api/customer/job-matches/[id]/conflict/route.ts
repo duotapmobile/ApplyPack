@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { loadCustomerRetentionAccess } from "@/lib/materials/retention-access-server";
+import { SEARCH_ACTIONS_EXPIRED_MESSAGE, searchActionsExpired, retentionErrorMessage } from "@/lib/materials/retention-access";
 import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { notifyCustomer } from "@/lib/email/notify";
@@ -25,6 +27,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!match || !order || order.customer_id !== authData.user.id || order.status !== "delivered") {
     return NextResponse.json({ error: "Match not found." }, { status: 404 });
   }
+  const retention = await loadCustomerRetentionAccess(admin, authData.user.id).catch(() => null);
+  if (!retention) return NextResponse.json({ error: "The service window could not be verified." }, { status: 503 });
+  if (searchActionsExpired(retention.orders.find((record) => record.order_id === order.id))) {
+    return NextResponse.json({ error: SEARCH_ACTIONS_EXPIRED_MESSAGE }, { status: 410 });
+  }
   const { data: intake, error: intakeError } = await admin.from("intakes").select("criteria_version").eq("id", order.intake_id).maybeSingle();
   if (intakeError || !intake) return NextResponse.json({ error: "The approved criteria snapshot could not be verified." }, { status: 502 });
   const { error } = await admin.from("conflict_reviews").insert({
@@ -34,6 +41,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     criteria_version: intake?.criteria_version || 1,
   });
   if (error?.code === "23505") return NextResponse.json({ error: "A review is already open for this match." }, { status: 409 });
+  if (retentionErrorMessage(error)) return NextResponse.json({ error: retentionErrorMessage(error) }, { status: 410 });
   if (error) return NextResponse.json({ error: "The review request could not be saved." }, { status: 502 });
   const decision = await admin.from("job_matches").update({ customer_decision: "conflict_reported" }).eq("id", id);
   const audit = await admin.from("audit_logs").insert({ actor_id: authData.user.id, action: "criteria_conflict_submitted", entity_type: "job_match", entity_id: id });

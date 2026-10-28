@@ -1,4 +1,5 @@
 import { MatchingWorkbench } from "@/components/admin/matching-workbench";
+import Link from "next/link";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AdminMfa } from "@/components/admin/admin-mfa";
@@ -7,18 +8,23 @@ import { Chunk5MaterialStaffQueue } from "@/components/admin/chunk5-material-sta
 import { JobSourceOperations } from "@/components/admin/job-source-operations";
 import { StagingBoardMaterialReview } from "@/components/admin/staging-board-material-review";
 import { PendingIntakes } from "@/components/admin/pending-intakes";
+import { SearchCheckoutInvitations } from "@/components/admin/search-checkout-invitations";
+import { ServiceRetentionControls } from "@/components/admin/service-retention-controls";
+import { loadSearchInvitationQueue } from "@/lib/commerce/search-invitation-queue";
+import { loadFeasibilityQueue } from "@/lib/matching/feasibility-queue";
+import { loadOrderIntakeSourceModes } from "@/lib/intake/admin-source-status";
 import { Chunk4StaffQueue, type StaffQueueRow, type StaffReviewCandidate } from "@/components/admin/chunk4-staff-queue";
 import { SignOutButton } from "@/components/auth/sign-out-button";
-import { isAdminEmailAllowed } from "@/lib/auth/require-admin";
+import { hasFreshAdminMfa, isAdminEmailAllowed } from "@/lib/auth/require-admin";
 import { loadSyntheticBoardReviewJobs } from "@/lib/job-board/staging-review";
 import { loadMaterialStaffLines } from "@/lib/materials/admin";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { candidatePayload } from "@/lib/workflow/candidates";
+import { loadPersistedEvaluationsForOrder, selectPersistedEvaluations } from "@/lib/matching/persisted-runtime";
 
 export const metadata: Metadata = { title: "ApplyPack Operations", robots: { index: false, follow: false } };
 
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ intakePage?: string | string[] }> }) {
   const supabase = await createSupabaseServerClient();
   const admin = createSupabaseAdminClient();
   if (!supabase || !admin) return <AdminSetup />;
@@ -29,21 +35,22 @@ export default async function AdminPage() {
   if (!profile || !["operator", "admin"].includes(profile.role)) redirect("/my-applypack");
   const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
   if (!assurance || assurance.currentLevel !== "aal2") return <AdminMfa />;
-  const [{ data: orders }, { data: capacity }, { data: failures }, { data: applyRows }, { data: conflictRows }, { data: correctionRows }, { data: capacityLimits }, { data: candidateRows }] = await Promise.all([
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  const verified = token ? await supabase.auth.getClaims(token).catch(() => null) : null;
+  if (!verified || verified.error || !hasFreshAdminMfa(verified.data?.claims, authData.user.id)) return <AdminMfa />;
+  const searchInvitationQueue = await loadSearchInvitationQueue(admin);
+  const [{ data: orders }, { data: capacity }, { data: failures }, { data: applyRows }, { data: conflictRows }, { data: correctionRows }, { data: capacityPools }] = await Promise.all([
     admin.from("orders").select("id,product_kind,status,amount_cents,delivery_deadline,created_at,intake_id,intake:intakes(email,direction,priorities,dealbreakers,location_preference,schedule_preference,minimum_salary,experience_summary,notes,cover_letter_path,source_scan_status,source_deleted_at,intake_answers(answers))").in("status", ["paid", "in_fulfillment"]).order("delivery_deadline"),
     admin.from("capacity_reservations").select("id,kind,units,status,reserved_at,expires_at,confirmed_at").in("status", ["reserved", "confirmed"]).order("reserved_at", { ascending: false }),
     admin.from("webhook_events").select("id,event_type,error_message,received_at").not("error_message", "is", null).order("received_at", { ascending: false }).limit(10),
     admin.from("apply_pack_items").select("id,order_id,status,emphasis_notes,do_not_mention_notes,customer_update_notes,draft_resume_path,draft_cover_letter_path,draft_generated_at,draft_generator_version,orders!inner(status),job_match:job_matches(job:jobs(company,title))").in("orders.status", ["paid", "in_fulfillment"]).neq("status", "delivered"),
     admin.from("conflict_reviews").select("id,explanation,job_match:job_matches(job:jobs(company,title))").eq("status", "submitted").order("created_at"),
     admin.from("correction_requests").select("id,correction_text,apply_pack_item:apply_pack_items(job_match:job_matches(job:jobs(company,title)))").eq("status", "submitted").order("created_at"),
-    admin.from("capacity_limits").select("kind,units_per_24h,enabled").order("kind"),
-    admin.from("search_candidates").select("search_order_id,evaluation_id,ranking_score,fit_summary,requirements,concerns,job:jobs(*)").eq("review_status", "proposed").order("ranking_score", { ascending: false }),
+    admin.from("ap_capacity_pools").select("resource,enabled").in("resource", ["SEARCH", "MATERIALS"]).order("resource"),
   ]);
-  const { data: pendingRequests } = await admin.from("ap_feasibility_requests").select("id,snapshot_id,state,created_at").eq("state", "PENDING").order("created_at");
-  const pendingSnapshotIds = (pendingRequests || []).map((request) => request.snapshot_id);
-  const { data: pendingSnapshots } = pendingSnapshotIds.length
-    ? await admin.from("ap_intake_snapshots").select("id,access_email_normalized,desired_activities,avoided_activities,search_breadth,guidance_requested,work_modes,preferred_work_mode,us_state_or_dc,employment_types,preferred_employment_type,schedules,benefits,work_condition_preferences,dealbreakers,employer_unknown_policy,salary_hard_minimum_cents,salary_period,finalized_at").in("id", pendingSnapshotIds)
-    : { data: [] };
+  const feasibilityQueue = await loadFeasibilityQueue(admin, (await searchParams).intakePage);
+  const pendingSnapshots = feasibilityQueue.snapshots;
   const { data: staffQueueData } = await admin.from("ap_staff_queue")
     .select("queue_kind,subject_id,order_id,due_at,state,non_sensitive_metadata")
     .order("due_at", { ascending: true, nullsFirst: false });
@@ -184,14 +191,31 @@ export default async function AdminPage() {
     const job = Array.isArray(match?.job) ? match.job[0] : match?.job;
     return { id: item.id, correction_text: item.correction_text, company: job?.company || "Employer", title: job?.title || "Apply Pack" };
   });
-  const candidatesByOrder = new Map<string, ReturnType<typeof candidatePayload>[]>();
-  for (const candidate of candidateRows || []) {
-    const job = Array.isArray(candidate.job) ? candidate.job[0] : candidate.job;
-    if (!job) continue;
-    const current = candidatesByOrder.get(candidate.search_order_id) || [];
-    current.push(candidatePayload(candidate as unknown as Record<string, unknown>, job as unknown as Record<string, unknown>));
-    candidatesByOrder.set(candidate.search_order_id, current);
-  }
+  const poolState = new Map((capacityPools || []).map((pool) => [pool.resource, pool.enabled]));
+  const capacityLimits = (["SEARCH", "MATERIALS"] as const).map((resource) => ({
+    kind: resource === "SEARCH" ? "job_search" : "apply_pack",
+    units_per_24h: resource === "SEARCH" ? 1 : 2,
+    enabled: poolState.get(resource) ?? false,
+  }));
+  // Use the same current evidence and selector as the release endpoint. The
+  // legacy candidate queue can contain up to 30 jobs and is not a release set.
+  const candidatesByOrder = new Map(await Promise.all((orders || [])
+    .filter((order) => order.product_kind === "job_search")
+    .map(async (order): Promise<readonly [string, Record<string, unknown>[]]> => {
+      try {
+        const evaluations = await loadPersistedEvaluationsForOrder(admin, order.id);
+        const selection = selectPersistedEvaluations(evaluations, 10);
+        return [order.id, selection.selected.map((evaluation) => ({
+          evaluationId: evaluation.id,
+          company: evaluation.job_snapshot.company,
+          title: evaluation.job_snapshot.exact_title,
+          officialApplicationUrl: evaluation.job_snapshot.canonical_application_url,
+        }))] as const;
+      } catch {
+        return [order.id, []] as const;
+      }
+    })));
+  const sourceModes = await loadOrderIntakeSourceModes(admin, (orders || []).filter((order) => order.product_kind === "job_search").map((order) => order.id));
   const searchOrders = (orders || []).filter((order) => order.product_kind === "job_search").map((order) => {
     const intake = Array.isArray(order.intake) ? order.intake[0] : order.intake;
     const answerRow = Array.isArray(intake?.intake_answers) ? intake.intake_answers[0] : intake?.intake_answers;
@@ -200,6 +224,7 @@ export default async function AdminPage() {
       delivery_deadline: order.delivery_deadline,
       intake_id: order.intake_id,
       source_scan_status: intake?.source_scan_status || "pending",
+      source_entry_mode: sourceModes.get(order.id) || "UNAVAILABLE",
       source_deleted: Boolean(intake?.source_deleted_at),
       has_cover_letter: Boolean(intake?.cover_letter_path),
       intake_details: intake ? { email: intake.email, direction: intake.direction, priorities: intake.priorities, dealbreakers: intake.dealbreakers, location_preference: intake.location_preference, schedule_preference: intake.schedule_preference, minimum_salary: intake.minimum_salary, experience_summary: intake.experience_summary, notes: intake.notes, answers: answerRow?.answers } : {},
@@ -215,9 +240,20 @@ export default async function AdminPage() {
         <Chunk4StaffQueue rows={staffQueue} candidates={staffReviewCandidates} />
         <StagingBoardMaterialReview initialJobs={stagingBoardReviewJobs} />
         <Chunk5MaterialStaffQueue lines={materialStaffLines} />
-        <AdminOperations searchOrders={searchOrders} applyItems={applyItems} conflicts={conflicts} corrections={corrections} capacityLimits={capacityLimits || []} />
-        <MatchingWorkbench />
-      <PendingIntakes requests={pendingRequests || []} snapshots={pendingSnapshots || []} />
+        <p><Link href="/admin/document-drafts">Review document drafts</Link></p>
+        <p><Link href="/admin/submission-rules">Review employer submission instructions</Link></p>
+        <AdminOperations searchOrders={searchOrders} applyItems={applyItems} conflicts={conflicts} corrections={corrections} capacityLimits={capacityLimits} />
+        <MatchingWorkbench intakes={[...new Map([
+          ...(pendingSnapshots || []).map((snapshot) => [snapshot.id, { id: snapshot.id,
+            label: `${snapshot.access_email_normalized} · ${Array.isArray(snapshot.desired_activities) ? snapshot.desired_activities.join(", ") : "Pending intake"}` }] as const),
+          ...(activeCriteriaRows || []).map((snapshot) => [snapshot.id, { id: snapshot.id,
+            label: `Paid search · ${Array.isArray(snapshot.desired_activities) ? snapshot.desired_activities.join(", ") : snapshot.id}` }] as const),
+          ...searchInvitationQueue.candidates.map((candidate) => [candidate.snapshotId, { id: candidate.snapshotId,
+            label: `${candidate.email} · ${candidate.direction}` }] as const),
+        ]).values()]} />
+      <PendingIntakes {...feasibilityQueue} />
+      <SearchCheckoutInvitations {...searchInvitationQueue} />
+      <ServiceRetentionControls />
         <section className="admin-table-wrap">
           <h2>Orders due</h2>
           {orders?.length ? <div className="admin-table-scroll"><table className="admin-table">

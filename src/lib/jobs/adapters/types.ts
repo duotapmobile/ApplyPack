@@ -31,6 +31,7 @@ export type JobEnumerationResult = {
     received: number;
     mapped: number;
     rejected: number;
+    detailRequests?: number;
   };
   jobs: RawJobPosting[];
   errors: EnumerationError[];
@@ -54,7 +55,8 @@ export type JobEnumerationOptions = {
   requestTimeoutMs?: number;
   deadlineAtMs?: number;
   checkpoint?: string | null;
-  beforeRequest?: () => Promise<void>;
+  beforeRequest?: (requiredAction?: "READ_APPLICATION_QUESTIONS") => Promise<void>;
+  questionCaptureAuthority?: import("../application-question-evidence").QuestionCaptureAuthority;
 };
 
 export interface JobSourceAdapter {

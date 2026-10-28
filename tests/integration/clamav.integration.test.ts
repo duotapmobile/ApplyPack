@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { checkFileScannerHealth, scanFile } from "@/lib/files/scanner";
 
-const integration = process.env.SCANNER_INTEGRATION === "true" ? describe : describe.skip;
+if (process.env.SCANNER_INTEGRATION !== "true") throw new Error("Explicit SCANNER_INTEGRATION=true is required for ClamAV provider tests.");
 
-integration("ClamAV integration", () => {
+describe("ClamAV integration", () => {
   it("answers a real health ping", async () => {
     await expect(checkFileScannerHealth()).resolves.toBe(true);
   });

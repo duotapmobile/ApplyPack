@@ -1,0 +1,16 @@
+{
+  "rules": [
+    {
+      "rulePriority": 1,
+      "description": "Retain only the three newest immutable worker images",
+      "selection": {
+        "tagStatus": "any",
+        "countType": "imageCountMoreThan",
+        "countNumber": 3
+      },
+      "action": {
+        "type": "expire"
+      }
+    }
+  ]
+}

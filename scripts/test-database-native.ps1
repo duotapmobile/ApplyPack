@@ -3,7 +3,29 @@ param(
   [string]$EvidenceDirectory = (Join-Path ([IO.Path]::GetTempPath()) ('applypack-native-db-' + [guid]::NewGuid().ToString('N'))),
   [switch]$LegacyBackfill,
   [switch]$CapacityPressure,
-  [switch]$RetainClusterData
+  [switch]$RetainClusterData,
+  [switch]$RuleRevalidationUpgrade,
+  [switch]$SourceAwareDocumentUpgrade,
+  [switch]$DraftStageUpgrade,
+  [switch]$ReferenceDraftUpgrade,
+  [switch]$ServiceErrorUpgrade,
+  [switch]$DraftChangeUpgrade,
+  [switch]$ArchiveLifecycleUpgrade,
+  [switch]$ServiceRepairUpgrade,
+  [switch]$ResearchJourney,
+  [ValidateSet('LIMITED','QUALIFIED','PAID_SEARCH','EMPLOYER_RULE','PACK_PACKET','PACK_SOURCE','PACK_LOCAL_DOC')]
+  [string]$ResearchJourneyCase = 'LIMITED',
+  [switch]$ResearchPreparationUpgrade,
+  [switch]$MaterialClarificationUpgrade,
+  [switch]$RepairCaseStateUpgrade,
+  [switch]$ClarificationCaseUpgrade,
+  [switch]$ClarificationResumeUpgrade,
+  [switch]$EmployerRuleReviewUpgrade,
+  [switch]$VerifiedSourceRunUpgrade,
+  [switch]$OwnerDraftNoticeUpgrade,
+  [switch]$LegalReceiptUpgrade,
+  [string[]]$FixtureNames,
+  [string]$MaximumMigrationVersion
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
@@ -27,10 +49,12 @@ create role service_role nologin bypassrls;
 create schema auth;
 create schema storage;
 create schema extensions;
+create schema supabase_migrations;
+create table supabase_migrations.schema_migrations(version text primary key,name text not null,statements text[] not null);
 create extension pgcrypto with schema extensions;
 create table auth.users (
  id uuid primary key, instance_id uuid, aud text, role text, email text,
- encrypted_password text, email_confirmed_at timestamptz,
+ encrypted_password text, email_confirmed_at timestamptz, is_anonymous boolean not null default false,
  raw_app_meta_data jsonb, raw_user_meta_data jsonb, created_at timestamptz, updated_at timestamptz
 );
 create function auth.jwt() returns jsonb language sql stable as $$
@@ -39,9 +63,18 @@ $$;
 create function auth.uid() returns uuid language sql stable as $$
  select coalesce(nullif(current_setting('request.jwt.claim.sub', true), ''), auth.jwt()->>'sub')::uuid
 $$;
+create function auth.role() returns text language sql stable as $$
+ select coalesce(nullif(current_setting('request.jwt.claim.role', true), ''), auth.jwt()->>'role',current_user::text)
+$$;
 create table storage.buckets (
  id text primary key, name text not null, public boolean not null default false,
  file_size_limit bigint, allowed_mime_types text[]
+);
+-- Storage catalog only: actual object bytes and hosted authorization are not emulated.
+create table storage.objects (
+ id uuid primary key default extensions.gen_random_uuid(), bucket_id text not null references storage.buckets(id),
+ name text not null, owner uuid, created_at timestamptz default now(), updated_at timestamptz default now(),
+ metadata jsonb, unique(bucket_id,name)
 );
 grant usage on schema auth, storage, extensions to anon, authenticated, service_role;
 grant execute on all functions in schema auth to anon, authenticated, service_role;
@@ -54,8 +87,148 @@ alter default privileges for role postgres in schema public grant all on functio
 $bootstrapPath = Join-Path $inputPath 'bootstrap.sql'
 Set-Content -LiteralPath $bootstrapPath -Value $bootstrap -Encoding utf8
 $migrationFiles = @(Get-ChildItem (Join-Path $repoRoot 'supabase/migrations') -Filter '*.sql' | Sort-Object Name)
-$fixtures = @('chunk1-foundation.sql', 'chunk2-four-step.sql', 'chunk3-matching-engine.sql', 'chunk4-commerce-release.sql', 'chunk5-materials-delivery.sql', 'chunk6-final-integration.sql', 'employer-first-aggregation.sql', 'matching-fulfillment.sql', 'unpaid-source-retention.sql')
+if ($MaximumMigrationVersion) {
+  if ($MaximumMigrationVersion -notmatch '^\d{12}$') { throw 'MaximumMigrationVersion must be an exact numeric migration identifier.' }
+  $migrationFiles = @($migrationFiles | Where-Object { $_.Name.Split('_')[0] -le $MaximumMigrationVersion })
+}
+$fixtures = @('unpaid-source-retention.sql', 'chunk1-foundation.sql', 'chunk2-four-step.sql', 'chunk3-matching-engine.sql', 'chunk4-commerce-release.sql', 'chunk5-materials-delivery.sql', 'chunk6-final-integration.sql', 'employer-first-aggregation.sql', 'matching-fulfillment.sql', 'manual-launch-hardening.sql', 'sandbox-validation-launch-activation.sql', 'atomic-intake-legal-acceptance.sql', 'document-standard-compatibility.sql', 'source-upload-cleanup.sql', 'material-filename-cleanup-compatibility.sql', 'aws-temporary-cleanup.sql', 'open-font-document-contract.sql', 'legacy-board-read-only-archive.sql', 'legacy-board-terminal-event-ordering.sql')
 if ($LegacyBackfill) { $fixtures = @('chunk1-legacy-fixture.sql', 'chunk1-legacy-verify.sql') }
+if ($FixtureNames) {
+  if ($LegacyBackfill) { throw 'Explicit fixtures cannot replace the legacy backfill sequence.' }
+  foreach ($fixtureName in $FixtureNames) {
+    if ($fixtureName -notmatch '^[a-z0-9][a-z0-9-]*\.sql$') { throw 'Fixture name must be a repository integration SQL filename.' }
+  }
+  $fixtures = $FixtureNames
+}
+if ($RuleRevalidationUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $MaximumMigrationVersion -cne '202610250092' -or
+      $migrationFiles[-1].Name -cne '202610250092_material_rule_revalidation.sql') {
+    throw 'Rule revalidation upgrade requires the exact isolated 091-to-092 sequence.'
+  }
+  $fixtures += @('material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql')
+}
+if ($LegalReceiptUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $MaximumMigrationVersion -cnotin @('202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102') -or
+      $migrationFiles[-1].Name.Split('_')[0] -cne $MaximumMigrationVersion) {
+    throw 'Legal receipt upgrade requires an exact isolated historical-to-092 through102 sequence.'
+  }
+  $fixtures += @('legal-receipt-074-fixture.sql','legal-receipt-076-verify.sql','legal-receipt-086-verify.sql','legal-receipt-087-verify.sql')
+}
+if ($SourceAwareDocumentUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $MaximumMigrationVersion -cne '202610250093' -or
+      $migrationFiles[-1].Name -cne '202610250093_source_aware_document_acceptance.sql') {
+    throw 'Source-aware document upgrade requires the exact isolated092-to093 sequence.'
+  }
+  $fixtures += @('source-aware-document-upgrade-seed.sql','source-aware-document-upgrade-verify.sql')
+  if ($LegalReceiptUpgrade) { $fixtures += @('material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql') }
+}
+if ($DraftStageUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or
+      $MaximumMigrationVersion -cne '202610250094' -or $migrationFiles[-1].Name -cne '202610250094_material_draft_stage_claiming.sql') {
+    throw 'Draft stage upgrade requires the exact isolated093-to094 sequence.'
+  }
+  $fixtures += @('material-draft-stage-upgrade-seed.sql','material-draft-stage-upgrade-verify.sql')
+  if ($LegalReceiptUpgrade) { $fixtures += @('material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql','source-aware-document-upgrade-seed.sql','source-aware-document-upgrade-verify.sql') }
+}
+if ($ReferenceDraftUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or
+      $MaximumMigrationVersion -cne '202610250095' -or $migrationFiles[-1].Name -cne '202610250095_reference_aware_draft_delivery.sql') {
+    throw 'Reference draft upgrade requires the exact isolated094-to095 sequence.'
+  }
+  $fixtures += @('reference-draft-upgrade-seed.sql','reference-draft-upgrade-verify.sql')
+  if ($LegalReceiptUpgrade) { $fixtures += @('material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql','source-aware-document-upgrade-seed.sql','source-aware-document-upgrade-verify.sql','material-draft-stage-upgrade-seed.sql','material-draft-stage-upgrade-verify.sql') }
+}
+if ($ServiceErrorUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or
+      $MaximumMigrationVersion -cne '202610250096' -or $migrationFiles[-1].Name -cne '202610250096_service_error_contract_and_triage.sql') {
+    throw 'Service-error upgrade requires the exact isolated095-to096 sequence.'
+  }
+  $fixtures += @('service-error-upgrade-seed.sql','service-error-upgrade-verify.sql')
+  if ($LegalReceiptUpgrade) { $fixtures += @('material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql','source-aware-document-upgrade-seed.sql','source-aware-document-upgrade-verify.sql','material-draft-stage-upgrade-seed.sql','material-draft-stage-upgrade-verify.sql','reference-draft-upgrade-seed.sql','reference-draft-upgrade-verify.sql') }
+}
+if ($DraftChangeUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $LegalReceiptUpgrade -or
+      $MaximumMigrationVersion -cne '202610250097' -or $migrationFiles[-1].Name -cne '202610250097_material_draft_change_requests.sql') {
+    throw 'Draft-change upgrade requires the exact isolated096-to097 preservation sequence.'
+  }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('draft-change-upgrade-seed.sql','draft-change-upgrade-verify.sql')
+}
+if ($ArchiveLifecycleUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $LegalReceiptUpgrade -or
+      $MaximumMigrationVersion -cne '202610250098' -or $migrationFiles[-1].Name -cne '202610250098_protected_archive_lifecycle.sql') {
+    throw 'Archive lifecycle upgrade requires the exact isolated097-to098 preservation sequence.'
+  }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('archive-lifecycle-upgrade-seed.sql','archive-lifecycle-upgrade-verify.sql')
+}
+if ($ServiceRepairUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $LegalReceiptUpgrade -or
+      $MaximumMigrationVersion -cne '202610250099' -or $migrationFiles[-1].Name -cne '202610250099_scoped_service_error_repairs.sql') {
+    throw 'Service repair upgrade requires the exact isolated098-to099 preservation sequence.'
+  }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('service-repair-upgrade-seed.sql','service-repair-upgrade-verify.sql')
+}
+if ($ResearchPreparationUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $ServiceRepairUpgrade -or $LegalReceiptUpgrade -or
+      $MaximumMigrationVersion -cne '202610250100' -or $migrationFiles[-1].Name -cne '202610250100_automatic_research_preparation.sql') {
+    throw 'Research preparation upgrade requires the exact isolated099-to100 preservation sequence.'
+  }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('research-preparation-upgrade-seed.sql','research-preparation-upgrade-verify.sql')
+}
+if ($MaterialClarificationUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $ServiceRepairUpgrade -or $LegalReceiptUpgrade -or
+      $MaximumMigrationVersion -cne '202610250101' -or $migrationFiles[-1].Name -cne '202610250101_material_clarification_confirmation.sql') {
+    throw 'Forward upgrade requires the exact isolated100-to101 preservation sequence.'
+  }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('material-clarification-upgrade-seed.sql','material-clarification-upgrade-verify.sql')
+}
+if ($RepairCaseStateUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $ServiceRepairUpgrade -or $LegalReceiptUpgrade -or
+      $MaximumMigrationVersion -cne '202610260102' -or $migrationFiles[-1].Name -cne '202610260102_service_repair_case_state_cas.sql') {
+    throw 'Forward upgrade requires the exact isolated101-to102 preservation sequence.'
+  }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('service-repair-case-state-upgrade-seed.sql','service-repair-case-state-upgrade-verify.sql')
+}
+if ($ClarificationCaseUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $ServiceRepairUpgrade -or $ResearchPreparationUpgrade -or $MaterialClarificationUpgrade -or $RepairCaseStateUpgrade -or $LegalReceiptUpgrade -or $ResearchJourney -or
+      $MaximumMigrationVersion -cne '202610260102' -or $migrationFiles[-1].Name -cne '202610260102_service_repair_case_state_cas.sql') { throw 'Combined upgrade requires the exact isolated100-to101-to102 sequence.' }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('material-clarification-upgrade-seed.sql','material-clarification-upgrade-verify.sql','service-repair-case-state-upgrade-seed.sql','service-repair-case-state-upgrade-verify.sql')
+}
+if ($ClarificationResumeUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $ServiceRepairUpgrade -or $ResearchPreparationUpgrade -or $MaterialClarificationUpgrade -or $RepairCaseStateUpgrade -or $ClarificationCaseUpgrade -or $LegalReceiptUpgrade -or $ResearchJourney -or
+      $MaximumMigrationVersion -cne '202610260103' -or $migrationFiles[-1].Name -cne '202610260103_material_clarification_resume.sql') { throw 'Clarification resume upgrade requires the exact isolated102-to103 sequence.' }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('material-clarification-resume-upgrade-seed.sql','material-clarification-resume-upgrade-verify.sql')
+  if ($fixtures -notcontains 'verified-intake-ownership.sql') { $fixtures += 'verified-intake-ownership.sql' }
+  if ($fixtures -notcontains 'verified-intake-payment.sql') { $fixtures += 'verified-intake-payment.sql' }
+}
+if ($EmployerRuleReviewUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $ServiceRepairUpgrade -or $ResearchPreparationUpgrade -or $MaterialClarificationUpgrade -or $RepairCaseStateUpgrade -or $ClarificationCaseUpgrade -or $ClarificationResumeUpgrade -or $LegalReceiptUpgrade -or $ResearchJourney -or
+      $MaximumMigrationVersion -cne '202610270104' -or $migrationFiles[-1].Name -cne '202610270104_employer_rule_review_confirmation.sql') { throw 'Employer rule review upgrade requires the exact isolated103-to104 sequence.' }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('employer-rule-review-upgrade-seed.sql','employer-rule-review-upgrade-preservation.sql')
+  if ($fixtures -notcontains 'employer-rule-review-confirmation.sql') { $fixtures += 'employer-rule-review-confirmation.sql' }
+}
+if ($VerifiedSourceRunUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $ServiceRepairUpgrade -or $ResearchPreparationUpgrade -or $MaterialClarificationUpgrade -or $RepairCaseStateUpgrade -or $ClarificationCaseUpgrade -or $ClarificationResumeUpgrade -or $EmployerRuleReviewUpgrade -or $LegalReceiptUpgrade -or $ResearchJourney -or
+      $MaximumMigrationVersion -cne '202610270105' -or $migrationFiles[-1].Name -cne '202610270105_verified_source_run_binding.sql') { throw 'Source run binding upgrade requires the exact isolated103-to104-to105 sequence.' }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('employer-rule-review-upgrade-seed.sql','employer-rule-review-upgrade-preservation.sql')
+  if ($fixtures -notcontains 'verified-source-run-binding.sql') { $fixtures += 'verified-source-run-binding.sql' }
+}
+if ($OwnerDraftNoticeUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $ServiceRepairUpgrade -or $ResearchPreparationUpgrade -or $MaterialClarificationUpgrade -or $RepairCaseStateUpgrade -or $ClarificationCaseUpgrade -or $ClarificationResumeUpgrade -or $EmployerRuleReviewUpgrade -or $VerifiedSourceRunUpgrade -or $LegalReceiptUpgrade -or $ResearchJourney -or
+      $MaximumMigrationVersion -cne '202610280106' -or $migrationFiles[-1].Name -cne '202610280106_owner_draft_ready_notices.sql') { throw 'Owner notice upgrade requires the exact isolated105-to106 sequence.' }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('owner-draft-notices-upgrade-seed.sql','owner-draft-notices-upgrade-verify.sql')
+  if ($fixtures -notcontains 'owner-draft-notices.sql') { $fixtures += 'owner-draft-notices.sql' }
+}
 $inputs = @([pscustomobject]@{Kind='bootstrap'; Name='bootstrap.sql'; Path=$bootstrapPath})
 foreach ($migration in $migrationFiles) {
   $copy = Join-Path $inputPath $migration.Name
@@ -74,10 +247,351 @@ if ($LegacyBackfill) {
     @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -gt '202609030021' }) +
     @($inputs | Where-Object Name -eq 'chunk1-legacy-verify.sql')
 }
+if ($RuleRevalidationUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250091' }) +
+    @($inputs | Where-Object Name -eq 'material-rule-revalidation-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250092' }) +
+    @($inputs | Where-Object Name -eq 'material-rule-revalidation-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql') })
+}
+if ($SourceAwareDocumentUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250092' }) +
+    @($inputs | Where-Object Name -eq 'source-aware-document-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250093' }) +
+    @($inputs | Where-Object Name -eq 'source-aware-document-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('source-aware-document-upgrade-seed.sql','source-aware-document-upgrade-verify.sql') })
+}
+if ($DraftStageUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250093' }) +
+    @($inputs | Where-Object Name -eq 'material-draft-stage-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250094' }) +
+    @($inputs | Where-Object Name -eq 'material-draft-stage-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('material-draft-stage-upgrade-seed.sql','material-draft-stage-upgrade-verify.sql') })
+}
+if ($ReferenceDraftUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250094' }) +
+    @($inputs | Where-Object Name -eq 'reference-draft-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250095' }) +
+    @($inputs | Where-Object Name -eq 'reference-draft-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('reference-draft-upgrade-seed.sql','reference-draft-upgrade-verify.sql') })
+}
+if ($ServiceErrorUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250095' }) +
+    @($inputs | Where-Object Name -eq 'service-error-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250096' }) +
+    @($inputs | Where-Object Name -eq 'service-error-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('service-error-upgrade-seed.sql','service-error-upgrade-verify.sql') })
+}
+if ($DraftChangeUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250096' }) +
+    @($inputs | Where-Object Name -eq 'draft-change-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250097' }) +
+    @($inputs | Where-Object Name -eq 'draft-change-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('draft-change-upgrade-seed.sql','draft-change-upgrade-verify.sql') })
+}
+if ($ArchiveLifecycleUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250097' }) +
+    @($inputs | Where-Object Name -eq 'archive-lifecycle-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250098' }) +
+    @($inputs | Where-Object Name -eq 'archive-lifecycle-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('archive-lifecycle-upgrade-seed.sql','archive-lifecycle-upgrade-verify.sql') })
+}
+if ($ServiceRepairUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250098' }) +
+    @($inputs | Where-Object Name -eq 'service-repair-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250099' }) +
+    @($inputs | Where-Object Name -eq 'service-repair-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('service-repair-upgrade-seed.sql','service-repair-upgrade-verify.sql') })
+}
+if ($ResearchPreparationUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250099' }) +
+    @($inputs | Where-Object Name -eq 'research-preparation-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250100' }) +
+    @($inputs | Where-Object Name -eq 'research-preparation-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('research-preparation-upgrade-seed.sql','research-preparation-upgrade-verify.sql') })
+}
+if ($MaterialClarificationUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250100' }) +
+    @($inputs | Where-Object Name -eq 'material-clarification-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250101' }) +
+    @($inputs | Where-Object Name -eq 'material-clarification-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('material-clarification-upgrade-seed.sql','material-clarification-upgrade-verify.sql') })
+}
+if ($RepairCaseStateUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250101' }) +
+    @($inputs | Where-Object Name -eq 'service-repair-case-state-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610260102' }) +
+    @($inputs | Where-Object Name -eq 'service-repair-case-state-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('service-repair-case-state-upgrade-seed.sql','service-repair-case-state-upgrade-verify.sql') })
+}
+if ($ClarificationCaseUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610250100' }) +
+    @($inputs | Where-Object Name -eq 'material-clarification-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250101' }) +
+    @($inputs | Where-Object Name -eq 'material-clarification-upgrade-verify.sql') +
+    @($inputs | Where-Object Name -eq 'service-repair-case-state-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610260102' }) +
+    @($inputs | Where-Object Name -eq 'service-repair-case-state-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('material-clarification-upgrade-seed.sql','material-clarification-upgrade-verify.sql','service-repair-case-state-upgrade-seed.sql','service-repair-case-state-upgrade-verify.sql') })
+}
+if ($ClarificationResumeUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610260102' }) +
+    @($inputs | Where-Object Name -eq 'material-clarification-resume-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610260103' }) +
+    @($inputs | Where-Object Name -eq 'material-clarification-resume-upgrade-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('material-clarification-resume-upgrade-seed.sql','material-clarification-resume-upgrade-verify.sql') })
+  # Execute the same final phase as hosted-CI's disposable upgrade runner, with
+  # its exact module and generated SQL retained in this owned input manifest.
+  $phaseModule = Join-Path $inputPath 'supabase-upgrade-phases.mjs'
+  Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/lib/supabase-upgrade-phases.mjs') -Destination $phaseModule
+  $phaseExporter = Join-Path $inputPath 'export-current103-phase.mjs'
+  Set-Content -LiteralPath $phaseExporter -Encoding utf8 -Value @'
+import { pathToFileURL } from 'node:url';
+const { current103LockedPhaseSql } = await import(pathToFileURL(process.argv[2]).href);
+if (typeof current103LockedPhaseSql !== 'string' || !current103LockedPhaseSql.length) throw new Error('Exact103 phase required');
+process.stdout.write(current103LockedPhaseSql);
+'@
+  $phaseSql = & (Get-Command node -ErrorAction Stop).Source $phaseExporter $phaseModule
+  if ($LASTEXITCODE -ne 0) { throw 'Exact103 phase export failed.' }
+  $phasePath = Join-Path $inputPath 'native-current103-locked-phase.sql'
+  Set-Content -LiteralPath $phasePath -Encoding utf8 -Value $phaseSql
+  $inputs += [pscustomobject]@{Kind='fixture'; Name='native-current103-locked-phase.sql'; Path=$phasePath}
+  $inputs += [pscustomobject]@{Kind='helper'; Name='supabase-upgrade-phases.mjs'; Path=$phaseModule}
+  $inputs += [pscustomobject]@{Kind='helper'; Name='export-current103-phase.mjs'; Path=$phaseExporter}
+}
+if ($EmployerRuleReviewUpgrade) {
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610260103' }) +
+    @($inputs | Where-Object Name -eq 'employer-rule-review-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610270104' }) +
+    @($inputs | Where-Object Name -eq 'employer-rule-review-upgrade-preservation.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('employer-rule-review-upgrade-seed.sql','employer-rule-review-upgrade-preservation.sql') })
+  # Execute the same final phase as hosted-CI's disposable upgrade runner, with
+  # its exact module and generated SQL retained in this owned input manifest.
+  $phaseModule = Join-Path $inputPath 'supabase-upgrade-phases.mjs'
+  Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/lib/supabase-upgrade-phases.mjs') -Destination $phaseModule
+  $phaseExporter = Join-Path $inputPath 'export-current104-phase.mjs'
+  Set-Content -LiteralPath $phaseExporter -Encoding utf8 -Value @'
+import { pathToFileURL } from 'node:url';
+const { current104LockedPhaseSql } = await import(pathToFileURL(process.argv[2]).href);
+if (typeof current104LockedPhaseSql !== 'string' || !current104LockedPhaseSql.length) throw new Error('Exact104 phase required');
+process.stdout.write(current104LockedPhaseSql);
+'@
+  $phaseSql = & (Get-Command node -ErrorAction Stop).Source $phaseExporter $phaseModule
+  if ($LASTEXITCODE -ne 0) { throw 'Exact104 phase export failed.' }
+  $phasePath = Join-Path $inputPath 'native-current104-locked-phase.sql'
+  Set-Content -LiteralPath $phasePath -Encoding utf8 -Value $phaseSql
+  $inputs += [pscustomobject]@{Kind='fixture'; Name='native-current104-locked-phase.sql'; Path=$phasePath}
+  $inputs += [pscustomobject]@{Kind='helper'; Name='supabase-upgrade-phases.mjs'; Path=$phaseModule}
+  $inputs += [pscustomobject]@{Kind='helper'; Name='export-current104-phase.mjs'; Path=$phaseExporter}
+}
+if ($VerifiedSourceRunUpgrade) {
+  # Retain the actual paid103 context through104 before testing the old044
+  # verifier and forward105. Exact source and generated framing are hash-bound.
+  $phaseModule = Join-Path $inputPath 'supabase-upgrade-phases.mjs'
+  $seedModule = Join-Path $inputPath 'verified-source-run-fixture.mjs'
+  Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/lib/supabase-upgrade-phases.mjs') -Destination $phaseModule
+  Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/lib/verified-source-run-fixture.mjs') -Destination $seedModule
+  $exporter = Join-Path $inputPath 'export-source105-inputs.mjs'
+  Set-Content -LiteralPath $exporter -Encoding utf8 -Value @'
+import { readFileSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+const { verifiedSourceRunSeedFixture } = await import(pathToFileURL(process.argv[2]).href);
+const { current105LockedPhaseSql } = await import(pathToFileURL(process.argv[3]).href);
+if (typeof current105LockedPhaseSql !== 'string' || !current105LockedPhaseSql.length) throw new Error('Exact105 phase required');
+writeFileSync(process.argv[5], verifiedSourceRunSeedFixture(readFileSync(process.argv[4], 'utf8')));
+writeFileSync(process.argv[6], current105LockedPhaseSql);
+'@
+  $seedPath = Join-Path $inputPath 'native-verified-source-run-104-seed.sql'
+  $phasePath = Join-Path $inputPath 'native-current105-locked-phase.sql'
+  & (Get-Command node -ErrorAction Stop).Source $exporter $seedModule $phaseModule (Join-Path $inputPath 'verified-source-run-binding.sql') $seedPath $phasePath
+  if ($LASTEXITCODE -ne 0) { throw 'Exact105 source input export failed.' }
+  # Generic CI opens a new psql session for each current contract fixture.
+  # Reset temporary helpers only after the complete retained upgrade proof.
+  $sessionResetPath = Join-Path $inputPath 'native-source105-current-session.sql'
+  [IO.File]::WriteAllText($sessionResetPath, "\connect postgres`n", [Text.UTF8Encoding]::new($false))
+  $optionalCurrentInputs = @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('employer-rule-review-upgrade-seed.sql','employer-rule-review-upgrade-preservation.sql','verified-source-run-binding.sql') })
+  $currentInputsWithSessions = @(foreach ($currentInput in $optionalCurrentInputs) {
+    [pscustomobject]@{Kind='fixture'; Name='native-source105-current-session.sql'; Path=$sessionResetPath}
+    $currentInput
+  })
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610260103' }) +
+    @($inputs | Where-Object Name -eq 'employer-rule-review-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610270104' }) +
+    @($inputs | Where-Object Name -eq 'employer-rule-review-upgrade-preservation.sql') +
+    @([pscustomobject]@{Kind='fixture'; Name='native-verified-source-run-104-seed.sql'; Path=$seedPath}) +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610270105' }) +
+    @($inputs | Where-Object Name -eq 'verified-source-run-binding.sql') +
+    $currentInputsWithSessions
+  $inputs += [pscustomobject]@{Kind='fixture'; Name='native-current105-locked-phase.sql'; Path=$phasePath}
+  $inputs += [pscustomobject]@{Kind='helper'; Name='supabase-upgrade-phases.mjs'; Path=$phaseModule}
+  $inputs += [pscustomobject]@{Kind='helper'; Name='verified-source-run-fixture.mjs'; Path=$seedModule}
+  $inputs += [pscustomobject]@{Kind='helper'; Name='export-source105-inputs.mjs'; Path=$exporter}
+}
+if ($OwnerDraftNoticeUpgrade) {
+  # Preserve the committed105 fixture across106, then exercise SUPPRESSED only
+  # after the migration commits. The original seed and all framing are hashed.
+  $phaseModule = Join-Path $inputPath 'supabase-upgrade-phases.mjs'
+  Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/lib/supabase-upgrade-phases.mjs') -Destination $phaseModule
+  $phaseExporter = Join-Path $inputPath 'export-current106-phase.mjs'
+  @'
+import { pathToFileURL } from 'node:url';
+const { current106LockedPhaseSql } = await import(pathToFileURL(process.argv[2]).href);
+if (typeof current106LockedPhaseSql !== 'string' || !current106LockedPhaseSql.length) throw new Error('Exact106 phase required');
+process.stdout.write(current106LockedPhaseSql);
+'@ | Set-Content -LiteralPath $phaseExporter -Encoding utf8
+  $phaseSql = & (Get-Command node -ErrorAction Stop).Source $phaseExporter $phaseModule
+  if ($LASTEXITCODE -ne 0) { throw 'Exact106 phase export failed.' }
+  $phasePath = Join-Path $inputPath 'native-current106-locked-phase.sql'
+  Set-Content -LiteralPath $phasePath -Encoding utf8 -Value $phaseSql
+  $sessionResetPath = Join-Path $inputPath 'native-owner106-current-session.sql'
+  Set-Content -LiteralPath $sessionResetPath -Encoding utf8 -Value 'DISCARD ALL;'
+  $optionalCurrentInputs = @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('owner-draft-notices-upgrade-seed.sql','owner-draft-notices-upgrade-verify.sql') })
+  $currentInputsWithSessions = @(foreach ($currentInput in $optionalCurrentInputs) {
+    [pscustomobject]@{Kind='fixture'; Name='native-owner106-current-session.sql'; Path=$sessionResetPath}
+    $currentInput
+  })
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610270105' }) +
+    @($inputs | Where-Object Name -eq 'owner-draft-notices-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610280106' }) +
+    @($inputs | Where-Object Name -eq 'owner-draft-notices-upgrade-verify.sql') +
+    @([pscustomobject]@{Kind='fixture'; Name='native-current106-locked-phase.sql'; Path=$phasePath}) +
+    $currentInputsWithSessions
+  $inputs += [pscustomobject]@{Kind='helper'; Name='supabase-upgrade-phases.mjs'; Path=$phaseModule}
+  $inputs += [pscustomobject]@{Kind='helper'; Name='export-current106-phase.mjs'; Path=$phaseExporter}
+}
+if ($LegalReceiptUpgrade) {
+  $bindingPath = Join-Path $repoRoot 'scripts/launch-legal-contract.mjs'
+  $bindingJson = & node --input-type=module -e 'import {pathToFileURL} from "node:url"; const m=await import(pathToFileURL(process.argv[1])); process.stdout.write(JSON.stringify([m.HISTORICAL_086_LEGAL_BINDING,m.LAUNCH_LEGAL_BINDING]));' $bindingPath
+  if ($LASTEXITCODE -ne 0) { throw 'Public legal binding source could not be read.' }
+  $bindings = $bindingJson | ConvertFrom-Json
+  $generated = @{}
+  for ($index=0; $index -lt 2; $index++) {
+    $binding = $bindings[$index]
+    $settings = foreach ($pair in @(@('privacy_version','privacyVersion'),@('privacy_sha256','privacyContentSha256'),@('terms_version','termsVersion'),@('terms_sha256','termsContentSha256'))) {
+      $value = [string]$binding.($pair[1])
+      if ($value -cnotmatch '^[a-z0-9-]{1,100}$') { throw 'Public legal binding source is invalid.' }
+      "select set_config('applypack_test.$($pair[0])','$value',false);"
+    }
+    $name = if ($index -eq 0) { 'native-legal086-settings.sql' } else { 'native-legal-current-settings.sql' }
+    $path = Join-Path $inputPath $name
+    Set-Content -LiteralPath $path -Value $settings -Encoding utf8
+    $generated[$name] = [pscustomobject]@{Kind='fixture';Name=$name;Path=$path}
+  }
+  $preservation = @{
+    'native-legal076-preserve.sql' = @'
+create table public.legal_upgrade_preservation_fixture as
+ select 'acceptance'::text as kind,to_jsonb(row) as immutable_record from public.ap_snapshot_legal_acceptances row where snapshot_id='f5300000-0000-4000-8000-000000000001'
+ union all select 'receipt',to_jsonb(row) from public.ap_snapshot_legal_content_receipts row where snapshot_id='f5300000-0000-4000-8000-000000000001'
+ union all select 'reconciliation',to_jsonb(row) from public.ap_legal_receipt_acceptance_reconciliations row
+ where receipt_id in(select id from public.ap_snapshot_legal_content_receipts where snapshot_id='f5300000-0000-4000-8000-000000000001');
+'@
+    'native-legal086-preserve.sql' = @'
+create table public.retention_legal_upgrade_preservation_fixture as
+ select 'acceptance'::text as kind,to_jsonb(row) as immutable_record from public.ap_snapshot_legal_acceptances row
+ union all select 'receipt',to_jsonb(row) from public.ap_snapshot_legal_content_receipts row
+ union all select 'reconciliation',to_jsonb(row) from public.ap_legal_receipt_acceptance_reconciliations row;
+'@
+  }
+  foreach ($name in $preservation.Keys) {
+    $path = Join-Path $inputPath $name
+    Set-Content -LiteralPath $path -Value $preservation[$name] -Encoding utf8
+    $generated[$name] = [pscustomobject]@{Kind='fixture';Name=$name;Path=$path}
+  }
+  $historicalNames = @('legal-receipt-074-fixture.sql','legal-receipt-076-verify.sql','legal-receipt-086-verify.sql','legal-receipt-087-verify.sql',
+    'material-rule-revalidation-upgrade-seed.sql','material-rule-revalidation-upgrade-verify.sql','source-aware-document-upgrade-seed.sql','source-aware-document-upgrade-verify.sql','material-draft-stage-upgrade-seed.sql','material-draft-stage-upgrade-verify.sql','reference-draft-upgrade-seed.sql','reference-draft-upgrade-verify.sql','service-error-upgrade-seed.sql','service-error-upgrade-verify.sql')
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610040074' }) +
+    @($inputs | Where-Object Name -eq 'legal-receipt-074-fixture.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -gt '202610040074' -and $_.Name.Split('_')[0] -le '202610040076' }) +
+    @($inputs | Where-Object Name -eq 'legal-receipt-076-verify.sql') + @($inputs | Where-Object Name -eq 'legal-receipt-076-verify.sql') +
+    @($generated['native-legal076-preserve.sql']) +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -gt '202610040076' -and $_.Name.Split('_')[0] -le '202610230086' }) +
+    @($generated['native-legal086-settings.sql']) +
+    @($inputs | Where-Object Name -eq 'legal-receipt-086-verify.sql') + @($inputs | Where-Object Name -eq 'legal-receipt-086-verify.sql') +
+    @($generated['native-legal086-preserve.sql']) +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -gt '202610230086' -and $_.Name.Split('_')[0] -le '202610240087' }) +
+    @($generated['native-legal-current-settings.sql']) +
+    @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') + @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -gt '202610240087' -and $_.Name.Split('_')[0] -le '202610250091' }) +
+    @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') +
+    @($inputs | Where-Object Name -eq 'material-rule-revalidation-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250092' }) +
+    @($inputs | Where-Object Name -eq 'material-rule-revalidation-upgrade-verify.sql') +
+    @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') +
+    @($inputs | Where-Object Name -eq 'source-aware-document-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250093' }) +
+    @($inputs | Where-Object Name -eq 'source-aware-document-upgrade-verify.sql') +
+    $(if ($MaximumMigrationVersion -cge '202610250093') { @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') } else { @() }) +
+    @($inputs | Where-Object Name -eq 'material-draft-stage-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250094' }) +
+    @($inputs | Where-Object Name -eq 'material-draft-stage-upgrade-verify.sql') +
+    $(if ($MaximumMigrationVersion -cge '202610250094') { @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') } else { @() }) +
+    @($inputs | Where-Object Name -eq 'reference-draft-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250095' }) +
+    @($inputs | Where-Object Name -eq 'reference-draft-upgrade-verify.sql') +
+    $(if ($MaximumMigrationVersion -cge '202610250095') { @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') } else { @() }) +
+    @($inputs | Where-Object Name -eq 'service-error-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250096' }) +
+    @($inputs | Where-Object Name -eq 'service-error-upgrade-verify.sql') +
+    $(if ($MaximumMigrationVersion -cge '202610250096') { @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') } else { @() }) +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250097' }) +
+    $(if ($MaximumMigrationVersion -cge '202610250097') { @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') } else { @() }) +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610250098' }) +
+    $(if ($MaximumMigrationVersion -ceq '202610250098') { @($inputs | Where-Object Name -eq 'legal-receipt-087-verify.sql') } else { @() }) +
+    @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin $historicalNames })
+}
 $sharedFixture = 'reviewed-source-fixture.sql'
 $sharedFixtureCopy = Join-Path $inputPath $sharedFixture
 Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$sharedFixture") -Destination $sharedFixtureCopy
 $inputs += [pscustomobject]@{Kind='helper'; Name=$sharedFixture; Path=$sharedFixtureCopy}
+$rehearsalFixture = 'rehearsal-checkout-attempts.sql'
+$rehearsalFixtureCopy = Join-Path $inputPath $rehearsalFixture
+Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$rehearsalFixture") -Destination $rehearsalFixtureCopy
+$inputs += [pscustomobject]@{Kind='helper'; Name=$rehearsalFixture; Path=$rehearsalFixtureCopy}
+$materialRehearsalFixture = 'rehearsal-material-checkout.sql'
+$materialRehearsalFixtureCopy = Join-Path $inputPath $materialRehearsalFixture
+Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$materialRehearsalFixture") -Destination $materialRehearsalFixtureCopy
+$inputs += [pscustomobject]@{Kind='helper'; Name=$materialRehearsalFixture; Path=$materialRehearsalFixtureCopy}
+if ($fixtures -contains 'service-repair-case-state.sql' -or $fixtures -contains 'service-repair-case-state-races.sql') {
+  $caseStateFixture = 'service-repair-case-state-fixture.sql'
+  $caseStateFixtureCopy = Join-Path $inputPath $caseStateFixture
+  Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$caseStateFixture") -Destination $caseStateFixtureCopy
+  $inputs += [pscustomobject]@{Kind='helper'; Name=$caseStateFixture; Path=$caseStateFixtureCopy}
+}
+if ($fixtures | Where-Object { $_ -like 'employer-rule-review-*.sql' -or $_ -like 'owner-draft-notices*.sql' }) {
+  $employerRuleFixture = 'employer-rule-review-fixture.sql'
+  $employerRuleFixtureCopy = Join-Path $inputPath $employerRuleFixture
+  Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$employerRuleFixture") -Destination $employerRuleFixtureCopy
+  $inputs += [pscustomobject]@{Kind='helper'; Name=$employerRuleFixture; Path=$employerRuleFixtureCopy}
+}
+if ($fixtures | Where-Object { $_ -like 'owner-draft-notices*.sql' }) {
+  $ownerNoticeFixture = 'owner-draft-notices-fixture.sql'
+  $ownerNoticeFixtureCopy = Join-Path $inputPath $ownerNoticeFixture
+  Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$ownerNoticeFixture") -Destination $ownerNoticeFixtureCopy
+  $inputs += [pscustomobject]@{Kind='helper'; Name=$ownerNoticeFixture; Path=$ownerNoticeFixtureCopy}
+}
+if ($fixtures -contains 'protected-archive-limited-role.sql' -and $fixtures -notcontains 'protected-archive-lifecycle.sql') {
+  $archiveFixture = 'protected-archive-lifecycle.sql'
+  $archiveFixtureCopy = Join-Path $inputPath $archiveFixture
+  Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$archiveFixture") -Destination $archiveFixtureCopy
+  $inputs += [pscustomobject]@{Kind='helper'; Name=$archiveFixture; Path=$archiveFixtureCopy}
+}
 $inputs | ForEach-Object { [pscustomobject]@{Kind=$_.Kind;Name=$_.Name;Sha256=(Get-FileHash -LiteralPath $_.Path -Algorithm SHA256).Hash} } | ConvertTo-Json | Set-Content (Join-Path $evidenceRoot 'input-hashes.json')
 @"
 Native PostgreSQL engine validation only. Synthetic auth.users/auth.uid/auth.jwt,
@@ -87,6 +601,17 @@ provider credentials, production migrations, backup recovery or deployment.
 Isolated cluster: $dataPath
 Listen address: 127.0.0.1:$port
 Inputs copied and hashed before execution. No existing database is accessed.
+Rule revalidation upgrade mode: $RuleRevalidationUpgrade. When true, exact091
+public records and document guard definitions are captured before092 and
+compared afterward; the new provider runtime remains disabled.
+Source-aware document upgrade mode: $SourceAwareDocumentUpgrade. When true,
+all existing public records are compared across exact092-to093; drafting stays disabled.
+Draft stage upgrade mode: $DraftStageUpgrade. When true, all existing public
+records and five unchanged core function definitions are compared across exact093-to094.
+Reference draft upgrade mode: $ReferenceDraftUpgrade. When true, all existing
+public records and five unchanged financial/refresh/release routines are compared across exact094-to095.
+Legal receipt upgrade mode: $LegalReceiptUpgrade. When true, original074 facts
+pass076/086/087 verification and the exact087 verifier is rerun at091,092 and each selected093/094/095 endpoint.
 Legacy backfill mode: $LegacyBackfill. When true, synthetic paid legacy records
 are inserted after version 202609030021, before all remaining migrations and
 the existing legacy verification fixture. This is not a provider migration
@@ -121,25 +646,68 @@ if ($CapacityPressure) {
     ConvertTo-Json | Set-Content (Join-Path $evidenceRoot 'capacity-script-hash.json')
 }
 $previousOptions = $env:PGOPTIONS
+$startAttempted = $false
+$startConfirmed = $false
+$ownedPostmasterId = $null
+$step = 'isolated cluster initialization'
 try {
   Invoke-Native 'psql.exe' @('--version')
   Invoke-Native 'initdb.exe' @('-D', $dataPath, '-U', 'postgres', '--auth=trust', '--encoding=UTF8', '--locale=C') 180
-  Invoke-Native 'pg_ctl.exe' @('-D', $dataPath, '-l', $serverLog, '-o', "-h 127.0.0.1 -p $port", '-w', '-t', '30', 'start')
+  $startAttempted = $true
+  Invoke-Native 'pg_ctl.exe' @('-D', $dataPath, '-l', $serverLog, '-o', "-h 127.0.0.1 -p $port", '-w', '-t', '45', 'start') 60
+  $startConfirmed = $true
+  $ownedPostmasterId = [int](Get-Content -LiteralPath (Join-Path $dataPath 'postmaster.pid') -TotalCount 1)
   $env:PGOPTIONS = '-c statement_timeout=60000 -c lock_timeout=10000'
   $batchPath = Join-Path $inputPath 'run-all.sql'
   $batch = foreach ($input in ($inputs | Where-Object Kind -ne 'helper')) {
     "\echo $($input.Kind): $($input.Name)"
     "\ir '" + $input.Path.Replace('\', '/').Replace("'", "\'") + "'"
+    if ($input.Kind -eq 'migration') {
+      $version, $name = $input.Name.Substring(0,$input.Name.Length-4).Split('_',2)
+      $source = [IO.File]::ReadAllText($input.Path)
+      $tag = '$native_source_' + $version + '$'
+      if ($version -notmatch '^\d{12}$' -or $name -notmatch '^[a-z0-9_]+$' -or $source.Contains($tag)) { throw 'Native migration ledger input invalid.' }
+      "insert into supabase_migrations.schema_migrations(version,name,statements) values('$version','$name',array[$tag$source$tag]);"
+    }
   }
   Set-Content -LiteralPath $batchPath -Value $batch -Encoding utf8
   $step = 'batched migrations and fixtures; see validation.log for exact file'
   Write-Host "Running $($migrationFiles.Count) migrations and $($fixtures.Count) fixtures in one psql session."
   Invoke-Native 'psql.exe' @('-X', '-h', '127.0.0.1', '-p', "$port", '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-f', $batchPath) 600
+  if ($VerifiedSourceRunUpgrade) {
+    $source105Output = [IO.File]::ReadAllText($logPath)
+    foreach ($requiredMarker in @('VERIFIED_SOURCE_RUN_BINDING_104_SEEDED','VERIFIED_SOURCE_RUN_BINDING_105_UPGRADE_PRESERVED','VERIFIED_SOURCE_RUN_BINDING_PAID_CONTEXT_PRESERVED','VERIFIED_SOURCE_RUN_BINDING_OK')) {
+      if (!$source105Output.Contains($requiredMarker)) { throw "Source105 preservation marker missing: $requiredMarker" }
+    }
+  }
+  if ($OwnerDraftNoticeUpgrade) {
+    $notice106Output = [IO.File]::ReadAllText($logPath)
+    foreach ($requiredMarker in @('OWNER_DRAFT_READY_NOTICES_105_SEEDED','OWNER_DRAFT_READY_NOTICES_106_UPGRADE_PRESERVED','OWNER_DRAFT_READY_NOTICES_CONTRACT_OK')) {
+      if (!$notice106Output.Contains($requiredMarker)) { throw "Owner notice106 preservation marker missing: $requiredMarker" }
+    }
+  }
   if ($CapacityPressure) {
     if ($LegacyBackfill) { throw 'Capacity pressure requires the fresh synthetic fixture mode.' }
     $step = 'independent-connection synthetic capacity pressure'
     & python $pressureScript --postgres-bin $PostgresBin --evidence-directory $evidenceRoot --port $port
     if ($LASTEXITCODE -ne 0) { throw 'Capacity pressure failed; see process output.' }
+  }
+  if ($ResearchJourney) {
+    if ($LegacyBackfill -or $CapacityPressure -or $ServiceRepairUpgrade -or $ClarificationResumeUpgrade -or $EmployerRuleReviewUpgrade -or $VerifiedSourceRunUpgrade -or $OwnerDraftNoticeUpgrade -or $MaximumMigrationVersion -cne '202610280106') { throw 'Research journey requires the explicit106 fictional fixture boundary.' }
+    $step = 'actual research routes against the owned loopback cluster'
+    $researchMarker = [guid]::NewGuid().ToString('N')
+    Invoke-Native 'psql.exe' @('-X', '-h', '127.0.0.1', '-p', "$port", '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', "create table public.ap_research_local_test_identity(marker text primary key); insert into public.ap_research_local_test_identity values('$researchMarker');") 30
+    $researchEnvironment = @{}
+    foreach ($key in @('AP_RESEARCH_TEST_PORT','AP_RESEARCH_TEST_PSQL','AP_RESEARCH_TEST_MARKER')) { $researchEnvironment[$key] = [Environment]::GetEnvironmentVariable($key, 'Process') }
+    try {
+      $env:AP_RESEARCH_TEST_PORT = "$port"
+      $env:AP_RESEARCH_TEST_PSQL = Join-Path $PostgresBin 'psql.exe'
+      $env:AP_RESEARCH_TEST_MARKER = $researchMarker
+      & (Get-Command node -ErrorAction Stop).Source (Join-Path $repoRoot 'scripts/run-research-native-journey.mjs') $ResearchJourneyCase
+      if ($LASTEXITCODE -ne 0) { throw 'Research route/database journey failed; no successful provider proof inferred.' }
+    } finally {
+      foreach ($key in $researchEnvironment.Keys) { [Environment]::SetEnvironmentVariable($key, $researchEnvironment[$key], 'Process') }
+    }
   }
   "PASS: $($migrationFiles.Count) migrations and $($fixtures.Count) fixtures; native PostgreSQL engine only." | Set-Content (Join-Path $evidenceRoot 'RESULT.txt')
 } catch {
@@ -147,11 +715,33 @@ try {
   throw
 } finally {
   $env:PGOPTIONS = $previousOptions
-  if (Test-Path -LiteralPath (Join-Path $dataPath 'postmaster.pid')) {
-    Invoke-Native 'pg_ctl.exe' @('-D', $dataPath, '-w', '-t', '30', '-m', 'fast', 'stop')
+  $pidPath = Join-Path $dataPath 'postmaster.pid'
+  # pg_ctl can time out before its spawned server creates postmaster.pid. A
+  # missing PID file alone is never evidence that initialization is quiescent.
+  # Retain every unsuccessful startup, including an initdb timeout, and wait a
+  # bounded interval to stop a late-starting server using this exact data path.
+  if ($startAttempted -and !$startConfirmed -and !(Test-Path -LiteralPath $pidPath)) {
+    $lateStartDeadline = [DateTime]::UtcNow.AddSeconds(20)
+    while (!(Test-Path -LiteralPath $pidPath) -and [DateTime]::UtcNow -lt $lateStartDeadline) { Start-Sleep -Milliseconds 250 }
   }
-  if (Test-Path -LiteralPath (Join-Path $dataPath 'postmaster.pid')) { throw 'Cluster shutdown not confirmed; retaining data.' }
-  if (!$RetainClusterData -and (Test-Path -LiteralPath $dataPath)) {
+  try {
+    if (Test-Path -LiteralPath $pidPath) {
+      $pidLines = @(Get-Content -LiteralPath $pidPath -TotalCount 2)
+      if ($pidLines.Count -ne 2 -or $pidLines[0] -notmatch '^[1-9][0-9]*$' -or
+        [IO.Path]::GetFullPath($pidLines[1]) -ne [IO.Path]::GetFullPath($dataPath)) { throw 'Owned cluster PID identity is unverified; retaining data.' }
+      if ($null -ne $ownedPostmasterId -and $ownedPostmasterId -ne [int]$pidLines[0]) { throw 'Owned cluster PID changed; retaining data.' }
+      $ownedPostmasterId = [int]$pidLines[0]
+      Invoke-Native 'pg_ctl.exe' @('-D', $dataPath, '-w', '-t', '30', '-m', 'fast', 'stop') 45
+    }
+    if ((Test-Path -LiteralPath $pidPath) -or ($null -ne $ownedPostmasterId -and (Get-Process -Id $ownedPostmasterId -ErrorAction SilentlyContinue))) {
+      throw 'Owned cluster process shutdown not confirmed; retaining data.'
+    }
+  } catch {
+    "FAIL: owned cluster cleanup could not confirm shutdown; data retained.`n$($_.Exception.Message)" | Set-Content (Join-Path $evidenceRoot 'RESULT.txt')
+    throw
+  }
+  $cleanupConfirmed = $startConfirmed -and $null -ne $ownedPostmasterId
+  if (!$RetainClusterData -and $cleanupConfirmed -and (Test-Path -LiteralPath $dataPath)) {
     $resolvedData = (Resolve-Path -LiteralPath $dataPath).Path
     $resolvedEvidence = (Resolve-Path -LiteralPath $evidenceRoot).Path
     $expectedData = [IO.Path]::GetFullPath((Join-Path $resolvedEvidence 'cluster'))
@@ -161,6 +751,7 @@ try {
     Remove-Item -LiteralPath $resolvedData -Recurse -Force
     Add-Content -LiteralPath $logPath -Value 'Own isolated cluster stopped and data directory removed; evidence retained.'
   }
+  if (!$cleanupConfirmed) { Add-Content -LiteralPath $logPath -Value 'Unconfirmed startup: owned data retained. No deletion inferred from an absent PID file.' }
   if ($RetainClusterData) { Add-Content -LiteralPath $logPath -Value 'Own isolated cluster stopped; data retained by explicit option.' }
   Write-Host "Evidence: $evidenceRoot"
 }

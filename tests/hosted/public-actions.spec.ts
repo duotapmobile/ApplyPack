@@ -35,7 +35,7 @@ test("hosted public routes, actions and responsive accessibility", async ({ page
       }
     }
     const axe = await new AxeBuilder({ page }).exclude("script").analyze();
-    expect(axe.violations.filter(v => ["serious", "critical"].includes(v.impact || "")), route).toEqual([]);
+    expect(axe.violations.filter(v => ["moderate", "serious", "critical"].includes(v.impact || "")), route).toEqual([]);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
     expect(overflow, route + " horizontal overflow").toBe(false);
   }

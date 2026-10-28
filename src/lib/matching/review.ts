@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MATCHING_RULES_VERSION } from "@/lib/matching/evaluation-engine";
+import { commuteObservationSchema, type BoundCommuteEvidence } from "@/lib/matching/commute-evidence";
 
 const uuid = z.string().uuid();
 const evidenceRelationSchema = z.enum(["DIRECT", "ADJACENT", "TRANSFERABLE", "UNSUPPORTED"]);
@@ -41,6 +42,7 @@ export const matchingReviewRequestSchema = z.object({
   inventoryMemberId: uuid.optional(),
   correctedListingText: z.string().trim().min(1).max(100_000).optional(),
   customerCriterionKey: z.string().trim().regex(/^customer:[a-z0-9][a-z0-9:-]*$/u).max(500).optional(),
+  commuteObservation: commuteObservationSchema.optional(),
   resolutionIssue: z.enum(["NONE", "EMPLOYER_OMITTED", "PARSER_UNCERTAIN", "EVIDENCE_CONFLICT"]).optional(),
   unknownTreatment: z.enum(["BLOCK", "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING"]).optional(),
   consentVersion: z.string().trim().min(1).max(300).optional(),
@@ -56,6 +58,13 @@ export const matchingReviewRequestSchema = z.object({
   selectedCompensationCriterionId: uuid.optional(),
   conversion: z.object({ hoursPerWeek: z.number().positive(), weeksPerYear: z.number().positive(), version: z.string().trim().min(1).max(100) }).strict().optional(),
 }).strict().superRefine((value, context) => {
+  const commute = value.reviewKind === "CUSTOMER_CRITERION" && value.customerCriterionKey?.startsWith("customer:commute");
+  if (commute && (value.unknownTreatment !== "BLOCK" || value.disposition !== "REQUIRES_MORE_EVIDENCE" && !value.commuteObservation)) {
+    context.addIssue({ code: "custom", message: "A resolved commute requires a checked route; an unknown commute cannot be waived." });
+  }
+  if (value.commuteObservation && (!commute || value.disposition === "REQUIRES_MORE_EVIDENCE" || !value.sourceEvidenceNodeIds.includes(value.commuteObservation.destinationNodeId))) {
+    context.addIssue({ code: "custom", message: "Route observations require a resolved commute review and its cited employer destination." });
+  }
   const adjacentFields = [value.stableCriterionId, value.taskSimilarity, value.complexity, value.autonomy, value.scope, value.domainContext, value.durationAndIntensity, value.essentialTools, value.candidateFactVersionIds, value.equivalentForCriterion];
   if (value.reviewKind === "PARSER_CORRECTION") {
     if (value.disposition === "RESOLVED_PASS" && (!value.inventoryMemberId || !value.correctedListingText)) {
@@ -126,7 +135,7 @@ export type ParserCorrectionSystemEvidence = {
   correctedInventoryMemberId: string;
 };
 
-export function buildMatchingReviewDecision(input: MatchingReviewRequest, reviewerId: string, resolvedAt: string, correction?: ParserCorrectionSystemEvidence) {
+export function buildMatchingReviewDecision(input: MatchingReviewRequest, reviewerId: string, resolvedAt: string, correction?: ParserCorrectionSystemEvidence, commuteEvidence?: BoundCommuteEvidence) {
   return {
     disposition: input.disposition,
     sourceEvidenceNodeIds: [...new Set(input.sourceEvidenceNodeIds)].sort(),
@@ -166,6 +175,7 @@ export function buildMatchingReviewDecision(input: MatchingReviewRequest, review
       unknownTreatment: input.unknownTreatment,
       consentVersion: input.consentVersion ?? null,
       warning: input.warning ?? null,
+      ...(commuteEvidence ? { commuteEvidence } : {}),
     } : {}),
     ...(input.reviewKind === "CATEGORICAL_USEFULNESS" ? {
       explanationEvidence: input.explanationEvidence,

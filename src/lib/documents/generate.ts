@@ -1,19 +1,15 @@
+import { documentWith, majorHeading, packCleanDocument, paragraph } from "./docx-layout";
 import { validateMaterialClaims, type VerifiedClaimFact, type VerifiedJobExcerpt } from "./claim-validation";
 import { createHash } from "node:crypto";
 import {
   AlignmentType,
-  BorderStyle,
-  Document,
-  HeadingLevel,
-  LevelFormat,
-  Packer,
+  ExternalHyperlink,
   Paragraph,
   TextRun,
-  convertInchesToTwip,
 } from "docx";
 import JSZip from "jszip";
 import { isNonfactualNarrative } from "./claim-validation";
-import { DOCUMENT_REQUIREMENTS, DOCUMENT_VERSIONS } from "@/lib/documents/requirements";
+import { DOCUMENT_FONT_CONTRACT, DOCUMENT_REQUIREMENTS, DOCUMENT_VERSIONS } from "@/lib/documents/requirements";
 import {
   MATERIAL_GENERATOR_VERSION,
   assertDeliverableText,
@@ -27,16 +23,6 @@ import {
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const UUID_ANY = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
-const PAGE_WIDTH = DOCUMENT_REQUIREMENTS.page.widthTwips;
-const PAGE_HEIGHT = DOCUMENT_REQUIREMENTS.page.heightTwips;
-const MARGIN_TOP_BOTTOM = convertInchesToTwip(DOCUMENT_REQUIREMENTS.page.marginTopBottomInches);
-const MARGIN_LEFT_RIGHT = convertInchesToTwip(DOCUMENT_REQUIREMENTS.page.marginLeftRightInches);
-const HEADING_BORDER = {
-  style: BorderStyle.SINGLE,
-  size: DOCUMENT_REQUIREMENTS.sectionRule.sizeEighthPoints,
-  color: DOCUMENT_REQUIREMENTS.sectionRule.color,
-  space: DOCUMENT_REQUIREMENTS.sectionRule.spacePoints,
-};
 const ONE_PAGE_FIT_UNITS = 65;
 const TWO_PAGE_FIT_UNITS = 150;
 
@@ -78,7 +64,7 @@ export type ReferenceSheetRecord = {
 
 export type EmployerDocumentRules = {
   outputFormat: "DOCX" | "PDF";
-  resumePageLimit: 1 | 2;
+  resumePageLimit: 1 | 2 | null;
   resumeFilenameInstruction?: string | null;
   coverLetterFilenameInstruction?: string | null;
   referenceFilenameInstruction?: string | null;
@@ -114,6 +100,9 @@ export type EvidenceBoundMaterialInput = {
     employer: string;
     location?: string | null;
     requisitionId?: string | null;
+    canonicalApplicationUrl: string;
+    retrievedAt: string;
+    postedOn?: string | null;
     postingContentSha256: string;
     jobEvidenceIds: string[];
   };
@@ -164,7 +153,34 @@ export type ArtifactProvenance = {
   fitActions: string[];
   requirementMappings: RequirementMapping[];
   postingContentSha256: string;
+  jobBinding: {
+    canonicalApplicationUrl: string;
+    retrievedAt: string;
+    postedOn: string | null;
+  };
+  cacheIdentitySha256: string;
   versions: typeof DOCUMENT_VERSIONS;
+  deliveryFormatDecision?: {
+    format: "PDF" | "DOCX";
+    reason: "DEFAULT_PDF" | "EMPLOYER_REQUIREMENT" | "APPLICANT_REQUEST";
+    employerRuleId: string;
+    applicantRequestId: string | null;
+    requestReferenceSha256: string | null;
+  };
+  documentFontAttestation?: {
+    family: typeof DOCUMENT_FONT_CONTRACT.family;
+    version: typeof DOCUMENT_FONT_CONTRACT.version;
+    manifestSha256: typeof DOCUMENT_FONT_CONTRACT.manifestSha256;
+    styleSha256: typeof DOCUMENT_FONT_CONTRACT.styles;
+  };
+  editableSource?: {
+    storageBucket: "operator-drafts";
+    storagePath: string;
+    safeFilename: string;
+    checksumSha256: string;
+    sizeBytes: number;
+    mimeType: typeof DOCX_MIME;
+  };
 };
 
 export type GeneratedArtifact = {
@@ -315,9 +331,9 @@ function metadataFor(
   const artifactTitle = artifact === "RESUME" ? "Resume"
     : artifact === "COVER_LETTER" ? "Cover Letter" : "Professional References";
   return {
-    title: `${name} - ${artifactTitle} - ${company}`,
+    title: `${name} ${artifactTitle} - ${company}`,
     author: name,
-    subject: `${target} application`,
+    subject: `Application for ${target} at ${company}`,
     language: input.documentLanguage || DOCUMENT_REQUIREMENTS.language,
     keywords: "",
   };
@@ -325,6 +341,16 @@ function metadataFor(
 function validateJobBindings(input: Pick<EvidenceBoundMaterialInput, "job" | "requirementMappings">) {
   if (!/^[0-9a-f]{64}$/i.test(input.job.postingContentSha256)) {
     throw new Error("job_posting_content_hash_required");
+  }
+  let applicationUrl: URL;
+  try { applicationUrl = new URL(input.job.canonicalApplicationUrl); }
+  catch { throw new Error("job_direct_application_url_required"); }
+  if (applicationUrl.protocol !== "https:" || !applicationUrl.hostname) {
+    throw new Error("job_direct_application_url_required");
+  }
+  if (!Number.isFinite(Date.parse(input.job.retrievedAt))) throw new Error("job_retrieval_date_required");
+  if (input.job.postedOn && !/^\d{4}-\d{2}-\d{2}$/.test(input.job.postedOn)) {
+    throw new Error("job_posted_date_invalid");
   }
   const jobEvidenceIds = unique(input.job.jobEvidenceIds);
   if (jobEvidenceIds.length !== input.job.jobEvidenceIds.length) {
@@ -351,20 +377,6 @@ function validateJobBindings(input: Pick<EvidenceBoundMaterialInput, "job" | "re
   }
 }
 
-function validateCandidatePresentation(input: EvidenceBoundMaterialInput) {
-  const profile = DOCUMENT_REQUIREMENTS.candidatePresentationProfiles.marissaWright;
-  if (normalizeForComparison(displayPersonName(input.contact.displayName))
-    !== normalizeForComparison(profile.displayName)) return;
-  for (const experience of input.experiences) {
-    if (normalizeForComparison(experience.employer) !== normalizeForComparison(profile.employer)) continue;
-    if (experience.historicalTitle !== profile.historicalTitle
-      || profile.forbiddenDefaultTitles.some((title) => normalizeForComparison(experience.historicalTitle)
-        === normalizeForComparison(title))) {
-      throw new Error("candidate_historical_title_preference_conflict");
-    }
-  }
-}
-
 function validateRootBindings(input: EvidenceBoundMaterialInput) {
   if (!input.contact.candidateFactIds.length || input.contact.candidateFactIds.some((id) => !UUID.test(id))) {
     throw new Error("document_contact_fact_binding_required");
@@ -373,7 +385,6 @@ function validateRootBindings(input: EvidenceBoundMaterialInput) {
     throw new Error("job_evidence_binding_required");
   }
   validateJobBindings(input);
-  validateCandidatePresentation(input);
   [
     input.contact.displayName,
     input.contact.email,
@@ -382,6 +393,17 @@ function validateRootBindings(input: EvidenceBoundMaterialInput) {
     input.job.exactTitle,
     input.job.employer,
   ].forEach(assertDeliverableText);
+  const generatedProse = [
+    input.professionalSummary.text,
+    ...input.coreSkills.map((item) => item.text),
+    ...input.experiences.flatMap((experience) => [experience.historicalTitle, experience.employer, experience.dates,
+      experience.location || "", experience.descriptor?.text || "", ...experience.bullets.map((bullet) => bullet.text)]),
+    ...(input.educationAndCertifications || []).flatMap((item) => [item.degree, item.detail]),
+    ...input.coverLetterParagraphs.map((item) => item.text),
+  ];
+  if (generatedProse.some((text) => /[\u2013\u2014]/u.test(text))) {
+    throw new Error("document_dash_punctuation_not_allowed");
+  }
   if (input.rules.outputFormat !== "DOCX") {
     throw new Error("pdf_renderer_must_generate_and_verify_searchable_output");
   }
@@ -402,19 +424,28 @@ function provenance(
   fitActions: string[],
   input: Pick<EvidenceBoundMaterialInput, "job" | "requirementMappings">,
 ): ArtifactProvenance {
+  const sourceBinding = {
+    candidateFactIds: unique(claims.flatMap((claim) => claim.candidateFactIds)).sort(),
+    jobEvidenceIds: unique(claims.flatMap((claim) => claim.jobEvidenceIds)).sort(),
+    referencePermissionIds: unique(claims.flatMap((claim) => claim.referencePermissionIds)).sort(),
+  };
+  const jobBinding = {
+    canonicalApplicationUrl: input.job.canonicalApplicationUrl,
+    retrievedAt: input.job.retrievedAt,
+    postedOn: input.job.postedOn || null,
+  };
   return {
     schemaVersion: "applypack-claim-provenance-v1",
     generatorVersion: MATERIAL_GENERATOR_VERSION,
     artifact,
-    sourceBinding: {
-      candidateFactIds: unique(claims.flatMap((claim) => claim.candidateFactIds)),
-      jobEvidenceIds: unique(claims.flatMap((claim) => claim.jobEvidenceIds)),
-      referencePermissionIds: unique(claims.flatMap((claim) => claim.referencePermissionIds)),
-    },
+    sourceBinding,
     claims,
     fitActions,
     requirementMappings: input.requirementMappings,
     postingContentSha256: input.job.postingContentSha256,
+    jobBinding,
+    cacheIdentitySha256: sha256(JSON.stringify({ artifact, sourceBinding, jobBinding,
+      postingContentSha256: input.job.postingContentSha256, versions: DOCUMENT_VERSIONS })),
     versions: DOCUMENT_VERSIONS,
   };
 }
@@ -462,9 +493,6 @@ function buildResume(
   const children: Paragraph[] = [
     ...candidateHeader(input, claims, "resume"),
     majorHeading("PROFESSIONAL SUMMARY", 0),
-    paragraph(recordFixedBinding(claims, "resume.targetRole",
-      `Target role: ${assertDeliverableText(input.job.exactTitle)}`, [], input.job.jobEvidenceIds),
-    { line: DOCUMENT_REQUIREMENTS.lineSpacingTwips.summary, after: 0, size: 21 }),
     paragraph(recordClaim(claims, "resume.summary", fitted.summary), { line: DOCUMENT_REQUIREMENTS.lineSpacingTwips.summary, after: 0, size: 21 }),
   ];
   if (fitted.skills.length) {
@@ -478,32 +506,32 @@ function buildResume(
   fitted.experiences.forEach((experience, experienceIndex) => {
     const title = assertDeliverableText(experience.historicalTitle);
     const employer = assertDeliverableText(experience.employer);
-    const dates = assertDeliverableText(experience.dates);
+    const dates = displayDateRange(experience.dates);
     const location = experience.location ? assertDeliverableText(experience.location) : "";
     const headerText = [title, employer, dates, location].filter(Boolean).join("\n");
     recordFixedBinding(claims, `resume.experience.${experienceIndex + 1}.header`, headerText,
       experience.headerCandidateFactIds, []);
     children.push(
       paragraph(title, {
-        before: experienceIndex ? DOCUMENT_REQUIREMENTS.spacingTwips.subsequentJobBefore : 0,
-        after: 20,
+        before: experienceIndex ? DOCUMENT_REQUIREMENTS.spacingTwips.subsequentJobBefore : 60,
+        after: 40,
         size: 21,
         bold: true,
+        style: "JobTitle",
         keepNext: true,
         keepLines: true,
       }),
-      paragraph(employer, { after: 20, size: 20, keepNext: true, keepLines: true }),
-      paragraph([dates, location].filter(Boolean).join(" | "), {
-        after: 40,
-        size: 19,
-        italics: true,
+      paragraph([employer, dates, location].filter(Boolean).join(" | "), {
+        after: 60,
+        size: 21,
+        style: "EmployerDate",
         keepNext: true,
         keepLines: true,
       }),
     );
     if (experience.descriptor) {
       children.push(paragraph(recordClaim(claims, `resume.experience.${experienceIndex + 1}.descriptor`,
-        experience.descriptor), { after: 100, size: 19, italics: true, keepNext: true, keepLines: true }));
+        experience.descriptor), { after: 100, size: 19, keepNext: true, keepLines: true, style: "BusinessDescriptor" }));
     }
     experience.bullets.forEach((bullet, bulletIndex) => {
       children.push(new Paragraph({
@@ -520,7 +548,7 @@ function buildResume(
   });
   const breakEntry = careerBreakPresentation(input.careerBreak);
   if (breakEntry) {
-    const text = [breakEntry.label, breakEntry.dates].filter(Boolean).join(" | ");
+    const text = [breakEntry.label, breakEntry.dates ? displayDateRange(breakEntry.dates) : ""].filter(Boolean).join(" | ");
     children.push(majorHeading("CAREER BREAK", DOCUMENT_REQUIREMENTS.spacingTwips.educationHeadingBefore));
     children.push(paragraph(recordClaim(claims, "resume.careerBreak", {
       text,
@@ -553,8 +581,7 @@ function buildCoverLetter(
     recordClaim(claims, `cover.paragraph.${index + 1}`, item));
   if (paragraphs.length < 3 || paragraphs.length > 4) throw new Error("cover_letter_paragraph_count_invalid");
   const wordCount = paragraphs.join(" ").trim().split(/\s+/).filter(Boolean).length;
-  if (wordCount < DOCUMENT_REQUIREMENTS.coverLetter.supportedWordMinimum
-    || wordCount > DOCUMENT_REQUIREMENTS.coverLetter.humanApprovedWordMaximum
+  if (wordCount > DOCUMENT_REQUIREMENTS.coverLetter.humanApprovedWordMaximum
     || (wordCount > DOCUMENT_REQUIREMENTS.coverLetter.supportedWordMaximum && !input.humanApprovedLongLetter)) {
     throw new Error("cover_letter_word_count_invalid");
   }
@@ -596,7 +623,7 @@ function buildCoverLetter(
       line: DOCUMENT_REQUIREMENTS.lineSpacingTwips.coverLetter,
       after: DOCUMENT_REQUIREMENTS.spacingTwips.coverParagraphAfter,
       size: 21 })),
-    paragraph("Sincerely,", { before: DOCUMENT_REQUIREMENTS.spacingTwips.signoffBefore, after: DOCUMENT_REQUIREMENTS.spacingTwips.signoffAfter, size: 21 }),
+    paragraph("Sincerely,", { before: DOCUMENT_REQUIREMENTS.spacingTwips.signoffBefore, after: DOCUMENT_REQUIREMENTS.spacingTwips.signoffAfter, size: 21, keepNext: true }),
     paragraph(displayPersonName(input.contact.displayName), { after: 0, size: 21 }),
   ];
   return documentWith(children, metadataFor(input, "COVER_LETTER"));
@@ -641,151 +668,43 @@ function candidateHeader(
   prefix: string,
 ) {
   const name = displayPersonName(input.contact.displayName);
-  const primaryContact = [input.contact.phone, input.contact.email, input.contact.cityState]
+  const cityState = assertDeliverableText(input.contact.cityState);
+  const phone = assertDeliverableText(input.contact.phone);
+  const email = assertDeliverableText(input.contact.email);
+  const primaryContact = [cityState, phone, email]
     .filter((value): value is string => Boolean(value))
-    .map(assertDeliverableText)
     .join(" | ");
   const portfolio = input.contact.linkedInOrPortfolio
-    ? assertDeliverableText(input.contact.linkedInOrPortfolio) : null;
+    ? safeVisibleUrl(input.contact.linkedInOrPortfolio) : null;
   const contact = [primaryContact, portfolio].filter(Boolean).join("\n");
   const contactAfter = prefix === "cover" ? DOCUMENT_REQUIREMENTS.spacingTwips.coverContactAfter
     : DOCUMENT_REQUIREMENTS.spacingTwips.resumeContactAfter;
   recordFixedBinding(claims, `${prefix}.header.name`, name, input.contact.candidateFactIds, []);
   recordFixedBinding(claims, `${prefix}.header.contact`, contact, input.contact.candidateFactIds, []);
   return [
-    paragraph(name, { alignment: AlignmentType.CENTER, size: 36, after: DOCUMENT_REQUIREMENTS.spacingTwips.nameAfter }),
-    paragraph(primaryContact, { alignment: AlignmentType.CENTER, size: 19, after: portfolio ? 35 : contactAfter }),
-    ...(portfolio ? [paragraph(portfolio, { alignment: AlignmentType.CENTER, size: 19, after: contactAfter })] : []),
+    paragraph(name, { alignment: AlignmentType.CENTER, size: 36, after: DOCUMENT_REQUIREMENTS.spacingTwips.nameAfter, style: "CandidateName" }),
+    new Paragraph({
+      style: "ContactInformation",
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 0, after: portfolio ? 35 : contactAfter },
+      children: [
+        new TextRun({ text: `${cityState} | ${phone} | `, font: DOCUMENT_REQUIREMENTS.font, size: 19, color: "000000" }),
+        new ExternalHyperlink({
+          link: `mailto:${email}`,
+          children: [new TextRun({ text: email, font: DOCUMENT_REQUIREMENTS.font, size: 19, color: "000000" })],
+        }),
+      ],
+    }),
+    ...(portfolio ? [new Paragraph({
+      style: "ContactInformation",
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 0, after: contactAfter },
+      children: [new ExternalHyperlink({
+        link: portfolio,
+        children: [new TextRun({ text: portfolio, font: DOCUMENT_REQUIREMENTS.font, size: 19, color: "000000" })],
+      })],
+    })] : []),
   ];
-}
-
-function documentWith(children: Paragraph[], metadata: DocumentMetadata) {
-  return new Document({
-    creator: metadata.author,
-    title: metadata.title,
-    subject: metadata.subject,
-    description: "",
-    keywords: metadata.keywords,
-    lastModifiedBy: "",
-    revision: 1,
-    numbering: {
-      config: [{
-        reference: "resume-bullets",
-        levels: [{
-          level: 0,
-          format: LevelFormat.BULLET,
-          text: "•",
-          alignment: AlignmentType.LEFT,
-          style: { paragraph: { indent: { left: convertInchesToTwip(0.17), hanging: convertInchesToTwip(0.11) } } },
-        }],
-      }],
-    },
-    styles: {
-      default: {
-        document: {
-          run: { font: DOCUMENT_REQUIREMENTS.font, size: 21, color: "000000", language: { value: metadata.language } },
-          paragraph: { spacing: { before: 0, after: 0, line: 240 } },
-        },
-      },
-    },
-    sections: [{
-      properties: {
-        page: {
-          size: { width: PAGE_WIDTH, height: PAGE_HEIGHT },
-          margin: {
-            top: MARGIN_TOP_BOTTOM,
-            bottom: MARGIN_TOP_BOTTOM,
-            left: MARGIN_LEFT_RIGHT,
-            right: MARGIN_LEFT_RIGHT,
-            header: 0,
-            footer: 0,
-            gutter: 0,
-          },
-        },
-      },
-      children,
-    }],
-  });
-}
-
-async function packCleanDocument(document: Document, metadata: DocumentMetadata) {
-  const packed = await Packer.toBuffer(document);
-  const zip = await JSZip.loadAsync(packed);
-  [
-    "word/comments.xml",
-    "word/_rels/comments.xml.rels",
-    "docProps/custom.xml",
-  ].forEach((name) => zip.remove(name));
-  const relationships = zip.file("word/_rels/document.xml.rels");
-  if (relationships) {
-    const xml = await relationships.async("string");
-    zip.file("word/_rels/document.xml.rels", xml.replace(/<Relationship\b[^>]*\bTarget="comments\.xml"[^>]*\/>/giu, ""));
-  }
-  const contentTypes = zip.file("[Content_Types].xml");
-  if (contentTypes) {
-    const xml = await contentTypes.async("string");
-    zip.file("[Content_Types].xml", xml
-      .replace(/<Override\b[^>]*\bPartName="\/word\/comments\.xml"[^>]*\/>/giu, "")
-      .replace(/<Override\b[^>]*\bPartName="\/docProps\/custom\.xml"[^>]*\/>/giu, ""));
-  }
-  const packageRelationships = zip.file("_rels/.rels");
-  if (packageRelationships) {
-    const xml = await packageRelationships.async("string");
-    zip.file("_rels/.rels", xml.replace(/<Relationship\b[^>]*\bTarget="docProps\/custom\.xml"[^>]*\/>/giu, ""));
-  }
-  const core = zip.file("docProps/core.xml");
-  if (core) {
-    const xml = await core.async("string");
-    const withoutEditor = xml
-      .replace(/<cp:lastModifiedBy(?:\s[^>]*)?>[\s\S]*?<\/cp:lastModifiedBy>/iu, "<cp:lastModifiedBy/>");
-    const language = escapeXml(metadata.language);
-    const withLanguage = /<dc:language(?:\s[^>]*)?>/iu.test(withoutEditor)
-      ? withoutEditor.replace(/<dc:language(?:\s[^>]*)?>[\s\S]*?<\/dc:language>/iu, `<dc:language>${language}</dc:language>`)
-      : withoutEditor.replace(/<\/cp:coreProperties>/iu, `<dc:language>${language}</dc:language></cp:coreProperties>`);
-    zip.file("docProps/core.xml", withLanguage);
-  }
-  const cleaned = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
-  packed.fill(0);
-  return cleaned;
-}
-
-function majorHeading(text: string, before: number) {
-  return new Paragraph({
-    heading: HeadingLevel.HEADING_1,
-    outlineLevel: 0,
-    keepNext: true,
-    keepLines: true,
-    spacing: { before, after: DOCUMENT_REQUIREMENTS.spacingTwips.headingAfter },
-    border: { bottom: HEADING_BORDER },
-    children: [new TextRun({ text, bold: true, font: DOCUMENT_REQUIREMENTS.font, size: 21 })],
-  });
-}
-
-function paragraph(text: string, options: {
-  before?: number;
-  after?: number;
-  line?: number;
-  alignment?: (typeof AlignmentType)[keyof typeof AlignmentType];
-  size?: number;
-  bold?: boolean;
-  italics?: boolean;
-  keepNext?: boolean;
-  keepLines?: boolean;
-}) {
-  return new Paragraph({
-    alignment: options.alignment || AlignmentType.LEFT,
-    keepNext: options.keepNext,
-    keepLines: options.keepLines,
-    spacing: { before: options.before || 0, after: options.after || 0, line: options.line || 240 },
-    children: [new TextRun({
-      text: assertDeliverableText(text),
-      font: DOCUMENT_REQUIREMENTS.font,
-      size: options.size || 21,
-      bold: options.bold,
-      italics: options.italics,
-      color: "000000",
-    })],
-  });
 }
 
 function fitResume(input: EvidenceBoundMaterialInput) {
@@ -869,16 +788,11 @@ function fitResume(input: EvidenceBoundMaterialInput) {
   }
   if (units() > TWO_PAGE_FIT_UNITS) throw new Error("resume_content_exceeds_two_page_limit");
   const expectedPages = units() <= ONE_PAGE_FIT_UNITS ? 1 : 2;
-  if (expectedPages === 2 && input.rules.resumePageLimit !== 2) {
+  if (expectedPages === 2 && input.rules.resumePageLimit === 1) {
     throw new Error("resume_content_exceeds_employer_page_limit");
   }
-  const marissaProfile = DOCUMENT_REQUIREMENTS.candidatePresentationProfiles.marissaWright;
-  const isMarissa = normalizeForComparison(displayPersonName(input.contact.displayName))
-    === normalizeForComparison(marissaProfile.displayName);
-  if (expectedPages === 2 && isMarissa && !input.humanApprovedTwoPageException) {
-    throw new Error("resume_content_requires_human_approved_two_page_exception");
-  }
-  if (expectedPages === 2) actions.push(isMarissa ? "human_approved_two_page_exception" : "substantive_two_page_resume");
+  if (expectedPages === 2) actions.push(input.humanApprovedTwoPageException
+    ? "human_approved_two_page_exception" : "substantive_two_page_resume");
   return {
     experiences,
     skills,
@@ -905,9 +819,20 @@ function normalizeForComparison(value: string) {
 }
 
 function displayPersonName(value: string) {
-  const name = assertDeliverableText(value);
-  if (/\p{Ll}/u.test(name)) return name;
-  return name.toLocaleLowerCase("en-US").replace(/(^|[\s'’\-])\p{L}/gu, (letter) => letter.toLocaleUpperCase("en-US"));
+  return assertDeliverableText(value);
+}
+
+function safeVisibleUrl(value: string) {
+  const visible = assertDeliverableText(value);
+  let parsed: URL;
+  try { parsed = new URL(visible); }
+  catch { throw new Error("document_contact_url_invalid"); }
+  if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error("document_contact_url_invalid");
+  return visible;
+}
+
+function displayDateRange(value: string) {
+  return assertDeliverableText(value).replace(/\s+(?:to|through)\s+/giu, "-");
 }
 
 function experienceEndSortKey(value: string) {
@@ -999,7 +924,7 @@ export async function inspectDocxPackage(
     packageSignature: buffer.subarray(0, 2).toString() === "PK",
     requiredParts: entries.includes("word/document.xml") && entries.includes("word/styles.xml"),
     noForbiddenParts: !forbiddenEntries,
-    noExternalRelationships: !/\bTargetMode="External"/i.test(relationshipsXml),
+    noExternalRelationships: externalRelationshipsAreSafe(relationshipsXml),
     singleColumnLinearLayout: !/<w:(?:tbl|txbxContent|drawing|pict)\b/i.test(documentXml)
       && !/<w:cols\b[^>]*\bw:num="(?:[2-9]|\d{2,})"/i.test(documentXml),
     noTrackedChangesOrComments: !/<w:(?:ins|del|moveFrom|moveTo|commentRangeStart|commentRangeEnd|commentReference)\b/i.test(allXml),
@@ -1015,7 +940,11 @@ export async function inspectDocxPackage(
     editorIdentityEmpty: !/<cp:lastModifiedBy>\s*[^<\s][\s\S]*?<\/cp:lastModifiedBy>/i.test(coreXml),
     usLetter: /<w:pgSz\b[^>]*\bw:w="12240"[^>]*\bw:h="15840"/i.test(documentXml),
     exactMargins: /<w:pgMar\b[^>]*\bw:top="792"[^>]*\bw:right="1008"[^>]*\bw:bottom="792"[^>]*\bw:left="1008"/i.test(documentXml),
-    approvedFont: /w:(?:ascii|hAnsi|cs)="Liberation Sans"/i.test(stylesXml + documentXml),
+    approvedFont: /w:(?:ascii|hAnsi|cs)="Liberation Sans"/i.test(stylesXml + documentXml)
+      && !/w:(?:ascii|hAnsi|cs)="Arial"/i.test(stylesXml + documentXml),
+    blackSectionHeadingStyle: /<w:style\b[^>]*\bw:styleId="Heading1"[\s\S]*?<w:color\b[^>]*\bw:val="000000"[\s\S]*?<\/w:style>/i.test(stylesXml),
+    automaticHyphenationDisabled: !/<w:autoHyphenation\b/i.test(allXml)
+      || /<w:autoHyphenation\b[^>]*\bw:val="(?:false|0)"/i.test(allXml),
     nativeBullets: artifact !== "RESUME" || (Boolean(numberingXml) && /<w:numPr>/i.test(documentXml)),
     semanticSectionHeadings: artifact === "COVER_LETTER" || /<w:pStyle\b[^>]*\bw:val="Heading1"/i.test(documentXml),
     keepHeadingsWithContent: artifact === "COVER_LETTER" || /<w:keepNext\b/i.test(documentXml),
@@ -1043,13 +972,14 @@ export async function inspectDocxPackage(
   };
 }
 
-function escapeXml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+function externalRelationshipsAreSafe(xml: string) {
+  const external = [...xml.matchAll(/<Relationship\b([^>]*)\bTargetMode="External"([^>]*)\/?\s*>/giu)];
+  return external.every((match) => {
+    const attributes = `${match[1]} ${match[2]}`;
+    const type = /\bType="([^"]+)"/iu.exec(attributes)?.[1] || "";
+    const target = decodeXml(/\bTarget="([^"]+)"/iu.exec(attributes)?.[1] || "");
+    return type.endsWith("/hyperlink") && /^(?:https?:\/\/|mailto:)/iu.test(target);
+  });
 }
 
 function decodeXml(value: string) {

@@ -1,9 +1,8 @@
 import "server-only";
 import type Stripe from "stripe";
-import { boardPlanPriceId, boardPlans, isBoardPlanId } from "./plans";
-import { assertConfiguredRecurringPrice } from "@/lib/stripe/server";
+import { isBoardPlanId } from "./plans";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { boardSubscriptionStateFromProvider } from "./entitlements";
+import { boardSubscriptionStateFromProvider, legacyBoardProviderProjection, type BoardSubscriptionState } from "./entitlements";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
@@ -19,7 +18,7 @@ export async function processBoardStripeEvent(stripe: Stripe, admin: AdminClient
     if (!subscriptionId) return false;
     const subscription = await stripe.subscriptions.retrieve(subscriptionId);
     if (subscription.metadata.contract_version !== "paid-board-v1") return false;
-    await persistSubscription(stripe, admin, subscription, event, event.type === "invoice.paid" ? "ACTIVE" : "PAST_DUE");
+    await persistSubscription(stripe, admin, subscription, { kind: "provider", event }, event.type === "invoice.paid" ? "ACTIVE" : "PAST_DUE");
     return true;
   }
   if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
@@ -36,7 +35,7 @@ export async function processBoardStripeEvent(stripe: Stripe, admin: AdminClient
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       latestInvoicePaid: invoicePaid,
     });
-    await persistSubscription(stripe, admin, subscription, event, state);
+    await persistSubscription(stripe, admin, subscription, { kind: "provider", event }, state);
     return true;
   }
   if (["refund.created", "refund.updated", "refund.failed"].includes(event.type)) {
@@ -85,7 +84,7 @@ async function boardSubscriptionForPaymentIntent(stripe: Stripe, paymentIntentId
 }
 
 async function recordBoardProviderEvent(admin: AdminClient, input: {
-  event: Stripe.Event; subscriptionId: string; refundId?: string; disputeId?: string;
+  event: { id: string; type: string; created: number }; subscriptionId: string; refundId?: string; disputeId?: string;
   amountCents?: number; fullAmountCents?: number; resultingState: string;
 }) {
   const result = await admin.from("ap_board_provider_events").upsert({
@@ -105,23 +104,25 @@ async function processBoardRefund(stripe: Stripe, admin: AdminClient, event: Str
   const { data: current, error } = await admin.from("ap_board_subscriptions")
     .select("id,state,refund_state,last_provider_event_created").eq("provider_subscription_id", binding.subscription.id).maybeSingle();
   if (error || !current) throw error || new Error("board_refund_subscription_missing");
-  if (Number(current.last_provider_event_created) > event.created) {
-    await recordBoardProviderEvent(admin, { event, subscriptionId: binding.subscription.id, refundId: refund.id,
-      amountCents: refund.amount, fullAmountCents: binding.invoice.amount_paid, resultingState: current.state });
-    return true;
-  }
   const latestInvoiceId = typeof binding.subscription.latest_invoice === "string"
     ? binding.subscription.latest_invoice : binding.subscription.latest_invoice?.id;
   const affectsCurrentPeriod = !latestInvoiceId || latestInvoiceId === binding.invoice.id;
   const failed = event.type === "refund.failed" || refund.status === "failed" || refund.status === "canceled";
-  const full = affectsCurrentPeriod && !failed && refund.amount >= binding.invoice.amount_paid;
-  const nextState = full ? "REFUNDED" : current.state;
-  const update = await admin.from("ap_board_subscriptions").update({
-    state: nextState, access_ends_at: full ? null : undefined,
-    refund_state: affectsCurrentPeriod ? (failed ? "FAILED" : full ? "FULL" : "PARTIAL") : current.refund_state, provider_refund_id: refund.id,
-    last_provider_event_created: event.created, last_provider_event_id: event.id, updated_at: new Date().toISOString(),
-  }).eq("id", current.id).lte("last_provider_event_created", event.created);
-  if (update.error) throw update.error;
+  const terminal = affectsCurrentPeriod && !failed && refund.status === "succeeded";
+  const full = terminal && refund.amount >= binding.invoice.amount_paid;
+  const nextState = full ? "REFUNDED" : terminal ? "CANCELED" : current.state;
+  if (terminal) {
+    await applyBoardTerminalEvent(admin, {
+      event,
+      subscriptionId: binding.subscription.id,
+      resultingState: nextState,
+      refundState: full ? "FULL" : "PARTIAL",
+      refundId: refund.id,
+      amountCents: refund.amount,
+      fullAmountCents: binding.invoice.amount_paid,
+    });
+    return true;
+  }
   await recordBoardProviderEvent(admin, { event, subscriptionId: binding.subscription.id, refundId: refund.id,
     amountCents: refund.amount, fullAmountCents: binding.invoice.amount_paid, resultingState: nextState });
   return true;
@@ -134,25 +135,18 @@ async function processBoardDispute(stripe: Stripe, admin: AdminClient, event: St
   const { data: current, error } = await admin.from("ap_board_subscriptions")
     .select("id,state,last_provider_event_created").eq("provider_subscription_id", binding.subscription.id).maybeSingle();
   if (error || !current) throw error || new Error("board_dispute_subscription_missing");
-  if (Number(current.last_provider_event_created) > event.created) {
-    await recordBoardProviderEvent(admin, { event, subscriptionId: binding.subscription.id, disputeId: dispute.id,
-      amountCents: dispute.amount, fullAmountCents: binding.invoice.amount_paid, resultingState: current.state });
-    return true;
-  }
   const won = event.type === "charge.dispute.closed" && dispute.status === "won";
   const item = binding.subscription.items.data[0];
   const paidPeriodActive = binding.invoice.status === "paid" && Boolean(item) && item.current_period_end * 1_000 > Date.now();
-  const recoveredState = binding.subscription.cancel_at_period_end ? "CANCEL_AT_PERIOD_END" : "ACTIVE";
-  const nextState = won && paidPeriodActive ? recoveredState : "DISPUTED";
-  const accessEndsAt = nextState === "ACTIVE" || nextState === "CANCEL_AT_PERIOD_END"
-    ? new Date(item.current_period_end * 1_000).toISOString() : null;
-  const update = await admin.from("ap_board_subscriptions").update({
-    state: nextState, access_ends_at: accessEndsAt, provider_dispute_id: dispute.id,
-    last_provider_event_created: event.created, last_provider_event_id: event.id, updated_at: new Date().toISOString(),
-  }).eq("id", current.id).lte("last_provider_event_created", event.created);
-  if (update.error) throw update.error;
-  await recordBoardProviderEvent(admin, { event, subscriptionId: binding.subscription.id, disputeId: dispute.id,
-    amountCents: dispute.amount, fullAmountCents: binding.invoice.amount_paid, resultingState: nextState });
+  const nextState = won && paidPeriodActive ? "CANCELED" : "DISPUTED";
+  await applyBoardTerminalEvent(admin, {
+    event,
+    subscriptionId: binding.subscription.id,
+    resultingState: nextState,
+    disputeId: dispute.id,
+    amountCents: dispute.amount,
+    fullAmountCents: binding.invoice.amount_paid,
+  });
   return true;
 }
 
@@ -160,33 +154,52 @@ async function persistSubscription(
   stripe: Stripe,
   admin: AdminClient,
   subscription: Stripe.Subscription,
-  event: Pick<Stripe.Event, "id" | "created">,
+  source: {
+    kind: "provider";
+    event: Pick<Stripe.Event, "id" | "created"> & { type?: string };
+  } | {
+    kind: "reconciliation";
+    reconciledAt: string;
+  },
   requestedState: "PENDING" | "ACTIVE" | "CANCEL_AT_PERIOD_END" | "PAST_DUE" | "CANCELED",
 ) {
   const customerId = subscription.metadata.customer_id;
   const planId = subscription.metadata.plan_id;
   if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(customerId || "") || !isBoardPlanId(planId)) throw new Error("invalid_board_subscription_binding");
+  if (!subscription.items.data[0] || subscription.items.data.length !== 1 || subscription.items.data[0].quantity !== 1) {
+    throw new Error("invalid_board_subscription_shape");
+  }
+  if (!["canceled", "incomplete_expired"].includes(subscription.status) && !subscription.cancel_at_period_end) {
+    subscription = await stripe.subscriptions.update(subscription.id, { cancel_at_period_end: true });
+  }
   const item = subscription.items.data[0];
-  const priceId = item?.price.id;
-  const expectedPriceId = boardPlanPriceId(planId);
-  if (!item || !priceId || !expectedPriceId || priceId !== expectedPriceId || subscription.items.data.length !== 1 || item.quantity !== 1) throw new Error("invalid_board_subscription_price");
-  const plan = boardPlans[planId];
-  await assertConfiguredRecurringPrice(stripe, priceId, { unitAmount: plan.amountCents, interval: plan.interval, intervalCount: plan.intervalCount });
+  if (!item || subscription.items.data.length !== 1 || item.quantity !== 1) throw new Error("invalid_board_subscription_shape");
   const providerCustomerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
-  const periodEnd = new Date(item.current_period_end * 1_000).toISOString();
   const periodStart = new Date(item.current_period_start * 1_000).toISOString();
   const { data: current, error: currentError } = await admin.from("ap_board_subscriptions")
-    .select("id,last_provider_event_created,state,access_ends_at").eq("provider_subscription_id", subscription.id).maybeSingle();
+    .select("id,last_provider_event_created,last_provider_event_id,state,access_ends_at,refund_state,provider_refund_id,provider_dispute_id")
+    .eq("provider_subscription_id", subscription.id).maybeSingle();
   if (currentError) throw currentError;
-  if (current && Number(current.last_provider_event_created) > event.created) return;
-  if (current && Number(current.last_provider_event_created) === event.created && requestedState === "PENDING"
-    && current.state !== "PENDING") return;
-  if (current && Number(current.last_provider_event_created) === event.created && requestedState === "ACTIVE"
-    && !["PENDING", "ACTIVE", "CANCEL_AT_PERIOD_END"].includes(current.state)) return;
-  const state = requestedState === "CANCEL_AT_PERIOD_END" && (!current || !["ACTIVE", "CANCEL_AT_PERIOD_END"].includes(current.state))
-    ? "PAST_DUE"
-    : requestedState === "ACTIVE" && subscription.status !== "active" ? "PAST_DUE" : requestedState;
-  const accessEndsAt = state === "ACTIVE" || state === "CANCEL_AT_PERIOD_END" ? periodEnd : null;
+  if (current && source.kind === "provider" && Number(current.last_provider_event_created) > source.event.created) return false;
+  if (!current) {
+    if (source.kind === "provider") {
+      await recordBoardProviderEvent(admin, {
+        event: { ...source.event, type: "legacy.subscription.unbound" },
+        subscriptionId: subscription.id,
+        resultingState: "CANCELED",
+      });
+    }
+    return false;
+  }
+  const { state, accessEndsAt } = legacyBoardProviderProjection({
+    requestedState,
+    subscriptionStatus: subscription.status,
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    periodEnd: new Date(item.current_period_end * 1_000).toISOString(),
+    currentState: current.state as BoardSubscriptionState,
+    refundState: current.refund_state as "NONE" | "PARTIAL" | "FULL" | "FAILED",
+    providerDisputeId: current.provider_dispute_id,
+  });
   const record = {
     customer_id: customerId,
     plan_id: planId,
@@ -195,20 +208,69 @@ async function persistSubscription(
     provider_subscription_id: subscription.id,
     current_period_starts_at: periodStart,
     access_ends_at: accessEndsAt,
-    cancel_at_period_end: subscription.cancel_at_period_end,
-    last_provider_event_created: event.created,
-    last_provider_event_id: event.id,
+    cancel_at_period_end: true,
+    ...(source.kind === "provider" ? {
+      last_provider_event_created: source.event.created,
+      last_provider_event_id: source.event.id,
+    } : {
+      last_reconciled_at: source.reconciledAt,
+    }),
     updated_at: new Date().toISOString(),
   };
-  const result = current
-    ? await admin.from("ap_board_subscriptions").update(record).eq("id", current.id).lte("last_provider_event_created", event.created)
-    : await admin.from("ap_board_subscriptions").insert(record);
+  let update = admin.from("ap_board_subscriptions").update(record).eq("id", current.id);
+  if (source.kind === "provider") {
+    update = update.lte("last_provider_event_created", source.event.created);
+  } else {
+    update = update
+      .eq("last_provider_event_created", current.last_provider_event_created)
+      .eq("state", current.state)
+      .eq("refund_state", current.refund_state);
+    update = current.last_provider_event_id === null
+      ? update.is("last_provider_event_id", null)
+      : update.eq("last_provider_event_id", current.last_provider_event_id);
+    update = current.access_ends_at === null
+      ? update.is("access_ends_at", null)
+      : update.eq("access_ends_at", current.access_ends_at);
+    update = current.provider_refund_id === null
+      ? update.is("provider_refund_id", null)
+      : update.eq("provider_refund_id", current.provider_refund_id);
+    update = current.provider_dispute_id === null
+      ? update.is("provider_dispute_id", null)
+      : update.eq("provider_dispute_id", current.provider_dispute_id);
+  }
+  const result = await update.select("id").maybeSingle();
+  if (result.error) throw result.error;
+  return Boolean(result.data);
+}
+
+async function applyBoardTerminalEvent(admin: AdminClient, input: {
+  event: { id: string; type: string; created: number };
+  subscriptionId: string;
+  resultingState: "CANCELED" | "REFUNDED" | "DISPUTED";
+  refundState?: "PARTIAL" | "FULL";
+  refundId?: string;
+  disputeId?: string;
+  amountCents: number;
+  fullAmountCents: number;
+}) {
+  const result = await admin.rpc("ap_apply_legacy_board_terminal_event", {
+    p_provider_subscription_id: input.subscriptionId,
+    p_provider_event_id: input.event.id,
+    p_event_type: input.event.type,
+    p_provider_created: input.event.created,
+    p_resulting_state: input.resultingState,
+    p_refund_state: input.refundState ?? null,
+    p_provider_refund_id: input.refundId ?? null,
+    p_provider_dispute_id: input.disputeId ?? null,
+    p_amount_cents: input.amountCents,
+    p_full_amount_cents: input.fullAmountCents,
+  });
   if (result.error) throw result.error;
 }
 
 export async function reconcileBoardSubscriptions(stripe: Stripe, admin: AdminClient, limit = 50) {
   const { data, error } = await admin.from("ap_board_subscriptions").select("provider_subscription_id")
-    .in("state", ["PENDING", "ACTIVE", "CANCEL_AT_PERIOD_END", "PAST_DUE"]).order("updated_at").limit(limit);
+    .order("updated_at").limit(limit);
   if (error) throw error;
   let reconciled = 0;
   for (const row of data || []) {
@@ -219,8 +281,11 @@ export async function reconcileBoardSubscriptions(stripe: Stripe, admin: AdminCl
     const state = subscription.status === "canceled" ? "CANCELED"
       : subscription.cancel_at_period_end && invoicePaid ? "CANCEL_AT_PERIOD_END"
         : subscription.status === "active" && invoicePaid ? "ACTIVE" : "PAST_DUE";
-    await persistSubscription(stripe, admin, subscription, { id: `reconciliation:${subscription.id}:${subscription.items.data[0]?.current_period_end || 0}`, created: Math.floor(Date.now() / 1_000) }, state);
-    reconciled += 1;
+    const persisted = await persistSubscription(stripe, admin, subscription, {
+      kind: "reconciliation",
+      reconciledAt: new Date().toISOString(),
+    }, state);
+    if (persisted) reconciled += 1;
   }
   return reconciled;
 }

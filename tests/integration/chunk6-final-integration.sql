@@ -35,47 +35,31 @@ where id='36000000-0000-4000-8000-000000000001';
 do $$ begin
   perform public.ap_claim_board_profile('36000000-0000-4000-8000-000000000001',repeat('a',64),
     '16000000-0000-4000-8000-000000000002','other-owner@example.invalid');
-  raise exception 'mismatched_profile_email_was_accepted';
+  raise exception 'retired_board_profile_claim_was_accepted';
 exception when raise_exception then
-  if sqlerrm='mismatched_profile_email_was_accepted' then raise; end if;
-  if sqlerrm<>'board_profile_email_or_owner_mismatch' then raise; end if;
+  if sqlerrm='retired_board_profile_claim_was_accepted' then raise; end if;
+  if sqlerrm<>'legacy_board_profile_claim_retired' then raise; end if;
 end $$;
 
 select pg_temp.assert_true(
-  public.ap_claim_board_profile('36000000-0000-4000-8000-000000000001',repeat('a',64),
-    '16000000-0000-4000-8000-000000000001','CLAIM-OWNER@EXAMPLE.INVALID')
-    ='56000000-0000-4000-8000-000000000001',
-  'valid finalized profile was not claimed'
-);
-select pg_temp.assert_true(
-  (select customer_id is null from public.ap_intake_snapshots
-    where id='56000000-0000-4000-8000-000000000001')
-  and (select customer_id='16000000-0000-4000-8000-000000000001' from public.ap_board_profile_claims
-    where profile_snapshot_id='56000000-0000-4000-8000-000000000001')
-  and (select count(*)=1 from public.ap_board_recompute_jobs
-    where profile_snapshot_id='56000000-0000-4000-8000-000000000001' and state='PENDING'),
-  'immutable profile claim or recomputation queue was not established'
+  (select customer_id is null from public.ap_intake_snapshots where id='56000000-0000-4000-8000-000000000001')
+  and not exists(select 1 from public.ap_board_profile_claims where profile_snapshot_id='56000000-0000-4000-8000-000000000001'),
+  'retired board profile claim changed immutable customer evidence'
 );
 
 insert into public.jobs(id,company,title,source_url,checked_at)
 values('66000000-0000-4000-8000-000000000001','Synthetic Fixture Employer','Support Specialist',
   'https://example.invalid/jobs/fixture',now());
 select pg_temp.assert_true(
-  (select count(*)=1 from public.ap_board_recompute_jobs
-    where job_id='66000000-0000-4000-8000-000000000001' and scope='JOB' and state='PENDING'),
-  'job creation did not enqueue board recomputation'
+  not exists(select 1 from public.ap_board_recompute_jobs where job_id='66000000-0000-4000-8000-000000000001'),
+  'job creation revived retired board recomputation'
 );
 
-do $$ declare claimed public.ap_board_recompute_jobs; begin
-  select * into claimed from public.ap_claim_board_recompute_jobs('chunk6-worker',1);
-  perform pg_temp.assert_true(claimed.state='PROCESSING' and claimed.attempts=1 and claimed.lease_owner='chunk6-worker',
-    'recompute job was not leased atomically');
-  perform pg_temp.assert_true(public.ap_finish_board_recompute_job(claimed.id,'chunk6-worker',true,null),
-    'leased recompute job could not be completed');
-end $$;
 select pg_temp.assert_true(
-  (select count(*)=1 from public.ap_board_recompute_jobs where state='COMPLETED' and completed_at is not null),
-  'recompute completion invariant failed'
+  not exists(select 1 from public.ap_claim_board_recompute_jobs('chunk6-worker',1))
+  and not public.ap_finish_board_recompute_job(gen_random_uuid(),'chunk6-worker',true,null)
+  and not exists(select 1 from pg_trigger where tgname in ('ap_queue_board_snapshot_change_trigger','ap_queue_board_job_change_trigger') and not tgisinternal),
+  'retired board recomputation remained callable or trigger-driven'
 );
 
 select pg_temp.assert_true(

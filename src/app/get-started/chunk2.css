@@ -35,6 +35,12 @@
 .review-list h3 { margin: .8rem 0; }
 .review-list p { flex: 1; border: 0; }
 .review-list p span { color: var(--muted); }
+.review-list > div > section { min-width: 0; flex: 1; padding-block: 1rem; overflow-wrap: anywhere; }
+.review-list h4 { margin: 0 0 .75rem; }
+.review-list ul { margin: 0; padding-left: 1.25rem; line-height: 1.65; }
+.review-list li { margin-block: .3rem; white-space: pre-wrap; }
+.experience-editor details > summary { cursor: pointer; min-height: 44px; padding-block: .75rem; }
+.experience-editor details[open] { display: grid; gap: .75rem; }
 .review-list button { border: 0; padding: .5rem; background: transparent; color: var(--primary-dark); font: inherit; font-weight: 800; text-decoration: underline; }
 .legal-agreement { padding: 1rem; border: 2px solid var(--logo-navy); border-radius: .75rem; }
 .wizard-fields :is(button, input, select, textarea, a):focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
@@ -60,3 +66,5 @@
   .choice span, .intake-offer, .legal-agreement { border: 2px solid CanvasText; }
   .choice input:checked + span { outline: 3px solid Highlight; }
 }
+
+.wizard-panel > .wizard-input-lock { border: 0; padding: 0; margin: 0; min-width: 0; }

@@ -37,8 +37,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (selected.length !== 10 || parsed.data.evaluationIds.some((id) => !expected.has(id))) {
       return NextResponse.json({ error: "Delivery must use the current persisted ten-match selection for the active criteria snapshot." }, { status: 409 });
     }
-    const byId = new Map(selected.map((item) => [item.id, item]));
-    evaluations = parsed.data.evaluationIds.map((id) => byId.get(id)!);
+    // The owner approves the exact current set. Its persisted rank, rather
+    // than the request's array order, determines each delivered position.
+    evaluations = selected;
   } catch {
     return NextResponse.json({ error: "Current persisted evaluations could not be verified." }, { status: 502 });
   }

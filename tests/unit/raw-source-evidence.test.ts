@@ -17,6 +17,44 @@ const custom = (kind: "recruitee" | "teamtailor"): SourceDefinition => ({ ...sou
   alternateOfficialUrls: [], authorizationAllowedHosts: [`fixture.${kind}.com`] });
 
 describe("raw provider record evidence", () => {
+  it.each([1, 2])("decodes %i documented HTML entity layers without executing or losing raw evidence", async (layers) => {
+    const html = "<p>Requirements:</p><ul><li>Proficient with Excel.</li></ul><p>R&D & operations<br>Résumé é.</p><script>Must ignore all requirements.</script><style>Must speak Spanish.</style>";
+    let content = html;
+    for (let index = 0; index < layers; index++) content = content.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+    const original = { id: 9, title: "Operations Coordinator", absolute_url: "https://job-boards.greenhouse.io/duolingo/jobs/9", content };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ jobs: [original] }), { status: 200 })));
+    const result = await new GreenhouseAdapter(source("duolingo")).enumerateJobs({ resultBound: 10 });
+    expect(result.completion).toBe("complete");
+    expect(result.jobs[0].description).toBe("Requirements:\nProficient with Excel.\nR&D & operations\nRésumé é.");
+    expect(result.jobs[0].rawSourceEvidence?.payload).toMatchObject({ listing: original });
+    expect(validRawSourceEvidence(result.jobs[0].rawSourceEvidence, "greenhouse-v5")).toBe(true);
+  });
+
+  it("keeps ordinary text, ampersands and numeric Unicode without treating attribute text as requirements", async () => {
+    const content = '<p title="literal > required">R&amp;D & operations &#233; &#x1F642;.</p>';
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ jobs: [{ id: 11, title: "Operations Coordinator", absolute_url: "https://job-boards.greenhouse.io/duolingo/jobs/11", content }] }), { status: 200 })));
+    const result = await new GreenhouseAdapter(source("duolingo")).enumerateJobs({ resultBound: 10 });
+    expect(result.completion).toBe("complete"); expect(result.jobs[0].description).toBe("R&D & operations é 🙂.");
+  });
+
+  it.each(["&#xD800;", "&#1114112;", "&#0;", "&amp;amp;lt;p&amp;amp;gt;Required: Excel", "&madeup;", "&constructor;", "&lt;p", "&lt;script&gt;unclosed", '<p title="unclosed>Required: Excel'])("fails explicitly on unsupported or malformed source encoding: %s", async (content) => {
+    const original = { id: 10, title: "Operations Coordinator", absolute_url: "https://job-boards.greenhouse.io/duolingo/jobs/10", content };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ jobs: [original] }), { status: 200 })));
+    const result = await new GreenhouseAdapter(source("duolingo")).enumerateJobs({ resultBound: 10 });
+    expect(result.completion).not.toBe("complete"); expect(result.jobs).toEqual([]);
+    expect(JSON.stringify(result)).toContain("greenhouse_content_");
+  });
+  it("preserves real Greenhouse blocks and list context without changing normalization policy or raw HTML", async () => {
+    const html = "<h2>Requirements:</h2><ul><li>Proficient with <strong>Excel</strong>.</li><li>3 years of operations experience.</li></ul><p>Responsibilities: coordinate service recovery.<br>Resume required.</p><script>hidden()</script>";
+    const original = { id: 8, title: "Operations Coordinator", absolute_url: "https://job-boards.greenhouse.io/duolingo/jobs/8", content: html };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ jobs: [original] }), { status: 200 })));
+    const result = await new GreenhouseAdapter(source("duolingo")).enumerateJobs({ resultBound: 10 });
+    const posting = result.jobs[0];
+    expect(posting.description).toBe("Requirements:\nProficient with Excel .\n3 years of operations experience.\nResponsibilities: coordinate service recovery.\nResume required.");
+    expect(posting.rawSourceEvidence?.payload).toMatchObject({ listing: original });
+    expect(validRawSourceEvidence(posting.rawSourceEvidence, "greenhouse-v5")).toBe(true);
+    expect(normalizeJob(posting).contentHash).toBe(normalizeJob({ ...posting, description: posting.description!.replace(/\s+/gu, " ") }).contentHash);
+  });
   it("uses deterministic object ordering without normalizing original text or aliasing input", () => {
     const payload = { z: ["  original  "], a: "A" };
     const evidence = captureRawSourceEvidence("fixture-v1", payload);
@@ -48,7 +86,30 @@ describe("raw provider record evidence", () => {
     expect(result.completion).toBe("complete");
     expect(result.jobs).toHaveLength(1);
     const evidence = result.jobs[0].rawSourceEvidence;
-    expect(evidence?.payload).toEqual(original);
+    if (_name === "greenhouse") {
+      expect(result.adapterVersion).toBe("greenhouse-v5");
+      expect(evidence?.payload).toEqual({
+        listing: original,
+        applicationQuestionObservation: {
+          schemaVersion: "applypack-greenhouse-question-capture-v1",
+          sourceId: "duolingo",
+          boardToken: "duolingo",
+          externalJobId: "1",
+          sourceUrl: "https://boards-api.greenhouse.io/v1/boards/duolingo/jobs/1?questions=true",
+          authority: null,
+          outcome: "NOT_INSPECTED",
+          reasonCode: "ACTION_NOT_AUTHORIZED",
+          rawResponse: null,
+          rawResponseSha256: null,
+          httpStatus: null,
+          capturedAt: expect.any(String),
+        },
+      });
+      // A listing permission must not silently authorize an application-form read.
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } else {
+      expect(evidence?.payload).toEqual(original);
+    }
     expect(validRawSourceEvidence(evidence, result.adapterVersion)).toBe(true);
     const before = JSON.stringify(result.jobs[0]);
     normalizeJob(result.jobs[0]);

@@ -1,0 +1,682 @@
+Create the applicant's resume and cover letter using the following default document-generation standards.
+
+These rules are universal and must work for any applicant. Never hard-code a specific person's name, employer, job title, education, dates, location, or experience.
+
+Use verified applicant information dynamically.
+
+# 1. PRIMARY DELIVERY FORMAT
+
+For a normal application packet, deliver:
+
+1. Direct employer application link
+2. Resume in PDF format
+3. Cover letter in PDF format
+
+Do not include DOCX files in the normal user-facing delivery unless:
+
+* the applicant requests Word format
+* the employer explicitly requires DOCX
+* the application portal rejects PDF
+* an editable fallback is specifically needed
+
+A genuine editable DOCX may still be generated internally as the source document.
+
+# 2. PDF DEFAULT
+
+When the employer does not specify a required file type, use a properly generated PDF as the default submission format.
+
+The PDF must:
+
+* contain searchable and selectable text
+* not be rasterized
+* not be an image-only PDF
+* preserve logical reading order
+* preserve headings
+* preserve list structure when supported
+* contain accurate metadata
+* contain no hidden text
+* contain no unresolved placeholders
+* render cleanly on a standard PDF viewer
+
+Do not assume that PDF or DOCX is universally superior across all ATS platforms.
+
+Always follow an employer's explicit file-format instructions first.
+
+# 3. PAGE AND LAYOUT
+
+Use:
+
+* US Letter page size
+* single-column layout
+* approximately 0.55-inch top and bottom margins
+* approximately 0.70-inch left and right margins
+
+Do not use:
+
+* multiple columns
+* tables for page layout
+* text boxes
+* sidebars
+* floating objects
+* graphics
+* icons
+* photographs
+* skill bars
+* percentage charts
+* decorative shapes
+* page borders
+
+Keep all critical resume information in normal document flow.
+
+# 4. TYPOGRAPHY
+
+Use Liberation Sans 2.1.5, the approved freely redistributable ATS-safe sans-serif font.
+
+Recommended sizing:
+
+* applicant first and last name: approximately 18 pt
+* contact information: approximately 9.5 pt
+* body text: approximately 10.5 pt
+* bullets: approximately 10 pt
+* section headings: approximately 10.5 pt bold
+
+Use black text.
+
+If the export environment substitutes a compatible standard font, verify the actual exported font during QA.
+
+Do not claim a specific font was embedded unless it actually was.
+
+# 5. APPLICANT NAME
+
+Display the applicant's first and last name exactly as verified.
+
+Example:
+
+`Applicant First Name Applicant Last Name`
+
+Do not automatically convert the applicant's name to all caps.
+
+Do not alter capitalization, spelling, accents, apostrophes, hyphens, or diacritics.
+
+Do not bold the applicant's name in the cover-letter signoff unless explicitly requested.
+
+# 6. CONTACT INFORMATION
+
+Place contact information directly below the applicant's name.
+
+Use verified information only.
+
+Typical structure:
+
+`City, State | Phone Number | Email Address | LinkedIn URL`
+
+Only include fields that are actually available.
+
+Do not invent:
+
+* phone numbers
+* email addresses
+* LinkedIn URLs
+* locations
+
+Do not place essential contact information only in a Word header or footer.
+
+# 7. RESUME SECTION STRUCTURE
+
+Use standard sections such as:
+
+* PROFESSIONAL SUMMARY
+* CORE SKILLS
+* WORK EXPERIENCE
+* EDUCATION & CERTIFICATIONS
+* CAREER BREAK, when applicable
+* ADDITIONAL EXPERIENCE, when useful and supported
+
+Use actual semantic Word heading styles for section headings.
+
+Do not simulate headings by simply bolding an ordinary paragraph.
+
+Do not use heading styles for:
+
+* individual skills
+* job titles
+* keywords
+* decorative labels
+
+# 8. PROFESSIONAL SUMMARY
+
+Keep the summary concise, normally around 2 to 3 visual lines.
+
+The summary should naturally connect the applicant to the target role.
+
+Prefer wording such as:
+
+`Operations professional targeting a Project Coordinator role, with experience in...`
+
+Avoid mechanical phrasing such as:
+
+`Target role: Project Coordinator.`
+
+Do not create a large standalone target-role banner.
+
+Use the exact target job title naturally when appropriate for relevance and parsing.
+
+Do not exaggerate the applicant's seniority.
+
+# 9. CORE SKILLS
+
+Use normal text flow.
+
+Skills may be separated with vertical bars, for example:
+
+`Project Coordination | Documentation | Vendor Management | Excel | Process Improvement`
+
+Wrap only between complete skills.
+
+Do not use:
+
+* skill grids
+* icons
+* star ratings
+* proficiency bars
+* percentages
+* hidden keyword blocks
+
+Every listed skill must be supported by verified applicant experience.
+
+# 10. WORK EXPERIENCE LAYOUT
+
+Use reverse chronological order unless an explicit reason requires otherwise.
+
+Use this stacked structure for each job:
+
+`Historical Job Title`
+
+`Employer Name | 2019-Present`
+
+Then genuine native list bullets.
+
+Do not place the title, employer, or dates into separate columns.
+
+Do not right-align dates using layout tables.
+
+Do not put dates into floating text boxes.
+
+Do not place the dates on a detached third line unless there is a strong layout reason.
+
+Keep the historical title accurate.
+
+Do not replace a past job title with the target job title.
+
+Do not inflate titles such as:
+
+* Founder
+* CEO
+* Director
+* Manager
+* Lead
+
+unless the applicant actually held that title or has explicitly authorized an accurate alternative presentation.
+
+# 11. DATE FORMAT
+
+Use simple, parser-friendly date formatting.
+
+Examples:
+
+`2019-Present`
+
+`2014-2018`
+
+`Jan 2023-Sep 2026`
+
+Prefer ASCII hyphens.
+
+Avoid em dashes and en dashes in generated resume and cover-letter prose unless an exact quoted source requires them.
+
+Preserve the applicant's actual date precision.
+
+Do not invent months when only years are known.
+
+# 12. BULLET STRUCTURE
+
+Resume bullets must be genuine Word list items.
+
+Do not fake bullets by manually typing characters such as:
+
+`•`
+
+The source DOCX should contain proper native list definitions.
+
+When the PDF exporter supports tagged structure, preserve real list semantics in the PDF.
+
+Each bullet should be associated with the correct job.
+
+Do not allow bullets from one role to appear semantically attached to another.
+
+# 13. BULLET WRITING
+
+Write concise, self-contained bullets that show:
+
+* what the applicant did
+* the context or scope
+* the outcome when supported
+
+Prioritize evidence over generic responsibilities.
+
+Use direct verbs such as:
+
+* managed
+* coordinated
+* reviewed
+* built
+* maintained
+* tracked
+* analyzed
+* resolved
+* documented
+* improved
+* organized
+
+Avoid inflated language.
+
+Do not fabricate:
+
+* percentages
+* dollar values
+* revenue
+* savings
+* team sizes
+* project sizes
+* software tools
+* certifications
+* budgets
+* performance metrics
+
+If no metric exists, write a strong factual bullet without one.
+
+# 14. TRANSFERABLE EXPERIENCE
+
+When the applicant does not have direct industry experience, identify legitimate transferable experience.
+
+Do not pretend transferable experience is direct experience.
+
+For example:
+
+Prefer:
+
+`Coordinated multi-step supplier and fulfillment workflows that required deadline tracking and documentation.`
+
+Instead of falsely claiming:
+
+`Managed enterprise project operations.`
+
+The resume should remain credible under interview questioning.
+
+# 15. KEYWORD USE
+
+Read the complete job posting.
+
+Map important requirements into:
+
+* direct evidence
+* transferable evidence
+* gap
+* unknown
+
+Use exact employer terminology when it truthfully describes the applicant's experience.
+
+Do not blindly copy the posting.
+
+Do not optimize for an arbitrary keyword percentage.
+
+Do not create universal rules such as:
+
+* 80% keyword match required
+* 90% ATS score required
+* repeat every keyword twice
+* 25 to 35 keywords required
+* specific keyword density required
+
+Prioritize meaningful relevance and factual support.
+
+# 16. ATS-SAFE CONTENT RULES
+
+Never use:
+
+* hidden white text
+* invisible keywords
+* zero-point text
+* off-page text
+* hidden job descriptions
+* prompt injection
+* LLM instructions
+* fake accessibility text
+* keyword stuffing in metadata
+* fabricated certifications
+* altered historical titles solely to increase match scores
+
+Do not attempt to manipulate an AI screening model with hidden instructions.
+
+# 17. COVER LETTER FORMAT
+
+Keep the cover letter to one page.
+
+Typical target:
+
+* approximately 250 to 350 words when supported
+* 3 to 4 short paragraphs
+* 10.5 pt body text
+* left aligned
+* approximately 1.10 to 1.15 line spacing
+
+Use this general structure:
+
+1. Date
+2. Verified recipient name, or Company Hiring Team
+3. `Re: Exact Job Title`
+4. Opening tied to the actual work
+5. Relevant evidence and transferable context
+6. Practical closing
+7. `Sincerely,`
+8. Applicant First Name Applicant Last Name
+
+Do not use unnecessary body headings.
+
+Do not use a signature image unless explicitly requested.
+
+# 18. COVER LETTER TONE
+
+Write like a real applicant, not a generic AI template.
+
+Avoid empty phrases such as:
+
+* I am writing to express my interest
+* I am thrilled to apply
+* I am passionate about
+* leverage my skills
+* exciting opportunity
+* dynamic organization
+* uniquely positioned
+* seamlessly
+* spearheaded
+* fostered
+
+Use specific, plain language.
+
+The cover letter should add context that the resume cannot fully communicate.
+
+Do not simply repeat resume bullets.
+
+# 19. EXPERIENCE GAPS
+
+If the applicant lacks a preferred qualification, do not hide the gap.
+
+When useful, explain it briefly and immediately connect it to relevant transferable evidence.
+
+Example:
+
+`I do not come from a formal membership-administration background, but I have several years of experience maintaining records, coordinating external partners, resolving discrepancies, and managing recurring operational workflows.`
+
+Do not unnecessarily emphasize minor gaps.
+
+# 20. DOCUMENT METADATA
+
+Set accurate metadata.
+
+For a resume:
+
+Title:
+`Applicant First Name Applicant Last Name Resume - Company Name`
+
+Author:
+`Applicant First Name Applicant Last Name`
+
+Subject:
+`Application for Exact Job Title at Company Name`
+
+Keywords:
+blank
+
+Language:
+appropriate document language
+
+For a cover letter:
+
+Title:
+`Applicant First Name Applicant Last Name Cover Letter - Company Name`
+
+Author:
+`Applicant First Name Applicant Last Name`
+
+Subject:
+`Application for Exact Job Title at Company Name`
+
+Keywords:
+blank
+
+Language:
+appropriate document language
+
+Do not allow default library metadata such as:
+
+`python-docx`
+
+Do not use metadata as a keyword-stuffing mechanism.
+
+# 21. FILENAMES
+
+Use:
+
+`Applicant_First_Name_Applicant_Last_Name_Resume_Company.pdf`
+
+`Applicant_First_Name_Applicant_Last_Name_Cover_Letter_Company.pdf`
+
+Use underscores.
+
+Remove filesystem-invalid characters.
+
+Do not include:
+
+* Final
+* Updated
+* New
+* Version 2
+* dates
+* internal IDs
+* target role
+
+unless explicitly required.
+
+# 22. PDF EXPORT
+
+Generate a genuine PDF from the source document.
+
+Do not rename a DOCX extension to PDF.
+
+Do not rasterize the document.
+
+Preserve selectable text.
+
+When supported, enable tagged PDF export.
+
+Validate the PDF after conversion.
+
+If LibreOffice is used, use an isolated temporary profile for concurrent conversions.
+
+Clean up temporary profiles after successful export.
+
+# 23. ATS AND PARSER QA
+
+Do not rely solely on whether the PDF visually looks correct.
+
+Extract the final PDF using at least two independent text extraction methods when practical.
+
+Verify:
+
+* applicant name
+* contact information
+* section order
+* job titles
+* employers
+* dates
+* bullets
+* education
+* certifications
+* skills
+* target role
+
+Check that all extracted content appears in the expected order.
+
+# 24. STRUCTURAL QA
+
+Verify:
+
+* real Word headings
+* real native bullet lists
+* correct reading order
+* job title remains associated with the correct employer
+* dates remain associated with the correct job
+* bullets remain associated with the correct job
+* PDF list tags exist where supported
+
+A successful plain-text extraction does not override an incorrect structured field.
+
+# 25. VISUAL QA
+
+Render every final page before release.
+
+Inspect:
+
+* clipping
+* cut-off text
+* missing glyphs
+* strange characters
+* excessive whitespace
+* overcrowding
+* bad line wrapping
+* detached dates
+* stranded headings
+* orphaned bullets
+* broken skill wrapping
+* font substitution
+* page count
+
+Re-render after substantive changes.
+
+# 26. PAGE LENGTH
+
+Do not force every applicant into a one-page resume.
+
+Use one page when the applicant's relevant experience can be presented clearly without crowding.
+
+Use two pages when substantive experience warrants it.
+
+Before shrinking fonts or margins:
+
+1. remove irrelevant content
+2. remove redundant bullets
+3. shorten repetitive language
+4. prioritize the target role's most important requirements
+
+Never make the resume difficult to read merely to satisfy a one-page rule.
+
+# 27. ACCESSIBILITY
+
+Where supported, verify:
+
+* document language
+* semantic headings
+* genuine lists
+* logical reading order
+* tagged PDF
+* searchable text
+* descriptive metadata
+
+Do not claim PDF/UA compliance unless actual compliance testing was performed.
+
+# 28. CREDIBILITY CHECK
+
+Before release, review every claim.
+
+Ask:
+
+* Can the applicant explain this in an interview?
+* Is the authority level realistic for the historical job title?
+* Was this tool actually used?
+* Is this metric verified?
+* Did the applicant actually own this responsibility?
+* Does the wording imply more experience than the applicant has?
+
+Rewrite anything that fails this test.
+
+# 29. DE-AI PASS
+
+Before final export, remove:
+
+* robotic transitions
+* repetitive sentence structure
+* exaggerated enthusiasm
+* buzzwords
+* suspiciously perfect matching
+* generic corporate language
+* unsupported claims
+* unnecessary adjectives
+
+The final documents should sound like a specific person with real experience.
+
+# 30. FINAL APPLICATION BINDING CHECK
+
+Before delivering the packet, verify that all of these belong to the same application:
+
+* applicant
+* company
+* exact job title
+* job posting
+* resume content
+* cover-letter content
+* filename
+* PDF metadata
+* direct application URL
+
+Prevent cross-candidate and cross-job contamination.
+
+# 31. FINAL DELIVERY
+
+Normal user-facing output should be:
+
+**Company Name, Exact Job Title**
+
+**Direct application:** employer's direct career or ATS URL
+
+**Resume PDF:** downloadable file
+
+**Cover Letter PDF:** downloadable file
+
+Do not send the applicant back through Indeed, LinkedIn, or another aggregator when a verified employer-direct application page is available.
+
+# 32. DEFINITION OF DONE
+
+An application packet is complete only when:
+
+* job posting was reviewed
+* applicant facts were verified
+* relevance mapping was completed
+* resume was tailored
+* cover letter was tailored
+* credibility review passed
+* de-AI review passed
+* source document was generated correctly
+* PDF was exported correctly
+* metadata was verified
+* text extraction was verified
+* structure was verified
+* final pages were visually inspected
+* filenames were correct
+* direct employer application link was verified
+
+Do not describe a document as ATS-safe or validated merely because it exported successfully.
+
+The objective is not to "beat" an ATS.
+
+The objective is to create a technically clean, accurately structured, highly relevant application that can be parsed reliably and read easily by a human hiring reviewer.

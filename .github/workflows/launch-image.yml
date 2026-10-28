@@ -1,0 +1,223 @@
+name: Launch image
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main, codex/manual-launch-hardening-2026-10-02]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  database-recovery-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build separate database recovery worker without provider credentials
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD > database-recovery-image-tested-commit.txt
+          docker build --platform linux/amd64 --file Dockerfile.database-recovery \
+            --label "org.opencontainers.image.revision=$(cat database-recovery-image-tested-commit.txt)" \
+            --tag applypack-database-recovery:ci . 2>&1 | tee database-recovery-image-build.log
+          docker image inspect applypack-database-recovery:ci > database-recovery-image-identity.json
+      - name: Build isolated database fixture and export client build evidence
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 --target database-recovery-fixture --file Dockerfile.database-recovery \
+            --label "org.opencontainers.image.revision=$(cat database-recovery-image-tested-commit.txt)" \
+            --tag applypack-database-recovery-fixture:ci . 2>&1 | tee database-recovery-fixture-build.log
+          docker image inspect applypack-database-recovery-fixture:ci > database-recovery-fixture-identity.json
+          docker build --platform linux/amd64 --target database-recovery-build-evidence --file Dockerfile.database-recovery \
+            --output type=local,dest=database-recovery-build-evidence . 2>&1 | tee database-recovery-build-evidence.log
+      - name: Real snapshot and restore inside a networkless disposable container
+        run: |
+          set -euo pipefail
+          node scripts/test-database-recovery-image.mjs applypack-database-recovery:ci applypack-database-recovery-fixture:ci 2>&1 | tee database-recovery-image-smoke.log
+      - name: Install checksum-pinned image scanner
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/trivy_0.76.1_Linux-64bit.tar.gz"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 2 \
+            https://github.com/aquasecurity/trivy/releases/download/v0.76.1/trivy_0.76.1_Linux-64bit.tar.gz \
+            --output "$archive"
+          printf '%s  %s\n' c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0 "$archive" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/applypack-trivy"
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP/applypack-trivy" trivy
+          "$RUNNER_TEMP/applypack-trivy/trivy" --version > database-recovery-image-scanner-version.txt
+      - name: Reject high and critical findings with OS PostgreSQL Node and helper coverage
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/applypack-trivy/trivy" image --image-src docker --scanners vuln --disable-telemetry --skip-version-check \
+            --list-all-pkgs --severity HIGH,CRITICAL --ignorefile /dev/null --exit-code 1 --timeout 10m \
+            --format json --output database-recovery-image-vulnerabilities.json applypack-database-recovery:ci
+          node scripts/assert-database-recovery-image-scan.mjs database-recovery-image-vulnerabilities.json > database-recovery-image-scan-coverage.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: database-recovery-image-local-contracts
+          path: |
+            database-recovery-image-tested-commit.txt
+            database-recovery-image-build.log
+            database-recovery-image-identity.json
+            database-recovery-fixture-build.log
+            database-recovery-fixture-identity.json
+            database-recovery-build-evidence.log
+            database-recovery-build-evidence/
+            database-recovery-image-smoke.log
+            database-recovery-image-scanner-version.txt
+            database-recovery-image-vulnerabilities.json
+            database-recovery-image-scan-coverage.json
+          if-no-files-found: error
+
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Offline Roles Anywhere contracts
+        run: node --test scripts/test-aws-roles-anywhere.mjs scripts/test-aws-backup-workload-credentials.mjs scripts/assert-launch-image-scan.test.mjs scripts/assert-worker-image-scan.test.mjs
+      - name: Verify signed immutable runtime base
+        run: |
+          set -euo pipefail
+          verifier="$RUNNER_TEMP/applypack-cosign"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 2 \
+            https://github.com/sigstore/cosign/releases/download/v3.1.4/cosign-linux-amd64 --output "$verifier"
+          printf '%s  %s\n' 424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa "$verifier" | sha256sum --check --strict
+          chmod 0755 "$verifier"
+          "$verifier" version --json > launch-image-signature-verifier.json
+          "$verifier" verify \
+            gcr.io/distroless/nodejs22-debian13@sha256:eed5cbf9fcdb7f97de1fb39adde1972efa57df1085c0c76a5ea17c7c27ff8f6c \
+            --certificate-oidc-issuer https://accounts.google.com \
+            --certificate-identity keyless@distroless.iam.gserviceaccount.com \
+            --output=json --timeout=2m > launch-image-base-signatures.json
+      - name: Build complete launch package without provider credentials
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 --file Dockerfile.launch --target web \
+            --build-arg APP_DEPLOYMENT_ENV=staging \
+            --build-arg NEXT_PUBLIC_APP_URL=https://applypack-staging-staging.up.railway.app \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL=https://fmugizadzdnqfckujqlw.supabase.co \
+            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_local_build_placeholder \
+            --tag applypack-launch-web:ci . 2>&1 | tee launch-image-build.log
+          docker image inspect applypack-launch-web:ci > launch-image-identity.json
+          git rev-parse HEAD > launch-image-tested-commit.txt
+      - name: Production startup and isolated fail-closed smoke
+        run: |
+          set -euo pipefail
+          node scripts/test-launch-image.mjs applypack-launch-web:ci 2>&1 | tee launch-image-smoke.log
+      - name: Install checksum-pinned image scanner
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/trivy_0.76.1_Linux-64bit.tar.gz"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 2 \
+            https://github.com/aquasecurity/trivy/releases/download/v0.76.1/trivy_0.76.1_Linux-64bit.tar.gz \
+            --output "$archive"
+          printf '%s  %s\n' c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0 "$archive" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/applypack-trivy"
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP/applypack-trivy" trivy
+          "$RUNNER_TEMP/applypack-trivy/trivy" --version > launch-image-scanner-version.txt
+      - name: Reject all high and critical image vulnerabilities
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/applypack-trivy/trivy" image --image-src docker --scanners vuln --disable-telemetry --skip-version-check \
+            --severity HIGH,CRITICAL --ignorefile /dev/null --exit-code 1 --timeout 10m \
+            --format json --output launch-image-vulnerabilities.json applypack-launch-web:ci
+          node scripts/assert-launch-image-scan.mjs launch-image-vulnerabilities.json > launch-image-scan-coverage.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: launch-image-local-contracts
+          path: |
+            launch-image-build.log
+            launch-image-identity.json
+            launch-image-tested-commit.txt
+            launch-image-smoke.log
+            launch-image-signature-verifier.json
+            launch-image-base-signatures.json
+            launch-image-scanner-version.txt
+            launch-image-vulnerabilities.json
+            launch-image-scan-coverage.json
+          if-no-files-found: error
+
+  document-worker-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Worker profile isolation and failure cleanup
+        run: python3 scripts/test-document-worker-profile.py
+      - name: Build the isolated document worker from this checkout
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD > worker-image-tested-commit.txt
+          docker buildx build --platform linux/amd64 --provenance=false --load \
+            --file infra/aws/document-worker/Dockerfile \
+            --label "org.opencontainers.image.revision=$(cat worker-image-tested-commit.txt)" \
+            --tag applypack-document-worker:ci infra/aws/document-worker 2>&1 | tee worker-image-build.log
+          docker image inspect applypack-document-worker:ci > worker-image-identity.json
+          docker run --rm --pull never --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --user 65534:65534 --entrypoint /usr/bin/python3 \
+            applypack-document-worker:ci -c 'import awslambdaric.bootstrap,boto3,importlib.metadata as m,json; print(json.dumps(sorted([{"name": d.metadata["Name"], "version": d.version} for d in m.distributions(path=["/opt/python"])], key=lambda d:d["name"])))' \
+            > worker-image-python-inventory.json
+      - name: Render and extract synthetic documents in the isolated worker image
+        run: |
+          set -euo pipefail
+          # Both an arbitrary UID and the image's nobody account must work.
+          # Lambda's actual runtime/network/KMS behavior is verified later.
+          for worker_user in 424242:424242 65534:65534; do
+            printf 'WORKER_USER=%s\n' "$worker_user" | tee -a worker-image-smoke.log
+            docker run --rm --pull never --network none --read-only \
+              --tmpfs /tmp:rw,noexec,nosuid,nodev,size=512m --shm-size 16m \
+              --cap-drop ALL --security-opt no-new-privileges --user "$worker_user" \
+              --env PYTHONDONTWRITEBYTECODE=1 --entrypoint /usr/bin/python3 \
+              applypack-document-worker:ci -c 'import os,pwd,runpy; assert os.getuid() in (424242,65534); assert any(p.pw_uid == os.getuid() for p in pwd.getpwall()) == (os.getuid() == 65534); runpy.run_path("/var/task/offline-smoke.py", run_name="__main__")' \
+              2>&1 | tee -a worker-image-smoke.log
+          done
+      - name: Install checksum-pinned worker image scanner
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/trivy_0.76.1_Linux-64bit.tar.gz"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 2 \
+            https://github.com/aquasecurity/trivy/releases/download/v0.76.1/trivy_0.76.1_Linux-64bit.tar.gz \
+            --output "$archive"
+          printf '%s  %s\n' c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0 "$archive" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/applypack-trivy"
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP/applypack-trivy" trivy
+          "$RUNNER_TEMP/applypack-trivy/trivy" --version > worker-image-scanner-version.txt
+      - name: Reject high and critical findings with OS and Python coverage
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/applypack-trivy/trivy" image --image-src docker --scanners vuln --disable-telemetry --skip-version-check \
+            --list-all-pkgs --severity HIGH,CRITICAL --ignorefile /dev/null --exit-code 1 --timeout 10m \
+            --format json --output worker-image-vulnerabilities.json applypack-document-worker:ci
+          node scripts/assert-worker-image-scan.mjs worker-image-vulnerabilities.json worker-image-python-inventory.json > worker-image-scan-coverage.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: document-worker-image-local-contracts
+          path: |
+            worker-image-tested-commit.txt
+            worker-image-build.log
+            worker-image-identity.json
+            worker-image-python-inventory.json
+            worker-image-smoke.log
+            worker-image-scanner-version.txt
+            worker-image-vulnerabilities.json
+            worker-image-scan-coverage.json
+          if-no-files-found: error

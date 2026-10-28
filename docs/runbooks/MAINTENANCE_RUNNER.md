@@ -1,0 +1,11 @@
+# Existing Railway maintenance service
+
+Use `railway-maintenance.json` for the existing staging maintenance service only. It runs the tracked `scripts/run-maintenance-once.mjs` every 15 minutes, has no web healthcheck, and never restarts a completed cron process. Changing this file does not itself configure or deploy Railway. Publish and select the reviewed commit and configuration path before enabling its schedule; do not upload an unrelated dirty directory or create another service.
+
+Set `APP_MAINTENANCE_URL` to the exact HTTPS production or staging `/api/cron/maintenance` URL and use that web service's existing `CRON_SECRET`. The runner prohibits redirects, query strings, alternate hosts and paths. It stops after 120 seconds and limits response size. Never print these variables or raw responses.
+
+`SUCCEEDED` means the route returned HTTP 200, all actions succeeded and no unresolved diagnostic codes remained. `BLOCKED` with exit zero means HTTP 503 reported only recognized dependency readiness holds: the process ran but the application is **not ready**. This prevents ordinary dependency holds being misreported as process crashes. Network, authentication, malformed responses, HTTP 500, unknown diagnostics, stale queues and action failures exit nonzero. Logs contain status, readiness, diagnostic codes and aggregate counts only.
+
+Exit zero does not create a successful maintenance heartbeat. Only the server's existing verified-success path records that heartbeat. Inspect operations diagnostics and heartbeat freshness separately; a scheduled process is not evidence of healthy processing. Checkout, source collection, source projection and commerce approval gates remain unchanged. Manual research does not require enabling automated collection. Recurring automated source ingestion requires its separate authorized schedule and evidence; this maintenance cron does not prove that requirement.
+
+Before provider changes, run `node --test scripts/test-maintenance-runner.test.mjs` and the focused magic-link origin test. After deployment, verify exact deployed commit, configured schedule, a real invocation's sanitized diagnostics and truthful heartbeat state. Do not enable payments or source ingestion to make a blocked run appear healthy.

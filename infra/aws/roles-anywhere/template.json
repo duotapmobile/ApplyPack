@@ -1,0 +1,80 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Prepared ApplyPack Railway caller identity; disabled until scoped approval and provider verification. No CA private key or Lambda execution role is created.",
+  "Parameters": {
+    "DeploymentEnvironment": { "Type": "String", "AllowedValues": ["staging", "production"] },
+    "EnableCaller": { "Type": "String", "AllowedValues": ["false", "true"], "Default": "false" },
+    "OfflineCaCertificatePem": { "Type": "String", "Description": "Public CA certificate only; separate reviewed CA per environment. CA private key remains offline." },
+    "CallerPermissionsBoundaryArn": { "Type": "String", "AllowedPattern": "^arn:aws:iam::838445019912:policy/applypack/(staging|production)/applypack-(staging|production)-railway-caller-boundary$" },
+    "WorkerRuntimePolicyArn": { "Type": "String", "AllowedPattern": "^arn:aws:iam::838445019912:policy/applypack/(staging|production)/applypack-(staging|production)-document-worker-runtime$", "Description": "Reviewed document-worker stack policy: exact versioned function, ephemeral prefix and exact KMS key/context only." }
+  },
+  "Rules": {
+    "ExactTarget": { "Assertions": [
+      { "Assert": { "Fn::Equals": [{ "Ref": "AWS::AccountId" }, "838445019912"] }, "AssertDescription": "Reverify target account before provisioning." },
+      { "Assert": { "Fn::Equals": [{ "Ref": "AWS::Region" }, "us-east-1"] }, "AssertDescription": "Only us-east-1 is reviewed." }
+    ] },
+    "StagingPolicies": {
+      "RuleCondition": { "Fn::Equals": [{ "Ref": "DeploymentEnvironment" }, "staging"] },
+      "Assertions": [
+        { "Assert": { "Fn::Equals": [{ "Ref": "WorkerRuntimePolicyArn" }, "arn:aws:iam::838445019912:policy/applypack/staging/applypack-staging-document-worker-runtime"] }, "AssertDescription": "Exact staging runtime policy required." },
+        { "Assert": { "Fn::Equals": [{ "Ref": "CallerPermissionsBoundaryArn" }, "arn:aws:iam::838445019912:policy/applypack/staging/applypack-staging-railway-caller-boundary"] }, "AssertDescription": "Exact staging caller boundary required." }
+      ]
+    },
+    "ProductionPolicies": {
+      "RuleCondition": { "Fn::Equals": [{ "Ref": "DeploymentEnvironment" }, "production"] },
+      "Assertions": [
+        { "Assert": { "Fn::Equals": [{ "Ref": "WorkerRuntimePolicyArn" }, "arn:aws:iam::838445019912:policy/applypack/production/applypack-production-document-worker-runtime"] }, "AssertDescription": "Exact production runtime policy required." },
+        { "Assert": { "Fn::Equals": [{ "Ref": "CallerPermissionsBoundaryArn" }, "arn:aws:iam::838445019912:policy/applypack/production/applypack-production-railway-caller-boundary"] }, "AssertDescription": "Exact production caller boundary required." }
+      ]
+    }
+  },
+  "Conditions": { "CallerEnabled": { "Fn::Equals": [{ "Ref": "EnableCaller" }, "true"] } },
+  "Resources": {
+    "CallerTrustAnchor": {
+      "Type": "AWS::RolesAnywhere::TrustAnchor",
+      "Properties": {
+        "Name": { "Fn::Sub": "applypack-${DeploymentEnvironment}-railway-caller" },
+        "Enabled": { "Fn::If": ["CallerEnabled", true, false] },
+        "Source": { "SourceType": "CERTIFICATE_BUNDLE", "SourceData": { "X509CertificateData": { "Ref": "OfflineCaCertificatePem" } } },
+        "Tags": [{ "Key": "Application", "Value": "ApplyPack" }, { "Key": "Environment", "Value": { "Ref": "DeploymentEnvironment" } }]
+      }
+    },
+    "CallerRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "RoleName": { "Fn::Sub": "applypack-${DeploymentEnvironment}-railway-caller" },
+        "Path": { "Fn::Sub": "/applypack/${DeploymentEnvironment}/" },
+        "MaxSessionDuration": 3600,
+        "PermissionsBoundary": { "Ref": "CallerPermissionsBoundaryArn" },
+        "ManagedPolicyArns": [{ "Ref": "WorkerRuntimePolicyArn" }],
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [{ "Effect": "Allow", "Principal": { "Service": "rolesanywhere.amazonaws.com" },
+            "Action": ["sts:AssumeRole", "sts:TagSession", "sts:SetSourceIdentity"],
+            "Condition": {
+              "StringEquals": { "aws:SourceAccount": { "Ref": "AWS::AccountId" }, "aws:PrincipalTag/x509Subject/CN": { "Fn::Sub": "applypack-${DeploymentEnvironment}-railway-caller" } },
+              "ArnEquals": { "aws:SourceArn": { "Fn::GetAtt": ["CallerTrustAnchor", "TrustAnchorArn"] } }
+            }
+          }]
+        },
+        "Tags": [{ "Key": "Application", "Value": "ApplyPack" }, { "Key": "Environment", "Value": { "Ref": "DeploymentEnvironment" } }]
+      }
+    },
+    "CallerProfile": {
+      "Type": "AWS::RolesAnywhere::Profile",
+      "Properties": {
+        "Name": { "Fn::Sub": "applypack-${DeploymentEnvironment}-railway-caller" },
+        "Enabled": { "Fn::If": ["CallerEnabled", true, false] },
+        "DurationSeconds": 3600,
+        "AcceptRoleSessionName": false,
+        "RoleArns": [{ "Fn::GetAtt": ["CallerRole", "Arn"] }],
+        "Tags": [{ "Key": "Application", "Value": "ApplyPack" }, { "Key": "Environment", "Value": { "Ref": "DeploymentEnvironment" } }]
+      }
+    }
+  },
+  "Outputs": {
+    "TrustAnchorArn": { "Value": { "Fn::GetAtt": ["CallerTrustAnchor", "TrustAnchorArn"] } },
+    "ProfileArn": { "Value": { "Fn::GetAtt": ["CallerProfile", "ProfileArn"] } },
+    "RoleArn": { "Value": { "Fn::GetAtt": ["CallerRole", "Arn"] } }
+  }
+}

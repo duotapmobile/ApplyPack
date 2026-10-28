@@ -24,6 +24,7 @@ export type SearchOrderProgressView = {
   stateLabel: string;
   stateMessage: string;
   dueAt: string | null;
+  accessExpiresAt?: string | null;
   refundState: "NONE" | "PENDING" | "FAILED" | "SUCCEEDED";
   adjustment: SearchAdjustmentView | null;
 };
@@ -76,6 +77,7 @@ export function SearchOrderProgress({ searches }: { searches: SearchOrderProgres
               {search.dueAt ? <time dateTime={search.dueAt}>{formatEasternDeadline(search.dueAt)}</time> : null}
             </div>
             <p>{search.stateMessage}</p>
+            {search.accessExpiresAt ? <p>Private search access ends <time dateTime={search.accessExpiresAt}>{formatEasternDeadline(search.accessExpiresAt)}</time>.</p> : null}
             {search.refundState !== "NONE" ? <p className={`refund-state refund-state--${search.refundState.toLowerCase()}`}>
               <strong>Full refund:</strong> {refundLabel(search.refundState)}
             </p> : null}

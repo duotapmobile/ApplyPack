@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const FOUR_STEP_FLOW_VERSION = "FOUR_STEP_RESPONSIBILITY_V1" as const;
-export const FOUR_STEP_SCHEMA_VERSION = "applypack-intake-v3" as const;
+export const FOUR_STEP_SCHEMA_VERSION = "applypack-intake-v4" as const;
 export const ACTIVITY_CATALOG_VERSION = "applypack-activities-2026-09-04" as const;
 export const CAPABILITY_CATALOG_VERSION = "applypack-capabilities-2026-09-04" as const;
 
@@ -71,6 +71,7 @@ export const businessSystemTasks = [
 export const factTiers = ["SEARCH_CRITICAL", "MATCH_ENHANCING", "DOCUMENT_ONLY"] as const;
 export const factReviewDecisions = ["CONFIRM", "REJECT", "SKIP", "CORRECT"] as const;
 export const factCorrectionCategories = [
+  "FIELD_EDITS",
   "EMPLOYER_OR_ORGANIZATION",
   "ROLE_OR_RELATIONSHIP",
   "DATE_RANGE",
@@ -136,8 +137,19 @@ export const stateOrDcOptions = [
 ] as const;
 
 const boundedText = (max: number) => z.string().trim().max(max);
+export const materialClarificationAnswerSchema = z.object({
+  questionId: z.uuid(), prompt: z.string().min(10).max(1_000), answer: boundedText(5_000),
+}).strict();
 const optionalDate = z.union([z.literal(""), z.iso.date()]);
 const optionalChoice = <T extends readonly [string, ...string[]]>(values: T) => z.union([z.literal(""), z.enum(values)]);
+export const editableFactKeys = ["name", "fullName", "displayName", "email", "phone", "cityState", "location", "employer", "employerOrOrganization", "organizationOrProject", "historicalTitle", "roleOrRelationship", "dates", "startsOn", "endsOn", "datePrecision", "current", "bullets", "responsibilities", "activity", "responsibility", "tools", "skills", "taskOrTool", "capabilityStatus", "educationLevel", "educationField", "completionStatus", "credentialName", "issuingOrganization", "summary", "text", "verbatim", "coverLetterEvidence"] as const;
+const editableFactValue = z.union([boundedText(4_000), z.boolean(), z.array(boundedText(2_000)).max(40)]);
+const editableFactValuesSchema = z.partialRecord(z.enum(editableFactKeys), editableFactValue);
+export type EditableFactValues = z.infer<typeof editableFactValuesSchema>;
+export function editableFactValues(value: unknown): EditableFactValues {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter(([key, item]) => (editableFactKeys as readonly string[]).includes(key) && editableFactValue.safeParse(item).success));
+}
 
 export const factSuggestionSchema = z.object({
   id: z.uuid(),
@@ -148,11 +160,13 @@ export const factSuggestionSchema = z.object({
   verification: z.enum(["EXTRACTED_UNCONFIRMED", "CUSTOMER_CONFIRMED", "CUSTOMER_REJECTED", "DISPUTED"]),
   documentVersionId: z.uuid(),
   sourceLocator: z.string().trim().min(1).max(1_000),
+  editableValues: editableFactValuesSchema.optional(),
 });
 
 export type FactSuggestion = z.infer<typeof factSuggestionSchema>;
 
 export const factCorrectionSchema = z.discriminatedUnion("category", [
+  z.object({ category: z.literal("FIELD_EDITS"), fields: editableFactValuesSchema.refine((fields) => Object.keys(fields).length > 0) }).strict(),
   z.object({ category: z.literal("EMPLOYER_OR_ORGANIZATION"), employerOrOrganization: boundedText(200) }).strict(),
   z.object({ category: z.literal("ROLE_OR_RELATIONSHIP"), roleOrRelationship: boundedText(200) }).strict(),
   z.object({ category: z.literal("DATE_RANGE"), startsOn: optionalDate, endsOn: optionalDate, datePrecision: z.enum(["EXACT_DAY", "MONTH", "YEAR", "UNKNOWN"]) }).strict(),
@@ -184,6 +198,7 @@ export const experienceAdditionSchema = z.object({
   certifications: z.array(z.string().trim().min(1).max(200)).max(20),
   relevantCoursework: z.array(z.string().trim().min(1).max(200)).max(30),
   optionalDetail: boundedText(500),
+  current: z.boolean().default(false),
 });
 
 export type ExperienceAddition = z.infer<typeof experienceAdditionSchema>;
@@ -198,6 +213,12 @@ export const fourStepDraftSchema = z.object({
   flowVersion: z.literal(FOUR_STEP_FLOW_VERSION),
   fullName: boundedText(200),
   email: boundedText(320),
+  documentContactEmail: boundedText(320).optional(),
+  phone: boundedText(60).default(""),
+  entryMode: z.enum(["CURRENT_RESUME", "OUTDATED_RESUME", "GUIDED"]).default("CURRENT_RESUME"),
+  careerChange: z.boolean().default(false),
+  noPriorEmployment: z.boolean().default(false),
+  backgroundReviewed: z.boolean().default(false),
   priorCoverLetterUse: z.enum(["FACT_EXTRACTION_ONLY", "FACT_EXTRACTION_AND_VOICE", "NEITHER"]),
   desiredActivities: z.array(z.string().trim().min(1).max(120)).max(30),
   avoidedActivities: z.array(z.string().trim().min(1).max(120)).max(30),
@@ -210,6 +231,8 @@ export const fourStepDraftSchema = z.object({
   factReviews: z.record(z.string(), z.enum(factReviewDecisions)),
   factCorrections: z.record(z.string(), factCorrectionSchema),
   experienceAdditions: z.array(experienceAdditionSchema).max(30),
+  clarifications: z.array(materialClarificationAnswerSchema).min(1).max(20)
+    .refine((answers) => new Set(answers.map((answer) => answer.questionId)).size === answers.length).optional(),
   capabilities: z.record(z.string(), z.enum(["CAN_DO_NOW", "DONE_BEFORE_NEEDS_REFRESHER", "BASIC_EXPOSURE", "NOT_DONE", "UNSURE"])),
   workModes: z.array(z.enum(workModes)).max(3),
   preferredWorkMode: optionalChoice(workModes),
@@ -242,6 +265,11 @@ export const emptyFourStepDraft: FourStepDraft = {
   flowVersion: FOUR_STEP_FLOW_VERSION,
   fullName: "",
   email: "",
+  phone: "",
+  entryMode: "CURRENT_RESUME",
+  careerChange: false,
+  noPriorEmployment: false,
+  backgroundReviewed: false,
   priorCoverLetterUse: "NEITHER",
   desiredActivities: [],
   avoidedActivities: [],
@@ -345,7 +373,7 @@ export function buildFourStepSnapshot(draft: FourStepDraft, sensitivePayloadSha2
   const answers = normalizedFourStepDraft(draft);
   return {
     accessEmailNormalized: answers.email.trim().normalize("NFC").toLocaleLowerCase("en-US"),
-    documentContactEmail: answers.email.trim(),
+    documentContactEmail: answers.documentContactEmail?.trim() || answers.email.trim(),
     desiredActivities: answers.desiredActivities,
     avoidedActivities: answers.avoidedActivities,
     optionalTitles: answers.targetTitles,
@@ -362,6 +390,7 @@ export function buildFourStepSnapshot(draft: FourStepDraft, sensitivePayloadSha2
     schedules: answers.schedules,
     travel: {
       preference: answers.workConditionPreferences.TRAVEL ?? null,
+      zipCode: answers.zipCode || null,
       commuteDistanceMiles: answers.commuteDistanceMiles,
       customDealbreaker: answers.customDealbreaker || null,
     },
@@ -381,12 +410,17 @@ export function buildFourStepSnapshot(draft: FourStepDraft, sensitivePayloadSha2
     priorCoverLetterUse: answers.priorCoverLetterUse,
     experienceAdditions: answers.experienceAdditions,
     capabilities: answers.capabilities,
+    entryMode: answers.entryMode,
+    careerChange: answers.careerChange,
+    noPriorEmployment: answers.noPriorEmployment,
+    ...(answers.clarifications ? { clarifications: answers.clarifications } : {}),
     sensitivePayloadSha256,
     canonicalizationVersion,
     schemaVersion: FOUR_STEP_SCHEMA_VERSION,
   };
 }
-export function recommendedFactCorrectionCategory(fact: Pick<FactSuggestion, "semanticKey" | "displayLabel">): FactCorrection["category"] {
+export function recommendedFactCorrectionCategory(fact: Pick<FactSuggestion, "semanticKey" | "displayLabel" | "editableValues">): FactCorrection["category"] {
+  if (fact.editableValues && Object.keys(fact.editableValues).length) return "FIELD_EDITS";
   const key = `${fact.semanticKey} ${fact.displayLabel}`.toLowerCase();
   if (/employer|company|organization|business/.test(key)) return "EMPLOYER_OR_ORGANIZATION";
   if (/role|title|relationship|position/.test(key)) return "ROLE_OR_RELATIONSHIP";
@@ -400,6 +434,7 @@ export function recommendedFactCorrectionCategory(fact: Pick<FactSuggestion, "se
 
 export function emptyFactCorrection(category: FactCorrection["category"]): FactCorrection {
   switch (category) {
+    case "FIELD_EDITS": return { category, fields: {} };
     case "EMPLOYER_OR_ORGANIZATION": return { category, employerOrOrganization: "" };
     case "ROLE_OR_RELATIONSHIP": return { category, roleOrRelationship: "" };
     case "DATE_RANGE": return { category, startsOn: "", endsOn: "", datePrecision: "MONTH" };
@@ -414,6 +449,7 @@ export function emptyFactCorrection(category: FactCorrection["category"]): FactC
 export function factCorrectionIsComplete(correction: FactCorrection | undefined) {
   if (!correction) return false;
   switch (correction.category) {
+    case "FIELD_EDITS": return Object.keys(correction.fields).length > 0;
     case "EMPLOYER_OR_ORGANIZATION": return correction.employerOrOrganization.length > 0;
     case "ROLE_OR_RELATIONSHIP": return correction.roleOrRelationship.length > 0;
     case "DATE_RANGE": return Boolean(correction.startsOn || correction.endsOn);
@@ -434,23 +470,46 @@ export function validateFourStep(step: 0 | 1 | 2 | 3, draft: FourStepDraft, inpu
   if (step === 0) {
     if (draft.fullName.trim().length < 2) errors.push({ fieldId: "full-name", message: "Enter your full name." });
     if (!z.email().safeParse(draft.email.trim()).success) errors.push({ fieldId: "email", message: "Enter a valid email address." });
-    if (!input.resume) errors.push({ fieldId: "resume", message: "Upload your current resume." });
+    if (draft.documentContactEmail?.trim() && !z.email().safeParse(draft.documentContactEmail.trim()).success) errors.push({ fieldId: "document-contact-email", message: "Enter a valid email address for your documents, or leave it blank to use your access email." });
+    if (draft.entryMode !== "GUIDED" && !input.resume) errors.push({ fieldId: "resume", message: "Upload your resume, or choose to build your background without one." });
+    if (draft.entryMode === "GUIDED" && input.resume) errors.push({ fieldId: "resume", message: "Remove the uploaded resume to use guided background only, or choose the uploaded-resume option." });
     if (input.resume?.processingState === "FAILED") errors.push({ fieldId: "resume", message: "Replace the resume or use the retry option." });
   }
   if (step === 1 && !draft.desiredActivities.length && !draft.guidanceRequested) {
     errors.push({ fieldId: "desired-activities", message: "Choose work you would like to do or select Help me decide from my experience." });
   }
   if (step === 2) {
+    for (const clarification of draft.clarifications ?? []) {
+      if (!clarification.answer.trim()) errors.push({ fieldId: `clarification-${clarification.questionId}`, message: "Answer this question using what you know. Say when you are unsure; do not guess." });
+    }
+    if (!draft.backgroundReviewed) errors.push({ fieldId: "background-reviewed", message: "Check that your background includes the updates and experience you want us to use." });
+    if (draft.entryMode === "GUIDED" && !draft.experienceAdditions.length && !draft.noPriorEmployment) errors.push({ fieldId: "experience-additions", message: "Add your actual work, education, project or other relevant experience, or tell us you have not had a paid job." });
     for (const experience of draft.experienceAdditions) {
       if (experience.startsOn && experience.endsOn && experience.endsOn < experience.startsOn) errors.push({ fieldId: `experience-${experience.clientId}-end`, message: "End date cannot be before start date." });
       if (experience.kind === "EDUCATION_CERTIFICATION" && !experience.educationLevel && !experience.certifications.length) errors.push({ fieldId: `experience-${experience.clientId}-education`, message: "Add the actual education level or a certification." });
       if (!["CAREGIVING", "OTHER_RELEVANT_LIFE_CONTEXT", "EDUCATION_CERTIFICATION"].includes(experience.kind) && (!experience.organizationOrProject || !experience.roleOrRelationship)) errors.push({ fieldId: `experience-${experience.clientId}-organization`, message: "Add the actual employer, organization, business, or project and your real role." });
+      if (!["CAREGIVING", "OTHER_RELEVANT_LIFE_CONTEXT", "EDUCATION_CERTIFICATION"].includes(experience.kind) && !experience.responsibilities.length) errors.push({ fieldId: `experience-${experience.clientId}-responsibilities`, message: "Choose or briefly describe at least one task you actually did. Supporting detail is optional." });
+      if (experience.current && experience.endsOn) errors.push({ fieldId: `experience-${experience.clientId}-end`, message: "For something you still do, clear its end date." });
+      if (experience.datePrecision !== "UNKNOWN" && (!experience.startsOn || (!experience.current && !experience.endsOn))) errors.push({ fieldId: `experience-${experience.clientId}-end`, message: "Add the dates you know, mark this as current, or choose Dates not known." });
+      if (draft.noPriorEmployment && ["PAID_EMPLOYMENT", "SELF_EMPLOYMENT_BUSINESS", "CONTRACT_FREELANCE"].includes(experience.kind)) errors.push({ fieldId: "no-prior-employment", message: "You added paid work. Clear the no-prior-paid-job choice or correct that experience." });
     }
-    for (const fact of input.facts.filter((item) => item.tier === "SEARCH_CRITICAL" && item.verification === "EXTRACTED_UNCONFIRMED")) {
-      if (!input.presentedFactIds.has(fact.id) || !draft.factReviews[fact.id]) {
+    for (const fact of input.facts) {
+      const decision = draft.factReviews[fact.id] || (fact.verification === "CUSTOMER_CONFIRMED" ? "CONFIRM" : undefined);
+      if (!input.presentedFactIds.has(fact.id) || !decision || (fact.tier === "SEARCH_CRITICAL" && decision === "SKIP")) {
         errors.push({ fieldId: `fact-${fact.id}`, message: `Review ${fact.displayLabel}.` });
       } else if (draft.factReviews[fact.id] === "CORRECT" && !factCorrectionIsComplete(draft.factCorrections[fact.id])) {
         errors.push({ fieldId: `fact-correction-${fact.id}`, message: `Enter the corrected value for ${fact.displayLabel}.` });
+      } else if (draft.factReviews[fact.id] === "CORRECT" && draft.factCorrections[fact.id]?.category === "FIELD_EDITS") {
+        const correction = draft.factCorrections[fact.id] as Extract<FactCorrection, { category: "FIELD_EDITS" }>;
+        const valid = Object.entries(correction.fields).every(([key, value]) => {
+          const original = fact.editableValues?.[key as keyof EditableFactValues];
+          return original !== undefined && typeof original === typeof value && Array.isArray(original) === Array.isArray(value);
+        });
+        const dates = { ...fact.editableValues, ...correction.fields };
+        const invalidDate = [dates.startsOn, dates.endsOn].some((value) => typeof value === "string" && value !== "" && !z.iso.date().safeParse(value).success);
+        const invalidPrecision = dates.datePrecision !== undefined && !["EXACT_DAY", "MONTH", "YEAR", "UNKNOWN"].includes(String(dates.datePrecision));
+        const invalidCapability = dates.capabilityStatus !== undefined && !capabilityChoices.some(([code]) => code === dates.capabilityStatus);
+        if (!valid || invalidDate || invalidPrecision || invalidCapability || (dates.current === true && !!dates.endsOn) || (typeof dates.startsOn === "string" && typeof dates.endsOn === "string" && dates.startsOn && dates.endsOn && dates.startsOn > dates.endsOn)) errors.push({ fieldId: `fact-correction-${fact.id}`, message: `Check the corrected fields and dates for ${fact.displayLabel}.` });
       }
     }
   }
@@ -485,10 +544,9 @@ export function clearInapplicableCommute(draft: FourStepDraft): FourStepDraft {
 }
 
 export function relevantToolFamilies(draft: FourStepDraft, semanticKeys: readonly string[] = []) {
-  const activities = new Set(draft.desiredActivities);
-  const keys = semanticKeys.join(" ").toLowerCase();
-  const excel = ["ORGANIZING_RECORDS", "PREPARING_REPORTS", "HANDLING_BILLING", "TRACKING_INVENTORY", "IMPROVING_PROCESSES"].some((item) => activities.has(item)) || /excel|spreadsheet/.test(keys);
-  const systems = ["SUPPORTING_CUSTOMERS", "ORGANIZING_RECORDS", "MANAGING_WORKFLOWS"].some((item) => activities.has(item)) || /crm|erp|ehr|hris|ticket|database/.test(keys);
+  const keys = [...semanticKeys, ...draft.experienceAdditions.flatMap((item) => [item.roleOrRelationship, ...item.responsibilities, ...item.tools])].join(" ").toLowerCase();
+  const excel = /excel|spreadsheet|billing|inventory|report|records/.test(keys);
+  const systems = /crm|erp|ehr|hris|ticket|database|customer|scheduling/.test(keys);
   return { excel, systems };
 }
 

@@ -15,11 +15,12 @@ async function tabTo(page: Page, locator: Locator, maximumTabs = 200) {
 async function reachReview(page: Page) {
   await page.goto("/get-started");
   await page.getByLabel("Full name required").fill("Review Customer");
-  await page.getByLabel("Email address required").fill("review@example.invalid");
-  await page.getByLabel("Current resume required").setInputFiles(resume);
+  await page.getByLabel("Account access email required").fill("review@example.invalid");
+  await page.getByLabel("Resume required").setInputFiles(resume);
   await page.getByRole("button", { name: /save and continue/i }).click();
   await page.getByRole("checkbox", { name: /Coordinating projects/ }).first().check();
   await page.getByRole("button", { name: /save and continue/i }).click();
+  await page.getByLabel(/I checked for missing or outdated/).check();
   await page.getByRole("button", { name: /save and continue/i }).click();
   await page.getByRole("checkbox", { name: "Remote" }).check();
   await page.getByLabel("U.S. state or District of Columbia required").selectOption("VA");
@@ -36,7 +37,7 @@ test("error summary retains focus and every linked field owns its adjacent error
   await expect(page.getByLabel("Full name required")).toHaveAttribute("aria-describedby", /full-name-error/);
   await page.getByRole("link", { name: "Enter your full name." }).click();
   await expect(page.getByLabel("Full name required")).toBeFocused();
-  await expect(page.getByLabel("Current resume required")).toHaveAttribute("aria-describedby", /resume-error/);
+  await expect(page.getByLabel("Resume required")).toHaveAttribute("aria-describedby", /resume-error/);
 });
 
 test("keyboard-only operation completes all four steps with visible focus", async ({ page }) => {
@@ -48,10 +49,10 @@ test("keyboard-only operation completes all four steps with visible focus", asyn
   const focusStyle = await fullName.evaluate((element) => getComputedStyle(element).outlineStyle);
   expect(focusStyle).not.toBe("none");
 
-  const email = page.getByLabel("Email address required");
+  const email = page.getByLabel("Account access email required");
   await tabTo(page, email);
   await page.keyboard.type("keyboard@example.invalid");
-  const resumeInput = page.getByLabel("Current resume required");
+  const resumeInput = page.getByLabel("Resume required");
   await tabTo(page, resumeInput);
   const chooserPromise = page.waitForEvent("filechooser");
   await page.keyboard.press("Enter");
@@ -69,6 +70,9 @@ test("keyboard-only operation completes all four steps with visible focus", asyn
   await tabTo(page, next);
   await page.keyboard.press("Enter");
   await expect(page.getByText("STEP 3 OF 4")).toBeVisible();
+  const backgroundReviewed = page.getByLabel(/I checked for missing or outdated/);
+  await tabTo(page, backgroundReviewed);
+  await page.keyboard.press("Space");
   next = page.getByRole("button", { name: /save and continue/i });
   await tabTo(page, next);
   await page.keyboard.press("Enter");
@@ -86,8 +90,14 @@ test("keyboard-only operation completes all four steps with visible focus", asyn
   const agreement = page.getByLabel(/I agree to/);
   await tabTo(page, agreement);
   await page.keyboard.press("Space");
-  const finish = page.getByRole("button", { name: "Finish intake" });
+  const finish = page.getByRole("button", { name: "Review my information" });
   await tabTo(page, finish);
+  await page.keyboard.press("Enter");
+  const factualConfirmation = page.getByLabel(/I reviewed the actual information/);
+  await tabTo(page, factualConfirmation);
+  await page.keyboard.press("Space");
+  const submit = page.getByRole("button", { name: "Confirm and submit intake" });
+  await tabTo(page, submit);
   await page.keyboard.press("Enter");
   await expect(page.getByText(/Feasibility review is pending. No payment was started/)).toBeVisible();
 });
@@ -96,9 +106,9 @@ test("review exposes every section and an earlier edit returns directly to revie
   test.setTimeout(120_000);
   await reachReview(page);
   const expectedSections = [
-    "Contact and documents", "Search direction", "Experience and skills", "Work modes and location",
-    "Employment type and schedule", "Benefits", "Work conditions", "Compensation",
-    "Exclusions and unknown details", "Terms and service boundary",
+    "Contact and documents", "Search direction", "Document facts and corrections", "Task capabilities", "Work modes and location",
+    "Employment type and schedule", "Benefits and work conditions", "Compensation",
+    "Exclusions and unknown details",
   ];
   for (const section of expectedSections) {
     await expect(page.getByRole("button", { name: `Edit ${section.toLowerCase()}` })).toBeVisible();
@@ -111,7 +121,7 @@ test("review exposes every section and an earlier edit returns directly to revie
   await expect(page.getByText("STEP 4 OF 4")).toBeVisible();
   await expect(page.getByText(/Edited Review Customer/)).toBeVisible();
   await expect(page.locator(".review-list").getByText(/synthetic-resume\.pdf/)).toBeVisible();
-  await page.getByRole("button", { name: "Edit benefits" }).click();
+  await page.getByRole("button", { name: "Edit benefits and work conditions" }).click();
   await expect(page.locator("#benefits-preferences")).toBeFocused();
 });
 
@@ -137,8 +147,7 @@ test("choosing neither removes the prior cover letter and its processing eligibi
   await expect(page.getByRole("group", { name: "How may we use the previous cover letter?" })).toHaveCount(0);
 });
 
-test("Chromium browser-level 200 percent scale reflows without CSS zoom", async ({ page, context }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "One Chromium browser-level zoom proof is sufficient.");
+test("Chromium browser-level 200 percent scale reflows without CSS zoom", async ({ page, context }) => {
   const session = await context.newCDPSession(page);
   await session.send("Emulation.setDeviceMetricsOverride", {
     width: 720,
@@ -157,4 +166,43 @@ test("Chromium browser-level 200 percent scale reflows without CSS zoom", async 
   expect(metrics).toEqual({ cssWidth: 720, devicePixelRatio: 2, cssZoom: "" });
   await expect(page.getByLabel("Full name required")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
+test("checkout-locked intake confirms the current legal content with keyboard-only 320px reflow", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto("/get-started?legal=legacy-locked");
+
+  const agreement = page.getByLabel(/I agree to/);
+  const confirm = page.getByRole("button", { name: "Confirm current Terms" });
+  await expect(confirm).toBeDisabled();
+  await expect(page.getByText("FEASIBILITY RESULT")).toHaveCount(0);
+
+  await tabTo(page, agreement);
+  await page.keyboard.press("Space");
+  await tabTo(page, confirm);
+  expect(await confirm.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe("none");
+  await page.keyboard.press("Enter");
+
+  const notice = page.locator(".save-notice");
+  await expect(notice).toHaveAttribute("aria-live", "polite");
+  await expect(notice).toContainText("The current Terms and Privacy Policy were confirmed. No payment was started.");
+  await expect(page.getByText("FEASIBILITY RESULT")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
+test("completed intake announces a re-consent error and succeeds on an idempotent retry", async ({ page }) => {
+  await page.goto("/get-started?legal=legacy-error");
+  await page.getByLabel(/I agree to/).check();
+  const confirm = page.getByRole("button", { name: "Confirm current Terms" });
+  await confirm.click();
+
+  const notice = page.locator(".save-notice");
+  await expect(notice).toHaveAttribute("aria-live", "assertive");
+  await expect(notice).toContainText("The current legal terms could not be confirmed. Please try again.");
+  await expect(confirm).toBeEnabled();
+
+  await confirm.click();
+  await expect(notice).toHaveAttribute("aria-live", "polite");
+  await expect(notice).toContainText("The current Terms and Privacy Policy were confirmed. No payment was started.");
+  await expect(page.getByText("FEASIBILITY RESULT")).toBeVisible();
 });

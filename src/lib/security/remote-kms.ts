@@ -2,8 +2,18 @@ import "server-only";
 
 import type { KmsEnvelopeAdapter } from "./sensitive-payload";
 import { awsKmsAdapter, awsKmsConfiguration } from "./aws-kms";
+import { awsWorkloadIdentityConfigured } from "./aws-workload-credentials";
 
 type KmsEnvironment = Partial<NodeJS.ProcessEnv>;
+
+function hostedEnvironment(environment: KmsEnvironment) {
+  return environment.APP_DEPLOYMENT_ENV === "staging" || environment.APP_DEPLOYMENT_ENV === "production";
+}
+
+function localRemoteEnabled(environment: KmsEnvironment) {
+  return !environment.APP_DEPLOYMENT_ENV && environment.APP_KMS_PROVIDER === "remote"
+    && (environment.NODE_ENV === "development" || environment.NODE_ENV === "test");
+}
 
 function endpoint(value: string | undefined) {
   if (!value) throw new Error("kms_remote_not_configured");
@@ -34,9 +44,12 @@ async function command(path: "wrap" | "unwrap", body: Record<string, unknown>, e
 }
 
 export function remoteKmsAdapter(environment: KmsEnvironment = process.env): KmsEnvelopeAdapter {
-  // Compatibility factory: all existing callers use explicit provider selection.
+  if (hostedEnvironment(environment) && environment.APP_KMS_PROVIDER !== "aws") {
+    throw new Error("kms_hosted_requires_aws");
+  }
+  // The legacy adapter is an explicit local QA path, never a hosted fallback.
   if (environment.APP_KMS_PROVIDER === "aws") return awsKmsAdapter(environment);
-  if (environment.APP_KMS_PROVIDER && environment.APP_KMS_PROVIDER !== "remote") throw new Error("kms_provider_invalid");
+  if (!localRemoteEnabled(environment)) throw new Error("kms_remote_local_only");
   return {
     wrapDataKey: async (input) => command("wrap", {
       key: Buffer.from(input.plaintextDataKey).toString("base64"),
@@ -55,8 +68,13 @@ export function remoteKmsAdapter(environment: KmsEnvironment = process.env): Kms
 
 export function kmsProviderConfigured(environment: KmsEnvironment = process.env) {
   try {
-    if (environment.APP_KMS_PROVIDER === "aws") { awsKmsConfiguration(environment); return true; }
-    if (environment.APP_KMS_PROVIDER && environment.APP_KMS_PROVIDER !== "remote") return false;
+    if (hostedEnvironment(environment) && environment.APP_KMS_PROVIDER !== "aws") return false;
+    if (environment.APP_KMS_PROVIDER === "aws") {
+      const configuration = awsKmsConfiguration(environment);
+      return configuration.keyIdentity.split(":")[4] === environment.APP_AWS_ACCOUNT_ID
+        && awsWorkloadIdentityConfigured(environment);
+    }
+    if (!localRemoteEnabled(environment)) return false;
     endpoint(environment.APP_KMS_WRAP_URL);
     endpoint(environment.APP_KMS_UNWRAP_URL);
     return Boolean(environment.APP_KMS_BEARER_TOKEN?.trim());

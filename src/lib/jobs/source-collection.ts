@@ -9,6 +9,7 @@ import { normalizeJob } from "./normalize";
 import { getSource } from "./source-registry";
 import type { RawJobPosting, SourceDefinition } from "./types";
 import { resumeSourceCheckpoint } from "./source-checkpoint";
+import { APPLICATION_QUESTION_ACTION } from "./application-question-evidence";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 
@@ -122,18 +123,22 @@ export async function runScheduledSourceCollection(
     maximumResponseBytes: context.schedule.response_byte_bound,
     requestTimeoutMs: context.schedule.duration_ms_bound,
     deadlineAtMs: collectionDeadlineMs,
-    beforeRequest: async () => {
+    questionCaptureAuthority: { sourceRunId: run.id, authorizationId: context.authorization.id,
+      authorizationVersion: context.authorization.authorizationVersion,
+      authorizationHeadRevision: context.schedule.authorization_head_revision, scopeSha256: context.schedule.scope_sha256 },
+    beforeRequest: async (requiredAction) => {
       const renewal = await admin.rpc("ap_renew_job_source_sync_lease", {
         p_job_id: job.id,
         p_owner: owner,
         p_lease_epoch: job.lease_epoch,
       });
       if (renewal.error) throw new SourceCollectionError("job_source_lease_mismatch", null, false);
-      await assertSourceContextCurrent(admin, job, context, owner);
+      await assertSourceContextCurrent(admin, job, context, owner, requiredAction);
     },
   });
 
-  await assertSourceContextCurrent(admin, job, context, owner);
+  const questionAction = (result.counts.detailRequests || 0) > 0 ? APPLICATION_QUESTION_ACTION : undefined;
+  await assertSourceContextCurrent(admin, job, context, owner, questionAction);
   const evidenceRpc = admin.rpc.bind(admin) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;
   const archived = await evidenceRpc("ap_archive_source_attempt", { p_run_id: run.id,
     p_adapter_version: result.adapterVersion, p_postings: result.jobs.map(serializablePosting) });
@@ -161,7 +166,7 @@ export async function runScheduledSourceCollection(
     && listingKeys.every((key): key is string => Boolean(key))
     && new Set(listingKeys).size === listingKeys.length
     && result.counts.pagesCompleted <= context.schedule.page_bound
-    && result.counts.pagesRequested <= context.schedule.request_bound;
+    && result.counts.pagesRequested + (result.counts.detailRequests || 0) <= context.schedule.request_bound;
   if (!isAuthoritative) {
     const downgraded: JobEnumerationResult = {
       ...result,
@@ -181,7 +186,7 @@ export async function runScheduledSourceCollection(
     throw new SourceCollectionError("source_observation_ledger_incomplete", null, false);
   }
 
-  await assertSourceContextCurrent(admin, job, context, owner);
+  await assertSourceContextCurrent(admin, job, context, owner, questionAction);
   const observations = normalized.map((posting, index) => ({
     run_id: run.id,
     listing_key: listingKeys[index]!,
@@ -211,7 +216,7 @@ export async function runScheduledSourceCollection(
     enumeration_status: "complete",
     response_classification: result.responseClassification,
     checkpoint_end: result.checkpoint,
-    pages_requested: result.counts.pagesRequested,
+    pages_requested: result.counts.pagesRequested + (result.counts.detailRequests || 0),
     pages_completed: result.counts.pagesCompleted,
     quota_units: 0,
     retry_after_seconds: null,
@@ -275,7 +280,7 @@ async function recordTerminalFailure(admin: AdminClient, runId: string, result: 
     enumeration_status: result.completion,
     response_classification: result.responseClassification,
     checkpoint_end: result.checkpoint,
-    pages_requested: result.counts.pagesRequested,
+    pages_requested: result.counts.pagesRequested + (result.counts.detailRequests || 0),
     pages_completed: result.counts.pagesCompleted,
     quota_units: 0,
     retry_after_seconds: first?.retryAfterSeconds || null,
@@ -322,7 +327,7 @@ async function loadSourceContext(admin: AdminClient, job: SourceScheduledJob): P
   return context;
 }
 
-async function assertSourceContextCurrent(admin: AdminClient, job: SourceScheduledJob, context: SourceContext, owner: string) {
+export async function assertSourceContextCurrent(admin: AdminClient, job: SourceScheduledJob, context: SourceContext, owner: string, requiredAction?: typeof APPLICATION_QUESTION_ACTION) {
   const [{ data: schedule }, { data: head }, { data: authorization }, { data: scheduled }] = await Promise.all([
     admin.from("job_source_schedules").select("enabled,paused_reason,source_authorization_id,authorization_head_revision,scope_sha256,result_bound,page_bound,request_bound,response_byte_bound,duration_ms_bound,host_concurrency_bound,quota_unit_bound").eq("id", context.schedule.id).maybeSingle(),
     admin.from("ap_source_authorization_heads").select("current_authorization_id,revision").eq("source_id", context.source.id).maybeSingle(),
@@ -341,6 +346,7 @@ async function assertSourceContextCurrent(admin: AdminClient, job: SourceSchedul
     || authorization?.state !== "AUTHORIZED_AUTOMATED"
     || authorization.access_method !== "AUTOMATED"
     || !authorization.allowed_actions?.includes("ENUMERATE_JOBS")
+    || requiredAction !== undefined && !authorization.allowed_actions?.includes(requiredAction)
     || !authorization.allowed_hosts?.length
     || !authorizedBoundsCoverSchedule(authorizedBounds, context.schedule)
     || schedule.result_bound !== context.schedule.result_bound

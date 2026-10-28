@@ -26,7 +26,9 @@ describe("guest intake ownership", () => {
     expect(intake).toContain('admin.rpc("create_completed_intake"');
     expect(checkout).toContain("anonymousDraftContext()");
     expect(checkout).toContain('rpc("ap_read_current_feasibility"');
-    expect(checkout).toContain('rpc("ap_begin_search_checkout"');
+    expect(checkout).toContain('rpc("ap_begin_authorized_search_checkout"');
+    expect(checkout).toContain('authorizeCheckout(context.admin, "SEARCH"');
+    expect(checkout).toContain("p_invitation_id: parsed.data.invitationId");
     expect(checkout).toContain("customer_email: String(checkout.access_email)");
     expect(checkout).not.toContain("supabase.auth.getUser");
     expect(webhook).toContain('.from("intakes")');

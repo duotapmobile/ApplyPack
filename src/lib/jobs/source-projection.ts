@@ -14,20 +14,27 @@ export function pendingProjectionRow(posting: RawJobPosting) {
     last_verified_at: null, last_successfully_verified_at: null };
 }
 
-export async function projectSourceRun(admin: AdminClient, runId: string) {
-  const result = await admin.from("job_source_run_listings")
-    .select("listing_key,captured_listing,content_sha256").eq("run_id", runId).order("listing_key").limit(501);
+export async function projectSourceRun(admin: AdminClient, runId: string, options: { signal?: AbortSignal; maximumResults?: number } = {}) {
+  const maximum = options.maximumResults ?? 500;
+  if (!Number.isInteger(maximum) || maximum < 1 || maximum > 500) throw new Error("source_projection_bound_invalid");
+  options.signal?.throwIfAborted();
+  const query = admin.from("job_source_run_listings")
+    .select("listing_key,captured_listing,content_sha256").eq("run_id", runId).order("listing_key").limit(maximum + 1);
+  const result = await (options.signal ? query.abortSignal(options.signal) : query);
   if (result.error) throw result.error;
-  if ((result.data || []).length > 500) throw new Error("source_projection_bound_exceeded");
+  if ((result.data || []).length > maximum) throw new Error("source_projection_bound_exceeded");
   let projected = 0;
   for (const observation of result.data || []) {
+    options.signal?.throwIfAborted();
     const row = pendingProjectionRow(observation.captured_listing as RawJobPosting);
     if (row.content_hash !== observation.content_sha256) throw new Error("source_projection_content_changed");
-    const write = await admin.rpc("ap_project_source_observation", {
+    const request = admin.rpc("ap_project_source_observation", {
       p_run_id: runId, p_listing_key: observation.listing_key,
       p_content_sha256: observation.content_sha256, p_projector_version: SOURCE_PROJECTOR_VERSION,
       p_normalized: row,
     });
+    const write = await (options.signal ? request.abortSignal(options.signal) : request);
+    options.signal?.throwIfAborted();
     if (write.error) throw write.error;
     projected += 1;
   }

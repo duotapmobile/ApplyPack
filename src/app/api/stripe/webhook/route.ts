@@ -4,11 +4,22 @@ import type Stripe from "stripe";
 import { createCapabilitySecret, hashCapabilitySecret, immediateSearchPayment } from "@/lib/commerce/server";
 import { sendOrderReceipt } from "@/lib/email/send";
 import { immediateMaterialPayment } from "@/lib/materials/server";
+import {
+  APPLY_PACK_CONTRACT_VERSION,
+  APPLY_PACK_PRICE_CENTS,
+  LEGACY_APPLY_PACK_CONTRACT_VERSION,
+  LEGACY_SEARCH_CONTRACT_VERSION,
+  SEARCH_CONTRACT_VERSION,
+  SEARCH_PRICE_CENTS,
+} from "@/lib/domain/applypack";
 import { processBoardStripeEvent } from "@/lib/job-board/stripe-events";
 import { stripeEventMatchesConfiguredMode } from "@/lib/stripe/mode";
-import { assertConfiguredPrice, createStripeOperationalClient } from "@/lib/stripe/server";
+import { assertConfiguredPrice, assertStripeAccount, createStripeOperationalClient } from "@/lib/stripe/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { processWorkflowTasks } from "@/lib/workflow/process";
+import { bindCheckoutSession, observeCheckoutSession } from "@/lib/commerce/checkout-initiation";
+import { readIntakePaymentIdentity } from "@/lib/commerce/intake-identity-server";
+import { intakePaymentCustomer } from "@/lib/commerce/intake-payment-identity";
 
 export const runtime = "nodejs";
 
@@ -34,6 +45,14 @@ export async function POST(request: Request) {
   }
   if (!stripeEventMatchesConfiguredMode(event.livemode)) {
     return NextResponse.json({ error: "Webhook payment mode does not match this environment." }, { status: 409 });
+  }
+  try {
+    const accountId = await assertStripeAccount(stripe);
+    // Direct account events omit account. Their signing secret must be paired
+    // with this account's endpoint during the verified provider cutover.
+    if (event.account && event.account !== accountId) throw new Error("Webhook account mismatch.");
+  } catch {
+    return NextResponse.json({ error: "Webhook account verification is unavailable." }, { status: 503 });
   }
   const payloadSha256 = createHash("sha256").update(rawBody, "utf8").digest("hex");
 
@@ -63,6 +82,15 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (["checkout.session.completed", "checkout.session.expired"].includes(event.type)) {
+      const session = event.data.object as Stripe.Checkout.Session;
+      if (session.metadata?.initiation_id) {
+        // Signature and provider mode were verified above. Binding before normal
+        // payment verification supports webhooks that beat the create response.
+        // No current purchase permission or authorization expiry gates payments.
+        await bindCheckoutSession(admin, session.metadata.initiation_id, session);
+      }
+    }
     const boardEventHandled = await processBoardStripeEvent(stripe, admin, event);
     if (boardEventHandled) {
       // Subscription entitlements are derived only from validated recurring objects and paid invoices.
@@ -86,7 +114,7 @@ export async function POST(request: Request) {
     } else if (["refund.created", "refund.updated", "refund.failed"].includes(event.type)) {
       const refund = event.data.object as Stripe.Refund;
       if (refund.metadata?.refund_operation_id) {
-        await recordCorrectedRefund(admin, refund, event, payloadSha256, signatureVerifiedAt);
+        await recordCorrectedRefund(stripe, admin, refund, event, payloadSha256, signatureVerifiedAt);
       } else await recordRefund(refund);
     } else if (["charge.dispute.created", "charge.dispute.updated", "charge.dispute.closed"].includes(event.type)) {
       const handled = await recordCorrectedDispute(admin, stripe, event, payloadSha256, signatureVerifiedAt);
@@ -102,6 +130,10 @@ export async function POST(request: Request) {
       }
     }
 
+    if (["checkout.session.completed", "checkout.session.expired"].includes(event.type)) {
+      const session = event.data.object as Stripe.Checkout.Session;
+      if (session.metadata?.initiation_id) await observeCheckoutSession(admin, session.metadata.initiation_id, session);
+    }
     const { data: processed, error: processedError } = await admin
       .from("webhook_events")
       .update({
@@ -117,25 +149,24 @@ export async function POST(request: Request) {
     if (processedError || !processed) throw new Error("Could not finalize webhook event");
     after(() => processWorkflowTasks(admin, 2).catch(() => undefined));
     return NextResponse.json({ received: true });
-  } catch (error) {
-    const message = error instanceof Error ? error.message.slice(0, 500) : "Processing failed";
+  } catch {
     await admin.from("webhook_events").update({
       processing_status: "failed",
       last_error_code: "webhook_processing_failed",
-      error_message: message,
+      error_message: null,
     }).eq("provider_event_id", event.id);
     return NextResponse.json({ error: "Webhook processing failed." }, { status: 500 });
   }
 }
 
 function isCorrectedSearchSession(session: Stripe.Checkout.Session) {
-  return session.metadata?.contract_version === "chunk4-v1"
+  return [SEARCH_CONTRACT_VERSION, LEGACY_SEARCH_CONTRACT_VERSION].includes(session.metadata?.contract_version || "")
     && session.metadata?.product_kind === "job_search"
     && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(session.metadata?.checkout_attempt_id || "");
 }
 
 function isCorrectedMaterialSession(session: Stripe.Checkout.Session) {
-  return session.metadata?.contract_version === "chunk5-v1"
+  return [APPLY_PACK_CONTRACT_VERSION, LEGACY_APPLY_PACK_CONTRACT_VERSION].includes(session.metadata?.contract_version || "")
     && session.metadata?.product_kind === "apply_pack"
     && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(session.metadata?.checkout_intent_id || "");
 }
@@ -146,7 +177,8 @@ async function completeCorrectedMaterials(
   eventSession: Stripe.Checkout.Session,
   evidence: { eventId: string; eventType: string; payloadSha256: string; signatureVerifiedAt: string },
 ) {
-  const expectedPriceId = process.env.STRIPE_APPLY_PACK_PRICE_ID;
+  const legacy = eventSession.metadata?.contract_version === LEGACY_APPLY_PACK_CONTRACT_VERSION;
+  const expectedPriceId = legacy ? process.env.STRIPE_LEGACY_APPLY_PACK_PRICE_ID : process.env.STRIPE_APPLY_PACK_PRICE_ID;
   if (!expectedPriceId) throw new Error("Corrected materials price is not configured");
   const session = await stripe.checkout.sessions.retrieve(eventSession.id, {
     expand: ["line_items.data.price.product", "payment_intent.latest_charge"],
@@ -165,8 +197,9 @@ async function completeCorrectedMaterials(
     ? await stripe.charges.retrieve(paymentIntent.latest_charge)
     : paymentIntent.latest_charge || null;
   await assertConfiguredPrice(stripe, expectedPriceId, {
-    unitAmount: 800,
+    unitAmount: legacy ? 800 : APPLY_PACK_PRICE_CENTS,
     productName: "Tailored Resume + Cover Letter",
+    historicalReconciliation: legacy,
   });
   const payment = immediateMaterialPayment({
     session,
@@ -174,6 +207,7 @@ async function completeCorrectedMaterials(
     charge,
     expectedPriceId,
     expectedLineCount: checkout.line_count,
+    expectedUnitAmountCents: legacy ? 800 : APPLY_PACK_PRICE_CENTS,
   });
   if (!payment.valid || !payment.paymentVerifiedAt) {
     throw new Error("Corrected materials payment was not an immediate successful card charge");
@@ -214,7 +248,8 @@ async function completeCorrectedSearch(
   eventSession: Stripe.Checkout.Session,
   evidence: { eventId: string; eventType: string; payloadSha256: string; signatureVerifiedAt: string },
 ) {
-  const expectedPriceId = process.env.STRIPE_JOB_SEARCH_PRICE_ID;
+  const legacy = eventSession.metadata?.contract_version === LEGACY_SEARCH_CONTRACT_VERSION;
+  const expectedPriceId = legacy ? process.env.STRIPE_LEGACY_JOB_SEARCH_PRICE_ID : process.env.STRIPE_JOB_SEARCH_PRICE_ID;
   if (!expectedPriceId) throw new Error("Corrected search price is not configured");
   const session = await stripe.checkout.sessions.retrieve(eventSession.id, {
     expand: ["line_items.data.price.product", "payment_intent.latest_charge"],
@@ -227,8 +262,10 @@ async function completeCorrectedSearch(
   const charge = typeof paymentIntent.latest_charge === "string"
     ? await stripe.charges.retrieve(paymentIntent.latest_charge)
     : paymentIntent.latest_charge || null;
-  await assertConfiguredPrice(stripe, expectedPriceId, { unitAmount: 2_000, productName: "Job Match Search" });
-  const payment = immediateSearchPayment({ session, paymentIntent, charge, expectedPriceId });
+  await assertConfiguredPrice(stripe, expectedPriceId, { unitAmount: legacy ? 2_000 : SEARCH_PRICE_CENTS,
+    productName: "Job Match Search", historicalReconciliation: legacy });
+  const payment = immediateSearchPayment({ session, paymentIntent, charge, expectedPriceId,
+    expectedAmountCents: legacy ? 2_000 : SEARCH_PRICE_CENTS });
 
   const checkoutAttemptId = session.metadata!.checkout_attempt_id!;
   const { data: checkout, error: checkoutError } = await admin.from("ap_checkout_attempts")
@@ -238,9 +275,6 @@ async function completeCorrectedSearch(
   const { data: quote, error: quoteError } = await admin.from("ap_quotes")
     .select("snapshot_id").eq("id", checkout.quote_id).maybeSingle();
   if (quoteError || !quote) throw quoteError || new Error("Corrected quote binding was not found");
-  const { data: snapshot, error: snapshotError } = await admin.from("ap_intake_snapshots")
-    .select("id,access_email_normalized").eq("id", quote.snapshot_id).eq("draft_id", checkout.draft_id).maybeSingle();
-  if (snapshotError || !snapshot?.access_email_normalized) throw snapshotError || new Error("Immutable access email was not found");
 
   const paymentIntentId = paymentIntent.id;
   const payerEmail = session.customer_details?.email || charge?.billing_details.email || session.customer_email || null;
@@ -273,7 +307,14 @@ async function completeCorrectedSearch(
     return;
   }
 
-  const customerId = await findOrCreatePaidCustomer(admin, snapshot.access_email_normalized);
+  if (!checkout.draft_id || !quote.snapshot_id) throw new Error("Corrected payment intake binding was not found");
+  const identity = await readIntakePaymentIdentity(admin, checkout.draft_id, quote.snapshot_id);
+  const customerId = await intakePaymentCustomer(identity, async () => {
+    const { data: snapshot, error: snapshotError } = await admin.from("ap_intake_snapshots")
+      .select("id,access_email_normalized").eq("id", quote.snapshot_id).eq("draft_id", checkout.draft_id).maybeSingle();
+    if (snapshotError || !snapshot?.access_email_normalized) throw new Error("Historical access email was not found");
+    return findOrCreatePaidCustomer(admin, snapshot.access_email_normalized);
+  });
   const { error } = await admin.rpc("ap_apply_verified_search_payment", {
     p_provider_event_id: evidence.eventId,
     p_event_type: evidence.eventType,
@@ -331,6 +372,7 @@ async function expireCorrectedSearch(admin: AdminClient, session: Stripe.Checkou
 }
 
 async function recordCorrectedRefund(
+  stripe: Stripe,
   admin: AdminClient,
   refund: Stripe.Refund,
   event: Stripe.Event,
@@ -339,10 +381,23 @@ async function recordCorrectedRefund(
 ) {
   const refundId = refund.metadata?.refund_operation_id;
   if (!refundId || !/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(refundId)) throw new Error("Corrected refund binding is invalid");
-  const { error } = await admin.rpc("ap_record_search_refund_result", {
+  let paymentIntentId = typeof refund.payment_intent === "string" ? refund.payment_intent : refund.payment_intent?.id;
+  if (!paymentIntentId && refund.charge) {
+    const charge = typeof refund.charge === "string" ? await stripe.charges.retrieve(refund.charge) : refund.charge;
+    const paymentIntent = "deleted" in charge && charge.deleted ? null : charge.payment_intent;
+    paymentIntentId = typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;
+  }
+  if (!paymentIntentId || !Number.isSafeInteger(refund.amount) || refund.amount < 1 || !refund.currency) {
+    throw new Error("Corrected refund payment semantics are missing");
+  }
+  const { error } = await admin.rpc("ap_record_search_refund_result_verified", {
     p_refund_id: refundId,
     p_provider_refund_id: refund.id,
     p_provider_status: refund.status || "pending",
+    p_provider_payment_id: paymentIntentId,
+    p_amount_cents: refund.amount,
+    p_currency: refund.currency.toUpperCase(),
+    p_metadata_refund_id: refundId,
     p_provider_event_id: event.id,
     p_error_code: refund.failure_reason || null,
     p_payload_sha256: payloadSha256,
@@ -409,18 +464,18 @@ async function verifyCompletedCheckout(stripe: Stripe, eventSession: Stripe.Chec
   }
   const line = lines[0];
   if (productKind === "job_search" && orderId && !cartId) {
-    const priceId = process.env.STRIPE_JOB_SEARCH_PRICE_ID;
+    const priceId = process.env.STRIPE_LEGACY_JOB_SEARCH_PRICE_ID;
     if (!priceId || line.price?.id !== priceId || line.quantity !== 1 || session.amount_total !== 2000) {
       throw new Error("Job Match Search price mismatch");
     }
-    await assertConfiguredPrice(stripe, priceId, { unitAmount: 2000, productName: "Job Match Search" });
+    await assertConfiguredPrice(stripe, priceId, { unitAmount: 2000, productName: "Job Match Search", historicalReconciliation: true });
   } else if (productKind === "apply_pack" && cartId && !orderId) {
-    const priceId = process.env.STRIPE_APPLY_PACK_PRICE_ID;
+    const priceId = process.env.STRIPE_LEGACY_APPLY_PACK_PRICE_ID;
     const quantity = line.quantity ?? 0;
     if (!priceId || line.price?.id !== priceId || quantity < 1 || quantity > 10 || session.amount_total !== quantity * 800) {
       throw new Error("Apply Pack price mismatch");
     }
-    await assertConfiguredPrice(stripe, priceId, { unitAmount: 800, productName: "Tailored Resume + Cover Letter" });
+    await assertConfiguredPrice(stripe, priceId, { unitAmount: 800, productName: "Tailored Resume + Cover Letter", historicalReconciliation: true });
   } else {
     throw new Error("Checkout product mismatch");
   }

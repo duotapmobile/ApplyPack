@@ -33,13 +33,9 @@ Railway's deployment healthcheck is not continuous monitoring. Configure a separ
 
 ## Scheduled maintenance
 
-Create a separate Railway cron service that performs one authenticated HTTP request and exits. Share `CRON_SECRET` with the web service and schedule it hourly in UTC. Example start command:
+Repair the existing maintenance service using the tracked `railway-maintenance.json` and `scripts/run-maintenance-once.mjs`; schedule it every 15 minutes. Do not create a duplicate service. See [Maintenance runner](MAINTENANCE_RUNNER.md) for deployment and verification gates. A recognized dependency hold logs `BLOCKED`, exits zero and remains explicitly not ready; execution failures exit nonzero. A successful process exit never fabricates a healthy maintenance heartbeat.
 
-```sh
-curl --fail --silent --show-error --request POST --header "Authorization: Bearer ${CRON_SECRET}" https://applypack.work/api/cron/maintenance
-```
-
-Confirm the first run exits successfully and records expiration/retention counts. Alert on any failed run.
+Job-source observation uses a different cron service and endpoint so network collection cannot consume the maintenance request budget. Do not create or enable this service until the employer-specific staging activation packet is approved. When approved, invoke `POST /api/cron/job-sources` with the same bearer-secret pattern and keep `APP_JOB_SOURCE_SYNC_ENABLED=false` in every other environment.
 
 ## Release
 
@@ -52,4 +48,8 @@ Confirm the first run exits successfully and records expiration/retention counts
 
 ## Rollback
 
-Use Railway's prior successful deployment for code rollback. Database migrations are forward-only: validate compatibility before rollback and never reverse a production migration ad hoc. If payment or confidentiality may be affected, disable both capacity rows before rollback. After recovery, verify the release SHA, health endpoint, provider callbacks, customer isolation, and one test-mode transaction before reopening capacity.
+Before any rollback, disable new purchasing with APP_CHECKOUT_ENABLED=false, APP_JOB_BOARD_CHECKOUT_ENABLED=false and APP_LIVE_PAYMENTS_ENABLED=false; disable automatic collection with APP_JOB_SOURCE_SYNC_ENABLED=false and APP_JOB_SOURCE_PROJECTION_ENABLED=false. Record and disable acceptance in both the legacy capacity_limits rows and corrected ap_capacity_pools, and the affected ap_commerce_configuration sales switches. Use the exact columns from the applied schema; do not erase reservations, paid capacity commitments, orders, payment events, review history or source evidence.
+
+Keep webhook verification/reconciliation, retained customer access and maintenance for existing obligations operational. A dependency hold must remain visible; it is not a reason to discard paid work or pretend readiness.
+
+Database migrations are additive and forward-only. Select a reviewed rollback commit demonstrated compatible with the current migration ledger and policies; a merely successful historical deployment may predate these contracts. If no compatible rollback exists, keep purchasing and ingestion closed and deploy a forward repair. After recovery, verify the exact Git SHA, liveness/readiness separately, worker execution, callbacks, customer isolation and a genuine test-mode transaction before reopening acceptance.

@@ -7,14 +7,24 @@ const apply = readFileSync(resolve(process.cwd(), "src/app/api/checkout/apply-pa
 const webhook = readFileSync(resolve(process.cwd(), "src/app/api/stripe/webhook/route.ts"), "utf8");
 
 describe("payment route safety", () => {
-  it("requires the current finalized snapshot and derived likely feasibility before the $20 checkout", () => {
+  it("requires the current finalized snapshot, likely feasibility, and invitation before the $18.99 checkout", () => {
     expect(search).toContain('context.admin.rpc("ap_read_current_feasibility"');
     expect(search).toContain("view.snapshotId !== parsed.data.snapshotId");
     expect(search).toContain("view.assessmentId !== parsed.data.assessmentId");
     expect(search).toContain('view.state !== "COMPLETE"');
     expect(search).toContain('view.outcome !== "LIKELY"');
-    expect(search).toContain("view.checkoutEligible !== true");
-    expect(search).toContain('context.admin.rpc("ap_begin_search_checkout"');
+    const authorization = search.indexOf('await authorizeCheckout(context.admin, "SEARCH"');
+    const locked = search.indexOf("if (!authorization)");
+    const begin = search.indexOf('context.admin.rpc("ap_begin_authorized_search_checkout"');
+    expect(authorization).toBeGreaterThan(search.indexOf('view.outcome !== "LIKELY"'));
+    expect(locked).toBeGreaterThan(authorization);
+    expect(begin).toBeGreaterThan(locked);
+    expect(search).toContain("invitationId: z.uuid()");
+    expect(search).toContain('context.admin.rpc("ap_begin_authorized_search_checkout"');
+    expect(search).toContain("p_invitation_id: parsed.data.invitationId");
+    expect(search).toContain("p_invitation_secret_hash: hashCapabilitySecret(parsed.data.invitationSecret)");
+    expect(search).toContain("p_mode: authorization.mode");
+    expect(search).toContain("p_authorization_id: authorization.authorizationId");
   });
 
   it("uses configured fixed Stripe prices instead of browser-controlled price data", () => {

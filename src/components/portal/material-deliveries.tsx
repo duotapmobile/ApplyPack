@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { PRIVATE_ACCESS_EXPIRED_MESSAGE } from "@/lib/materials/retention-access";
+import { useAccessExpiry } from "./use-access-expiry";
+import { ServiceRepairFeedback } from "./service-repair-feedback";
 
 export type MaterialDeliveryView = {
   lineId: string;
@@ -10,6 +13,9 @@ export type MaterialDeliveryView = {
   stateLabel: string;
   stateMessage: string;
   dueAt: string | null;
+  accessExpiresAt?: string | null;
+  accessExpired?: boolean;
+  supportPolicy?: "HISTORICAL" | "SERVICE_ERROR_ONLY" | "UNAVAILABLE";
   refundState: "NONE" | "PENDING" | "FAILED" | "SUCCEEDED";
   proposal: {
     id: string;
@@ -24,6 +30,7 @@ export type MaterialDeliveryView = {
   regeneration: { state: string; dueAt: string | null } | null;
   artifacts: Array<{
     id: string;
+    fileVersionId: string;
     type: "RESUME" | "COVER_LETTER" | "REFERENCE_SHEET";
     version: number;
     filename: string;
@@ -32,6 +39,7 @@ export type MaterialDeliveryView = {
     createdAt: string;
     downloadsRevokedAt: string | null;
     supersededAt: string | null;
+    repair?: { originalFileVersionId: string; releaseId: string; deliveredAt: string; accessExpiresAt: string; accessExpired?: boolean };
   }>;
 };
 
@@ -104,7 +112,7 @@ export function MaterialDeliveries({ lines }: { lines: MaterialDeliveryView[] })
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "The proposal could not be applied.");
-      setMessage(decision === "DECLINE" ? "Proposal declined. The required full $8 line refund has started." : "Proposal accepted. A fresh 24-hour production period has started after capacity confirmation.");
+      setMessage(decision === "DECLINE" ? "Proposal declined. The required full $7.99 line refund has started." : "Proposal accepted. A fresh 24-hour production period has started after capacity confirmation.");
       window.setTimeout(() => window.location.reload(), 800);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The proposal could not be applied.");
@@ -137,6 +145,7 @@ export function MaterialDeliveries({ lines }: { lines: MaterialDeliveryView[] })
 
   async function openSupport(line: MaterialDeliveryView, event: React.FormEvent) {
     event.preventDefault();
+    if (line.supportPolicy !== "HISTORICAL") return;
     setBusy(true);
     setMessage("");
     try {
@@ -163,26 +172,47 @@ export function MaterialDeliveries({ lines }: { lines: MaterialDeliveryView[] })
     <div className="material-line-list">{lines.map((line) => {
       const proposalPermissions = line.proposal?.targetJobSnapshotId ? permissionsByJob.get(line.proposal.targetJobSnapshotId) || [] : [];
       const currentPermissions = permissionsByJob.get(line.jobSnapshotId) || [];
-      return <article className="material-line" key={line.lineId}>
+      return <MaterialLineAccess key={line.lineId} line={line}>
         <div className="material-line__heading"><div><span>{line.stateLabel}</span><h3>{line.title}</h3><p>{line.company}</p></div><div>{line.dueAt ? <p>Active deadline<br /><strong>{new Date(line.dueAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET</strong></p> : null}<p>{line.stateMessage}</p></div></div>
-        {line.refundState !== "NONE" ? <p className="match-warning"><strong>Refund:</strong> {line.refundState === "SUCCEEDED" ? "The full $8 line refund was confirmed." : line.refundState === "PENDING" ? "The full $8 line refund is processing." : "The required refund needs staff attention."}</p> : null}
-        {line.proposal ? <section className="material-proposal"><h4>{line.proposal.kind === "SUBSTITUTION" ? "Choose a substitute or refund" : "Confirm a factual correction or refund"}</h4><p>Reason: {line.proposal.reasonCode.replaceAll("_", " ").toLowerCase()}.</p>{line.proposal.targetTitle ? <p>Proposed replacement: <strong>{line.proposal.targetTitle}</strong> at {line.proposal.targetCompany}.</p> : null}{line.proposal.factDiff ? <dl>{Object.entries(line.proposal.factDiff).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{safeValue(value)}</dd></div>)}</dl> : null}<p>Respond by {new Date(line.proposal.expiresAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET. No response results in the required full $8 line refund.</p>
+        {line.refundState !== "NONE" ? <p className="match-warning"><strong>Refund:</strong> {line.refundState === "SUCCEEDED" ? "The full $7.99 line refund was confirmed." : line.refundState === "PENDING" ? "The full $7.99 line refund is processing." : "The required refund needs staff attention."}</p> : null}
+        {line.proposal ? <section className="material-proposal"><h4>{line.proposal.kind === "SUBSTITUTION" ? "Choose a substitute or refund" : "Confirm a factual correction or refund"}</h4><p>Reason: {line.proposal.reasonCode.replaceAll("_", " ").toLowerCase()}.</p>{line.proposal.targetTitle ? <p>Proposed replacement: <strong>{line.proposal.targetTitle}</strong> at {line.proposal.targetCompany}.</p> : null}{line.proposal.factDiff ? <dl>{Object.entries(line.proposal.factDiff).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{safeValue(value)}</dd></div>)}</dl> : null}<p>Respond by {new Date(line.proposal.expiresAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET. No response results in the required full $7.99 line refund.</p>
           {line.proposal.kind === "SUBSTITUTION" ? <div className="reference-permission"><label className="confirm"><input type="checkbox" checked={Boolean(includeReference[line.proposal.id])} onChange={(event) => setIncludeReference((current) => ({ ...current, [line.proposal!.id]: event.target.checked }))} />Include an application-specific reference sheet for the replacement</label>{includeReference[line.proposal.id] ? proposalPermissions.length ? proposalPermissions.map((permission) => <label className="confirm" key={permission.permissionId}><input type="checkbox" checked={(referenceSelections[line.proposal!.id] || []).includes(permission.permissionId)} onChange={() => togglePermission(line.proposal!.id, permission.permissionId)} />{permission.name}: permitted for {permission.exactPosition} at {permission.employer}</label>) : <p className="match-warning">No fresh exact-job permissions are ready for this replacement.</p> : null}</div> : null}
-          <div className="material-proposal__actions"><button type="button" className="wizard-next" disabled={busy || (line.proposal.kind === "SUBSTITUTION" && Boolean(includeReference[line.proposal.id]) && !(referenceSelections[line.proposal.id] || []).length)} onClick={() => decide(line, "ACCEPT")}>Accept and start revised work</button><button type="button" disabled={busy} onClick={() => decide(line, "DECLINE")}>Decline and refund $8</button></div>
+          <div className="material-proposal__actions"><button type="button" className="wizard-next" disabled={busy || (line.proposal.kind === "SUBSTITUTION" && Boolean(includeReference[line.proposal.id]) && !(referenceSelections[line.proposal.id] || []).length)} onClick={() => decide(line, "ACCEPT")}>Accept and start revised work</button><button type="button" disabled={busy} onClick={() => decide(line, "DECLINE")}>Decline and refund $7.99</button></div>
         </section> : null}
         {line.regeneration ? <p className="deadline-note"><strong>Replacement reference sheet:</strong> {line.regeneration.state.replaceAll("_", " ").toLowerCase()}{line.regeneration.dueAt ? ` · due ${new Date(line.regeneration.dueAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET` : ""}.</p> : null}
         {line.artifacts.length ? <div className="artifact-list">{line.artifacts.map((artifact) => {
           const revoked = Boolean(artifact.downloadsRevokedAt || artifact.supersededAt);
-          return <article key={artifact.id}><div><h4>{artifactLabel(artifact.type)}</h4><p>Version {artifact.version} · SHA-256 {artifact.checksum.slice(0, 12)}…</p><p>{artifact.filename}</p></div>{revoked ? <div><strong>Download revoked</strong><p>This file is stale or a linked reference permission changed.</p></div> : <a className="button-link button-link--primary" href={`/api/customer/artifacts/${artifact.id}/download`}><span>Download current file</span></a>}
+          return <article key={artifact.id}><div><h4>{artifactLabel(artifact.type)}</h4><p>{artifact.repair ? "Corrected file" : "Version"} {artifact.version} · SHA-256 {artifact.checksum.slice(0, 12)}…</p><p>{artifact.filename}</p>{artifact.repair ? <p>Corrected document delivered {new Date(artifact.repair.deliveredAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET. Private access ends {new Date(artifact.repair.accessExpiresAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET.</p> : null}</div><MaterialArtifactDownload artifact={artifact} />
             {artifact.type === "REFERENCE_SHEET" && revoked && !line.regeneration ? <div className="reference-regeneration"><p>Choose one to three fresh permissions for this exact job. Capacity must be available before a new 24-hour period starts.</p>{currentPermissions.map((permission) => <label className="confirm" key={permission.permissionId}><input type="checkbox" checked={(referenceSelections[`regen:${line.lineId}`] || []).includes(permission.permissionId)} onChange={() => togglePermission(`regen:${line.lineId}`, permission.permissionId)} />{permission.name}: {permission.exactPosition} at {permission.employer}</label>)}<button type="button" disabled={busy || !(referenceSelections[`regen:${line.lineId}`] || []).length} onClick={() => regenerate(line, artifact.id)}>Request reviewed replacement sheet</button></div> : null}
           </article>;
         })}</div> : <p>No approved files have been released for this line.</p>}
-        <button type="button" className="text-button" aria-expanded={supportFor === line.lineId} onClick={() => setSupportFor(supportFor === line.lineId ? null : line.lineId)}>Request the included factual correction</button>
-        {supportFor === line.lineId ? <form className="material-support" onSubmit={(event) => openSupport(line, event)}><label>Document<select required value={support.artifactId} onChange={(event) => setSupport((current) => ({ ...current, artifactId: event.target.value }))}><option value="">Choose the affected document</option>{line.artifacts.filter((artifact) => !artifact.downloadsRevokedAt && !artifact.supersededAt).map((artifact) => <option value={artifact.id} key={artifact.id}>{artifactLabel(artifact.type)}: version {artifact.version}</option>)}</select></label><label>Field or section<input required maxLength={100} value={support.field} onChange={(event) => setSupport((current) => ({ ...current, field: event.target.value }))} /></label><label>What the document says<textarea required maxLength={500} value={support.documentText} onChange={(event) => setSupport((current) => ({ ...current, documentText: event.target.value }))} /></label><label>The correct fact<textarea required maxLength={500} value={support.correctFact} onChange={(event) => setSupport((current) => ({ ...current, correctFact: event.target.value }))} /></label><button className="wizard-next" disabled={busy || !support.artifactId}>Submit factual correction</button></form> : null}
-      </article>;
+        {line.supportPolicy === "SERVICE_ERROR_ONLY" ? <div><p>Report a factual error introduced by ApplyPack within three calendar days of the original delivery. This is one grouped error report, not an editing round. An accepted repair that still has a factual issue stays with the same case.</p><a href={`/my-applypack/material-lines/${line.lineId}/service-error`}>Report a factual error or view your report</a>
+          {line.artifacts.some(artifact => artifact.repair) ? <ServiceRepairFeedback materialLineId={line.lineId} /> : null}</div>
+          : line.supportPolicy === "HISTORICAL" ? <button type="button" className="text-button" aria-expanded={supportFor === line.lineId} onClick={() => { setSupport({ artifactId: "", field: "", documentText: "", correctFact: "" }); setSupportFor(supportFor === line.lineId ? null : line.lineId); }}>Request the included factual correction</button>
+          : <p>Document support options are temporarily unavailable. Contact support if you need help with an existing report.</p>}
+        {line.supportPolicy === "HISTORICAL" && supportFor === line.lineId ? <form className="material-support" onSubmit={(event) => openSupport(line, event)}><label>Document<select required value={support.artifactId} onChange={(event) => setSupport((current) => ({ ...current, artifactId: event.target.value }))}><option value="">Choose the affected document</option>{line.artifacts.filter((artifact) => !artifact.downloadsRevokedAt && !artifact.supersededAt).map((artifact) => <option value={artifact.id} key={artifact.id}>{artifactLabel(artifact.type)}: version {artifact.version}</option>)}</select></label><label>Field or section<input required maxLength={100} value={support.field} onChange={(event) => setSupport((current) => ({ ...current, field: event.target.value }))} /></label><label>What the document says<textarea required maxLength={500} value={support.documentText} onChange={(event) => setSupport((current) => ({ ...current, documentText: event.target.value }))} /></label><label>The correct fact<textarea required maxLength={500} value={support.correctFact} onChange={(event) => setSupport((current) => ({ ...current, correctFact: event.target.value }))} /></label><button className="wizard-next" disabled={busy || !support.artifactId}>Submit factual correction</button></form> : null}
+      </MaterialLineAccess>;
     })}</div>
     <p className={message ? "form-message" : "sr-only"} role="status" aria-live="polite">{message || "Materials delivery controls ready."}</p>
   </section>;
+}
+
+function MaterialArtifactDownload({ artifact }: { artifact: MaterialDeliveryView["artifacts"][number] }) {
+  const expired = useAccessExpiry(artifact.repair?.accessExpiresAt, artifact.repair?.accessExpired);
+  if (expired || artifact.downloadsRevokedAt || artifact.supersededAt) return <div><strong>Download unavailable</strong><p>This file is stale or its current access or reference permission could not be verified.</p></div>;
+  return <a className="button-link button-link--primary" href={`/api/customer/artifacts/${artifact.id}/download?fileVersionId=${encodeURIComponent(artifact.fileVersionId)}`}><span>{artifact.repair ? "Download corrected file" : "Download current file"}</span></a>;
+}
+
+function MaterialLineAccess({ line, children }: { line: MaterialDeliveryView; children: React.ReactNode }) {
+  const expired = useAccessExpiry(line.accessExpiresAt, line.accessExpired);
+  return <article className="material-line">
+    {expired ? <><h3>Private document access ended</h3><p>{PRIVATE_ACCESS_EXPIRED_MESSAGE}</p>
+      {line.refundState !== "NONE" ? <p><strong>Refund:</strong> {line.refundState === "SUCCEEDED" ? "The full $7.99 line refund was confirmed." : line.refundState === "PENDING" ? "The full $7.99 line refund is processing." : "The required refund needs staff attention."}</p> : null}
+    </> : <>
+      {line.accessExpiresAt ? <p className="deadline-note">Save your documents before private access ends <time dateTime={line.accessExpiresAt}>{new Date(line.accessExpiresAt).toLocaleString("en-US", { timeZone: "America/New_York" })} ET</time>. {line.supportPolicy === "HISTORICAL" ? "The included factual-correction request window remains three calendar days after delivery." : line.supportPolicy === "SERVICE_ERROR_ONLY" ? "The factual-error reporting window remains three calendar days after the original delivery." : ""}</p> : null}
+      {children}
+    </>}
+  </article>;
 }
 
 function safeValue(value: unknown) {

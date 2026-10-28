@@ -42,7 +42,7 @@ export async function runFeasibilityWorker(store: FeasibilityWorkerStore, reques
     await store.complete(requestId, workerId, assessmentId);
     return { ...result, assessmentId };
   } catch (error) {
-    await store.fail(requestId, workerId, error instanceof Error ? error.message.slice(0, 100) : "FEASIBILITY_WORKER_ERROR");
+    await store.fail(requestId, workerId, "FEASIBILITY_WORKER_ERROR");
     throw error;
   }
 }

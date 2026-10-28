@@ -150,6 +150,8 @@ function materialLine(state: string): MaterialDeliveryView {
     stateMessage: "The resume and cover letter passed automated checks plus separate content and visual approval.",
     dueAt,
     refundState: "NONE",
+    // This fixture covers the earlier paid contract's included correction flow.
+    supportPolicy: "HISTORICAL",
     proposal: null,
     regeneration: null,
     artifacts: [
@@ -204,7 +206,7 @@ function materialLine(state: string): MaterialDeliveryView {
   if (state === "refund") return {
     ...base,
     stateLabel: "Refund processing",
-    stateMessage: "Work stopped. The required full $8 line refund is being confirmed.",
+    stateMessage: "Work stopped. The required full $7.99 line refund is being confirmed.",
     dueAt: null,
     refundState: "PENDING",
     artifacts: [],
@@ -214,7 +216,7 @@ function materialLine(state: string): MaterialDeliveryView {
 
 function artifact(id: string, type: "RESUME" | "COVER_LETTER" | "REFERENCE_SHEET", filename: string, hash: string) {
   return {
-    id, type, version: 1, filename, checksum: hash.repeat(64),
+    id, fileVersionId: `f${id.slice(1)}`, type, version: 1, filename, checksum: hash.repeat(64),
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     createdAt: "2026-09-07T17:30:00.000Z", downloadsRevokedAt: null, supersededAt: null,
   };
@@ -236,6 +238,7 @@ function staffLine(): MaterialStaffLine {
     ruleSha256: "d".repeat(64),
     generationCheckAt: "2026-09-07T17:00:00.000Z",
     releaseCheckAt: null,
+    releaseCheckId: null,
     files: [{
       artifactType: "RESUME",
       fileVersionId: "f5000000-0000-4000-8000-000000000501",
@@ -244,8 +247,16 @@ function staffLine(): MaterialStaffLine {
       automatedPassed: true,
       contentApproved: false,
       visualApproved: false,
+      checksumSha256: "a".repeat(64),
+      contentApprovedAt: null,
+      contentApprovedBy: null,
+      visualApprovedAt: null,
+      visualApprovedBy: null,
       rendererIdentity: "fixture-renderer-v1",
-      arialResolved: true,
+      fontFamily: "Liberation Sans",
+      fontResolved: true,
+      currentStandard: true,
+      referenceRegenerationId: null,
     }],
     openProposalKind: null,
     openSupportCases: 0,

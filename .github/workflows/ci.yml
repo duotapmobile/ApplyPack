@@ -1,12 +1,17 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, codex/manual-launch-hardening-2026-10-02]
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
@@ -19,19 +24,45 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: npm ci --prefix .railway
+      - run: npm audit --prefix .railway --audit-level=high
+      - run: npm run typecheck --prefix .railway
+      - run: npm test --prefix .railway
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
-      - run: node --test scripts/test-maintenance-runner.test.mjs scripts/test-renderer-runtime.test.mjs
+      - run: npm test -- --reporter=default --reporter=json --outputFile=unit-results.json
+      - run: node scripts/assert-required-test-results.mjs unit-results.json
+      - run: npm run test:integration -- --reporter=default --reporter=json --outputFile=integration-results.json
+      - run: node scripts/assert-required-test-results.mjs integration-results.json
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run validate:aws-document-worker
+      - run: node --test scripts/report-staging-readiness.test.mjs scripts/assert-required-test-results.test.mjs
+      - run: node --test scripts/check-launch-recovery-strategy.test.mjs scripts/check-database-types.test.mjs scripts/run-windows-release-self-test.test.mjs scripts/production-aws-foundation.test.mjs scripts/source-aware-document-integration.test.mjs scripts/material-draft-stage-integration.test.mjs scripts/reference-draft-integration.test.mjs scripts/service-error-integration.test.mjs scripts/draft-change-integration.test.mjs scripts/operations-monitor.test.mjs
+      - run: node --test scripts/verify-sandbox-launch-evidence.test.mjs
+      - name: Protected recovery credentials, copy, bootstrap, source, archive and read-only retention contracts
+        run: npm run test:protected-recovery
+      - name: Database recovery identity, snapshot, encrypted archive and executable contracts
+        run: npm run test:database-recovery
+      - name: Authenticated archive lifecycle, historical pins and exact-version retention contracts
+        run: npm run test:archive-lifecycle
+      - run: node --test scripts/test-maintenance-runner.test.mjs scripts/test-renderer-runtime.test.mjs scripts/railway-staging-iac-cutover.test.mjs
       - run: npm run build
+      - name: Record tested checkout identity (PR runs may be synthetic merge commits)
+        run: git rev-parse HEAD > tested-commit.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: candidate-validation
+          path: |
+            tested-commit.txt
+            unit-results.json
+            integration-results.json
+          if-no-files-found: error
 
-  browser:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        project: [desktop, firefox, webkit, mobile-webkit, mobile]
+  staging-database-safeguard:
+    runs-on: windows-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,8 +70,136 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium firefox webkit
-      - run: npm run test:e2e -- --project=${{ matrix.project }}
+      - name: Run DPAPI staging safeguard self-test
+        shell: pwsh
+        run: |
+          npm.cmd run test:staging-database-safeguard -- --reporter=default --reporter=json --outputFile=staging-backup-results.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/assert-required-test-results.mjs staging-backup-results.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm.cmd run test:staging-manual-launch-migrations -- --reporter=default --reporter=json --outputFile=staging-migration-results.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/assert-required-test-results.mjs staging-migration-results.json
+      - name: Verify networkless self-test launcher safeguards
+        run: node --test scripts/run-windows-release-self-test.test.mjs
+      - name: Run AWS staging foundation control self-test
+        shell: pwsh
+        run: .\scripts\test-aws-staging-foundation-controls.ps1
+      - run: npm run test:launch-operations
+      - run: npm run test:rehearsal-migration
+      - name: Validate084-to086 staged launch migration controls
+        shell: pwsh
+        run: node scripts/run-windows-release-self-test.mjs rehearsal-086
+      - name: Validate087 prospective retention migration controls
+        shell: pwsh
+        run: node scripts/run-windows-release-self-test.mjs rehearsal-087
+      - name: Validate088 cleanup migration controls
+        shell: pwsh
+        run: node scripts/run-windows-release-self-test.mjs rehearsal-088
+      - name: Validate089 confirmed intake migration controls
+        shell: pwsh
+        run: node scripts/run-windows-release-self-test.mjs rehearsal-089
+      - name: Validate090 matching evidence migration controls
+        shell: pwsh
+        run: node scripts/run-windows-release-self-test.mjs rehearsal-090
+      - name: Validate091 complete document pair migration controls
+        shell: pwsh
+        run: node scripts/run-windows-release-self-test.mjs rehearsal-091
+      - name: Validate092 unchanged employer-rule revalidation controls
+        shell: pwsh
+        run: npm run test:rule-revalidation-migration
+      - name: Validate093 source-aware document acceptance controls
+        shell: pwsh
+        run: npm run test:source-aware-document-migration
+      - name: Validate094 stage-specific drafting controls
+        shell: pwsh
+        run: npm run test:material-draft-stage-migration
+      - name: Validate095 reference-aware drafting controls
+        shell: pwsh
+        run: npm run test:reference-draft-migration
+      - name: Validate096 inactive service-error reporting controls
+        shell: pwsh
+        run: npm run test:service-error-migration
+      - name: Validate097 owner request-change controls
+        shell: pwsh
+        run: npm run test:draft-change-migration
+      - name: Validate099 scoped service repair controls
+        shell: pwsh
+        run: npm run test:service-repair-migration
+      - name: Verify099 historical phases and recovery coverage
+        run: npm run test:service-repair-integration
+      - name: Validate100 default-disabled automatic research controls
+        shell: pwsh
+        run: npm run test:automatic-research-migration
+      - name: Verify100 historical phases and recovery coverage
+        run: npm run test:automatic-research-integration
+      - name: Confirmed clarification migration controls
+        run: npm run test:material-clarification-migration
+      - name: Reviewed repair case-state migration controls
+        run: npm run test:repair-case-state-migration
+      - name: Material clarification resume migration self-test
+        run: npm run test:material-clarification-resume-migration
+      - name: Employer rule review migration self-test
+        run: npm run test:employer-rule-review-migration
+      - name: Verify prospective source-run105 migration guard
+        run: npm run test:verified-source-run-migration
+      - name: Verify owner draft notification106 migration guard
+        run: npm run test:owner-draft-notice-migration
+      - name: Confirmed clarification and case-state integration
+        run: npm run test:material-clarification-integration
+      - name: Validate098 default-disabled protected archive lifecycle controls
+        shell: pwsh
+        run: npm run test:archive-lifecycle-migration
+      - run: npm run test:staging-schema084-backup
+      - run: npm run test:production-migration
+      - run: npm run test:production-backup
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: desktop
+            browser: chromium
+          - project: firefox
+            browser: firefox
+          - project: webkit
+            browser: webkit
+          - project: mobile-webkit
+            browser: webkit
+          - project: mobile
+            browser: chromium
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Use the canonical Ubuntu archive for browser dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The runner's Azure mirror stalled before tests could start. Keep the
+          # same signed Ubuntu suites and packages while using its main archive.
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          paths = [Path('/etc/apt/sources.list'), Path('/etc/apt/apt-mirrors.txt'), *Path('/etc/apt/sources.list.d').glob('*.sources'), *Path('/etc/apt/sources.list.d').glob('*.list')]
+          for path in paths:
+              if not path.is_file():
+                  continue
+              before = path.read_text()
+              after = before.replace('http://azure.archive.ubuntu.com/ubuntu', 'https://archive.ubuntu.com/ubuntu').replace('https://azure.archive.ubuntu.com/ubuntu', 'https://archive.ubuntu.com/ubuntu')
+              if after != before:
+                  path.write_text(after)
+          PY
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - run: npm run test:e2e -- --project=${{ matrix.project }} --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: browser-results.json
+      - run: node scripts/assert-required-test-results.mjs browser-results.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -48,20 +207,69 @@ jobs:
           path: |
             playwright-report
             test-results
+            browser-results.json
           if-no-files-found: warn
 
-  database:
+  database-core:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.116.0
       - run: supabase start
       - run: supabase db reset --local --no-seed
+      - name: Export migrated schema types and checkout identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/database-type-generation
+          git rev-parse HEAD > evidence/database-type-generation/database-tested-commit.txt
+          supabase gen types typescript --local > evidence/database-type-generation/generated-database.types.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: migrated-database-types
+          path: |
+            evidence/database-type-generation/database-tested-commit.txt
+            evidence/database-type-generation/generated-database.types.ts
+          if-no-files-found: error
       - name: Corrected-contract database fixtures
-        run: npm run test:database
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test scripts/rehearsal-upgrade-selection.test.mjs
+          node scripts/run-supabase-retention-upgrade-test.mjs
+          node scripts/run-supabase-legal-upgrade-test.mjs
+          node scripts/run-supabase-inventory-upgrade-test.mjs
+          node scripts/run-supabase-legacy-board-upgrade-test.mjs
+          node scripts/run-supabase-db-tests-v2.mjs
+      - name: Independent PostgreSQL17 retention and hold races
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test scripts/run-service-retention-postgres17.test.mjs
+          docker --host unix:///var/run/docker.sock pull postgres:17-trixie@sha256:3518071376d0b6156b02e1db2747a78511b5b9dc3763cc79c506ebe2dc2ee71c
+          mkdir -p evidence/retention-postgres17
+          git rev-parse HEAD > evidence/retention-postgres17/commit.txt
+          node scripts/run-service-retention-postgres17.mjs > evidence/retention-postgres17/receipt.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: isolated-postgres17-retention-races
+          path: evidence/retention-postgres17
+          if-no-files-found: warn
+      - name: Generated database type drift
+        run: npm run types:database:check
+      - name: Mandatory isolated structural recovery (not hosted approval)
+        run: node scripts/check-launch-recovery-strategy.mjs --structural-only
       - name: Checkout concurrency
         run: cat tests/integration/checkout-concurrency.sql | docker exec -i supabase_db_applypack psql -U postgres -d postgres -v ON_ERROR_STOP=1
       - name: RLS and financial invariants
@@ -75,32 +283,162 @@ jobs:
           supabase migration up --local
           cat tests/integration/historical-preservation-assertions.sql | docker exec -i supabase_db_applypack psql -U postgres -d postgres -v ON_ERROR_STOP=1
 
-  document-render:
+  database-upgrade:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        predecessor:
+          - '202610040080'
+          - '202610190081'
+          - '202610190082'
+          - '202610190083'
+          - '202610190084'
+          - '202610220085'
+          - '202610230086'
+          - '202610240087'
+          - '202610250088'
+          - '202610250089'
+          - '202610250090'
+          - '202610250091'
+          - '202610250092'
+          - '202610250093'
+          - '202610250094'
+          - '202610250095'
+          - '202610250096'
+          - '202610250097'
+          - '202610250098'
+          - '202610250099'
+          - '202610250100'
+          - '202610250101'
+          - '202610260102'
+          - '202610260103'
+          - '202610270104'
+          - '202610270105'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.116.0
+      - run: supabase start
+      - name: Exact historical predecessor with all preservation and current checks
+        shell: bash
+        env:
+          APPLYPACK_UPGRADE_PREDECESSOR: ${{ matrix.predecessor }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/database-upgrade
+          git rev-parse HEAD > evidence/database-upgrade/tested-commit.txt
+          node scripts/run-supabase-rehearsal-upgrade-test.mjs --predecessor "$APPLYPACK_UPGRADE_PREDECESSOR" | tee evidence/database-upgrade/result.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: database-upgrade-${{ matrix.predecessor }}
+          path: evidence/database-upgrade
+          if-no-files-found: error
+
+  research-route-journey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: sudo apt-get update && sudo apt-get install -y libreoffice-writer fonts-liberation fontconfig poppler-utils
       - run: npm ci
-      - run: node --test scripts/test-renderer-runtime.test.mjs
-      - name: Render actual DOCX files and verify PDF outputs
+      - name: Verify isolated route harness boundaries
+        run: node --test scripts/run-research-postgres17.test.mjs
+      - name: Actual qualified and limited research route journeys
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker --host unix:///var/run/docker.sock pull postgres:17-trixie@sha256:3518071376d0b6156b02e1db2747a78511b5b9dc3763cc79c506ebe2dc2ee71c
+          docker --host unix:///var/run/docker.sock pull node:22-bookworm-slim@sha256:ea11b74b986d520137cdef9a5346e447a00f275ecc4abc0055b7151226231e09
+          mkdir -p evidence/research-route-postgres17
+          git rev-parse HEAD > evidence/research-route-postgres17/commit.txt
+          node scripts/run-research-postgres17.mjs > evidence/research-route-postgres17/receipt.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: isolated-postgres17-research-routes
+          path: |
+            evidence/research-route-postgres17
+            evidence/research-route-pg17-*/inputs.json
+            evidence/research-route-pg17-*/*.log
+          if-no-files-found: warn
+
+  # Retain the established required check name. A failed, skipped or cancelled
+  # partition must never be hidden behind a successful current-schema job.
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    needs: [database-core, database-upgrade, research-route-journey]
+    steps:
+      - name: Require current schema and every historical upgrade
         env:
-          APP_RENDERER_RUNTIME_DISCOVERY: 'true'
-          APPLYPACK_RENDER_EVIDENCE_DIR: ${{ runner.temp }}/applypack-chunk5-render-ci
-        run: >-
-          node --input-type=module -e
-          "import {configureRendererRuntime} from './scripts/configure-renderer-runtime.mjs';
-          import {spawnSync} from 'node:child_process';
-          configureRendererRuntime();
-          const result=spawnSync(process.execPath,['node_modules/vitest/vitest.mjs','run','--config','vitest.render.config.mts'],{stdio:'inherit',env:process.env});
-          process.exit(result.status ?? 1);"
+          CORE_RESULT: ${{ needs.database-core.result }}
+          UPGRADE_RESULT: ${{ needs.database-upgrade.result }}
+          RESEARCH_RESULT: ${{ needs.research-route-journey.result }}
+        run: test "$CORE_RESULT" = success && test "$UPGRADE_RESULT" = success && test "$RESEARCH_RESULT" = success
+
+  document-render:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      APPLYPACK_LIBREOFFICE_PACKAGE_VERSION: '26.2.6'
+      APPLYPACK_POPPLER_PACKAGE_VERSION: '26.9.0'
+      APPLYPACK_LIBERATION_FONTS_PACKAGE_VERSION: '2.1.5.20211119'
+      APPLYPACK_EXPECTED_LIBREOFFICE_VERSION: '26.2.6'
+      APPLYPACK_EXPECTED_POPPLER_VERSION: '26.9.0'
+      APP_DOCUMENT_RENDERER_IDENTITY: 'applypack-windows-ci-lo-26.2.6-poppler-26.9.0-liberation-sans-2.1.5'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Provision pinned Windows document tools
+        shell: pwsh
+        run: |
+          choco install libreoffice-fresh --version=$env:APPLYPACK_LIBREOFFICE_PACKAGE_VERSION --source=https://community.chocolatey.org/api/v2/ --yes --no-progress --limit-output
+          if ($LASTEXITCODE -ne 0) { throw "Pinned LibreOffice installation failed with exit code $LASTEXITCODE." }
+          choco install poppler --version=$env:APPLYPACK_POPPLER_PACKAGE_VERSION --source=https://community.chocolatey.org/api/v2/ --yes --no-progress --limit-output
+          if ($LASTEXITCODE -ne 0) { throw "Pinned Poppler installation failed with exit code $LASTEXITCODE." }
+          choco install liberationfonts --version=$env:APPLYPACK_LIBERATION_FONTS_PACKAGE_VERSION --source=https://community.chocolatey.org/api/v2/ --yes --no-progress --limit-output
+          if ($LASTEXITCODE -ne 0) { throw "Pinned Liberation Sans installation failed with exit code $LASTEXITCODE." }
+          $popplerTools = @('pdfinfo.exe', 'pdffonts.exe', 'pdftotext.exe', 'pdftoppm.exe', 'pdftohtml.exe')
+          $toolsRoot = if ($env:ChocolateyToolsLocation) { $env:ChocolateyToolsLocation } else { 'C:\tools' }
+          $searchRoots = @($toolsRoot, (Join-Path $env:ChocolateyInstall 'lib\poppler')) | Where-Object { Test-Path -LiteralPath $_ }
+          $popplerBin = Get-ChildItem -LiteralPath $searchRoots -Filter pdfinfo.exe -File -Recurse |
+            ForEach-Object { $_.Directory.FullName } |
+            Where-Object {
+              $directory = $_
+              ($popplerTools | Where-Object { !(Test-Path -LiteralPath (Join-Path $directory $_) -PathType Leaf) }).Count -eq 0
+            } |
+            Select-Object -First 1
+          if (!$popplerBin) { throw 'Pinned Poppler binary directory was not found.' }
+          "APPLYPACK_POPPLER_BIN=$popplerBin" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - run: npm ci
+      - name: Render actual DOCX files and verify PDF outputs
+        shell: pwsh
+        env:
+          APPLYPACK_RENDER_EVIDENCE_DIR: ${{ runner.temp }}\applypack-chunk5-render-ci
+          APPLYPACK_PACKAGE_EVIDENCE_DIR: ${{ runner.temp }}\applypack-chunk5-package-ci
+        run: .\scripts\test-document-render-windows.ps1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: document-render-evidence
-          path: ${{ runner.temp }}/applypack-chunk5-render-ci
+          path: ${{ runner.temp }}\applypack-chunk5-render-ci
           if-no-files-found: warn

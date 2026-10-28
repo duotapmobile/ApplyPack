@@ -1,6 +1,7 @@
 import { formatEasternDeadline } from "./presentation";
 
 export type Chunk4EmailKind =
+  | "INTAKE_CLARIFICATION_REQUIRED"
   | "PAYMENT_VERIFIED_SEARCH_STARTED"
   | "CAPACITY_PAYMENT_EXCEPTION"
   | "ADJUSTMENT_REQUIRED"
@@ -29,9 +30,11 @@ export type Chunk4EmailInput = {
   refundAmountCents?: number | null;
   disputeState?: string | null;
   lineCount?: number | null;
+  accountSignIn?: boolean;
 };
 
 const titles: Record<Chunk4EmailKind, string> = {
+  INTAKE_CLARIFICATION_REQUIRED: "An update to your ApplyPack intake",
   PAYMENT_VERIFIED_SEARCH_STARTED: "Your ApplyPack search has started",
   CAPACITY_PAYMENT_EXCEPTION: "Your ApplyPack payment is being refunded",
   ADJUSTMENT_REQUIRED: "Your ApplyPack search needs your input",
@@ -70,7 +73,7 @@ function absoluteHttpsUrl(value: string) {
   return url.toString();
 }
 
-function money(cents = 2_000) {
+function money(cents = 1_899) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
 }
 
@@ -83,14 +86,23 @@ function diffText(value: unknown) {
 
 export function renderChunk4Email(input: Chunk4EmailInput) {
   const actionUrl = absoluteHttpsUrl(input.actionUrl);
+  if (input.kind === "INTAKE_CLARIFICATION_REQUIRED") {
+    const target = new URL(actionUrl);
+    if (target.pathname !== "/my-applypack" || target.search || target.hash || target.username || target.password || input.orderId) {
+      throw new Error("intake_notice_private_content_forbidden");
+    }
+  }
   const deadline = input.deadline ? formatEasternDeadline(input.deadline) : null;
-  const amount = money(input.refundAmountCents ?? 2_000);
+  const amount = money(input.refundAmountCents ?? 1_899);
   let lines: string[];
   let actionLabel = "Open My ApplyPack";
   switch (input.kind) {
+    case "INTAKE_CLARIFICATION_REQUIRED":
+      lines = ["There is an update to your ApplyPack intake.", "Sign in to review its current status and any questions from ApplyPack."];
+      break;
     case "PAYMENT_VERIFIED_SEARCH_STARTED":
-      actionLabel = "Access your order securely";
-      lines = ["Your payment was verified and your search has started.", `Your exact delivery deadline is ${deadline || "recorded in My ApplyPack"}.`, "The secure access link below is single-use and expires in 15 minutes."];
+      actionLabel = input.accountSignIn ? "Sign in to My ApplyPack" : "Access your order securely";
+      lines = ["Your payment was verified and your search has started.", `Your exact delivery deadline is ${deadline || "recorded in My ApplyPack"}.`, input.accountSignIn ? "Sign in with your verified account to view your order." : "The secure access link below is single-use and expires in 15 minutes."];
       break;
     case "CAPACITY_PAYMENT_EXCEPTION":
       lines = ["Capacity could not be confirmed after your payment.", `Work did not start. A full ${amount} refund was initiated automatically.`, "My ApplyPack will show Refunded only after the payment provider confirms completion."];
@@ -114,12 +126,14 @@ export function renderChunk4Email(input: Chunk4EmailInput) {
       lines = ["Your immutable set of exactly 10 researched job matches is ready.", "Review each employer listing before deciding whether to apply. ApplyPack does not submit applications or guarantee interviews, offers, salary, employment, or continued listing availability."];
       break;
     case "SECURE_ACCESS_RESEND":
-      actionLabel = "Access your order securely";
-      lines = ["Use the secure link below to open your ApplyPack order.", "This link is single-use and expires in 15 minutes. If you did not request it, you may ignore this message."];
+      actionLabel = input.accountSignIn ? "Sign in to My ApplyPack" : "Access your order securely";
+      lines = input.accountSignIn
+        ? ["Sign in with your verified account to view your ApplyPack order.", "If you did not request this reminder, you may ignore it."]
+        : ["Use the secure link below to open your ApplyPack order.", "This link is single-use and expires in 15 minutes. If you did not request it, you may ignore this message."];
       break;
     case "MATERIALS_PAYMENT_VERIFIED":
       lines = [
-        `Your card payment for ${input.lineCount ?? "the selected"} $8 material line${input.lineCount === 1 ? "" : "s"} was verified.`,
+        `Your card payment for ${input.lineCount ?? "the selected"} $7.99 material line${input.lineCount === 1 ? "" : "s"} was verified.`,
         `The exact active deadline is ${deadline || "recorded in My ApplyPack"}.`,
         "Each selected job receives one tailored resume and one tailored cover letter. ApplyPack does not submit applications.",
       ];

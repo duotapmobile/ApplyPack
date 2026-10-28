@@ -6,6 +6,21 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     include: ["tests/integration/**/*.test.ts"],
+    // The approved launch uses structural validation, not an antivirus claim.
+    // ClamAV is a separate explicit provider integration, never a skipped gate.
+    exclude: [
+      // Runs in the required isolated PostgreSQL job with fresh scenario databases.
+      "tests/integration/research-preparation-journey.test.ts",
+      "tests/integration/material-clarification-route-journey.test.ts",
+      "tests/integration/intake-notification-native-journey.test.ts",
+      "tests/integration/verified-paid-search-native-journey.test.ts",
+      "tests/integration/employer-rule-owner-native-journey.test.ts",
+      "tests/integration/employer-question-pack-native-journey.test.ts",
+      "tests/integration/employer-question-source-native-journey.test.ts",
+      // Explicit local renderer checkpoint; it does not run in the PG17 container matrix.
+      "tests/integration/employer-question-local-doc-native-journey.test.ts",
+      ...(process.env.SCANNER_INTEGRATION === "true" ? [] : ["tests/integration/clamav.integration.test.ts"]),
+    ],
     setupFiles: ["./tests/setup.ts"],
   },
 });

@@ -10,13 +10,13 @@ import {
 
 describe("ApplyPack product invariants", () => {
   it("keeps the locked prices", () => {
-    expect(SEARCH_PRICE_CENTS).toBe(2_000);
-    expect(APPLY_PACK_PRICE_CENTS).toBe(800);
+    expect(SEARCH_PRICE_CENTS).toBe(1_899);
+    expect(APPLY_PACK_PRICE_CENTS).toBe(799);
   });
 
   it("charges once per unique selected job", () => {
-    expect(calculateApplyPackTotal(["a", "b", "c"])).toBe(2_400);
-    expect(calculateApplyPackTotal(["a", "a", "b"])).toBe(1_600);
+    expect(calculateApplyPackTotal(["a", "b", "c"])).toBe(2_397);
+    expect(calculateApplyPackTotal(["a", "a", "b"])).toBe(1_598);
   });
 
   it("sets a fixed deadline exactly 24 hours later", () => {

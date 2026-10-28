@@ -1,5 +1,9 @@
 # CODEX MASTER BUILD PROMPT, APPLYPACK PRODUCTION BACKEND
 
+> Current intake and remedy authority: [October 25 amendment19](19_OCTOBER_25_CONFIRMED_INTAKE_AND_SERVICE_ERROR_AMENDMENT.md) requires adaptive intake (including outdated/no resume and career changes), contextual plain-language skills, targeted pre-submit clarification, complete section-editable review and immutable customer confirmation. The system researches and drafts; the owner approves delivery. New bound orders remedy ApplyPack-introduced errors only; customer mistakes, new/omitted facts and preferences do not automatically entitle rework. Earlier paid terms remain intact. Conflicting required-resume, manual-authorship and generic-correction instructions below are historical. See the [current completion plan](../launch/END_TO_END_COMPLETION_PLAN_2026-10-25.md) and [protocol](../runbooks/INTAKE_REVIEW_AND_SERVICE_ERROR_CORRECTIONS.md); this decision is not yet implemented or deployed.
+
+> Historical implementation prompt. For the October 2, 2026 manual launch, `12_OCTOBER_2_MANUAL_LAUNCH_AMENDMENT.md` supersedes conflicting prices, subscription-board scope, checkout timing, and activation instructions below.
+
 Copy everything below into a new Codex conversation.
 
 ---
@@ -228,7 +232,7 @@ Your single preflight must cover these categories:
 - Login status
 - Permission to create test and live products, prices, webhooks, restricted keys, and settings
 - Permission to perform a real live payment and refund smoke test
-- Confirmation of $20 and $8 prices
+- Confirmation of the current fixed $18.99 and $7.99 prices
 - Immediate payment methods only for the 24-hour clock
 - Tax handling and Stripe Tax decision
 - Exact refund, job-closure, replacement, and missed-deadline rules

@@ -8,8 +8,12 @@ import { ApplyPackSelector } from "@/components/portal/apply-pack-selector-v2";
 import { MaterialDeliveries } from "@/components/portal/material-deliveries";
 import { ReferenceManager } from "@/components/portal/reference-manager";
 import { SearchOrderProgress, type SearchOrderProgressView } from "@/components/portal/search-order-progress";
+import { customerSearchState } from "@/lib/commerce/customer-search-state";
 import { loadDeliveredMatchGroups, loadMaterialDeliveries } from "@/lib/materials/portal";
+import { loadCustomerRetentionAccess } from "@/lib/materials/retention-access-server";
+import { PRIVATE_ACCESS_EXPIRED_MESSAGE, privateAccessExpired } from "@/lib/materials/retention-access";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const metadata: Metadata = { title: "My ApplyPack", robots: { index: false, follow: false } };
 
@@ -18,6 +22,8 @@ export default async function PortalPage() {
   if (!supabase) return <SetupState />;
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) return <EmailCodeSignIn />;
+  const retention = await loadCustomerRetentionAccess(supabase, authData.user.id).catch(() => null);
+  const accessByOrder = new Map(retention?.orders.map((order) => [order.order_id, order]) || []);
 
   const { data: orders } = await supabase.from("orders")
     .select("id,product_kind,amount_cents,status,delivery_deadline,delivered_at,created_at")
@@ -64,13 +70,16 @@ export default async function PortalPage() {
     const refundState = fullRefundState(service.winning_payment_attempt_id ? refundsByPayment.get(service.winning_payment_attempt_id) || [] : []);
     const amendment = amendmentsByService.get(service.id);
     const state = customerSearchState(service, refundState, releaseOrderIds.has(service.legacy_order_id));
+    const access = accessByOrder.get(service.legacy_order_id);
+    const expired = privateAccessExpired(access);
     return {
       orderId: service.legacy_order_id,
       stateLabel: state.label,
-      stateMessage: state.message,
+      stateMessage: expired ? PRIVATE_ACCESS_EXPIRED_MESSAGE : state.message,
+      accessExpiresAt: access?.access_expires_at ?? null,
       dueAt: service.delivery_due_at,
       refundState,
-      adjustment: amendment ? {
+      adjustment: retention && !expired && amendment ? {
         id: amendment.id,
         state: amendment.state,
         currentValidCount: amendment.current_valid_count,
@@ -89,11 +98,12 @@ export default async function PortalPage() {
 
   let releasePortal = { groups: [], jobs: [] } as Awaited<ReturnType<typeof loadDeliveredMatchGroups>>;
   let materialDeliveries: Awaited<ReturnType<typeof loadMaterialDeliveries>> = [];
-  let portalDataUnavailable = false;
+  let portalDataUnavailable = !retention;
   try {
+    if (!retention) throw new Error("customer_retention_access_unavailable");
     [releasePortal, materialDeliveries] = await Promise.all([
-      loadDeliveredMatchGroups({ supabase, releases: releases || [], services: services || [] }),
-      loadMaterialDeliveries({ supabase, customerId: authData.user.id }),
+      loadDeliveredMatchGroups({ supabase, releases: releases || [], services: services || [], retention }),
+      loadMaterialDeliveries({ supabase, customerId: authData.user.id, retention, admin: createSupabaseAdminClient() }),
     ]);
   } catch {
     portalDataUnavailable = true;
@@ -126,10 +136,13 @@ export default async function PortalPage() {
           key={group.deliveredReleaseId}
           matches={group.matches}
           evaluatedAt={group.evaluatedAt}
+          accessExpiresAt={group.accessExpiresAt}
+          actionExpiresAt={group.actionExpiresAt}
+          actionsExpired={group.actionsExpired}
           deliveredOrderId={group.deliveredOrderId}
           deliveredReleaseId={group.deliveredReleaseId}
           sourceSnapshotId={group.sourceSnapshotId}
-          initialEmail={authData.user.email || ""}
+          initialEmail={group.documentContactEmail ?? authData.user.email ?? ""}
         />)}
         {releasePortal.groups.length ? <ReferenceManager deliveredJobs={releasePortal.jobs} /> : null}
         <MaterialDeliveries lines={materialDeliveries} />
@@ -160,23 +173,6 @@ function fullRefundState(refunds: Array<{ state: string }>): SearchOrderProgress
   if (refunds.some((refund) => refund.state === "PENDING")) return "PENDING";
   if (refunds.some((refund) => refund.state === "FAILED")) return "FAILED";
   return "NONE";
-}
-
-function customerSearchState(
-  service: { fulfillment: string; adjustment: string; capacity_exception_at: string | null; refund_started_at: string | null },
-  refundState: SearchOrderProgressView["refundState"],
-  released: boolean,
-) {
-  if (refundState === "SUCCEEDED") return { label: "Refunded", message: "The payment provider confirmed the full refund. No search release was committed." };
-  if (refundState === "PENDING") return { label: "Refund processing", message: "A required full refund is in progress. Its durable provider state is preserved here." };
-  if (refundState === "FAILED") return { label: "Refund problem", message: "The full refund needs staff attention. The order and retry record remain preserved." };
-  if (released || service.fulfillment === "DELIVERED") return { label: "Delivered", message: "The immutable exact-ten release is available below." };
-  if (service.adjustment === "PROPOSED" || service.fulfillment === "ADJUSTMENT_REQUIRED") return { label: "Adjustment required", message: "We could not verify ten jobs under the active criteria. Review the precise proposal below." };
-  if (service.capacity_exception_at) return { label: "Capacity problem", message: "Work did not start after payment because capacity could not be confirmed. A full refund is required." };
-  if (service.refund_started_at) return { label: "Refund processing", message: "A required full refund has started and no release will be committed." };
-  if (service.fulfillment === "HUMAN_REVIEW") return { label: "Human review", message: "A staff reviewer is checking eligibility evidence, liveness, provenance, and the exact-ten package." };
-  if (service.fulfillment === "READY_TO_RELEASE") return { label: "Final release review", message: "Ten eligible jobs are ready for the final human release decision." };
-  return { label: "Researching", message: "Payment and capacity are verified. We are researching and checking current listings against the active criteria." };
 }
 
 function jsonObject(value: unknown): Record<string, unknown> {

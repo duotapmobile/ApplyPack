@@ -1,5 +1,7 @@
 # Migration, RLS, and recovery gate
 
+Historical gate below. Current forward releases follow amendments18/17 and `docs/runbooks/LAUNCH_DATABASE_OPERATIONS.md` with locked forward recovery. Migration087 adds prospective one-off retention; preserved historical orders must not be assigned new expiry. Apply the latest deletion/expiry overlay and sanitize expired private content before restored access opens. Do not assume a prior Railway version can run against the forward schema.
+
 No production migration is authorized merely because it exists in this branch. Migrations 003 through 020 are untrusted until this gate is recorded against staging.
 
 ## Preflight

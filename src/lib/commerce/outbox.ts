@@ -1,14 +1,19 @@
 import "server-only";
 
 import { Resend } from "resend";
-import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database.types";
 import { safeTransactionalRecipient } from "@/lib/email/safety";
 import { canonicalApplicationOrigin, hashCapabilitySecret, parsePostgresBytea, serializeOrderAccessCapability } from "./server";
 import { decryptSensitivePayload, sensitivePayloadConfiguration, sensitivePayloadEncryptionReady } from "@/lib/security/sensitive-payload";
 import { remoteKmsAdapter } from "@/lib/security/remote-kms";
 import { renderChunk4Email, type Chunk4EmailInput, type Chunk4EmailKind } from "./email";
+import { claimedPaymentNotificationContext, intakeClarificationDelivery, pinIntakeNotificationEnvelope,
+  type PrepareIntakeNotification, type PinIntakeNotification, type PrepareClaimedPaymentNotification, type PinClaimedPaymentNotification } from "./intake-notification";
+import { OWNER_DRAFT_NOTICE_KIND, configuredOwnerDraftRecipient, ownerDraftLeaseCurrent, ownerDraftNoticeContext, ownerDraftSuppressionReceipt,
+  pinOwnerDraftEnvelope, renderOwnerDraftNotice, type PrepareOwnerDraftNotice, type PinOwnerDraftNotice, type SuppressOwnerDraftNotice } from "./owner-draft-notification";
 
-type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
+type AdminClient = SupabaseClient<Database>;
 type OutboxMessage = {
   id: string;
   customer_id: string | null;
@@ -44,7 +49,7 @@ async function orderContext(admin: AdminClient, message: OutboxMessage) {
     const { data: service, error } = await admin.from("ap_search_services")
       .select("id,legacy_order_id,original_snapshot_id,winning_payment_attempt_id,delivery_due_at")
       .eq("legacy_order_id", message.order_id).maybeSingle();
-    if (error || !service) throw error || new Error("outbox_order_context_missing");
+    if (error || !service?.original_snapshot_id) throw error || new Error("outbox_order_context_missing");
     const { data: snapshot, error: snapshotError } = await admin.from("ap_intake_snapshots")
       .select("access_email_normalized").eq("id", service.original_snapshot_id).maybeSingle();
     if (snapshotError || !snapshot?.access_email_normalized) throw snapshotError || new Error("outbox_recipient_missing");
@@ -62,10 +67,10 @@ async function accessAction(admin: AdminClient, message: OutboxMessage, origin: 
     admin.from("ap_sensitive_payloads").select("draft_id,ciphertext,encryption_algorithm,encrypted_data_key,nonce,authentication_tag,content_sha256,kms_key_identity,kms_key_version,encryption_context_hash").eq("id", message.payload_ref).maybeSingle(),
     admin.from("ap_search_services").select("winning_payment_attempt_id").eq("legacy_order_id", message.order_id).maybeSingle(),
   ]);
-  if (payloadError || serviceError || !payload?.draft_id || !service) throw payloadError || serviceError || new Error("outbox_access_context_missing");
+  if (payloadError || serviceError || !payload?.draft_id || payload.encryption_algorithm !== "AES-256-GCM" || !service?.winning_payment_attempt_id) throw payloadError || serviceError || new Error("outbox_access_context_missing");
   const { data: payment, error: paymentError } = await admin.from("ap_payment_attempts")
     .select("checkout_attempt_id").eq("id", service.winning_payment_attempt_id).maybeSingle();
-  if (paymentError || !payment) throw paymentError || new Error("outbox_access_checkout_missing");
+  if (paymentError || !payment?.checkout_attempt_id) throw paymentError || new Error("outbox_access_checkout_missing");
   const configuration = sensitivePayloadConfiguration();
   if (!sensitivePayloadEncryptionReady(configuration)) throw new Error("kms_not_configured");
   const plaintext = await decryptSensitivePayload({
@@ -159,28 +164,118 @@ async function messageDetails(admin: AdminClient, message: OutboxMessage, kind: 
   return details;
 }
 
-async function sendMessage(admin: AdminClient, message: OutboxMessage, owner: string) {
+type NotificationAdapters = { prepareIntakeNotification?: PrepareIntakeNotification; pinIntakeNotification?: PinIntakeNotification;
+  prepareClaimedPaymentNotification?: PrepareClaimedPaymentNotification; pinClaimedPaymentNotification?: PinClaimedPaymentNotification;
+  prepareOwnerDraftNotice?: PrepareOwnerDraftNotice; pinOwnerDraftNotice?: PinOwnerDraftNotice; suppressOwnerDraftNotice?: SuppressOwnerDraftNotice };
+
+async function sendOwnerDraftNotice(admin: AdminClient, message: OutboxMessage, owner: string, adapters: NotificationAdapters): Promise<"SENT" | "SUPPRESSED"> {
+  const recipient = configuredOwnerDraftRecipient();
+  if (!recipient || !adapters.prepareOwnerDraftNotice) throw new Error("owner_notice_configuration_unavailable");
+  safeTransactionalRecipient(recipient);
+  const prepare = async () => {
+    if (configuredOwnerDraftRecipient() !== recipient) throw new Error("owner_notice_configuration_changed");
+    const result = await adapters.prepareOwnerDraftNotice!(message.id, owner, recipient);
+    if (result.error) throw new Error("owner_notice_context_unavailable");
+    return ownerDraftNoticeContext(message, result.data, recipient);
+  };
+  const suppress = async (context: Extract<ReturnType<typeof ownerDraftNoticeContext>, { disposition: "OBSOLETE" }>) => {
+    if (!adapters.suppressOwnerDraftNotice) throw new Error("owner_notice_suppression_unavailable");
+    const result = await adapters.suppressOwnerDraftNotice(message.id, owner);
+    if (result.error) throw new Error("owner_notice_suppression_unavailable");
+    ownerDraftSuppressionReceipt(result.data, context.messageId);
+    return "SUPPRESSED" as const;
+  };
+  const context = await prepare();
+  if (context.disposition === "OBSOLETE") return suppress(context);
+  const origin = canonicalApplicationOrigin(), delivery = deliveryConfiguration();
+  const rendered = renderOwnerDraftNotice(context.phase, origin);
+  const renewed = await admin.rpc("ap_renew_outbox_lease", { p_message_id: message.id, p_owner: owner });
+  if (renewed.error || !ownerDraftLeaseCurrent(renewed.data)) throw new Error("owner_notice_lease_unavailable");
+  const current = await prepare();
+  if (current.disposition === "OBSOLETE") return suppress(current);
+  if (JSON.stringify(current) !== JSON.stringify(context) || canonicalApplicationOrigin() !== origin
+    || JSON.stringify(deliveryConfiguration()) !== JSON.stringify(delivery)) throw new Error("owner_notice_dispatch_changed");
+  const envelope = { from: delivery.from, to: safeTransactionalRecipient(recipient), replyTo: delivery.replyTo, ...rendered };
+  await pinOwnerDraftEnvelope(adapters.pinOwnerDraftNotice, message.id, owner, recipient, envelope);
+  if (configuredOwnerDraftRecipient() !== recipient || canonicalApplicationOrigin() !== origin
+    || JSON.stringify(deliveryConfiguration()) !== JSON.stringify(delivery)) throw new Error("owner_notice_dispatch_changed");
+  safeTransactionalRecipient(recipient);
+  ownerDraftNoticeContext(message, current, recipient);
+  const result = await new Resend(delivery.apiKey).emails.send(envelope, { idempotencyKey: context.providerIdempotencyKey });
+  if (result.error || typeof result.data?.id !== "string" || !result.data.id.trim()) throw new Error("owner_notice_provider_unconfirmed");
+  const completed = await admin.rpc("ap_complete_outbox_message", { p_message_id: message.id, p_owner: owner, p_provider_message_id: result.data.id });
+  if (completed.error || completed.data !== true) throw new Error("owner_notice_completion_unconfirmed");
+  return "SENT";
+}
+
+async function sendMessage(admin: AdminClient, message: OutboxMessage, owner: string, adapters: NotificationAdapters) {
   const renewed = await admin.rpc("ap_renew_outbox_lease", { p_message_id: message.id, p_owner: owner });
   if (renewed.error) throw renewed.error;
+  // Owner readiness never falls through to customer/contact/capability resolution.
+  if (message.message_kind === OWNER_DRAFT_NOTICE_KIND) {
+    if (!ownerDraftLeaseCurrent(renewed.data)) throw new Error("owner_notice_lease_unavailable");
+    return sendOwnerDraftNotice(admin, message, owner, adapters);
+  }
   const origin = canonicalApplicationOrigin();
   const delivery = deliveryConfiguration();
-  const context = await orderContext(admin, message);
-  const kind = templateKind(message.message_kind);
-  const actionUrl = ["PAYMENT_VERIFIED_SEARCH_STARTED", "SECURE_ACCESS_RESEND"].includes(kind)
-    ? await accessAction(admin, message, origin, owner)
-    : `${origin}/my-applypack${message.order_id ? `?order=${encodeURIComponent(message.order_id)}` : ""}`;
-  const details = await messageDetails(admin, message, kind, context.service?.delivery_due_at || null);
-  const rendered = renderChunk4Email({ ...details, actionUrl });
+  let recipient: string, rendered: ReturnType<typeof renderChunk4Email>;
+  let claimedContext: ReturnType<typeof claimedPaymentNotificationContext> | null = null;
+  const prepareNotice = async () => {
+    if (!adapters.prepareIntakeNotification) throw new Error("intake_notice_resolver_unavailable");
+    const prepared = await adapters.prepareIntakeNotification(message.id, owner);
+    if (prepared.error) throw new Error("intake_notice_context_unavailable");
+    return intakeClarificationDelivery(message, prepared.data, origin);
+  };
+  const preparePaidNotice = async () => {
+    if (!adapters.prepareClaimedPaymentNotification) throw new Error("claimed_notice_resolver_unavailable");
+    const prepared = await adapters.prepareClaimedPaymentNotification(message.id, owner);
+    if (prepared.error) throw new Error("claimed_notice_context_unavailable");
+    return claimedPaymentNotificationContext(message, prepared.data);
+  };
+  if (message.message_kind === "INTAKE_CLARIFICATION_REQUIRED") {
+    const notice = await prepareNotice();
+    recipient = notice.recipient; rendered = notice.rendered;
+  } else {
+    const kind = templateKind(message.message_kind);
+    claimedContext = await preparePaidNotice();
+    if (claimedContext.claimed) {
+      const details = await messageDetails(admin, message, kind, claimedContext.deliveryDueAt);
+      recipient = claimedContext.recipientEmail;
+      // Verified account owners use normal sign-in; no emailed bearer capability
+      // may redirect access after their original contact email changes hands.
+      rendered = renderChunk4Email({ ...details, accountSignIn: true, actionUrl: `${origin}/my-applypack${message.order_id ? `?order=${encodeURIComponent(message.order_id)}` : ""}` });
+    } else {
+      const context = await orderContext(admin, message);
+      const actionUrl = ["PAYMENT_VERIFIED_SEARCH_STARTED", "SECURE_ACCESS_RESEND"].includes(kind)
+        ? await accessAction(admin, message, origin, owner)
+        : `${origin}/my-applypack${message.order_id ? `?order=${encodeURIComponent(message.order_id)}` : ""}`;
+      const details = await messageDetails(admin, message, kind, context.service?.delivery_due_at || null);
+      recipient = context.recipient; rendered = renderChunk4Email({ ...details, actionUrl });
+    }
+  }
   const submitLease = await admin.rpc("ap_renew_outbox_lease", { p_message_id: message.id, p_owner: owner });
   if (submitLease.error) throw submitLease.error;
-  const result = await new Resend(delivery.apiKey).emails.send({
+  if (message.message_kind === "INTAKE_CLARIFICATION_REQUIRED") {
+    const current = await prepareNotice();
+    if (current.recipient !== recipient || JSON.stringify(current.rendered) !== JSON.stringify(rendered)) throw new Error("intake_notice_dispatch_changed");
+  } else {
+    const current = await preparePaidNotice();
+    if (JSON.stringify(current) !== JSON.stringify(claimedContext)) throw new Error("claimed_notice_dispatch_changed");
+  }
+  const envelope = {
     from: delivery.from,
-    to: safeTransactionalRecipient(context.recipient),
+    to: safeTransactionalRecipient(recipient),
     replyTo: delivery.replyTo,
     subject: rendered.subject,
     text: rendered.text,
     html: rendered.html,
-  }, { idempotencyKey: message.provider_idempotency_key });
+  };
+  if (message.message_kind === "INTAKE_CLARIFICATION_REQUIRED") {
+    await pinIntakeNotificationEnvelope(adapters.pinIntakeNotification, message.id, owner, envelope);
+  } else if (claimedContext?.claimed) {
+    await pinIntakeNotificationEnvelope(adapters.pinClaimedPaymentNotification, message.id, owner, envelope);
+  }
+  const result = await new Resend(delivery.apiKey).emails.send(envelope, { idempotencyKey: message.provider_idempotency_key });
   if (result.error || !result.data?.id) throw new Error("provider_send_failed");
   const completed = await admin.rpc("ap_complete_outbox_message", {
     p_message_id: message.id,
@@ -188,33 +283,60 @@ async function sendMessage(admin: AdminClient, message: OutboxMessage, owner: st
     p_provider_message_id: result.data.id,
   });
   if (completed.error) throw completed.error;
+  return "SENT" as const;
 }
 
-export async function processChunk4Outbox(admin: AdminClient, owner: string, limit = 10) {
+export async function processChunk4Outbox(admin: AdminClient, owner: string, limit = 10,
+  options: NotificationAdapters = {}) {
+  const adapters: NotificationAdapters = {
+    prepareIntakeNotification: async (messageId, leaseOwner) => admin.rpc("ap_prepare_intake_clarification_notification", {
+      p_message_id: messageId, p_lease_owner: leaseOwner,
+    }),
+    pinIntakeNotification: async (messageId, leaseOwner, payloadSha256) => admin.rpc("ap_pin_intake_clarification_delivery", {
+      p_message_id: messageId, p_lease_owner: leaseOwner, p_payload_sha256: payloadSha256,
+    }),
+    prepareClaimedPaymentNotification: async (messageId, leaseOwner) => admin.rpc("ap_prepare_claimed_payment_notification", {
+      p_message_id: messageId, p_lease_owner: leaseOwner,
+    }),
+    pinClaimedPaymentNotification: async (messageId, leaseOwner, payloadSha256) => admin.rpc("ap_pin_claimed_payment_delivery", {
+      p_message_id: messageId, p_lease_owner: leaseOwner, p_payload_sha256: payloadSha256,
+    }),
+    prepareOwnerDraftNotice: async (messageId, leaseOwner, recipient) => admin.rpc("ap_prepare_owner_draft_notification", {
+      p_message_id: messageId, p_lease_owner: leaseOwner, p_recipient_email: recipient,
+    }),
+    pinOwnerDraftNotice: async (messageId, leaseOwner, recipient, payloadSha256) => admin.rpc("ap_pin_owner_draft_delivery", {
+      p_message_id: messageId, p_lease_owner: leaseOwner, p_recipient_email: recipient, p_payload_sha256: payloadSha256,
+    }),
+    suppressOwnerDraftNotice: async (messageId, leaseOwner) => admin.rpc("ap_suppress_owner_draft_notification", {
+      p_message_id: messageId, p_lease_owner: leaseOwner,
+    }),
+    ...options,
+  };
   const claimed = await admin.rpc("ap_claim_outbox_messages", { p_owner: owner, p_limit: Math.max(1, Math.min(25, limit)) });
   if (claimed.error) {
     if (claimed.error.message.includes("email_provider_guarantee_unapproved")) {
-      return { status: "blocked" as const, reason: "EMAIL_PROVIDER_GUARANTEE_UNAPPROVED", attempted: 0, sent: 0 };
+      return { status: "blocked" as const, reason: "EMAIL_PROVIDER_GUARANTEE_UNAPPROVED", attempted: 0, sent: 0, suppressed: 0 };
     }
     throw claimed.error;
   }
   const messages = (Array.isArray(claimed.data) ? claimed.data : []) as OutboxMessage[];
-  let sent = 0;
+  let sent = 0, suppressed = 0;
   for (const message of messages) {
     try {
-      await sendMessage(admin, message, owner);
-      sent += 1;
-    } catch (error) {
+      const outcome = await sendMessage(admin, message, owner, adapters);
+      if (outcome === "SENT") sent += 1;
+      else if (outcome === "SUPPRESSED") suppressed += 1;
+    } catch {
       const deadLetter = outboxShouldDeadLetter(message.first_submitted_at);
       const failed = await admin.rpc("ap_fail_outbox_message", {
         p_message_id: message.id,
         p_owner: owner,
-        p_error_code: error instanceof Error ? error.message.slice(0, 100) : "outbox_send_failed",
+        p_error_code: message.message_kind === OWNER_DRAFT_NOTICE_KIND ? "OWNER_NOTICE_DELIVERY_UNCONFIRMED" : "OUTBOX_SEND_FAILED",
         p_retry_at: outboxRetryAt(message.attempts),
         p_dead_letter: deadLetter,
       });
       if (failed.error) throw failed.error;
     }
   }
-  return { status: "enabled" as const, attempted: messages.length, sent };
+  return { status: "enabled" as const, attempted: messages.length, sent, suppressed };
 }

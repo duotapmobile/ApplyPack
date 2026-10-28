@@ -1,0 +1,17 @@
+**
+!Dockerfile.launch
+!package.json
+!package-lock.json
+!next.config.ts
+!tsconfig.json
+!postcss.config.mjs
+!src/
+!src/**
+!public/
+!public/**
+!scripts/
+!scripts/**
+!infra/
+!infra/aws/
+!infra/aws/roles-anywhere-helper/
+!infra/aws/roles-anywhere-helper/**

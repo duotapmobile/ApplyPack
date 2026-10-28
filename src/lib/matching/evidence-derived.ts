@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { credentialState, combineCredentialStates } from "./credential-state";
 import { canonicalSha256, overlapSafeCalendarDays, semanticComparisonKey, typedCriterionSchema, type CapabilityStatus, type TypedCriterion } from "@/lib/domain/foundation";
 import {
@@ -17,14 +18,18 @@ import {
   type FitComponentName,
 } from "@/lib/matching/evaluation-engine";
 import { evaluateRequirementTree, evaluateToolCapability, type EvaluatableRequirementNode, type LeafDecision } from "@/lib/matching/requirements";
+import { hasTypedRequirementIdentity, requirementNodeSemanticKey } from "./listing-parser";
 import { activityCatalog, dealbreakerCatalog, industryCatalog } from "@/lib/intake/four-step";
+import { commuteGateKey, reviewedCommuteResult, COMMUTE_EVIDENCE_VERSION } from "@/lib/matching/commute-evidence";
 
 export type PersistedRequirementRow = {
   id: string;
+  job_snapshot_id?: string;
   parent_id: string | null;
   position: number;
   node_kind: "ALL_OF" | "ANY_OF" | "CRITERION";
   criterion_type: string | null;
+  criterion_version?: string | null;
   stable_criterion_id: string | null;
   semantic_key: string | null;
   requirement_strength: string | null;
@@ -33,6 +38,8 @@ export type PersistedRequirementRow = {
   parser_certainty: number | null;
   importance: number | null;
   typed_value: unknown;
+  classification_method?: string | null;
+  human_correction_history?: unknown;
 };
 
 export type PersistedCandidateFact = {
@@ -113,6 +120,7 @@ export type PersistedJobForMatching = {
   listing_activity_result: string | null;
   application_path_result: string | null;
   material_source_qualities?: unknown;
+  captured_listing?: unknown;
 };
 
 export type CurrentSourceAuthorization = {
@@ -128,6 +136,44 @@ type EvidenceRelation = "DIRECT" | "ADJACENT" | "TRANSFERABLE" | "UNSUPPORTED";
 function object(value: unknown): DecisionRecord {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value as DecisionRecord;
+}
+
+export function excludeEmployerInstructionSourceNodes<T extends PersistedRequirementRow>(
+  rows: T[],
+  job: Pick<PersistedJobForMatching, "id" | "content_sha256" | "application_host_type" | "captured_listing">,
+) {
+  const version = "employer-instruction-source-v1";
+  const prefix = "employer-instruction-source:";
+  let sourceCount = 0;
+  return rows.filter((row) => {
+    const typed = object(row.typed_value);
+    const tagged = row.criterion_version === version || row.classification_method === version || typed.version === version
+      || row.semantic_key?.startsWith(prefix) || typeof typed.semanticKey === "string" && typed.semanticKey.startsWith(prefix);
+    if (!tagged) return true;
+    // The protected104 source node is document evidence only. Validate its
+    // entire identity before excluding it; historical informational criteria
+    // and malformed requirements must never disappear from matching.
+    const body = object(job.captured_listing).text;
+    const digest = createHash("sha256").update(`${version}:${job.id}:${job.content_sha256}`, "utf8").digest("hex");
+    const id = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-5${digest.slice(13, 16)}-a${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
+    const semanticKey = `${prefix}${job.id}`;
+    const expectedTyped = {
+      stableCriterionId: id, semanticKey, strength: "INFORMATIONAL", sourceLocator: "captured_listing.text", parserCertainty: 1,
+      version, kind: "LISTING_APPLICATION_PATH", identity: `saved-listing:${job.id}`, activeStatus: "ACTIVE",
+      sourceAuthorized: true, applicationPath: "ACTIONABLE", hostType: job.application_host_type,
+    };
+    if (++sourceCount !== 1 || row.id !== id || row.job_snapshot_id !== job.id || row.parent_id !== null || row.position !== 2147483646
+      || row.node_kind !== "CRITERION" || row.criterion_type !== "LISTING_APPLICATION_PATH" || row.stable_criterion_id !== id
+      || row.semantic_key !== semanticKey || row.requirement_strength !== "INFORMATIONAL" || row.source_locator !== "captured_listing.text"
+      || row.parser_certainty !== 1 || row.criterion_version !== version || row.classification_method !== version || row.importance !== 1
+      || !Array.isArray(row.human_correction_history) || row.human_correction_history.length !== 0
+      || typeof body !== "string" || !body.trim() || body.length > 200_000 || Array.from(body).length > 100_000 || row.source_excerpt !== body
+      || !["EMPLOYER_HOSTED", "APPROVED_THIRD_PARTY"].includes(job.application_host_type)
+      || Object.keys(typed).length !== Object.keys(expectedTyped).length
+      || Object.entries(expectedTyped).some(([key, value]) => typed[key] !== value)
+      || rows.some((child) => child.parent_id === row.id)) throw new Error("employer_instruction_source_evidence_invalid");
+    return false;
+  });
 }
 
 function strings(value: unknown) {
@@ -167,7 +213,15 @@ export function reconstructPersistedRequirementTree(rows: readonly PersistedRequ
     if (row.node_kind === "CRITERION") {
       const criterion = typedCriterionSchema.safeParse(row.typed_value);
       if (!criterion.success || criterion.data.strength !== "REQUIRED" || criterion.data.stableCriterionId !== row.stable_criterion_id) throw new Error("untyped_or_mismatched_hard_requirement");
-      return { nodeId: row.id, semanticKey: row.semantic_key || criterion.data.semanticKey, kind: "CRITERION", criterion: criterion.data };
+      // Pre-v6 rows keep their original reconstruction contract. The new tree
+      // identity is available only when both persisted version fields agree.
+      if ((hasTypedRequirementIdentity(row.criterion_version) || hasTypedRequirementIdentity(criterion.data.version))
+        && row.criterion_version !== criterion.data.version) throw new Error("mismatched_typed_requirement_version");
+      if (hasTypedRequirementIdentity(criterion.data.version) && (row.criterion_type !== criterion.data.kind
+        || row.semantic_key !== criterion.data.semanticKey)) throw new Error("mismatched_typed_requirement_identity");
+      return { nodeId: row.id, semanticKey: hasTypedRequirementIdentity(criterion.data.version)
+        ? requirementNodeSemanticKey({ ...criterion.data, semanticKey: row.semantic_key || criterion.data.semanticKey })
+        : row.semantic_key || criterion.data.semanticKey, kind: "CRITERION", criterion: criterion.data };
     }
     const children = [...(byParent.get(row.id) ?? [])].sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
     if (!children.length) throw new Error("empty_persisted_requirement_operator");
@@ -430,6 +484,7 @@ type CustomerHardGate = {
   unknownTreatment: "BLOCK" | "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING";
   consentVersion?: string;
   warning?: string;
+  policyKey?: string;
 };
 
 function slug(value: string) {
@@ -453,7 +508,7 @@ export function customerCriterionEvidenceMatches(rootKey: string, value: unknown
   const criterion = parsed.data;
   if (rootKey === "customer:work-mode") return criterion.kind === "WORK_MODE";
   if (rootKey === "customer:geography-state") return criterion.kind === "GEOGRAPHY" || criterion.kind === "WORK_MODE";
-  if (rootKey.startsWith("customer:commute")) return criterion.kind === "COMMUTE";
+  if (rootKey.startsWith("customer:commute")) return ["COMMUTE", "WORK_MODE", "GEOGRAPHY"].includes(criterion.kind);
   if (rootKey === "customer:employment-type") return criterion.kind === "EMPLOYMENT_TYPE";
   if (rootKey === "customer:title-restriction") return criterion.kind === "CUSTOMER_TITLE_RESTRICTION";
   const suffix = rootKey.split(":").slice(rootKey.startsWith("customer:work-condition:") ? 2 : rootKey.startsWith("customer:dealbreaker:custom:") ? 3 : 2).join("-");
@@ -496,7 +551,7 @@ function employerOmissionGate(snapshot: PersistedIntakeForMatching, rootKey: str
     result: "UNKNOWN",
     resolutionIssue: "EMPLOYER_OMITTED",
     unknownTreatment: allowed ? "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING" : "BLOCK",
-    ...(allowed ? { consentVersion: `${snapshot.schema_version}:${snapshot.content_sha256}`, warning } : {}),
+    ...(allowed ? { consentVersion: `${snapshot.schema_version}:${snapshot.content_sha256}`, warning, policyKey: policyKey! } : {}),
   };
 }
 
@@ -518,13 +573,13 @@ function applyCustomerReview(snapshot: PersistedIntakeForMatching, criteria: rea
   if (decision.result !== "UNKNOWN" || !["EMPLOYER_OMITTED", "PARSER_UNCERTAIN", "EVIDENCE_CONFLICT"].includes(String(decision.resolutionIssue))) throw new Error("customer_criterion_review_result_invalid");
   const allowed = decision.unknownTreatment === "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING";
   const expectedConsent = `${snapshot.schema_version}:${snapshot.content_sha256}`;
-  if (allowed && (decision.resolutionIssue !== "EMPLOYER_OMITTED" || decision.consentVersion !== expectedConsent || typeof decision.warning !== "string")) throw new Error("customer_criterion_allowed_unknown_invalid");
+  if (allowed && (automatic.unknownTreatment !== "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING" || decision.resolutionIssue !== "EMPLOYER_OMITTED" || decision.consentVersion !== expectedConsent || typeof decision.warning !== "string" || !decision.warning.trim())) throw new Error("customer_criterion_allowed_unknown_invalid");
   return {
     rootKey: automatic.rootKey,
     result: "UNKNOWN",
     resolutionIssue: decision.resolutionIssue as CustomerHardGate["resolutionIssue"],
     unknownTreatment: allowed ? "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING" : "BLOCK",
-    ...(allowed ? { consentVersion: expectedConsent, warning: decision.warning as string } : {}),
+    ...(allowed ? { consentVersion: expectedConsent, warning: decision.warning as string, policyKey: automatic.policyKey } : {}),
   };
 }
 
@@ -541,6 +596,8 @@ export function deriveCustomerHardGates(input: {
   job: PersistedJobForMatching;
   criteria: readonly TypedCriterion[];
   reviews: readonly PersistedReview[];
+  nodes?: readonly PersistedRequirementRow[];
+  now?: number;
 }) {
   const { snapshot, job, criteria, reviews } = input;
   const gates: CustomerHardGate[] = [];
@@ -563,13 +620,17 @@ export function deriveCustomerHardGates(input: {
   add(geographyGate);
 
   if ([...workModes].some((mode) => mode === "HYBRID" || mode === "ONSITE")) {
-    const travel = object(snapshot.travel);
-    const commuteDistance = snapshot.commute_distance_miles ?? (typeof travel.commuteDistanceMiles === "number" ? travel.commuteDistanceMiles : null);
-    const commuteKey = commuteDistance == null ? "customer:commute" : `customer:commute:${commuteDistance}-miles`;
-    const commute = criteria.find((criterion): criterion is Extract<TypedCriterion, { kind: "COMMUTE" }> => criterion.kind === "COMMUTE");
-    add(commute && commuteDistance != null && commute.unit === "MILES"
-      ? commute.maximum <= commuteDistance ? passGate(commuteKey) : failGate(commuteKey)
-      : employerOmissionGate(snapshot, commuteKey, null, "The commute could not be confirmed from the employer listing."));
+    const rootKey = commuteGateKey(snapshot);
+    const review = customerReviewFor(reviews, rootKey);
+    const decision = object(review?.decision);
+    const measuredResult = review && review.snapshot_id === snapshot.id && review.job_snapshot_id === job.id
+      && decision.customerCriterionKey === rootKey && decision.unknownTreatment === "BLOCK"
+      && strings(decision.sourceEvidenceNodeIds).includes(String(object(decision.commuteEvidence).destinationNodeId))
+      ? reviewedCommuteResult({ evidence: decision.commuteEvidence, snapshot, job, nodes: input.nodes ?? [], reviewerId: review.reviewer_id, now: input.now }) : null;
+    // Employer limits and generic customer-criterion reviews are not route measurements.
+    gates.push(measuredResult && decision.result === measuredResult
+      ? measuredResult === "PASS" ? passGate(rootKey) : failGate(rootKey)
+      : { rootKey, result: "UNKNOWN", resolutionIssue: "EVIDENCE_CONFLICT", unknownTreatment: "BLOCK" });
   }
 
   const employmentTypes = new Set(criteria.filter((criterion): criterion is Extract<TypedCriterion, { kind: "EMPLOYMENT_TYPE" }> => criterion.kind === "EMPLOYMENT_TYPE").flatMap((criterion) => criterion.employmentTypes));
@@ -680,7 +741,8 @@ export function deriveEvaluationFromPersistedEvidence(input: {
   usefulnessReview: PersistedReview;
   compensationReview: PersistedReview | null;
 }) {
-  const { snapshot, job, sourceAuthorization, nodes, facts, evidenceReviews, customerCriteriaReviews, usefulnessReview, compensationReview } = input;
+  const { snapshot, job, sourceAuthorization, facts, evidenceReviews, customerCriteriaReviews, usefulnessReview, compensationReview } = input;
+  const nodes = excludeEmployerInstructionSourceNodes(input.nodes, job);
   if (job.requirement_completeness !== 100) throw new Error("listing_requirement_parse_incomplete");
   if (!["AUTHORIZED_AUTOMATED", "AUTHORIZED_MANUAL_ONLY"].includes(sourceAuthorization.state)) throw new Error("source_authorization_not_current");
   if (usefulnessReview.review_kind !== "CATEGORICAL_USEFULNESS" || usefulnessReview.invalidated_at) throw new Error("current_usefulness_review_required");
@@ -709,8 +771,9 @@ export function deriveEvaluationFromPersistedEvidence(input: {
     unknownTreatment: salaryAllowedUnknown ? "ALLOW_EMPLOYER_UNKNOWN_WITH_WARNING" as const : "BLOCK" as const,
     consentVersion: salaryAllowedUnknown ? `${snapshot.schema_version}:${snapshot.content_sha256}` : undefined,
     warning: salaryWarning,
+    ...(salaryAllowedUnknown ? { policyKey: salary.status === "UNPUBLISHED" ? "salary:unpublished" : "salary:noncomparable" } : {}),
   };
-  const customerGates = deriveCustomerHardGates({ snapshot, job, criteria, reviews: customerCriteriaReviews });
+  const customerGates = deriveCustomerHardGates({ snapshot, job, criteria, reviews: customerCriteriaReviews, nodes });
   const universal = [
     { rootKey: "universal:source-authorization", result: "PASS" as const, resolutionIssue: "NONE" as const, unknownTreatment: "BLOCK" as const, unwaivable: true },
     { rootKey: "universal:listing-legitimacy", result: job.legitimacy_result === "PASS" ? "PASS" as const : "FAIL" as const, resolutionIssue: "NONE" as const, unknownTreatment: "BLOCK" as const, unwaivable: true },
@@ -771,7 +834,8 @@ export function deriveEvaluationFromPersistedEvidence(input: {
   });
   const presentationRisk = ["LOW", "MEDIUM", "HIGH", "NOT_ASSESSED"].includes(String(usefulnessDecision.presentationRisk)) ? usefulnessDecision.presentationRisk as "LOW" | "MEDIUM" | "HIGH" | "NOT_ASSESSED" : "NOT_ASSESSED";
   const presentationRiskReasons = strings(usefulnessDecision.presentationRiskReasons);
-  const versionBundle = { matching: MATCHING_RULES_VERSION, parser: job.parser_version, catalog: MATCHING_RULES_VERSION, criteria: snapshot.schema_version, selector: SELECTOR_VERSION, jobSnapshot: job.content_sha256, sourceAuthorization: sourceAuthorization.authorization_version };
+  const commuteReview = customerReviewFor(customerCriteriaReviews, commuteGateKey(snapshot));
+  const versionBundle = { matching: MATCHING_RULES_VERSION, parser: job.parser_version, catalog: MATCHING_RULES_VERSION, criteria: snapshot.schema_version, selector: SELECTOR_VERSION, jobSnapshot: job.content_sha256, sourceAuthorization: sourceAuthorization.authorization_version, commute: COMMUTE_EVIDENCE_VERSION, commuteReviewId: commuteReview?.id ?? null };
   const calculationInput = { snapshotHash: snapshot.content_sha256, jobHash: job.content_sha256, sourceAuthorizationId: sourceAuthorization.id, reviewIds: allReviewRecords.map((review) => review.id).sort(), factIds: candidateFactIds.sort(), rulesVersion: MATCHING_RULES_VERSION };
   return {
     eligibility,

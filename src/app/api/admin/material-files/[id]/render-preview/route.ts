@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
-import { isCurrentDocumentGeneratorVersion } from "@/lib/documents/requirements";
+import { supportedDocumentFontFamily } from "@/lib/documents/requirements";
 
 export async function GET(_: Request, route: { params: Promise<{ id: string }> }) {
   const auth = await requireAdmin();
@@ -9,18 +9,19 @@ export async function GET(_: Request, route: { params: Promise<{ id: string }> }
   const fileVersionId = z.uuid().safeParse((await route.params).id);
   if (!fileVersionId.success) return NextResponse.json({ error: "Render preview not found." }, { status: 404 });
   const { data: quality } = await auth.admin.from("ap_artifact_quality_reviews")
-    .select("render_preview_bucket,render_preview_path,render_preview_sha256,renderer_identity,arial_resolved")
+    .select("render_preview_bucket,render_preview_path,render_preview_sha256,renderer_identity,document_font_family,document_font_resolved")
     .eq("file_version_id", fileVersionId.data).maybeSingle();
-  if (!quality || quality.render_preview_bucket !== "operator-render-previews" || !quality.arial_resolved) {
+  if (!quality || quality.render_preview_bucket !== "operator-render-previews" || !quality.document_font_resolved) {
     return NextResponse.json({ error: "Render preview not found." }, { status: 404 });
   }
   const { data: file } = await auth.admin.from("ap_generated_file_versions")
     .select("artifact_id").eq("id", fileVersionId.data).maybeSingle();
   const { data: artifact } = file ? await auth.admin.from("ap_generated_artifacts")
     .select("generator_version").eq("id", file.artifact_id).maybeSingle() : { data: null };
-  if (!artifact || !isCurrentDocumentGeneratorVersion(artifact.generator_version)) {
+  const supportedFontFamily = supportedDocumentFontFamily(artifact?.generator_version);
+  if (!artifact || !supportedFontFamily || quality.document_font_family !== supportedFontFamily) {
     return NextResponse.json({
-      error: "This preview was created under an older document standard and must be regenerated.",
+      error: "This preview was created under an unsupported document standard.",
     }, { status: 409 });
   }
   const signed = await auth.admin.storage.from("operator-render-previews")

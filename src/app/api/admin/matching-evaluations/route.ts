@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/require-admin";
-import { MATCHING_RULES_VERSION, SELECTOR_VERSION } from "@/lib/matching/evaluation-engine";
+import { activeUnknownTreatments, MATCHING_RULES_VERSION, SELECTOR_VERSION } from "@/lib/matching/evaluation-engine";
 import { deriveEvaluationFromPersistedEvidence, type PersistedCandidateFact, type PersistedRequirementRow, type PersistedReview } from "@/lib/matching/evidence-derived";
 import { isSameOriginRequest } from "@/lib/security/origin";
 
@@ -38,8 +38,8 @@ export async function POST(request: Request) {
   const requestedReviewIds = [...new Set([...input.evidenceReviewIds, input.usefulnessReviewId, ...(input.compensationReviewId ? [input.compensationReviewId] : [])])];
   const [{ data: snapshot }, { data: inventoryMember }, { data: nodes }, { data: currentReviews }, { data: successor, error: successorError }] = await Promise.all([
     auth.admin.from("ap_intake_snapshots").select("id,customer_id,draft_id,content_sha256,schema_version,desired_activities,avoided_activities,work_modes,preferred_work_mode,optional_titles,confirmed_title_restriction,optional_industries,blocked_industries,us_state_or_dc,employment_types,preferred_employment_type,schedules,travel,benefits,work_condition_preferences,dealbreakers,employer_unknown_policy,salary_target_cents,salary_hard_minimum_cents,salary_minimum_flexible,salary_period,salary_basis,salary_overlap_policy,salary_unpublished_policy,salary_noncomparable_policy,salary_variable_pay_policy").eq("id", input.snapshotId).maybeSingle(),
-    auth.admin.from("ap_inventory_members").select("id,inventory_version_id,job_snapshot_id,selected_by_deduplication,job_snapshot:ap_job_snapshots(id,exact_title,content_sha256,parser_version,requirement_completeness,compensation_completeness,application_host_type,legitimacy_result,listing_activity_result,application_path_result,material_source_qualities,source_authorization:ap_source_authorizations(id,state,access_method,authorization_version))").eq("id", input.inventoryMemberId).maybeSingle(),
-    auth.admin.from("ap_requirement_nodes").select("id,parent_id,position,node_kind,criterion_type,stable_criterion_id,semantic_key,requirement_strength,source_locator,source_excerpt,parser_certainty,importance,typed_value").eq("job_snapshot_id", input.jobSnapshotId),
+    auth.admin.from("ap_inventory_members").select("id,inventory_version_id,job_snapshot_id,selected_by_deduplication,job_snapshot:ap_job_snapshots(id,exact_title,content_sha256,parser_version,requirement_completeness,compensation_completeness,application_host_type,legitimacy_result,listing_activity_result,application_path_result,material_source_qualities,captured_listing,source_authorization:ap_source_authorizations(id,state,access_method,authorization_version))").eq("id", input.inventoryMemberId).maybeSingle(),
+    auth.admin.from("ap_requirement_nodes").select("id,job_snapshot_id,parent_id,position,node_kind,criterion_type,criterion_version,stable_criterion_id,semantic_key,requirement_strength,source_locator,source_excerpt,parser_certainty,importance,typed_value,classification_method,human_correction_history").eq("job_snapshot_id", input.jobSnapshotId),
     auth.admin.from("ap_human_review_records").select("id,snapshot_id,job_snapshot_id,review_kind,review_subject_key,decision,invalidated_at,reviewer_id,created_at").eq("snapshot_id", input.snapshotId).eq("job_snapshot_id", input.jobSnapshotId).is("invalidated_at", null),
     auth.admin.from("ap_job_snapshots").select("id").eq("supersedes_job_snapshot_id", input.jobSnapshotId).maybeSingle(),
   ]);
@@ -131,7 +131,7 @@ export async function POST(request: Request) {
         ...derived.requirement.leafResults.map((leaf) => ({ requirementNodeId: leaf.nodeId, criterionType: (nodes || []).find((node) => node.id === leaf.nodeId)?.criterion_type ?? "UNKNOWN", ...leaf })),
       ],
       resolution_issues: [...new Set(derived.gates.map((gate) => gate.resolutionIssue))],
-      unknown_treatments: [...new Set(derived.gates.map((gate) => gate.unknownTreatment))],
+      unknown_treatments: activeUnknownTreatments(derived.gates),
       satisfaction_paths: derived.requirement.selectedSatisfactionPath ? [{ rootKey: derived.requirement.nodeId, selectedNodeIds: derived.requirement.selectedSatisfactionPath }] : [],
       categorical_evidence_sufficient: derived.usefulness.evidenceSufficient,
       fit_score: derived.fit.score,
@@ -151,7 +151,7 @@ export async function POST(request: Request) {
       version_bundle: derived.versionBundle,
       human_review_id: usefulnessReview.id,
       active_root_keys: derived.gates.map((gate) => gate.rootKey),
-      root_results: derived.gates.map((gate) => ({ rootKey: gate.rootKey, result: gate.result })),
+      root_results: derived.gates.map((gate) => ({ ...gate })),
       calculation_input_sha256: derived.calculationInputSha256,
       calculation_version: MATCHING_RULES_VERSION,
       usefulness_result: derived.usefulness.evidenceSufficient ? "PASS" : derived.usefulness.reason === "HUMAN_REVIEW_REQUIRED" ? "HUMAN_REVIEW" : "FAIL",

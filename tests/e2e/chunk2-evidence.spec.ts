@@ -5,9 +5,8 @@ import { expect, test } from "@playwright/test";
 import { waitForHydration } from "./helpers/hydration";
 
 test("capture Chunk 2 four-step and adaptive/error evidence", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "One Chromium evidence set is sufficient.");
   test.setTimeout(240_000);
-  const output = resolve("evidence/chunk-2/screenshots");
+  const output = testInfo.outputPath("screenshots");
   mkdirSync(output, { recursive: true });
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
@@ -19,21 +18,27 @@ test("capture Chunk 2 four-step and adaptive/error evidence", async ({ page }, t
       await page.screenshot({ path: resolve(output, "390-error-summary.png"), fullPage: true });
     }
     await page.getByLabel("Full name required").fill("Synthetic Customer");
-    await page.getByLabel("Email address required").fill("synthetic@example.invalid");
-    await page.getByLabel("Current resume required").setInputFiles({ name: "synthetic-resume.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7\n%%EOF") });
+    await page.getByLabel("Account access email required").fill("synthetic@example.invalid");
+    await page.getByLabel("Resume required").setInputFiles({ name: "synthetic-resume.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7\n%%EOF") });
     await page.getByRole("button", { name: /save and continue/i }).click();
     await expect(page.getByText("STEP 2 OF 4")).toBeVisible();
     await page.screenshot({ path: resolve(output, `${width}-step-2.png`), fullPage: true });
     await page.getByRole("checkbox", { name: /Preparing reports/ }).first().check();
     await page.getByRole("button", { name: /save and continue/i }).click();
     await expect(page.getByText("STEP 3 OF 4")).toBeVisible();
+    await expect(page.getByText("Excel and spreadsheet tasks")).toHaveCount(0);
+    await page.getByRole("button", { name: "Add experience" }).click();
+    await page.getByLabel("Employer, organization, school or project").fill("Fixture Office");
+    await page.getByLabel("Your actual role or relationship").fill("Office assistant");
+    await page.getByRole("checkbox", { name: "Organized records" }).check();
     await expect(page.getByText("Excel and spreadsheet tasks")).toBeVisible();
+    await page.getByLabel(/I checked for missing or outdated/).check();
     await page.screenshot({ path: resolve(output, `${width}-step-3-adaptive.png`), fullPage: true });
     await page.getByRole("button", { name: /save and continue/i }).click();
     await expect(page.getByText("STEP 4 OF 4")).toBeVisible();
     await page.screenshot({ path: resolve(output, `${width}-step-4.png`), fullPage: true });
     await waitForHydration(page);
     const axe = await new AxeBuilder({ page }).exclude("script").analyze();
-    expect(axe.violations.filter((item) => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
+    expect(axe.violations.filter((item) => ["moderate", "serious", "critical"].includes(item.impact || ""))).toEqual([]);
   }
 });

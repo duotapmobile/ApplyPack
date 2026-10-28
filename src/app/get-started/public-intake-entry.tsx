@@ -30,8 +30,8 @@ export function PublicIntakeEntry() {
         </div>
         <p className="eyebrow">TELL US WHAT FITS</p>
         <h1>Start with the life your next job needs to fit.</h1>
-        <p className="brief-intake-lede">You do not need the perfect job title or a perfectly updated resume. Tell us about your experience, priorities, preferences, and dealbreakers.</p>
-        <div className="brief-order-summary"><strong>One shared profile</strong><span>Use it for the filtered board or the $20 Top 10</span><span>The Top 10 is delivered within 24 hours after intake, payment, and capacity confirmation</span></div>
+        <p className="brief-intake-lede">You do not need a resume or the perfect job title. Use a current or older resume, or build your background with guided questions. Tell us about your experience, priorities, preferences, and dealbreakers.</p>
+        <div className="brief-order-summary"><strong>One private intake</strong><span>Request the $18.99 human-reviewed Top 10</span><span>The 24-hour delivery clock starts after successful payment and complete required inputs</span></div>
         <section className="brief-first-field" aria-labelledby="begin-heading">
           <h2 id="begin-heading">Begin your secure intake.</h2>
           <p>Your progress and documents stay connected to a private guest session. Email verification is not required before checkout.</p>
@@ -39,10 +39,10 @@ export function PublicIntakeEntry() {
           {message ? <p className="form-message" role="alert">{message}</p> : null}
         </section>
         <ol className="brief-intake-stages" aria-label="Four intake stages">
-          <li aria-current="step"><span>1</span><div><strong>Your details</strong><p>Contact and location</p></div></li>
-          <li><span>2</span><div><strong>Your experience</strong><p>Resume and verified background</p></div></li>
-          <li><span>3</span><div><strong>Your fit</strong><p>Priorities, preferences, and dealbreakers</p></div></li>
-          <li><span>4</span><div><strong>Review and payment</strong><p>Confirm the criteria and continue to checkout</p></div></li>
+          <li aria-current="step"><span>1</span><div><strong>Your starting point</strong><p>Contact and optional documents</p></div></li>
+          <li><span>2</span><div><strong>Your direction</strong><p>Work you want and work to avoid</p></div></li>
+          <li><span>3</span><div><strong>Your background</strong><p>Actual experience, education and tasks</p></div></li>
+          <li><span>4</span><div><strong>Requirements and full review</strong><p>Edit and confirm before invitation review</p></div></li>
         </ol>
       </div>
     </main>

@@ -1,6 +1,7 @@
 import "server-only";
 
-import { z } from "zod";
+import { referencePayloadSchema, type ReferencePayload } from "./reference-contract";
+export { referencePayloadSchema, type ReferencePayload } from "./reference-contract";
 import { parsePostgresBytea, postgresBytea } from "@/lib/commerce/server";
 import { remoteKmsAdapter } from "@/lib/security/remote-kms";
 import {
@@ -12,20 +13,6 @@ import {
 import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
-
-export const referencePayloadSchema = z.object({
-  name: z.string().trim().min(1).max(120),
-  title: z.string().trim().min(1).max(120),
-  organization: z.string().trim().min(1).max(160),
-  relationship: z.string().trim().min(1).max(160),
-  email: z.email().max(254),
-  phone: z.string().trim().min(7).max(40),
-  sharedWorkContext: z.string().trim().min(1).max(500),
-  capabilitiesCanVerify: z.array(z.string().trim().min(1).max(120)).min(1).max(12),
-  approvedContextLine: z.string().trim().max(240).nullable().optional(),
-}).strict();
-
-export type ReferencePayload = z.infer<typeof referencePayloadSchema>;
 
 export type StoredReferenceEnvelope = {
   ciphertext: unknown;

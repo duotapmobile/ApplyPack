@@ -32,6 +32,7 @@ export function createSourceAdapter(sourceId: string, runtimeAuthorization?: Run
         authorizationEvidenceId: runtimeAuthorization.id,
         authorizationVersion: runtimeAuthorization.authorizationVersion,
         authorizationAllowedHosts: runtimeAuthorization.allowedHosts,
+        authorizationAllowedActions: runtimeAuthorization.allowedActions,
       };
     } else if (!sourceMayBeAccessedAutomatically(registeredSource)) {
       throw new Error("Source automation is not documentarily authorized.");
