@@ -6289,6 +6289,96 @@ export type Database = {
           },
         ]
       }
+      ap_material_draft_owner_notices: {
+        Row: {
+          customer_id: string
+          delivery_envelope_sha256: string | null
+          draft_version_id: string
+          job_id: string
+          material_line_id: string
+          member_set_sha256: string | null
+          message_id: string
+          packet_sha256: string
+          phase: string
+          ready_at: string
+          recipient_email: string | null
+          source_sha256: string
+          suppressed_at: string | null
+          suppression_reason: string | null
+          template_version: string
+        }
+        Insert: {
+          customer_id: string
+          delivery_envelope_sha256?: string | null
+          draft_version_id: string
+          job_id: string
+          material_line_id: string
+          member_set_sha256?: string | null
+          message_id: string
+          packet_sha256: string
+          phase: string
+          ready_at?: string
+          recipient_email?: string | null
+          source_sha256: string
+          suppressed_at?: string | null
+          suppression_reason?: string | null
+          template_version?: string
+        }
+        Update: {
+          customer_id?: string
+          delivery_envelope_sha256?: string | null
+          draft_version_id?: string
+          job_id?: string
+          material_line_id?: string
+          member_set_sha256?: string | null
+          message_id?: string
+          packet_sha256?: string
+          phase?: string
+          ready_at?: string
+          recipient_email?: string | null
+          source_sha256?: string
+          suppressed_at?: string | null
+          suppression_reason?: string | null
+          template_version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ap_material_draft_owner_notices_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_owner_notices_draft_version_id_fkey"
+            columns: ["draft_version_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_draft_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_owner_notices_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_draft_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_owner_notices_material_line_id_fkey"
+            columns: ["material_line_id"]
+            isOneToOne: false
+            referencedRelation: "ap_material_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ap_material_draft_owner_notices_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: true
+            referencedRelation: "ap_outbox_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ap_material_draft_permits: {
         Row: {
           backend_pid: number
@@ -15134,6 +15224,7 @@ export type Database = {
         Returns: boolean
       }
       ap_capacity_available: { Args: { p_bucket_id: string }; Returns: number }
+      ap_catch_up_owner_draft_notices: { Args: never; Returns: Json }
       ap_checkout_context_allows_rehearsal: { Args: never; Returns: boolean }
       ap_checkout_initiations_requiring_reconciliation: {
         Args: { p_authorization_id?: string; p_limit?: number }
@@ -15865,6 +15956,10 @@ export type Database = {
         Args: { p_request_key: string; p_schedule_id: string }
         Returns: string
       }
+      ap_enqueue_owner_draft_notice: {
+        Args: { p_job_id: string }
+        Returns: number
+      }
       ap_enqueue_research_preparation: {
         Args: { p_request_id: string }
         Returns: string
@@ -16332,6 +16427,32 @@ export type Database = {
         }
         Returns: string[]
       }
+      ap_lock_owner_draft_notice_graph: {
+        Args: { p_job_id: string }
+        Returns: {
+          active_version_id: string | null
+          claim_count: number
+          created_at: string
+          customer_id: string
+          error_code: string | null
+          id: string
+          lease_expires_at: string | null
+          lease_generation: number
+          lease_owner: string | null
+          lease_token: string | null
+          line_revision_id: string
+          material_line_id: string
+          source_snapshot_id: string
+          state: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ap_material_draft_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       ap_lock_research_preparation: {
         Args: { p_preparation_id: string; p_skip_locked?: boolean }
         Returns: {
@@ -16576,6 +16697,43 @@ export type Database = {
         }
         Returns: Json
       }
+      ap_owner_draft_notice_context: {
+        Args: { p_lease_owner: string; p_message_id: string }
+        Returns: {
+          customer_id: string
+          delivery_envelope_sha256: string | null
+          draft_version_id: string
+          job_id: string
+          material_line_id: string
+          member_set_sha256: string | null
+          message_id: string
+          packet_sha256: string
+          phase: string
+          ready_at: string
+          recipient_email: string | null
+          source_sha256: string
+          suppressed_at: string | null
+          suppression_reason: string | null
+          template_version: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ap_material_draft_owner_notices"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      ap_owner_draft_notice_obsolete: {
+        Args: {
+          p_notice: Database["public"]["Tables"]["ap_material_draft_owner_notices"]["Row"]
+        }
+        Returns: string
+      }
+      ap_owner_draft_notices_schema_installed: { Args: never; Returns: boolean }
+      ap_owner_draft_ready_phase: {
+        Args: { p_job_id: string }
+        Returns: string
+      }
       ap_persist_derived_feasibility_assessment: {
         Args: {
           p_request_id: string
@@ -16623,6 +16781,15 @@ export type Database = {
         }
         Returns: Json
       }
+      ap_pin_owner_draft_delivery: {
+        Args: {
+          p_lease_owner: string
+          p_message_id: string
+          p_payload_sha256: string
+          p_recipient_email: string
+        }
+        Returns: Json
+      }
       ap_plan_archive_retention: {
         Args: {
           p_id: string
@@ -16665,6 +16832,14 @@ export type Database = {
           p_review_sha256: string
           p_secret_hash: string
           p_source_sha256: string
+        }
+        Returns: Json
+      }
+      ap_prepare_owner_draft_notification: {
+        Args: {
+          p_lease_owner: string
+          p_message_id: string
+          p_recipient_email: string
         }
         Returns: Json
       }
@@ -17823,6 +17998,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      ap_suppress_owner_draft_notification: {
+        Args: { p_lease_owner: string; p_message_id: string }
+        Returns: Json
+      }
       ap_try_lock_intake_retention_owners: {
         Args: { p_draft_id: string }
         Returns: boolean
@@ -18337,7 +18516,13 @@ export type Database = {
         | "ACCEPTED"
         | "DECLINED"
         | "EXPIRED"
-      ap_outbox_state: "QUEUED" | "SENDING" | "SENT" | "RETRY" | "DEAD_LETTER"
+      ap_outbox_state:
+        | "QUEUED"
+        | "SENDING"
+        | "SENT"
+        | "RETRY"
+        | "DEAD_LETTER"
+        | "SUPPRESSED"
       ap_payment_dispute: "NONE" | "OPEN" | "WON" | "LOST"
       ap_payment_settlement: "UNPAID" | "PROCESSING" | "PAID" | "FAILED"
       ap_presentation_risk: "LOW" | "MEDIUM" | "HIGH" | "NOT_ASSESSED"
@@ -18737,7 +18922,14 @@ export const Constants = {
         "DECLINED",
         "EXPIRED",
       ],
-      ap_outbox_state: ["QUEUED", "SENDING", "SENT", "RETRY", "DEAD_LETTER"],
+      ap_outbox_state: [
+        "QUEUED",
+        "SENDING",
+        "SENT",
+        "RETRY",
+        "DEAD_LETTER",
+        "SUPPRESSED",
+      ],
       ap_payment_dispute: ["NONE", "OPEN", "WON", "LOST"],
       ap_payment_settlement: ["UNPAID", "PROCESSING", "PAID", "FAILED"],
       ap_presentation_risk: ["LOW", "MEDIUM", "HIGH", "NOT_ASSESSED"],

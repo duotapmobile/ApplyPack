@@ -9,7 +9,7 @@ import { verifiedSourceRunSeedFixture } from "./lib/verified-source-run-fixture.
 
 // Destructive operations are pinned to the project's disposable local stack.
 // No database URL, linked project or remote credentials are accepted.
-import { current091LockedPhaseSql, current092LockedPhaseSql, current093LockedPhaseSql, current094LockedPhaseSql, current095LockedPhaseSql, current096LockedPhaseSql, current097LockedPhaseSql, current098LockedPhaseSql, current099LockedPhaseSql, current100LockedPhaseSql, current101LockedPhaseSql, current102LockedPhaseSql, current103LockedPhaseSql, current104LockedPhaseSql, current105LockedPhaseSql } from "./lib/supabase-upgrade-phases.mjs";
+import { current091LockedPhaseSql, current092LockedPhaseSql, current093LockedPhaseSql, current094LockedPhaseSql, current095LockedPhaseSql, current096LockedPhaseSql, current097LockedPhaseSql, current098LockedPhaseSql, current099LockedPhaseSql, current100LockedPhaseSql, current101LockedPhaseSql, current102LockedPhaseSql, current103LockedPhaseSql, current104LockedPhaseSql, current105LockedPhaseSql, current106LockedPhaseSql } from "./lib/supabase-upgrade-phases.mjs";
 
 const predecessors = selectRehearsalPredecessors(process.argv.slice(2));
 const container = "supabase_db_applypack";
@@ -28,6 +28,17 @@ function prepareHistoricalWorkspace(maximumVersion) {
     if (version && version <= maximumVersion) copyFileSync(join(source, "migrations", name), join(target, "migrations", name));
   }
   return historicalWorkspace;
+}
+function ownerNoticeFixture(name) {
+  if (!["owner-draft-notices-upgrade-seed.sql", "owner-draft-notices-upgrade-verify.sql", "owner-draft-notices.sql"].includes(name)) throw new Error("OWNER_NOTICE_FIXTURE_INVALID");
+  const expand = (source, depth = 0) => source.replace(/^\\ir (owner-draft-notices-fixture|employer-rule-review-fixture|reviewed-source-fixture)\.sql\r?$/gm,
+    (_line, helper) => {
+      if (depth >= 3) throw new Error("OWNER_NOTICE_FIXTURE_INCLUDE_DEPTH");
+      return expand(readFileSync(new URL(`../tests/integration/${helper}.sql`, import.meta.url), "utf8"), depth + 1);
+    });
+  const source = expand(readFileSync(new URL(`../tests/integration/${name}`, import.meta.url), "utf8"));
+  if (/^\s*\\/mu.test(source)) throw new Error("OWNER_NOTICE_FIXTURE_INCLUDE_FORBIDDEN");
+  return source;
 }
 function run(command, args, input, includeSuccessfulStderr = false) {
   const result = spawnSync(command, args, {
@@ -60,8 +71,9 @@ try {
   const resume103Workspace = prepareHistoricalWorkspace("202610260103");
   const rule104Workspace = prepareHistoricalWorkspace("202610270104");
   const source105Workspace = prepareHistoricalWorkspace("202610270105");
+  const notice106Workspace = prepareHistoricalWorkspace("202610280106");
   for (const predecessor of predecessors) {
-    console.log(`Running isolated local upgrade ${predecessor} to 202610270105.`);
+    console.log(`Running isolated local upgrade ${predecessor} to 202610280106.`);
     run("supabase", ["db", "reset", "--local", "--no-seed", "--version", predecessor]);
     sql(`
       do $$ begin
@@ -248,6 +260,7 @@ try {
     const rulePreservation = sql(readFileSync(new URL("../tests/integration/employer-rule-review-upgrade-preservation.sql", import.meta.url), "utf8"));
     if (!rulePreservation.includes("EMPLOYER_RULE_REVIEW_104_UPGRADE_PRESERVED")) throw new Error("Employer rule104 historical preservation marker missing");
     }
+    if (predecessor <= "202610270104") {
     sql(current104LockedPhaseSql);
     const historical104 = run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs", "--historical-104"]);
     if (!historical104.includes("Database contract fixtures passed: 21. Schema phase: 202610270104.")) throw new Error("Historical104 lifecycle proof missing");
@@ -257,10 +270,19 @@ try {
     run("supabase", ["migration", "up", "--local", "--workdir", source105Workspace]);
     const sourcePreservation = sql(sourceBindingFixture, { includeNotices: true });
     if (!sourcePreservation.includes("VERIFIED_SOURCE_RUN_BINDING_105_UPGRADE_PRESERVED")) throw new Error("Source105 historical preservation marker missing");
+    }
     sql(current105LockedPhaseSql);
+    const historical105 = run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs", "--historical-105"]);
+    if (!historical105.includes("Database contract fixtures passed: 22. Schema phase: 202610270105.")) throw new Error("Historical105 lifecycle proof missing");
+    const noticeSeed = sql(ownerNoticeFixture("owner-draft-notices-upgrade-seed.sql"), { includeNotices: true });
+    if (!noticeSeed.includes("OWNER_DRAFT_READY_NOTICES_105_SEEDED")) throw new Error("Owner notice106 historical seed marker missing");
+    run("supabase", ["migration", "up", "--local", "--workdir", notice106Workspace]);
+    const noticePreservation = sql(ownerNoticeFixture("owner-draft-notices-upgrade-verify.sql"), { includeNotices: true });
+    if (!noticePreservation.includes("OWNER_DRAFT_READY_NOTICES_106_UPGRADE_PRESERVED")) throw new Error("Owner notice106 historical preservation marker missing");
+    sql(current106LockedPhaseSql);
     const result = sql(`
       do $$ begin
-        if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610270105'
+        if public.ap_manual_launch_schema_readiness()->>'requiredSchemaVersion' is distinct from '202610280106'
           or public.ap_manual_launch_schema_readiness()->>'ready' is distinct from 'true'
           or not public.ap_one_off_retention_schema_installed()
           or not public.ap_material_draft_pair_schema_installed()
@@ -276,6 +298,7 @@ try {
           or not public.ap_material_clarification_resume_schema_installed()
           or not public.ap_employer_rule_review_schema_installed()
           or not public.ap_verified_source_run_schema_installed()
+          or not public.ap_owner_draft_notices_schema_installed()
           or not exists(select 1 from public.ap_research_preparation_configuration where singleton and not enabled)
           or not public.ap_protected_archive_schema_installed()
           or not exists(select 1 from public.ap_archive_lifecycle_configuration where singleton and not enabled)
@@ -285,7 +308,7 @@ try {
           or public.ap_manual_launch_schema_readiness()->'requiredMigrations' is distinct from jsonb_build_array(
             '202610040077','202610040078','202610040079','202610040080','202610190081',
             '202610190082','202610190083','202610190084','202610220085','202610230086','202610240087',
-            '202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102','202610260103','202610270104','202610270105')
+            '202610250088','202610250089','202610250090','202610250091','202610250092','202610250093','202610250094','202610250095','202610250096','202610250097','202610250098','202610250099','202610250100','202610250101','202610260102','202610260103','202610270104','202610270105','202610280106')
           or not exists(select 1 from public.ap_checkout_mode_configuration where singleton and mode='LOCKED')
           or not exists(select 1 from public.ap_commerce_configuration where singleton and not checkout_enabled)
           or exists(select 1 from public.ap_checkout_initiations)
@@ -305,13 +328,18 @@ try {
           or has_table_privilege('service_role','public.ap_aws_temporary_cleanup','DELETE')
           then raise exception 'rehearsal_upgrade_contract_failed'; end if;
       end $$;
-       select 'REHEARSAL_UPGRADE_${predecessor}_TO_105_OK';
+       select 'REHEARSAL_UPGRADE_${predecessor}_TO_106_OK';
     `);
-    if (!result.includes(`REHEARSAL_UPGRADE_${predecessor}_TO_105_OK`)) throw new Error("Upgrade proof marker missing");
-    const lifecycle = run(process.execPath, ["scripts/run-supabase-db-tests-v2.mjs"]);
-    if (!lifecycle.includes("ONE_OFF_SERVICE_RETENTION_OK")
-      || !lifecycle.includes("Database contract fixtures passed: 22. Schema phase: 202610270105.")) throw new Error("Upgraded current schema fixture proof missing");
-    console.log(`PASS: isolated local upgrade ${predecessor} to 202610270105; paid history preserved; current clarification and reviewed case-state fixtures passed; purchasing remains locked.`);
+    if (!result.includes(`REHEARSAL_UPGRADE_${predecessor}_TO_106_OK`)) throw new Error("Upgrade proof marker missing");
+    // The retained105 graph contains actionable owner work. Legacy singleton
+    // queue fixtures run on the fresh current database in required database-core;
+    // keep those obligations here and exercise the106 lifecycle around them.
+    const ownerLifecycle = sql(ownerNoticeFixture("owner-draft-notices.sql"), { includeNotices: true });
+    if (!ownerLifecycle.includes("OWNER_DRAFT_READY_NOTICES_CONTRACT_OK")) throw new Error("Retained owner notice lifecycle proof missing");
+    const retainedAfterLifecycle = sql(ownerNoticeFixture("owner-draft-notices-upgrade-verify.sql"), { includeNotices: true });
+    if (!retainedAfterLifecycle.includes("OWNER_DRAFT_READY_NOTICES_106_UPGRADE_PRESERVED")) throw new Error("Post-lifecycle paid history proof missing");
+    sql(current106LockedPhaseSql);
+    console.log(`PASS: isolated local upgrade ${predecessor} to 202610280106; paid history preserved before and after owner notice lifecycle; purchasing remains locked. Fresh current contracts are required separately by database-core.`);
   }
   // Positive checkout concurrency belongs to the unchanged historical contract.
   // The historical087 fixture independently proves missing executors block checkout.
@@ -332,5 +360,5 @@ try {
 }
 if (failure) throw failure;
 console.log(process.argv.length === 2
-  ? "All twenty-five launch upgrade predecessors passed; latest disposable local schema restored."
+  ? "All twenty-six launch upgrade predecessors passed; latest disposable local schema restored."
   : `Selected launch upgrade predecessor ${predecessors[0]} passed; latest disposable local schema restored.`);

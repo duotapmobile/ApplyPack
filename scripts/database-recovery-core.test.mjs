@@ -47,7 +47,7 @@ function fixture() {
       sha256: object.expectedSha256, size: object.size, archiveVersionId: `existing-file-version-${index}`,
       archiveKey: `objects/${object.bucket}/${sha256(`${object.bucket}\0${object.key}\0${object.sourceVersion}`)}` })) };
   const fileDigest = canonicalSha256(fileManifest);
-  const snapshot = { sourceProjectRef: DATABASE_RECOVERY.projectRef, releaseSha: RELEASE, schemaVersion: "202610270105",
+  const snapshot = { sourceProjectRef: DATABASE_RECOVERY.projectRef, releaseSha: RELEASE, schemaVersion: "202610280106",
     startedAt: stamp(-60000), postgresVersion: "17.6", pgDumpVersion: "17.11", snapshotId: "00000003-0000001B-1",
     coverage: { schemas: ["public", "auth", "storage", "supabase_migrations"], allTablesReadable: true, rowSecurityBypass: true,
       roleDefinitionsIncluded: true, rolePasswordsIncluded: false, providerConfigurationIncluded: false } };
@@ -121,6 +121,7 @@ for (const [label, mutate] of [
   ["wrong source project", (c) => { c.snapshot.sourceProjectRef = "fmugizadzdnqfckujqlw"; }],
   ["wrong release", (c) => { c.snapshot.releaseSha = "b".repeat(40); }],
   ["old schema", (c) => { c.snapshot.schemaVersion = "202610230086"; }],
+  ["historical105 is not current writer authority", (c) => { c.snapshot.schemaVersion = "202610270105"; }],
   ["new unknown schema", (c) => { c.snapshot.schemaVersion = "202610250088"; }],
   ["unsupported server", (c) => { c.snapshot.postgresVersion = "18.1"; }],
   ["unsupported dump client", (c) => { c.snapshot.pgDumpVersion = "16.6"; }],

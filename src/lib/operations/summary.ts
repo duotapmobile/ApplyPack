@@ -1,4 +1,5 @@
 import "server-only";
+import { ownerDraftNotificationReady } from "@/lib/commerce/owner-draft-notification";
 import { AWS_TEMPORARY_CLEANUP_MAX_OVERDUE_MS } from "@/lib/files/aws-temporary-cleanup";
 
 import { checkDocumentRendererReadiness } from "./renderer-readiness";
@@ -24,6 +25,7 @@ export type OperationsSummary = {
     database: boolean;
     payments: boolean;
     email: boolean;
+    ownerNoticeDestination?: boolean;
     fileSafety: boolean;
     encryption?: boolean;
     documentRendering?: boolean;
@@ -361,6 +363,7 @@ export async function collectOperationsSummary(admin: AdminClient, now = new Dat
       // manual-launch dependency.
       payments: payment.commerceConfigured,
       email: recentEmailVerification(process.env, now),
+      ownerNoticeDestination: ownerDraftNotificationReady(),
       fileSafety,
       encryption,
       documentRendering,

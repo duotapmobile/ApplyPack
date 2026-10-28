@@ -17,8 +17,10 @@ test("097 is separately locked and096 remains an exact historical phase", () => 
     assert(current097LockedPhaseSql.includes(fragment), fragment);
 });
 test("the encrypted request metadata is covered by whole database recovery without inventing a file alias", () => {
-  assert.equal(DATABASE_RECOVERY.schemaVersion, "202610270105");
-  assert.equal(DATABASE_RECOVERY_SOURCE.schemaVersion, "202610270105");
+  assert.equal(DATABASE_RECOVERY.schemaVersion, "202610280106");
+  assert.equal(DATABASE_RECOVERY_SOURCE.schemaVersion, "202610280106");
+  assert(DATABASE_RECOVERY_REQUIRED_TABLES.includes("ap_material_draft_owner_notices"));
+  assert(!RECOVERY_TABLES.includes("ap_material_draft_owner_notices"));
   assert(DATABASE_RECOVERY_REQUIRED_TABLES.includes("ap_material_draft_change_requests"));
   assert(!RECOVERY_TABLES.includes("ap_material_draft_change_requests"));
   const migration = read("../supabase/migrations/202610250097_material_draft_change_requests.sql");
@@ -27,9 +29,10 @@ test("the encrypted request metadata is covered by whole database recovery witho
 });
 test("current PG17 inputs include the request fixture before independently connected races", () => {
   const input = loadRetentionPostgresInputs();
-  assert.equal(input.migrationCount, 110);
+  assert.equal(input.migrationCount, 111);
   const fixtures = input.hashes.filter((entry) => entry.kind === "fixture").map((entry) => entry.name);
-  assert.equal(fixtures.length, 27);
+  assert.equal(fixtures.length, 29);
+  for (const name of ["owner-draft-notices.sql", "owner-draft-notices-races.sql"]) assert(fixtures.includes(name), name);
   assert(fixtures.includes("protected-archive-limited-role.sql"));
   assert(fixtures.includes("material-draft-change-requests.sql"));
   assert(fixtures.indexOf("material-draft-change-requests.sql") < fixtures.indexOf("service-retention-races.sql"));
@@ -58,10 +61,10 @@ test("required CI and Windows self-test controls include097 without replacing096
   for (const id of ["202610250095", "202610250096", "202610250097"]) assert(rollback.includes(`'"${id}"'`));
 });
 
-test("all final upgrade assertions require103 after the unchanged historical proofs", () => {
+test("all final upgrade assertions require106 after the unchanged historical proofs", () => {
   for (const file of ["run-supabase-legal-upgrade-test.mjs", "run-supabase-inventory-upgrade-test.mjs", "run-supabase-legacy-board-upgrade-test.mjs"]) {
     const source = read(`./${file}`);
-    assert(source.includes("current105LockedPhaseSql"), file);
+    assert(source.includes("current106LockedPhaseSql"), file);
     assert(!source.includes("current095LockedPhaseSql"), file);
     assert(source.includes("202610230086" ) || source.includes("historical086PhaseSql"), file);
   }

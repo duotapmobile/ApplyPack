@@ -5,17 +5,18 @@ import { PassThrough, Writable } from "node:stream";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { createPinnedPostgresTools, databaseSnapshotQuery, DATABASE_POSTGRES_PATHS } from "./lib/database-recovery-pg-tools.mjs";
-import { RECOVERY_PROJECT } from "./lib/protected-recovery-protocol.mjs";
+import { RECOVERY_PROJECT, RECOVERY_TABLES } from "./lib/protected-recovery-protocol.mjs";
 import { DATABASE_RECOVERY_REQUIRED_TABLES } from "./lib/database-recovery-source.mjs";
 
 test("snapshot inspection requires the database-only workflow tables separately from file aliases", () => {
   const sql = databaseSnapshotQuery("inspect");
-  assert.equal(DATABASE_RECOVERY_REQUIRED_TABLES.length, 36);
-  assert.equal(new Set(DATABASE_RECOVERY_REQUIRED_TABLES).size, 36);
+  assert.equal(DATABASE_RECOVERY_REQUIRED_TABLES.length, 37);
+  assert.equal(new Set(DATABASE_RECOVERY_REQUIRED_TABLES).size, 37);
+  assert.equal(RECOVERY_TABLES.includes("ap_material_draft_owner_notices"), false);
   for (const table of ["ap_service_error_contracts", "ap_service_error_reports", "ap_service_error_decisions",
     "ap_service_error_affected_members", "ap_material_draft_change_requests", "ap_archive_writer_runs", "ap_archive_retention_runs", "ap_archive_retention_versions", "ap_archive_lifecycle_configuration", "ap_archive_fence_relations", "ap_archive_fence_function_contracts", "ap_service_repair_jobs", "ap_service_repair_versions", "ap_service_repair_files", "ap_service_repair_releases", "ap_service_repair_case_events", "ap_service_repair_feedback",
     "ap_intake_clarifications", "ap_intake_inherited_documents", "ap_intake_clarification_answers",
-    "ap_intake_account_claims", "ap_intake_clarification_notices"]) assert(DATABASE_RECOVERY_REQUIRED_TABLES.includes(table));
+    "ap_intake_account_claims", "ap_intake_clarification_notices", "ap_material_draft_owner_notices"]) assert(DATABASE_RECOVERY_REQUIRED_TABLES.includes(table));
   for (const table of DATABASE_RECOVERY_REQUIRED_TABLES) assert(sql.includes(`'${table}'`));
   assert.match(sql, /'missingRequiredTables'/u);
   assert.match(sql, /n\.nspname='public' and c\.relname=name and c\.relkind in \('r','p'\)/u);

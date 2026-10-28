@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import { z } from "zod";
 import type { Database } from "@/lib/database.types";
 import type { VerifiedPaidPackSourceSetup } from "./verified-paid-pack-source-setup";
@@ -12,6 +12,8 @@ import { createDraftOwnerView } from "@/lib/documents/draft-owner-view";
 import { createDraftChangePort } from "@/lib/documents/draft-change-supabase";
 import { readEncryptedDraftPayload } from "@/lib/documents/draft-packet-worker";
 import { loadDraftingEvidencePacket } from "@/lib/documents/drafting-evidence-server";
+import * as packetLoader from "@/lib/documents/drafting-evidence-server";
+import * as localPostgres from "./research-local-postgres";
 import { serializeDraftingEvidencePacket } from "@/lib/documents/drafting-evidence";
 import { readStoredDraftRenderSource } from "@/lib/documents/draft-render-source-storage";
 import { serializeDraftRenderSource } from "@/lib/documents/draft-render-source";
@@ -61,6 +63,7 @@ export async function setupVerifiedPaidPackLocalDocuments(prior: VerifiedPaidPac
     'capacity',(select jsonb_agg(to_jsonb(x) order by id) from public.ap_capacity_allocations x where customer_id='${customerId}'),
     'capacityMembers',(select jsonb_agg(to_jsonb(x) order by id) from public.ap_capacity_allocation_members x where material_line_id='${lineId}'),
     'notices',(select jsonb_agg(to_jsonb(x) order by id) from public.ap_outbox_messages x where customer_id='${customerId}'),
+    'emailEvents',(select jsonb_agg(to_jsonb(x) order by x.id) from public.email_events x join public.orders o on o.id=x.order_id where o.customer_id='${customerId}'),
     'deadlines',(select jsonb_agg(to_jsonb(x) order by id) from public.ap_scheduled_jobs x where
       (reference_id='${lineId}' and job_kind='MATERIAL_LINE_DEADLINE') or reference_id='${uuid(graph.searchServiceId)}'),
     'snapshot',(select to_jsonb(x) from public.ap_intake_snapshots x where id='${uuid(graph.intake.snapshotId)}'),
@@ -95,9 +98,62 @@ export async function setupVerifiedPaidPackLocalDocuments(prior: VerifiedPaidPac
     expect(promotedState.versions[0]).toEqual({ ...before.versions[0], invalidated_at: promotedState.versions[0].invalidated_at });
     expect(promotedState.versions[0].invalidated_at).not.toBeNull();
     expect(promotedState.job).toMatchObject({ active_version_id: reviewedVersionId, state: "SOURCE_READY", lease_token: null, lease_expires_at: null });
-    const detail = await view.detail(jobId, new AbortController().signal);
-    expect(detail).toMatchObject({ status: "AVAILABLE", kind: "RENDER_SOURCE", versionId: reviewedVersionId, dueAt: pack.revision.due_at,
+    // Observe the original reads only. Return each original promise unchanged;
+    // observing a Supabase thenable again would issue a second SQL request.
+    type ReadObservation = { kind: "PACKET" | "CONTEXT"; outcome: "PENDING" | "FULFILLED" | "REJECTED";
+      elapsedMs: number | null; sha256?: string | null; errorName?: string; errorCode?: string };
+    const reads: ReadObservation[] = []; let observedCalls = 0, diagnosticErrors = 0;
+    const safeHash = (value: unknown) => typeof value === "string" && /^[a-f0-9]{64}$/u.test(value) ? value : null;
+    const safeFailure = (error: unknown) => {
+      const name = error instanceof Error && ["Error", "AbortError", "DraftingEvidenceError"].includes(error.name) ? error.name : "OTHER_ERROR";
+      const allowed = new Set(["DRAFTING_EVIDENCE_READ_ABORTED", "DRAFTING_EVIDENCE_READ_CHANGED", "DRAFTING_EVIDENCE_SOURCE_UNAVAILABLE",
+        "DRAFTING_EVIDENCE_SHAPE_INVALID", "DRAFTING_EVIDENCE_REQUIRED_REFERENCE_CLARIFICATION", "local_pg_timeout", "local_pg_unconfirmed_close"]);
+      const code = error instanceof Error && allowed.has(error.message) ? error.message
+        : error instanceof Error && "code" in error && ["P0001", "57014", "55P03", "40001", "40P01"].includes(String(error.code))
+          ? String(error.code) : "OTHER_ERROR";
+      return { errorName: name, errorCode: code };
+    };
+    const observe = <T>(kind: ReadObservation["kind"], operation: () => Promise<T>, digest: (value: T) => string | null): Promise<T> => {
+      const started = performance.now(), row: ReadObservation = { kind, outcome: "PENDING", elapsedMs: null };
+      observedCalls += 1; if (reads.length < 8) reads.push(row);
+      const rejected = (error: unknown) => Object.assign(row, { outcome: "REJECTED", elapsedMs: Math.round(performance.now() - started), ...safeFailure(error) });
+      try {
+        const pending = operation();
+        void pending.then(value => { Object.assign(row, { outcome: "FULFILLED", elapsedMs: Math.round(performance.now() - started), sha256: digest(value) }); }, rejected)
+          .catch(() => { diagnosticErrors += 1; }); // Observe only this derived diagnostic promise; the application receives the original.
+        return pending;
+      } catch (error) { rejected(error); throw error; }
+    };
+    const originalLoad = packetLoader.loadDraftingEvidencePacket, originalSql = localPostgres.researchLocalSql;
+    const loaderSpy = vi.spyOn(packetLoader, "loadDraftingEvidencePacket").mockImplementation((...args) =>
+      observe("PACKET", () => originalLoad(...args), packet => safeHash(packet.packetSha256)));
+    const contextSqlMarker = 'select to_jsonb(public."ap_material_draft_context_sha256"(';
+    const sqlSpy = vi.spyOn(localPostgres, "researchLocalSql").mockImplementation((...args) => {
+      if (!args[1].includes(contextSqlMarker)) return originalSql(...args);
+      return observe("CONTEXT", () => originalSql(...args), rows => {
+        try { const value: unknown = rows.length === 1 ? JSON.parse(rows[0]) : null; return safeHash(value); } catch { return null; }
+      });
+    });
+    const detailStarted = performance.now();
+    let loaderCalls = 0, contextCalls = 0;
+    const detail = await (async () => {
+      try { return await view.detail(jobId, new AbortController().signal); }
+      finally {
+        loaderCalls = loaderSpy.mock.calls.length;
+        contextCalls = sqlSpy.mock.calls.filter(args => args[1].includes(contextSqlMarker)).length;
+        sqlSpy.mockRestore(); loaderSpy.mockRestore();
+      }
+    })();
+    const detailReads = { detailElapsedMs: Math.round(performance.now() - detailStarted), status: detail.status,
+      expectedPacketSha256: safeHash(promotedState.versions[1].packet_sha256), expectedContextSha256: safeHash(promotedState.versions[1].context_sha256),
+      loaderCalls, contextCalls, observedCalls, diagnosticErrors, observationsTruncated: observedCalls > reads.length, reads };
+    process.stdout.write("OWNER_POST_PROMOTION_DETAIL_DIAGNOSTIC " + JSON.stringify(detailReads) + "\n");
+    expect(detail, JSON.stringify(detailReads)).toMatchObject({ status: "AVAILABLE", kind: "RENDER_SOURCE", versionId: reviewedVersionId, dueAt: pack.revision.due_at,
       canPromote: false, canReviewWording: true, wordingReviewed: false, files: [], canApprove: false, canSend: false });
+    expect(loaderCalls).toBe(1); expect(contextCalls).toBeGreaterThanOrEqual(2);
+    expect(observedCalls).toBe(loaderCalls + contextCalls); expect(detailReads.observationsTruncated).toBe(false);
+    expect(diagnosticErrors).toBe(0);
+    expect(reads.every(row => row.outcome === "FULFILLED")).toBe(true);
     if (detail.status !== "AVAILABLE") throw new Error("render_source_owner_view_missing");
     expect(detail.questions.items.map(x => x.id)).toEqual(prior.detail.questions.items.map(x => x.id));
     expect(detail.claims.length).toBeGreaterThan(0);
@@ -156,11 +212,25 @@ export async function setupVerifiedPaidPackLocalDocuments(prior: VerifiedPaidPac
       const after = await view.detail(jobId, new AbortController().signal);
       expect(after).toMatchObject({ status: "AVAILABLE", kind: "RENDER_SOURCE", state: "SOURCE_READY", dueAt: pack.revision.due_at,
         wordingReviewed: true, files: [], canApprove: false, canSend: false });
+      expect(after.status === "AVAILABLE" ? after.ownerNotices : null).toEqual({ status: "AVAILABLE", versionId: reviewedVersionId, notices: [] });
+      // This fresh scenario deliberately left the automatic proposal notice
+      // unsubmitted. Actual owner promotion made its original version obsolete.
+      const beforeSuppression = await history(), suppressed = await prior.noticeProof.suppressAfterPromotion();
+      const afterSuppression = await history();
+      expect({ ...afterSuppression, notices: beforeSuppression.notices }).toEqual(beforeSuppression);
+      expect(afterSuppression.notices).toHaveLength(beforeSuppression.notices.length);
+      expect(afterSuppression.notices.filter((row: { id: string }) => row.id !== suppressed.message.id))
+        .toEqual(beforeSuppression.notices.filter((row: { id: string }) => row.id !== suppressed.message.id));
+      expect(afterSuppression.notices.find((row: { id: string }) => row.id === suppressed.message.id)).toEqual(suppressed.message);
+      expect(await state()).toEqual(beforeLocalRender);
+      expect(boundary.mailRejections).toEqual([]);
+      expect(boundary.mailInvocations).toBe(boundary.mailAttempts.length);
       const receipt = { jobId, lineId, revisionId, versionId: reviewedVersionId, packetSha256: packet.packetSha256,
         proposalSourceSha256: generated.sourceSha256, renderSourceSha256: promoted.result.sourceSha256,
         reviewSha256: wording.result.reviewSha256, originalDueAt: pack.revision.due_at, rendererIdentity: input.localRendererIdentity,
         renderingBoundary: "LOCAL_QA", simulatedOwnerDecisions: true, humanAcceptance: false, files,
-        registeredFiles: 0, approvedPairs: 0, customerDeliveries: 0, realProviderCalls: 0, hostedProof: false };
+        registeredFiles: 0, approvedPairs: 0, customerDeliveries: 0, realProviderCalls: 0, hostedProof: false,
+        ownerNotice: { messageId: suppressed.message.id, state: "SUPPRESSED", providerSubmissions: 0, inboxDeliveryProven: false } };
       await writeFile(join(input.evidenceDirectory, "local-doc-receipt.json"), JSON.stringify(receipt, null, 2) + "\n", { flag: "wx" });
       process.stdout.write("PAID_PACK_OWNER_LOCAL_DOCUMENTS_RECEIPT " + JSON.stringify(receipt) + "\n");
       completed = true;

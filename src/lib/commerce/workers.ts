@@ -177,9 +177,14 @@ async function handleInvalidatedCheckout(admin: AdminClient, job: ScheduledJob, 
 
 async function handleOutboxSchedule(admin: AdminClient, job: ScheduledJob, owner: string) {
   const { data: message, error } = await admin.from("ap_outbox_messages")
-    .select("state,next_attempt_at").eq("id", job.reference_id).maybeSingle();
+    .select("state,next_attempt_at,message_kind,provider_message_id,reconciliation_state").eq("id", job.reference_id).maybeSingle();
   if (error || !message) throw error || new Error("outbox_schedule_message_missing");
   if (["SENT", "DEAD_LETTER"].includes(message.state)) return completeExternal(admin, job, owner);
+  if (message.state === "SUPPRESSED") {
+    if (message.message_kind !== "OWNER_DRAFT_REVIEW_REQUIRED" || message.provider_message_id !== null
+      || message.reconciliation_state !== "NOT_REQUIRED") throw new Error("outbox_suppression_invalid");
+    return completeExternal(admin, job, owner);
+  }
   return retryExternal(admin, job, owner, "OUTBOX_NOT_TERMINAL", message.next_attempt_at || scheduledRetryAt(job.attempts));
 }
 

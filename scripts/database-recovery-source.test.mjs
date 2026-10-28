@@ -10,7 +10,7 @@ const SHA = "a".repeat(40); const HASH = "b".repeat(64);
 const runtime = { schemaVersion: "applypack-database-recovery-runtime-v1", postgresMajor: 17, clientVersion: "17.11",
   baseImageDigest: `sha256:${HASH}`, psqlSha256: HASH, pgDumpSha256: HASH };
 const target = { id: "production-read-only-export", sourceProjectRef: RECOVERY_PROJECT, host: `db.${RECOVERY_PROJECT}.supabase.co`, port: 5432,
-  database: "postgres", user: "applypack_recovery_exporter", caSha256: HASH, schemaVersion: "202610270105", runtimeManifestSha256: recoveryCanonicalSha256(runtime) };
+  database: "postgres", user: "applypack_recovery_exporter", caSha256: HASH, schemaVersion: "202610280106", runtimeManifestSha256: recoveryCanonicalSha256(runtime) };
 function registration(overrides = {}) {
   const registry = { version: 1, targets: [structuredClone(target)] };
   const environment = { APP_DATABASE_BACKUP_ENABLED: "true", APP_DEPLOYMENT_ENV: "production", APP_EXPECTED_RELEASE_SHA: SHA,
@@ -64,6 +64,11 @@ test("only a separately registered enabled production read target is accepted", 
   assert.throws(() => validateDatabaseRecoveryConfiguration(disabled), /DISABLED/u);
   const empty = registration(); empty.registry.targets = []; empty.environment.APP_DATABASE_BACKUP_REGISTRY_SHA256 = recoveryCanonicalSha256(empty.registry);
   assert.throws(() => validateDatabaseRecoveryConfiguration(empty), /TARGET_UNREGISTERED/u);
+});
+test("a historical105 registration cannot authorize a current106 export", () => {
+  const valueSet = registration(); valueSet.registry.targets[0].schemaVersion = "202610270105";
+  valueSet.environment.APP_DATABASE_BACKUP_REGISTRY_SHA256 = recoveryCanonicalSha256(valueSet.registry);
+  assert.throws(() => validateDatabaseRecoveryConfiguration(valueSet), /TARGET_IDENTITY/u);
 });
 for (const [field, value] of Object.entries({ sourceProjectRef: "fmugizadzdnqfckujqlw", host: "localhost", port: 6543, user: "postgres", schemaVersion: "202610230086" })) {
   test(`registration rejects a changed ${field}`, () => {

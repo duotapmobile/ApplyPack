@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { HISTORICAL_086_LEGAL_BINDING, LAUNCH_LEGAL_BINDING } from "./launch-legal-contract.mjs";
-import { current105LockedPhaseSql } from "./lib/supabase-upgrade-phases.mjs";
+import { current106LockedPhaseSql } from "./lib/supabase-upgrade-phases.mjs";
 
 const fixture = fileURLToPath(new URL("../tests/integration/legal-receipt-074-fixture.sql", import.meta.url));
 const verify = fileURLToPath(new URL("../tests/integration/legal-receipt-076-verify.sql", import.meta.url));
@@ -108,7 +108,7 @@ try {
   verifyBinding(currentVerify, LAUNCH_LEGAL_BINDING, "LEGAL_ACCEPTANCE_087_UPGRADE_OK");
   // The confirmed-intake controls must preserve prior legal episodes exactly.
   run("supabase", ["migration", "up", "--local"], undefined, false);
-  sqlText(current105LockedPhaseSql);
+  sqlText(current106LockedPhaseSql);
   verifyBinding(currentVerify, LAUNCH_LEGAL_BINDING, "LEGAL_ACCEPTANCE_087_UPGRADE_OK");
 } catch (error) {
   failure = error;

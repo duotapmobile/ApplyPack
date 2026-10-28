@@ -17,7 +17,8 @@ const tables = new Set(["profiles", "ap_intake_snapshots", "ap_candidate_facts",
   "ap_employer_submission_rules", "ap_fact_review_history", "ap_material_checkout_intents", "ap_material_checkout_items",
   "ap_material_checkout_references", "ap_material_draft_jobs", "ap_material_draft_versions", "ap_material_line_revisions",
   "ap_material_listing_checks", "ap_material_purchases", "ap_payment_attempts",
-  "ap_material_draft_runtime", "ap_material_draft_policies", "ap_material_draft_attempts", "ap_material_draft_members"]);
+  "ap_material_draft_runtime", "ap_material_draft_policies", "ap_material_draft_attempts", "ap_material_draft_members",
+  "ap_material_draft_owner_notices", "ap_outbox_messages", "email_events"]);
 const rpcNames = new Set(["ap_claim_research_preparation", "ap_prepare_automatic_research", "ap_bind_prepared_research_run", "ap_finish_research_preparation_check",
   "ap_research_snapshot_current", "ap_promote_prepared_research_observation", "ap_complete_prepared_research_review", "ap_research_preparation_ready",
   "ap_enqueue_due_job_source_syncs", "ap_claim_job_source_syncs", "ap_renew_job_source_sync_lease", "ap_archive_source_attempt", "ap_finalize_job_source_run",
@@ -42,7 +43,8 @@ for (const name of ["ap_owned_intake_draft_context", "ap_owned_intake_drafts", "
   "ap_attach_material_draft_packet", "ap_begin_material_draft_request", "ap_assert_material_draft_dispatch_current",
   "ap_observe_material_draft_response", "ap_record_material_draft_result", "ap_fail_material_draft_job",
   "ap_material_draft_change_evidence", "ap_require_material_reviewer",
-  "ap_revise_material_draft_source", "ap_record_material_draft_claim_review"]) rpcNames.add(name);
+  "ap_revise_material_draft_source", "ap_record_material_draft_claim_review",
+  "ap_prepare_owner_draft_notification", "ap_pin_owner_draft_delivery", "ap_suppress_owner_draft_notification"]) rpcNames.add(name);
 const ident = (value: string) => { if (!/^[a-z_][a-z0-9_]*$/u.test(value)) throw new Error("local_identifier_rejected"); return `"${value}"`; };
 const literal = (value: unknown): string => value === null ? "null" : `'${String(value).replaceAll("'", "''")}'`;
 const json = (value: unknown) => `${literal(JSON.stringify(value))}::jsonb`;
@@ -148,8 +150,15 @@ export async function createResearchLocalDatabase() {
         if (!tables.has(name)) throw new Error(`local_table_rejected:${name}`);
         const params = url.searchParams, select = params.get("select") || "*", where = predicate(params);
         const conflict = params.get("on_conflict");
-        if (conflict && (name !== "search_candidates" || request.method !== "POST" || conflict !== "search_order_id,job_id"
-          || !request.headers.get("prefer")?.split(",").includes("resolution=ignore-duplicates"))) throw new Error("local_upsert_rejected");
+        const preferences = request.headers.get("prefer")?.split(",") ?? [];
+        const searchUpsert = name === "search_candidates" && request.method === "POST" && conflict === "search_order_id,job_id"
+          && preferences.includes("resolution=ignore-duplicates");
+        const emailUpsert = name === "email_events" && request.method === "POST" && conflict === "idempotency_key"
+          && preferences.includes("resolution=merge-duplicates");
+        if (conflict && !searchUpsert && !emailUpsert) throw new Error("local_upsert_rejected");
+        if (name === "email_events" && !(emailUpsert && [...params.keys()].every(key => key === "on_conflict")
+          || request.method === "GET" && select === "status" && [...params.keys()].every(key => ["select", "idempotency_key"].includes(key))
+            && params.get("idempotency_key")?.startsWith("eq.search_qa_ready/"))) throw new Error("local_email_event_operation_rejected");
         if (request.method === "HEAD") {
           if (request.headers.get("prefer") !== "count=exact" || params.has("columns")) throw new Error("local_count_request_rejected");
           const count = await sql(`select count(*)::integer from public.${ident(name)}${where}`);
@@ -160,12 +169,18 @@ export async function createResearchLocalDatabase() {
         if (["POST", "PATCH"].includes(request.method)) {
           const body = await request.json(), records = Array.isArray(body) ? body : [body];
           const keys = Object.keys(records[0]); if (!keys.length || records.some(row => Object.keys(row).join() !== keys.join())) throw new Error("local_mutation_shape");
+          if (emailUpsert && (records.length !== 1 || !["order_id", "recipient", "template", "status", "idempotency_key"].every(key => keys.includes(key))
+            || keys.some(key => !["order_id", "recipient", "template", "status", "idempotency_key", "provider_message_id"].includes(key))
+            || records[0].template !== "search_qa_ready" || !["sent", "failed", "skipped"].includes(records[0].status)
+            || records[0].idempotency_key !== `search_qa_ready/${records[0].order_id}`)) throw new Error("local_email_event_shape_rejected");
           if (params.has("columns")) {
             const declared = JSON.parse(`[${params.get("columns")}]`);
             if (!Array.isArray(declared) || declared.length !== keys.length || declared.some((key, index) => key !== keys[index])) throw new Error("local_columns_shape_rejected");
           }
           const columns = keys.map(ident).join(",");
-          const mutation = request.method === "POST" ? `insert into ${source}(${columns}) select ${columns} from jsonb_populate_recordset(null::${source},${json(records)})${conflict ? " on conflict(search_order_id,job_id) do nothing" : ""}`
+          const conflictSql = emailUpsert ? ` on conflict(idempotency_key) do update set ${keys.filter(key => key !== "idempotency_key").map(key => `${ident(key)}=excluded.${ident(key)}`).join(",")}`
+            : searchUpsert ? " on conflict(search_order_id,job_id) do nothing" : "";
+          const mutation = request.method === "POST" ? `insert into ${source}(${columns}) select ${columns} from jsonb_populate_recordset(null::${source},${json(records)})${conflictSql}`
             : `update ${source} set (${columns})=(select ${columns} from jsonb_populate_record(null::${source},${json(records[0])}))${where}`;
           prefix = `with changed as (${mutation} returning *) `; source = "changed";
         } else if (request.method === "DELETE" && name === "search_candidates" && params.get("search_order_id")?.startsWith("eq.")

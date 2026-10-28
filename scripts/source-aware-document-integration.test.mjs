@@ -7,7 +7,7 @@ import test from "node:test";
 import { materialDraftStageContractFixture } from "./lib/material-draft-stage-fixture.mjs";
 import { verifiedIntakeOwnershipContractFixture } from "./lib/verified-intake-ownership-fixture.mjs";
 import { verifiedSourceRunSeedFixture } from "./lib/verified-source-run-fixture.mjs";
-import { current091LockedPhaseSql, current092LockedPhaseSql, current093LockedPhaseSql, current103LockedPhaseSql, current104LockedPhaseSql, current105LockedPhaseSql } from "./lib/supabase-upgrade-phases.mjs";
+import { current091LockedPhaseSql, current092LockedPhaseSql, current093LockedPhaseSql, current103LockedPhaseSql, current104LockedPhaseSql, current105LockedPhaseSql, current106LockedPhaseSql } from "./lib/supabase-upgrade-phases.mjs";
 
 for (const [flag, version, count, containsRule, containsSource] of [
   ["--historical-091", "202610250091", 6, false, false],
@@ -24,7 +24,8 @@ for (const [flag, version, count, containsRule, containsSource] of [
   ["--historical-102", "202610260102", 17, true, true],
   ["--historical-103", "202610260103", 20, true, true],
   ["--historical-104", "202610270104", 21, true, true],
-  [null, "202610270105", 22, true, true],
+  ["--historical-105", "202610270105", 22, true, true],
+  [null, "202610280106", 23, true, true],
 ]) {
   test(`the real fixture selector executes only its exact ${version} phase`, () => {
     const source = readFileSync(new URL("./run-supabase-db-tests-v2.mjs", import.meta.url), "utf8")
@@ -49,6 +50,7 @@ for (const [flag, version, count, containsRule, containsSource] of [
     assert.equal(inputs.some((sql) => sql.includes("VERIFIED_INTAKE_OWNERSHIP_OK")), version >= "202610260103");
     assert.equal(inputs.some((sql) => sql.includes("employer-rule-review-confirmation.sql")), version >= "202610270104");
     assert.equal(inputs.some((sql) => sql.includes("verified-source-run-binding.sql")), version >= "202610270105");
+    assert.equal(inputs.some((sql) => sql.includes("owner-draft-notices.sql")), version >= "202610280106");
     assert(!inputs.some((sql) => sql.includes("VERIFIED_INTAKE_OWNERSHIP_REAL_CONNECTION_RACES_OK")));
     assert.equal(logs.at(-1), `Database contract fixtures passed: ${count}. Schema phase: ${version}.`);
   });
@@ -150,7 +152,7 @@ test("the historical runner preserves stdout-only defaults and explicitly captur
 for (const scenario of ["stderr-only", "missing-seed", "missing-preservation", "nonzero-seed", "nonzero-preservation"])
   test(`105 historical marker checks handle ${scenario} without accepting failed SQL`, () => {
     const source = readFileSync(new URL("./run-supabase-rehearsal-upgrade-test.mjs", import.meta.url), "utf8");
-    const block = source.slice(source.indexOf("    const sourceBindingFixture ="), source.indexOf("    sql(current105LockedPhaseSql);"));
+    const block = source.slice(source.indexOf("    const sourceBindingFixture ="), source.lastIndexOf("    }", source.indexOf("    sql(current105LockedPhaseSql);")));
     const calls = [];
     const context = {
       URL, container: "supabase_db_applypack", source105Workspace: "/fictional/local105", verifiedSourceRunSeedFixture,
@@ -174,6 +176,41 @@ for (const scenario of ["stderr-only", "missing-seed", "missing-preservation", "
     }
   });
 
+for (const scenario of ["stderr-only", "missing-lifecycle", "missing-preservation", "nonzero-lifecycle", "nonzero-preservation"])
+  test(`retained106 work survives its lifecycle without resetting the database: ${scenario}`, () => {
+    const source = readFileSync(new URL("./run-supabase-rehearsal-upgrade-test.mjs", import.meta.url), "utf8");
+    const start = source.indexOf("    const ownerLifecycle =");
+    const block = source.slice(start, source.indexOf("    console.log(`PASS: isolated local upgrade", start));
+    assert(start > 0 && block.length > 0);
+    const calls = [];
+    const context = {
+      container: "supabase_db_applypack", current106LockedPhaseSql: "-- verify locked106",
+      ownerNoticeFixture: (name) => `-- fictional ${name}`,
+      process: { cwd: () => process.cwd(), stdout: { write() {} }, stderr: { write() {} } },
+      spawnSync: (command, args, options) => {
+        assert.equal(command, "docker"); assert(args.includes("ON_ERROR_STOP=1"));
+        assert(!args.includes("reset"));
+        calls.push(options.input);
+        const stage = options.input.includes("upgrade-verify.sql") ? "preservation"
+          : options.input.includes("owner-draft-notices.sql") ? "lifecycle" : "locked";
+        const marker = stage === "lifecycle" ? "OWNER_DRAFT_READY_NOTICES_CONTRACT_OK"
+          : stage === "preservation" ? "OWNER_DRAFT_READY_NOTICES_106_UPGRADE_PRESERVED" : "";
+        return { status: scenario === `nonzero-${stage}` ? 1 : 0, stdout: "DO\n",
+          stderr: scenario === `missing-${stage}` ? "" : `NOTICE: ${marker}\n` };
+      },
+    };
+    const invoke = () => runInNewContext(`${historicalProcessFunctions()}\n${block}`, context);
+    if (scenario === "stderr-only") {
+      invoke(); assert.equal(calls.length, 3);
+      assert(calls[0].includes("owner-draft-notices.sql"));
+      assert(calls[1].includes("upgrade-verify.sql"));
+      assert.equal(calls[2], context.current106LockedPhaseSql);
+    } else {
+      assert.throws(invoke, scenario.startsWith("nonzero") ? /docker failed with exit 1/u : /proof missing/u);
+      assert.equal(calls.length, scenario.endsWith("lifecycle") ? 1 : 2);
+    }
+  });
+
 test("native105 keeps its retained core in one session and resets before each optional current fixture", () => {
   const native = readFileSync(new URL("./test-database-native.ps1", import.meta.url), "utf8");
   const block = native.slice(native.indexOf("  # Retain the actual paid103 context"), native.indexOf("if ($LegalReceiptUpgrade) {\n  $bindingPath"));
@@ -190,3 +227,36 @@ test("native105 keeps its retained core in one session and resets before each op
   }
   assert(!block.slice(block.indexOf(order[0]), block.indexOf("    $currentInputsWithSessions", block.indexOf(order[0]))).includes("Name='native-source105-current-session.sql'"));
 });
+
+test("106 requires owner notices and preserves the exact historical105 locked phase", () => {
+  assert(!current105LockedPhaseSql.includes("202610280106"));
+  assert.match(current106LockedPhaseSql, /distinct from '202610280106'/u);
+  for (const invariant of ["ap_owner_draft_notices_schema_installed()", "OWNER_DRAFT_READY_NOTICES", "ap_verified_source_run_schema_installed()", "VERIFIED_SOURCE_RUN_BINDING", "mode='LOCKED'", "not checkout_enabled", "not enabled and policy_id is null"])
+    assert(current106LockedPhaseSql.includes(invariant), invariant);
+});
+
+for (const scenario of ["stderr-only", "missing-seed", "missing-preservation", "nonzero-seed", "nonzero-preservation"])
+  test(`106 upgrade cannot hide missing or failed owner notice evidence: ${scenario}`, () => {
+    const source = readFileSync(new URL("./run-supabase-rehearsal-upgrade-test.mjs", import.meta.url), "utf8");
+    const block = source.slice(source.indexOf("    const noticeSeed ="), source.indexOf("    sql(current106LockedPhaseSql);"));
+    const calls = [];
+    const context = {
+      container: "supabase_db_applypack", notice106Workspace: "/fictional/local106",
+      ownerNoticeFixture: (name) => `-- fictional ${name}`,
+      process: { cwd: () => process.cwd(), stdout: { write() {} }, stderr: { write() {} } },
+      spawnSync: (command, args, options) => {
+        calls.push({ command, args, input: options.input });
+        if (command === "supabase") return { status: 0, stdout: "", stderr: "unrelated successful migration notice" };
+        assert.equal(command, "docker"); assert(args.includes("ON_ERROR_STOP=1"));
+        const stage = options.input.includes("upgrade-seed.sql") ? "seed" : "preservation";
+        const marker = stage === "seed" ? "OWNER_DRAFT_READY_NOTICES_105_SEEDED" : "OWNER_DRAFT_READY_NOTICES_106_UPGRADE_PRESERVED";
+        return { status: scenario === `nonzero-${stage}` ? 1 : 0, stdout: "DO\n", stderr: scenario === `missing-${stage}` ? "" : `NOTICE: ${marker}\n` };
+      },
+    };
+    const invoke = () => runInNewContext(`${historicalProcessFunctions()}\n${block}`, context);
+    if (scenario === "stderr-only") { invoke(); assert.equal(calls.length, 3); }
+    else {
+      assert.throws(invoke, scenario.startsWith("nonzero") ? /docker failed with exit 1/u : /historical (?:seed|preservation) marker missing/u);
+      assert.equal(calls.length, scenario.endsWith("seed") ? 1 : 3);
+    }
+  });

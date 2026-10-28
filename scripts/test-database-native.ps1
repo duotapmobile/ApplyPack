@@ -22,6 +22,7 @@ param(
   [switch]$ClarificationResumeUpgrade,
   [switch]$EmployerRuleReviewUpgrade,
   [switch]$VerifiedSourceRunUpgrade,
+  [switch]$OwnerDraftNoticeUpgrade,
   [switch]$LegalReceiptUpgrade,
   [string[]]$FixtureNames,
   [string]$MaximumMigrationVersion
@@ -220,6 +221,13 @@ if ($VerifiedSourceRunUpgrade) {
   if (-not $FixtureNames) { $fixtures = @() }
   $fixtures += @('employer-rule-review-upgrade-seed.sql','employer-rule-review-upgrade-preservation.sql')
   if ($fixtures -notcontains 'verified-source-run-binding.sql') { $fixtures += 'verified-source-run-binding.sql' }
+}
+if ($OwnerDraftNoticeUpgrade) {
+  if ($LegacyBackfill -or $CapacityPressure -or $RuleRevalidationUpgrade -or $SourceAwareDocumentUpgrade -or $DraftStageUpgrade -or $ReferenceDraftUpgrade -or $ServiceErrorUpgrade -or $DraftChangeUpgrade -or $ArchiveLifecycleUpgrade -or $ServiceRepairUpgrade -or $ResearchPreparationUpgrade -or $MaterialClarificationUpgrade -or $RepairCaseStateUpgrade -or $ClarificationCaseUpgrade -or $ClarificationResumeUpgrade -or $EmployerRuleReviewUpgrade -or $VerifiedSourceRunUpgrade -or $LegalReceiptUpgrade -or $ResearchJourney -or
+      $MaximumMigrationVersion -cne '202610280106' -or $migrationFiles[-1].Name -cne '202610280106_owner_draft_ready_notices.sql') { throw 'Owner notice upgrade requires the exact isolated105-to106 sequence.' }
+  if (-not $FixtureNames) { $fixtures = @() }
+  $fixtures += @('owner-draft-notices-upgrade-seed.sql','owner-draft-notices-upgrade-verify.sql')
+  if ($fixtures -notcontains 'owner-draft-notices.sql') { $fixtures += 'owner-draft-notices.sql' }
 }
 $inputs = @([pscustomobject]@{Kind='bootstrap'; Name='bootstrap.sql'; Path=$bootstrapPath})
 foreach ($migration in $migrationFiles) {
@@ -434,6 +442,39 @@ writeFileSync(process.argv[6], current105LockedPhaseSql);
   $inputs += [pscustomobject]@{Kind='helper'; Name='verified-source-run-fixture.mjs'; Path=$seedModule}
   $inputs += [pscustomobject]@{Kind='helper'; Name='export-source105-inputs.mjs'; Path=$exporter}
 }
+if ($OwnerDraftNoticeUpgrade) {
+  # Preserve the committed105 fixture across106, then exercise SUPPRESSED only
+  # after the migration commits. The original seed and all framing are hashed.
+  $phaseModule = Join-Path $inputPath 'supabase-upgrade-phases.mjs'
+  Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/lib/supabase-upgrade-phases.mjs') -Destination $phaseModule
+  $phaseExporter = Join-Path $inputPath 'export-current106-phase.mjs'
+  @'
+import { pathToFileURL } from 'node:url';
+const { current106LockedPhaseSql } = await import(pathToFileURL(process.argv[2]).href);
+if (typeof current106LockedPhaseSql !== 'string' || !current106LockedPhaseSql.length) throw new Error('Exact106 phase required');
+process.stdout.write(current106LockedPhaseSql);
+'@ | Set-Content -LiteralPath $phaseExporter -Encoding utf8
+  $phaseSql = & (Get-Command node -ErrorAction Stop).Source $phaseExporter $phaseModule
+  if ($LASTEXITCODE -ne 0) { throw 'Exact106 phase export failed.' }
+  $phasePath = Join-Path $inputPath 'native-current106-locked-phase.sql'
+  Set-Content -LiteralPath $phasePath -Encoding utf8 -Value $phaseSql
+  $sessionResetPath = Join-Path $inputPath 'native-owner106-current-session.sql'
+  Set-Content -LiteralPath $sessionResetPath -Encoding utf8 -Value 'DISCARD ALL;'
+  $optionalCurrentInputs = @($inputs | Where-Object { $_.Kind -eq 'fixture' -and $_.Name -notin @('owner-draft-notices-upgrade-seed.sql','owner-draft-notices-upgrade-verify.sql') })
+  $currentInputsWithSessions = @(foreach ($currentInput in $optionalCurrentInputs) {
+    [pscustomobject]@{Kind='fixture'; Name='native-owner106-current-session.sql'; Path=$sessionResetPath}
+    $currentInput
+  })
+  $inputs = @($inputs | Where-Object Kind -eq 'bootstrap') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -le '202610270105' }) +
+    @($inputs | Where-Object Name -eq 'owner-draft-notices-upgrade-seed.sql') +
+    @($inputs | Where-Object { $_.Kind -eq 'migration' -and $_.Name.Split('_')[0] -eq '202610280106' }) +
+    @($inputs | Where-Object Name -eq 'owner-draft-notices-upgrade-verify.sql') +
+    @([pscustomobject]@{Kind='fixture'; Name='native-current106-locked-phase.sql'; Path=$phasePath}) +
+    $currentInputsWithSessions
+  $inputs += [pscustomobject]@{Kind='helper'; Name='supabase-upgrade-phases.mjs'; Path=$phaseModule}
+  $inputs += [pscustomobject]@{Kind='helper'; Name='export-current106-phase.mjs'; Path=$phaseExporter}
+}
 if ($LegalReceiptUpgrade) {
   $bindingPath = Join-Path $repoRoot 'scripts/launch-legal-contract.mjs'
   $bindingJson = & node --input-type=module -e 'import {pathToFileURL} from "node:url"; const m=await import(pathToFileURL(process.argv[1])); process.stdout.write(JSON.stringify([m.HISTORICAL_086_LEGAL_BINDING,m.LAUNCH_LEGAL_BINDING]));' $bindingPath
@@ -533,11 +574,17 @@ if ($fixtures -contains 'service-repair-case-state.sql' -or $fixtures -contains 
   Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$caseStateFixture") -Destination $caseStateFixtureCopy
   $inputs += [pscustomobject]@{Kind='helper'; Name=$caseStateFixture; Path=$caseStateFixtureCopy}
 }
-if ($fixtures | Where-Object { $_ -like 'employer-rule-review-*.sql' }) {
+if ($fixtures | Where-Object { $_ -like 'employer-rule-review-*.sql' -or $_ -like 'owner-draft-notices*.sql' }) {
   $employerRuleFixture = 'employer-rule-review-fixture.sql'
   $employerRuleFixtureCopy = Join-Path $inputPath $employerRuleFixture
   Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$employerRuleFixture") -Destination $employerRuleFixtureCopy
   $inputs += [pscustomobject]@{Kind='helper'; Name=$employerRuleFixture; Path=$employerRuleFixtureCopy}
+}
+if ($fixtures | Where-Object { $_ -like 'owner-draft-notices*.sql' }) {
+  $ownerNoticeFixture = 'owner-draft-notices-fixture.sql'
+  $ownerNoticeFixtureCopy = Join-Path $inputPath $ownerNoticeFixture
+  Copy-Item -LiteralPath (Join-Path $repoRoot "tests/integration/$ownerNoticeFixture") -Destination $ownerNoticeFixtureCopy
+  $inputs += [pscustomobject]@{Kind='helper'; Name=$ownerNoticeFixture; Path=$ownerNoticeFixtureCopy}
 }
 if ($fixtures -contains 'protected-archive-limited-role.sql' -and $fixtures -notcontains 'protected-archive-lifecycle.sql') {
   $archiveFixture = 'protected-archive-lifecycle.sql'
@@ -633,6 +680,12 @@ try {
       if (!$source105Output.Contains($requiredMarker)) { throw "Source105 preservation marker missing: $requiredMarker" }
     }
   }
+  if ($OwnerDraftNoticeUpgrade) {
+    $notice106Output = [IO.File]::ReadAllText($logPath)
+    foreach ($requiredMarker in @('OWNER_DRAFT_READY_NOTICES_105_SEEDED','OWNER_DRAFT_READY_NOTICES_106_UPGRADE_PRESERVED','OWNER_DRAFT_READY_NOTICES_CONTRACT_OK')) {
+      if (!$notice106Output.Contains($requiredMarker)) { throw "Owner notice106 preservation marker missing: $requiredMarker" }
+    }
+  }
   if ($CapacityPressure) {
     if ($LegacyBackfill) { throw 'Capacity pressure requires the fresh synthetic fixture mode.' }
     $step = 'independent-connection synthetic capacity pressure'
@@ -640,7 +693,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Capacity pressure failed; see process output.' }
   }
   if ($ResearchJourney) {
-    if ($LegacyBackfill -or $CapacityPressure -or $ServiceRepairUpgrade -or $ClarificationResumeUpgrade -or $EmployerRuleReviewUpgrade -or $VerifiedSourceRunUpgrade -or $MaximumMigrationVersion -cne '202610270105') { throw 'Research journey requires the explicit105 fictional fixture boundary.' }
+    if ($LegacyBackfill -or $CapacityPressure -or $ServiceRepairUpgrade -or $ClarificationResumeUpgrade -or $EmployerRuleReviewUpgrade -or $VerifiedSourceRunUpgrade -or $OwnerDraftNoticeUpgrade -or $MaximumMigrationVersion -cne '202610280106') { throw 'Research journey requires the explicit106 fictional fixture boundary.' }
     $step = 'actual research routes against the owned loopback cluster'
     $researchMarker = [guid]::NewGuid().ToString('N')
     Invoke-Native 'psql.exe' @('-X', '-h', '127.0.0.1', '-p', "$port", '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', "create table public.ap_research_local_test_identity(marker text primary key); insert into public.ap_research_local_test_identity values('$researchMarker');") 30

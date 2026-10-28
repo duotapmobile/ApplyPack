@@ -143,6 +143,8 @@ jobs:
         run: npm run test:employer-rule-review-migration
       - name: Verify prospective source-run105 migration guard
         run: npm run test:verified-source-run-migration
+      - name: Verify owner draft notification106 migration guard
+        run: npm run test:owner-draft-notice-migration
       - name: Confirmed clarification and case-state integration
         run: npm run test:material-clarification-integration
       - name: Validate098 default-disabled protected archive lifecycle controls
@@ -314,6 +316,7 @@ jobs:
           - '202610260102'
           - '202610260103'
           - '202610270104'
+          - '202610270105'
     steps:
       - uses: actions/checkout@v4
         with:

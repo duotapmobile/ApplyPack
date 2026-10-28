@@ -1,0 +1,15 @@
+# Owner draft notifications
+
+The outbox records one owner notice for each eligible automatic proposal version reaching `SOURCE_READY` and each complete committed file set reaching `REVIEW_READY`. Owner-created wording revisions do not create another automatic-proposal notice. An event records a review milestone; it does not approve documents or send them to the customer.
+
+Set one approved address in protected `APP_ADMIN_ALERT_EMAIL` storage. There is no default recipient and no fallback to customer contact information or administrator-login lists. In test mode, the address must also appear in `APP_SAFE_TEST_EMAILS`. Missing or invalid destination configuration blocks new paid-launch readiness and notification dispatch. Already-paid preparation and manual owner review remain available. The operations response reports only a readiness boolean, never the address.
+
+Messages contain generic historical-event text and the ordinary `/admin/document-drafts` link. They include no customer name, job title, deadline, question, document, attachment or access token. The destination continues to require administrator authorization and fresh MFA.
+
+The leased worker pins the exact recipient and six provider fields—sender, recipient, reply-to, subject, text and HTML—before submission. Its idempotency key is fixed to the job, version and review phase. A lost provider or completion response remains unconfirmed: retry only the exact pinned envelope and key within the original provider guarantee. A changed destination, sender, origin, reply-to or template must not retarget an existing notice. Do not clear pins, reset submission time or invent a new key to bypass reconciliation.
+
+An unsubmitted obsolete notice can become `SUPPRESSED` only after the database rechecks its current state. Suppression does not count as sent and does not report an email failure. Once an envelope was pinned, the outcome may be unknown; ordinary workflow progression cannot erase that uncertainty. Expired guarantees, revoked authority, retention removal or recovery holds stop dispatch and require the existing operations/reconciliation process.
+
+The owner workspace distinguishes queued, sending, retry pending, provider accepted, suppressed and needs reconciliation for the current version. Provider acceptance is not inbox delivery. Failed status reads are shown as unavailable, not as an empty queue. Notification problems do not hide the draft or unlock wording review, approval or the separate customer Send action.
+
+Validation must include actual database enqueue/replay/suppression, upgrade and retention preservation, exact SDK pinning, accepted-send/lost-completion retry, changed configuration rejection and current-version UI checks. Fictional transport tests establish local behavior only. Hosted acceptance still requires the approved recipient configuration, real worker cycles, provider receipt and verified arrival at the authorized mailbox for both phases. This document does not assert those hosted checks have passed.

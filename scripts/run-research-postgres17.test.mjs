@@ -11,9 +11,9 @@ import {runResearchNativeJourney} from './run-research-native-journey.mjs';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const pgId=`sha256:${'a'.repeat(64)}`,nodeId=`sha256:${'b'.repeat(64)}`;
 const packMarkers=['EMPLOYER_QUESTION_PACK_NATIVE_JOURNEY_OK','PAID_PACK_ROUTE_DELIVERY_OBLIGATION_RECEIPT','PAID_PACK_PREPARE_PACKET_RECEIPT'];
-const sourceMarkers=['EMPLOYER_RULE_OWNER_NATIVE_JOURNEY_OK','PAID_PACK_ROUTE_DELIVERY_OBLIGATION_RECEIPT','PAID_PACK_PREPARE_PACKET_RECEIPT','PAID_PACK_SOURCE_READY_PROPOSAL_RECEIPT','EMPLOYER_QUESTION_SOURCE_NATIVE_JOURNEY_OK'];
+const sourceMarkers=['EMPLOYER_RULE_OWNER_NATIVE_JOURNEY_OK','PAID_PACK_ROUTE_DELIVERY_OBLIGATION_RECEIPT','PAID_PACK_PREPARE_PACKET_RECEIPT','OWNER_NOTICE_ACCEPTED_RETRY_RECEIPT','PAID_PACK_SOURCE_READY_PROPOSAL_RECEIPT','EMPLOYER_QUESTION_SOURCE_NATIVE_JOURNEY_OK'];
 function fixture({missingSourceMarker,missingSourceRunnerMarker,sourceOrderReversed,fail,drift,missingMarker,missingAggregate,missingOwnerMarker,missingEmployerRunnerMarker,missingPackMarker,missingPackRunnerMarker,ambiguousCreate,cleanupFailure}={}) {
-  const calls=[],states=new Map(),writes=[],prepared={commit:'c'.repeat(40),schemaVersion:'202610270105',workspace:'/fixture/source',dependencies:'/fixture/dependencies',directory:'/fixture/evidence',sql:'-- actual schema input placeholder',migrationCount:110,inputHashes:[],sourceArchiveSha256:'d'.repeat(64)};
+  const calls=[],states=new Map(),writes=[],prepared={commit:'c'.repeat(40),schemaVersion:'202610280106',workspace:'/fixture/source',dependencies:'/fixture/dependencies',directory:'/fixture/evidence',sql:'-- actual schema input placeholder',migrationCount:111,inputHashes:[],sourceArchiveSha256:'d'.repeat(64)};
   let counter=0;
   const execute=(command,args,options)=>{
     calls.push({command,args,options});assert.equal(command,'docker');assert.deepEqual(args.slice(0,2),['--host','unix:///var/run/docker.sock']);
@@ -184,7 +184,7 @@ test('source preparation archives only committed allowlisted bytes and excludes 
   'tests/integration/verified-employer-rule-owner-setup.ts','tests/integration/verified-paid-pack-setup.ts',
   'tests/integration/verified-paid-pack-packet-setup.ts','tests/integration/employer-question-pack-native-journey.test.ts',
   'tests/integration/draft-provider-fixture.ts','tests/integration/verified-paid-pack-source-setup.ts',
-  'tests/integration/employer-question-source-native-journey.test.ts','supabase/migrations/202610270105_fictional.sql'];
+  'tests/integration/employer-question-source-native-journey.test.ts','supabase/migrations/202610280106_fictional.sql'];
  try {
   for(const path of files){mkdirSync(dirname(join(directory,path)),{recursive:true});writeFileSync(join(directory,path),path.endsWith('.sql')?'select 1;\n':'committed bytes\n');}
   const git=args=>execFileSync('git',args,{cwd:directory,stdio:'pipe',timeout:30000});
@@ -234,7 +234,7 @@ for(const response of [{status:1,stdout:sourceMarkers.join('\n')},{status:null,e
  const f=nativeJourney('PACK_SOURCE',[response]);assert.equal(f.status,1);assert.deepEqual(f.logs,[]);
 });
 
-const localDocMarkers=[...sourceMarkers.slice(0,4),'PAID_PACK_OWNER_LOCAL_DOCUMENTS_RECEIPT','EMPLOYER_QUESTION_LOCAL_DOC_NATIVE_JOURNEY_OK'];
+const localDocMarkers=[...sourceMarkers.slice(0,3),'PAID_PACK_SOURCE_READY_PROPOSAL_RECEIPT','OWNER_NOTICE_SUPPRESSED_RECEIPT','PAID_PACK_OWNER_LOCAL_DOCUMENTS_RECEIPT','EMPLOYER_QUESTION_LOCAL_DOC_NATIVE_JOURNEY_OK'];
 test('local document journey rejects container mode before spawning any process',()=>{
  const calls=[];
  assert.throws(()=>runResearchNativeJourney(['PACK_LOCAL_DOC'],{environment:{AP_RESEARCH_TEST_MODE:'CONTAINER_PG17',AP_RESEARCH_TEST_PORT:'5432',AP_RESEARCH_TEST_MARKER:marker},platform:'linux',spawn:(...args)=>{calls.push(args);return{status:0};}}),/explicit native renderer/u);

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { canonicalBytes, canonicalSha256, sha256 } from "./lib/protected-recovery-core.mjs";
 import { recoveryInventoryDigest } from "./lib/protected-recovery-protocol.mjs";
-import { ARCHIVE_DATABASE_READ_VERSIONS, readHistoricalArchiveManifest,
+import { ARCHIVE_DATABASE_READ_VERSIONS, ARCHIVE_FILE_READ_TABLES, ARCHIVE_REPAIR_FILE_READ_TABLES, readHistoricalArchiveManifest,
   validateHistoricalDatabaseManifest, validateHistoricalFileManifest, mapDatabaseArchivePins } from "./lib/recovery-archive-history.mjs";
 
 import { archiveHistoryFixture } from "./recovery-archive-test-fixture.mjs";
@@ -24,6 +24,22 @@ test("105 source-run binding remains readable with the unchanged 104 file invent
   assert.equal(validateHistoricalDatabaseManifest(current.database.manifest, current.database.digest), current.database.manifest);
   assert.deepEqual(canonicalBytes(current.file.manifest), canonicalBytes(prior.file.manifest));
   assert.equal(validateHistoricalFileManifest(current.file.manifest, current.file.digest), current.file.manifest);
+});
+test("106 owner notices append a read profile without changing any historical file inventory", () => {
+  assert.deepEqual(ARCHIVE_DATABASE_READ_VERSIONS, [
+    "202610250090", "202610250091", "202610250092", "202610250093", "202610250094", "202610250095",
+    "202610250096", "202610250097", "202610250098", "202610250099", "202610250100", "202610250101",
+    "202610260102", "202610260103", "202610270104", "202610270105", "202610280106",
+  ]);
+  const prior = archiveHistoryFixture("202610270105"), current = archiveHistoryFixture("202610280106");
+  assert.equal(validateHistoricalDatabaseManifest(current.database.manifest, current.database.digest), current.database.manifest);
+  assert.deepEqual(canonicalBytes(current.file.manifest), canonicalBytes(prior.file.manifest));
+  assert.equal(validateHistoricalFileManifest(current.file.manifest, current.file.digest), current.file.manifest);
+  assert.equal(ARCHIVE_FILE_READ_TABLES.includes("ap_material_draft_owner_notices"), false);
+  assert.equal(ARCHIVE_REPAIR_FILE_READ_TABLES.includes("ap_material_draft_owner_notices"), false);
+  const graph = mapDatabaseArchivePins(current);
+  assert.deepEqual(graph.pins.map((pin) => pin.versionId).sort(), ["dump-v1", "manifest-v1", "object-v1", "roles-v1"]);
+  assert.equal(graph.databaseDeletionAuthorized, false);
 });
 for (const value of ["202610240087", "209901010001", "202610250999", "202610250093extra"])
   test(`unknown database read profile ${value} fails closed`, () => {

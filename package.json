@@ -60,6 +60,7 @@
     "test:material-clarification-resume-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-103",
     "test:employer-rule-review-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-104",
     "test:verified-source-run-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-105",
+    "test:owner-draft-notice-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-106",
     "test:material-clarification-migration": "node scripts/run-windows-release-self-test.mjs rehearsal-101",
     "test:material-clarification-integration": "node --test scripts/material-clarification-integration.test.mjs",
     "test:automatic-research-integration": "node --test scripts/automatic-research-integration.test.mjs"

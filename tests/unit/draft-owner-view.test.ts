@@ -153,6 +153,43 @@ function database(mode: "proposal" | "source" = "proposal", withQuestions = fals
 describe("private owner draft read model", () => {
   beforeEach(() => { vi.clearAllMocks(); dependencies.inspect.mockRejectedValue(new Error("source_unavailable")); });
   afterEach(() => vi.useRealTimers());
+  function notice(d: ReturnType<typeof database>) {
+    d.tables.ap_material_draft_owner_notices = [{ message_id: id(600), job_id: d.job.id, draft_version_id: d.version.id,
+      phase: "SOURCE_READY", suppression_reason: null, suppressed_at: null }];
+    d.tables.ap_outbox_messages = [{ id: id(600), customer_id: d.job.customer_id, message_kind: "OWNER_DRAFT_REVIEW_REQUIRED",
+      recipient_ref: d.version.id, state: "SENT", provider_message_id: "provider-accepted", reconciliation_state: "RECONCILED" }];
+  }
+  it("shows a bounded current-version notice projection without recipient or provider identifiers", async () => {
+    const d = database(); notice(d); const result = await d.detail();
+    expect(result).toMatchObject({ status: "AVAILABLE", ownerNotices: { status: "AVAILABLE", versionId: d.version.id,
+      notices: [{ phase: "SOURCE_READY", state: "PROVIDER_ACCEPTED", reason: null }] } });
+    const reads = d.calls.filter(call => ["ap_material_draft_owner_notices", "ap_outbox_messages"].includes(call.name));
+    expect(reads).toHaveLength(2); expect(reads.every(call => call.limit === 3)).toBe(true);
+    expect(reads[0].filters).toEqual([["job_id", d.job.id], ["draft_version_id", d.version.id]]);
+    expect(reads[0].columns).not.toMatch(/recipient_email|delivery_envelope/);
+    expect(JSON.stringify(result)).not.toContain("provider-accepted");
+  });
+  it.each(["error", "missing-message", "foreign-message", "duplicate-phase"])("keeps the draft available when notice status is %s", async kind => {
+    const d = database("source"); d.pair(); notice(d);
+    if (kind === "error") d.overrides.set("ap_material_draft_owner_notices", () => ({ data: null, error: "private failure" }));
+    if (kind === "missing-message") d.tables.ap_outbox_messages = [];
+    if (kind === "foreign-message") d.tables.ap_outbox_messages[0].customer_id = id(999);
+    if (kind === "duplicate-phase") d.tables.ap_material_draft_owner_notices.push({ ...d.tables.ap_material_draft_owner_notices[0], message_id: id(601) });
+    expect(await d.detail()).toMatchObject({ status: "AVAILABLE", ownerNotices: { status: "UNAVAILABLE" }, canApprove: true, canSend: false });
+  });
+  it("bounds a hung notice read independently so it does not hide paid work", async () => {
+    vi.useFakeTimers(); const d = database();
+    d.overrides.set("ap_material_draft_owner_notices", () => new Promise(() => undefined));
+    const result = d.detail(); await vi.waitFor(() => expect(d.calls.some(call => call.name === "ap_material_draft_owner_notices")).toBe(true));
+    await vi.advanceTimersByTimeAsync(2501);
+    expect(await result).toMatchObject({ status: "AVAILABLE", ownerNotices: { status: "UNAVAILABLE" }, canPromote: true });
+  });
+  it("rejects a changed active version after a notice read", async () => {
+    const d = database(); d.overrides.set("ap_material_draft_owner_notices", () => {
+      d.job.active_version_id = id(999); return { data: [], error: null };
+    });
+    expect((await d.detail()).status).toBe("REFRESH_REQUIRED");
+  });
   it("authorizes before the paginated metadata read and never decrypts the queue", async () => {
     const d = database(); for (let index = 0; index < 20; index++) d.tables.ap_material_draft_jobs.push({ ...d.job, id: id(300 + index) });
     const result = await d.view.list(null, new AbortController().signal);

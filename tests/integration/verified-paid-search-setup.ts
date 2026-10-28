@@ -4,11 +4,39 @@ import type { Database } from "@/lib/database.types";
 import { createResearchLocalDatabase } from "./research-local-database";
 import { paidSearchProviderFixture } from "./paid-search-provider-fixture";
 
+type FictionalMailEnvelope = { from: string; to: string; replyTo: string; subject: string; text: string; html?: string };
 vi.mock("server-only", () => ({}));
 const boundary = vi.hoisted(() => ({ admin: null as unknown, cookie: "", selectedId: "",
   operatorId: "a1140000-0000-4000-8000-000000000004", customerId: "a1140000-0000-4000-8000-000000000090",
   email: "paid-search@example.invalid", verified: true, wrappedKeys: new Map<string, Uint8Array>(),
+  mailValidate: null as ((body: unknown, options: unknown) => { body: FictionalMailEnvelope; key: string }) | null,
+  mailAttempts: [] as Array<{ key: string; body: FictionalMailEnvelope }>,
+  mailRejections: [] as string[], mailInvocations: 0,
+  mailAccepted: new Map<string, { body: FictionalMailEnvelope; id: string }>(), mailLostResponses: new Set<string>(),
   stripeFetch: vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(), after: [] as Array<() => unknown> }));
+// Register before any application imports. A later continuation changes only
+// the finite allowed envelope validator; prior modeled acceptance stays intact.
+vi.mock("resend", () => ({ Resend: class {
+  constructor(key: string) {
+    if (key !== "fictional-no-mail") { boundary.mailRejections.push("KEY_REJECTED"); throw new Error("fictional_mail_key_rejected"); }
+  }
+  emails = { send: async (value: unknown, options: unknown) => {
+    boundary.mailInvocations += 1;
+    if (!boundary.mailValidate) { boundary.mailRejections.push("UNCONFIGURED"); throw new Error("fictional_mail_unconfigured"); }
+    let validated: { body: FictionalMailEnvelope; key: string };
+    try { validated = boundary.mailValidate(value, options); }
+    catch (error) { boundary.mailRejections.push("ENVELOPE_REJECTED"); throw error; }
+    const { body, key } = validated;
+    const prior = boundary.mailAccepted.get(key);
+    if (prior && JSON.stringify(prior.body) !== JSON.stringify(body)) {
+      boundary.mailRejections.push("IDEMPOTENCY_BODY_CHANGED"); throw new Error("fictional_mail_idempotency_body_changed");
+    }
+    const receipt = prior ?? { body: structuredClone(body), id: `fictional-mail-${boundary.mailAccepted.size + 1}` };
+    boundary.mailAttempts.push({ key, body: structuredClone(body) }); boundary.mailAccepted.set(key, receipt);
+    if (boundary.mailLostResponses.delete(key)) throw new Error("fictional_provider_accepted_response_lost");
+    return { data: { id: receipt.id }, error: null };
+  } };
+} }));
 vi.mock("stripe", async (importOriginal) => {
   const actual = await importOriginal<typeof import("stripe")>();
   return { ...actual, default: class FixtureStripe extends actual.default {
@@ -86,6 +114,8 @@ async function result(response: Response, expected: number, diagnostics?: unknow
 export function cleanupVerifiedPaidSearch() {
   vi.unstubAllEnvs(); vi.unstubAllGlobals(); boundary.cookie = ""; boundary.selectedId = "";
   for (const key of boundary.wrappedKeys.values()) key.fill(0); boundary.wrappedKeys.clear(); boundary.after.length = 0;
+  boundary.mailValidate = null; boundary.mailAttempts.length = 0; boundary.mailAccepted.clear(); boundary.mailLostResponses.clear();
+  boundary.mailRejections.length = 0; boundary.mailInvocations = 0;
 }
 
 export type PaidSearchSourceFixture = {
@@ -104,6 +134,21 @@ export async function setupVerifiedPaidSearch(options: { sourceFixture?: PaidSea
   const sourceFixture = options.sourceFixture;
   const database = await createResearchLocalDatabase(); boundary.admin = database.admin;
   const provider = paidSearchProviderFixture(); boundary.stripeFetch.mockImplementation(provider.fetch);
+  expect(boundary.mailAttempts).toEqual([]); expect(boundary.mailAccepted.size).toBe(0);
+  expect(boundary.mailRejections).toEqual([]); expect(boundary.mailInvocations).toBe(0);
+  boundary.mailValidate = (value, options) => {
+    const key = typeof options === "object" && options !== null && "idempotencyKey" in options ? options.idempotencyKey : null;
+    expect(typeof key === "string" && /^search_qa_ready\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(key)).toBe(true);
+    if (typeof key !== "string") throw new Error("fictional_search_notice_key_rejected");
+    expect(options).toEqual({ idempotencyKey: key });
+    const body = { from: "orders@applypack.work", to: "approved-owner@example.invalid", replyTo: "help@applypack.work",
+      subject: "ApplyPack search candidates need review", text: [
+        "Automated discovery collected 10 reviewable candidates.",
+        "Review every listing and approve exactly 10 before customer release.", "",
+        `Open the operator review queue: ${origin}/admin#order-${key.slice("search_qa_ready/".length)}`,
+      ].join("\n") };
+    expect(value).toEqual(body); return { body, key };
+  };
   // Only independently approved fictional configuration and auth identities are
   // seeded. No snapshot, assessment, listing, review, invitation or order seed.
   await database.script(`insert into auth.users(id,aud,role,email,email_confirmed_at,is_anonymous,raw_app_meta_data,raw_user_meta_data,created_at,updated_at) values
@@ -259,7 +304,9 @@ export async function setupVerifiedPaidSearch(options: { sourceFixture?: PaidSea
     APP_JOB_BOARD_CHECKOUT_ENABLED: "false", APP_JOB_SOURCE_SYNC_ENABLED: "true",
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "fictional-local-public", SUPABASE_SECRET_KEY: "fictional-local-secret", APP_KMS_PROVIDER: "aws",
     AWS_REGION: "us-east-1", APP_AWS_ACCOUNT_ID: "838445019912", APP_SERVICE_RETENTION_ENABLED: "true",
-    RESEND_API_KEY: "fictional-no-mail", EMAIL_FROM_ADDRESS: "orders@applypack.work", APP_EMAIL_DELIVERY_VERIFIED_AT: new Date().toISOString(),
+    RESEND_API_KEY: "fictional-no-mail", EMAIL_FROM_ADDRESS: "orders@applypack.work", EMAIL_REPLY_TO: "help@applypack.work",
+    APP_ADMIN_ALERT_EMAIL: "approved-owner@example.invalid", APP_SAFE_TEST_EMAILS: `approved-owner@example.invalid,${boundary.email}`,
+    APP_EMAIL_DELIVERY_VERIFIED_AT: new Date().toISOString(),
     APP_FILE_SCAN_MODE: "document_validation", APP_FILE_PROCESSING_ENABLED: "true", APP_MALWARE_SCANNER_IDENTITY: "fixture-structural-only",
     APP_PERMITTED_MODEL_POLICY: "fixture-local-only", APP_SANDBOXED_PARSER_IDENTITY: "fictional-worker", APP_PARSER_MAX_EXPANDED_BYTES: "10000000",
     APP_PARSER_MAX_PAGES: "20", APP_PARSER_MAX_MILLISECONDS: "10000", APP_PARSER_MAX_MEMORY_BYTES: "134217728",
@@ -329,9 +376,22 @@ export async function setupVerifiedPaidSearch(options: { sourceFixture?: PaidSea
   const service = await database.sql(`select to_jsonb(s) from public.ap_search_services s where customer_id='${id(90)}'`, true);
   expect(service.original_snapshot_id).toBe(snapshotId);
   expect(Date.parse(service.delivery_due_at) - Date.parse(service.service_started_at)).toBe(24 * 60 * 60 * 1000);
+  const searchAdminEvents = () => database.sql(`select coalesce(jsonb_agg(to_jsonb(e) order by e.id),'[]'::jsonb)
+    from public.email_events e join public.orders o on o.id=e.order_id where o.customer_id='${id(90)}'`, true);
+  const firstAdminEvents: Database["public"]["Tables"]["email_events"]["Row"][] = await searchAdminEvents();
+  expect(firstAdminEvents).toHaveLength(1);
+  expect(firstAdminEvents[0]).toMatchObject({ order_id: service.legacy_order_id, recipient: "approved-owner@example.invalid",
+    template: "search_qa_ready", status: "sent", idempotency_key: `search_qa_ready/${service.legacy_order_id}`,
+    provider_message_id: "fictional-mail-1", attempt_count: 1 });
+  expect(boundary.mailAttempts).toHaveLength(1); expect(boundary.mailAccepted.size).toBe(1);
+  expect(boundary.mailRejections).toEqual([]); expect(boundary.mailInvocations).toBe(boundary.mailAttempts.length);
+  expect(boundary.mailAttempts[0].key).toBe(firstAdminEvents[0].idempotency_key);
   await result(await webhook("evt_FictionalPaidSearch"), 200, database.failures);
   await result(await webhook("evt_FictionalPaidSearchReordered"), 200, database.failures);
   for (const work of boundary.after.splice(0)) await work();
+  expect(await searchAdminEvents()).toEqual(firstAdminEvents);
+  expect(boundary.mailAttempts).toHaveLength(1); expect(boundary.mailAccepted.size).toBe(1);
+  expect(boundary.mailRejections).toEqual([]); expect(boundary.mailInvocations).toBe(boundary.mailAttempts.length);
   expect(await database.sql(`select count(*)::int from public.ap_search_services where customer_id='${id(90)}'`, true)).toBe(1);
   const orderId = service.legacy_order_id as string;
   expect(await database.sql(`select jsonb_build_object('state',status,'count',(summary->>'candidates')::int,'error',last_error_code)
@@ -379,6 +439,9 @@ export async function setupVerifiedPaidSearch(options: { sourceFixture?: PaidSea
   await result(await deliverSearch(post(`/api/admin/search-orders/${orderId}/deliver`, { evaluationIds: releaseEvaluationIds, reviewChecklist: checklist }),
     { params: Promise.resolve({ id: orderId }) }), 409, database.failures);
   expect(await persistedDelivery()).toEqual(deliveryState);
+  expect(await searchAdminEvents()).toEqual(firstAdminEvents);
+  expect(boundary.mailAttempts).toHaveLength(1); expect(boundary.mailAccepted.size).toBe(1);
+  expect(boundary.mailRejections).toEqual([]); expect(boundary.mailInvocations).toBe(boundary.mailAttempts.length);
   expect(database.failures.filter(failure => !failure.includes("checkout_invitation_invalid")
     && !failure.includes('duplicate key value violates unique constraint "webhook_events_provider_event_id_key"'))).toEqual([]);
   const releaseMembers: Database["public"]["Tables"]["ap_release_members"]["Row"][] = await database.sql(`select jsonb_agg(to_jsonb(m) order by position)
@@ -388,7 +451,8 @@ export async function setupVerifiedPaidSearch(options: { sourceFixture?: PaidSea
   console.log("PAID_SEARCH_ROUTE_DELIVERY_RECEIPT", JSON.stringify({ draftId, snapshotId, assessmentId: assessment.id, invitationId: invitation.invitationId,
     orderId, searchServiceId: service.id, releaseId: delivered.releaseId, evaluationIds: releaseEvaluationIds, providerSessionId: sessionId, deliveryState,
     legalTerms: legal.termsVersion, intakeSchema: "applypack-intake-v4", realProviderCalls: 0, modeledStripeRequests: provider.requests.length,
-    modeledBoundary: "Auth, AWS credential/KMS/probe, permitted job-source and Stripe transport" }));
+    modeledAdminMailAcceptances: boundary.mailAccepted.size, inboxDeliveryProven: false,
+    modeledBoundary: "Auth, AWS credential/KMS/probe, permitted job-source, Stripe and finite mail transport" }));
   return {
     database, provider, boundary, origin,
     intake: { draftId, snapshotId, answers },

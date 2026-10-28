@@ -38,7 +38,7 @@ for (const stage of stages) {
   if (packSource) {
     const lines = stripVTControlCharacters(result.stdout ?? '').split(/\r?\n/u).map(line => line.trim());
     let priorIndex = -1;
-    for (const marker of ['EMPLOYER_RULE_OWNER_NATIVE_JOURNEY_OK','PAID_PACK_ROUTE_DELIVERY_OBLIGATION_RECEIPT','PAID_PACK_PREPARE_PACKET_RECEIPT','PAID_PACK_SOURCE_READY_PROPOSAL_RECEIPT','EMPLOYER_QUESTION_SOURCE_NATIVE_JOURNEY_OK']) {
+    for (const marker of ['EMPLOYER_RULE_OWNER_NATIVE_JOURNEY_OK','PAID_PACK_ROUTE_DELIVERY_OBLIGATION_RECEIPT','PAID_PACK_PREPARE_PACKET_RECEIPT','OWNER_NOTICE_ACCEPTED_RETRY_RECEIPT','PAID_PACK_SOURCE_READY_PROPOSAL_RECEIPT','EMPLOYER_QUESTION_SOURCE_NATIVE_JOURNEY_OK']) {
       const indices = lines.flatMap((line, index) => line === marker || line.startsWith(`${marker} `) ? [index] : []);
       if (indices.length !== 1 || indices[0] <= priorIndex) {
         writeError(`Source-generation stage completion missing, ambiguous or out of order: ${marker}.\n`); return 1;
@@ -49,7 +49,7 @@ for (const stage of stages) {
   if (localDoc) {
     const lines = stripVTControlCharacters(result.stdout ?? '').split(/\r?\n/u).map(line => line.trim());
     let priorIndex = -1;
-    for (const marker of ['EMPLOYER_RULE_OWNER_NATIVE_JOURNEY_OK','PAID_PACK_ROUTE_DELIVERY_OBLIGATION_RECEIPT','PAID_PACK_PREPARE_PACKET_RECEIPT','PAID_PACK_SOURCE_READY_PROPOSAL_RECEIPT','PAID_PACK_OWNER_LOCAL_DOCUMENTS_RECEIPT','EMPLOYER_QUESTION_LOCAL_DOC_NATIVE_JOURNEY_OK']) {
+    for (const marker of ['EMPLOYER_RULE_OWNER_NATIVE_JOURNEY_OK','PAID_PACK_ROUTE_DELIVERY_OBLIGATION_RECEIPT','PAID_PACK_PREPARE_PACKET_RECEIPT','PAID_PACK_SOURCE_READY_PROPOSAL_RECEIPT','OWNER_NOTICE_SUPPRESSED_RECEIPT','PAID_PACK_OWNER_LOCAL_DOCUMENTS_RECEIPT','EMPLOYER_QUESTION_LOCAL_DOC_NATIVE_JOURNEY_OK']) {
       const indices = lines.flatMap((line, index) => line === marker || line.startsWith(`${marker} `) ? [index] : []);
       if (indices.length !== 1 || indices[0] <= priorIndex) {
         writeError(`Local-document stage completion missing, ambiguous or out of order: ${marker}.\n`); return 1;

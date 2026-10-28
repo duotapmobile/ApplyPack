@@ -97,6 +97,7 @@ describe("AWS temporary cleanup readiness", () => {
       NEXT_PUBLIC_SUPABASE_URL: "https://fixture.supabase.co", NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "test-public", SUPABASE_SECRET_KEY: "test-secret",
       APP_EXPECTED_RELEASE_SHA: "a".repeat(40), APP_RELEASE_SHA: "a".repeat(40), RAILWAY_GIT_COMMIT_SHA: "a".repeat(40),
       RESEND_API_KEY: "test-email", EMAIL_FROM_ADDRESS: "fixture@example.test", APP_EMAIL_DELIVERY_VERIFIED_AT: now.toISOString(),
+      APP_ADMIN_ALERT_EMAIL: "approved-owner@example.test", APP_SAFE_TEST_EMAILS: "approved-owner@example.test", APP_PAYMENT_MODE: "test",
       NEXT_PUBLIC_APP_URL: "https://staging.applypack.work", STRIPE_JOB_SEARCH_PRICE_ID: "price_search", STRIPE_APPLY_PACK_PRICE_ID: "price_pack",
     };
     for (const [key, value] of Object.entries(environment)) vi.stubEnv(key, value);

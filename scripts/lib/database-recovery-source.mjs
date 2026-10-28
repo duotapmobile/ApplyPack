@@ -17,9 +17,10 @@ export const DATABASE_RECOVERY_REQUIRED_TABLES = Object.freeze([
   "ap_intake_clarifications", "ap_intake_inherited_documents", "ap_intake_clarification_answers",
   "ap_intake_account_claims", "ap_intake_clarification_notices",
   "ap_employer_rule_review_receipts",
+  "ap_material_draft_owner_notices",
 ]);
 export const DATABASE_RECOVERY_SOURCE = Object.freeze({
-  projectRef: RECOVERY_PROJECT, schemaVersion: "202610270105", user: "applypack_recovery_exporter",
+  projectRef: RECOVERY_PROJECT, schemaVersion: "202610280106", user: "applypack_recovery_exporter",
   schemas: ["public", "auth", "storage", "supabase_migrations"], maximumDumpBytes: 128 * 1024 * 1024,
   maximumRoles: 4096, maximumMemberships: 16384,
 });

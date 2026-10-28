@@ -11,7 +11,7 @@ import { runStructuralDatabaseRecovery } from "./lib/supabase-structural-recover
 
 const hash = (text) => createHash("sha256").update(text).digest("hex");
 const now = Date.parse("2026-10-23T12:00:00.000Z");
-const identity = { candidateSha: "a".repeat(40), schemaVersion: "202610270105",
+const identity = { candidateSha: "a".repeat(40), schemaVersion: "202610280106",
   launchSchemaSha256: "b".repeat(64), migrationSetSha256: "c".repeat(64) };
 const reference = "https://github.com/duotapmobile/ApplyPack/issues/123#issuecomment-456";
 
@@ -99,6 +99,7 @@ for (const [name, mutate] of [
   ["missing field", (p) => { delete p.riskAcceptanceReference; }],
   ["different candidate", (p) => { p.candidateSha = "d".repeat(40); }],
   ["different schema", (p) => { p.schemaVersion = "202610190084"; }],
+  ["historical105 review is not current106 authorization", (p) => { p.schemaVersion = "202610270105"; }],
   ["different schema bytes", (p) => { p.launchSchemaSha256 = "d".repeat(64); }],
   ["different migration bytes", (p) => { p.migrationSetSha256 = "d".repeat(64); }],
   ["different ref", (p) => { p.ref = "refs/heads/main"; }],
@@ -169,8 +170,8 @@ test("actual source identity hashes all migrations and refuses dirty, wrong-root
   try {
     mkdirSync(join(dir, "src/lib/operations"), { recursive: true });
     mkdirSync(join(dir, "supabase/migrations"), { recursive: true });
-    writeFileSync(join(dir, "src/lib/operations/launch-schema.ts"), 'export const REQUIRED_LAUNCH_SCHEMA_VERSION = "202610270105";\n');
-    const migration = join(dir, "supabase/migrations/202610270105_example.sql");
+    writeFileSync(join(dir, "src/lib/operations/launch-schema.ts"), 'export const REQUIRED_LAUNCH_SCHEMA_VERSION = "202610280106";\n');
+    const migration = join(dir, "supabase/migrations/202610280106_example.sql");
     writeFileSync(migration, "select 1;\n");
     const fakeGit = (overrides = {}) => (_command, args) => {
       const command = args.slice(2).join(" ");
@@ -223,13 +224,16 @@ for (const [name, results, expected] of [
     assert.deepEqual(calls[1], { command: "supabase", args: ["db", "reset", "--local"], stdin: undefined });
     if (calls[2]) {
       assert.match(calls[2].stdin, /ap_upgrade_completed_intake_legal_acceptance/);
-      assert.match(calls[2].stdin, /requiredSchemaVersion'='202610270105'/);
+      assert.match(calls[2].stdin, /requiredSchemaVersion'='202610280106'/);
       assert.match(calls[2].stdin, /STAGING_REHEARSAL_CHECKOUT_ATTEMPTS/);
       assert.match(calls[2].stdin, /SANDBOX_VALIDATION_LAUNCH_ACTIVATION/);
       assert.match(calls[2].stdin, /MATERIAL_DRAFT_PAIR_WORKFLOW/);
       assert.match(calls[2].stdin, /MATERIAL_RULE_REVALIDATION/);
       assert.match(calls[2].stdin, /SOURCE_AWARE_DOCUMENT_ACCEPTANCE/);
       assert.match(calls[2].stdin, /ap_source_aware_document_schema_installed/);
+      assert.match(calls[2].stdin, /ap_owner_draft_notices_schema_installed/);
+      assert.match(calls[2].stdin, /migration_id='202610280106' and checkpoint='OWNER_DRAFT_READY_NOTICES'/);
+      assert.match(calls[2].stdin, /to_regclass\('public\.ap_material_draft_owner_notices'\) is not null/);
       assert.match(calls[2].stdin, /ap_material_rule_revalidation_schema_installed/);
       assert.match(calls[2].stdin, /ap_material_draft_pair_schema_installed/);
       assert.match(calls[2].stdin, /ap_material_draft_runtime where singleton and not enabled/);

@@ -6,7 +6,7 @@ import { loadRetentionPostgresInputs, RETENTION_POSTGRES_IMAGE, runRetentionPost
 const runId = "11111111-2222-4333-8444-555555555555";
 const imageId = `sha256:${"a".repeat(64)}`;
 const name = `applypack-retention-pg17-${runId}`;
-function fixture({ failAt, alterState, missingMarker, ambiguousCreate, invalidImage, cleanupFailure, failIsolated, failEmployerRule } = {}) {
+function fixture({ failAt, alterState, missingMarker, ambiguousCreate, invalidImage, cleanupFailure, failIsolated, failEmployerRule, failOwnerNotice } = {}) {
   const calls = []; let exists = false; let deleted = false;
   const state = { Name: `/${name}`, Image: imageId,
     Config: { User: "65534:65534", Labels: { "io.applypack.fixture": "service-retention-postgres17", "io.applypack.fixture-run": runId } },
@@ -28,22 +28,24 @@ function fixture({ failAt, alterState, missingMarker, ambiguousCreate, invalidIm
     if (args.includes("/usr/lib/postgresql/17/bin/psql")) {
       const isolated = options.input === "fictional isolated SQL";
       const employerRule = options.input === "fictional employer rule SQL";
+      const ownerNotice = options.input === "fictional owner notice SQL";
       if (isolated && failIsolated) throw new Error("isolated fixture failed");
       if (employerRule && failEmployerRule) throw new Error("employer rule fixture failed");
-      return (isolated ? [24, 21] : employerRule ? [26] : [...Array.from({ length: 20 }, (_, index) => index + 1), 22, 23, 25, 27])
+      if (ownerNotice && failOwnerNotice) throw new Error("owner notice fixture failed");
+      return (isolated ? [24, 21] : employerRule ? [26] : ownerNotice ? [29] : [...Array.from({ length: 20 }, (_, index) => index + 1), 22, 23, 25, 27, 28])
         .filter(index => index !== missingMarker).map(index => ` RETENTION_PG17_FIXTURE_${index}_COMPLETE \n`).join("");
     }
     return "";
   };
   const run = (args = [], environment = {}) => runRetentionPostgres17(args, { execute, environment, platform: "linux", uuid: () => runId,
-    inputs: () => ({ sql: "fictional SQL", isolatedSql: "fictional isolated SQL", employerRuleSql: "fictional employer rule SQL", hashes: [{ kind: "fixture", name: "fictional.sql", sha256: "b".repeat(64) }], migrationCount: 110 }) });
+    inputs: () => ({ sql: "fictional SQL", isolatedSql: "fictional isolated SQL", employerRuleSql: "fictional employer rule SQL", ownerNoticeSql: "fictional owner notice SQL", hashes: [{ kind: "fixture", name: "fictional.sql", sha256: "b".repeat(64) }], migrationCount: 111 }) });
   return { calls, run, deleted: () => deleted };
 }
 
 test("builds all current migrations with exact source hashes and unchanged independent-connection fixture", () => {
   const inputs = loadRetentionPostgresInputs();
-  assert.equal(inputs.migrationCount, 110);
-  assert.equal(inputs.hashes.filter((entry) => entry.kind === "fixture").length, 27);
+  assert.equal(inputs.migrationCount, 111);
+  assert.equal(inputs.hashes.filter((entry) => entry.kind === "fixture").length, 29);
   assert(inputs.hashes.every((entry) => /^[a-f0-9]{64}$/u.test(entry.sha256)));
   assert.match(inputs.sql, /native_loopback_fixture_required/u);
   assert.match(inputs.sql, /dblink_send_query/u);
@@ -69,6 +71,12 @@ test("builds all current migrations with exact source hashes and unchanged indep
   assert.doesNotMatch(inputs.employerRuleSql, /RETENTION_PG17_FIXTURE_27_COMPLETE/u);
   assert.doesNotMatch(inputs.employerRuleSql, /RETENTION_PG17_FIXTURE_(?:2[0-5])_COMPLETE/u);
   assert.match(inputs.employerRuleSql, /dblink_send_query/u);
+  assert.match(inputs.sql, /RETENTION_PG17_FIXTURE_28_COMPLETE/u);
+  assert.doesNotMatch(inputs.sql, /RETENTION_PG17_FIXTURE_29_COMPLETE/u);
+  assert.match(inputs.ownerNoticeSql, /RETENTION_PG17_FIXTURE_29_COMPLETE/u);
+  assert.doesNotMatch(inputs.ownerNoticeSql, /RETENTION_PG17_FIXTURE_(?:2[0-8])_COMPLETE/u);
+  assert.match(inputs.ownerNoticeSql, /dblink_send_query/u);
+  assert.match(inputs.ownerNoticeSql, /'202610280106','owner_draft_ready_notices'/u);
   assert.match(inputs.employerRuleSql, /'202610270104','employer_rule_review_confirmation'/u);
   assert.match(inputs.isolatedSql, /dblink_send_query/u);
   assert.match(inputs.isolatedSql, /'202610260102','service_repair_case_state_cas'/u);
@@ -99,16 +107,19 @@ test("uses only an immutable image and isolated tmpfs container, actual local SQ
   assert.equal(execution.options.input, "fictional SQL"); assert(execution.args.includes("127.0.0.1"));
   assert(f.calls.some(({ args }) => args.includes("--auth-host=trust")));
   assert(f.calls.some(({ args }) => args.includes("-h 127.0.0.1 -p 5432 -k /tmp/applypack-retention -c max_connections=12 -c shared_buffers=16MB -c unix_socket_permissions=0700")));
-  assert.equal(receipt.freshClusterCount, 3);
+  assert.equal(receipt.freshClusterCount, 4);
   const sqlCalls = f.calls.filter(({ args }) => args.includes("/usr/lib/postgresql/17/bin/psql"));
-  assert.deepEqual(sqlCalls.map(call => call.options.input), ["fictional SQL", "fictional isolated SQL", "fictional employer rule SQL"]);
+  assert.deepEqual(sqlCalls.map(call => call.options.input), ["fictional SQL", "fictional isolated SQL", "fictional employer rule SQL", "fictional owner notice SQL"]);
   const firstStop = f.calls.findIndex(({ args }) => args.includes("fast") && args.includes("stop"));
   const secondInit = f.calls.findIndex(({ args }) => args.includes("/usr/lib/postgresql/17/bin/initdb") && args.includes("/tmp/applypack-retention/case-data"));
   assert(firstStop > f.calls.indexOf(sqlCalls[0]) && secondInit > firstStop && f.calls.indexOf(sqlCalls[1]) > secondInit);
+  const thirdStop = f.calls.findIndex(({ args }) => args.includes("fast") && args.includes("stop") && args.includes("/tmp/applypack-retention/case-data"));
   const lastFastStop = f.calls.findLastIndex(({ args }) => args.includes("fast") && args.includes("stop"));
   const thirdInit = f.calls.findIndex(({ args }) => args.includes("/usr/lib/postgresql/17/bin/initdb") && args.includes("/tmp/applypack-retention/employer-rule-data"));
-  assert(lastFastStop > f.calls.indexOf(sqlCalls[1]) && thirdInit > lastFastStop && f.calls.indexOf(sqlCalls[2]) > thirdInit);
-  assert(f.calls.some(({ args }) => args.includes("immediate") && args.includes("/tmp/applypack-retention/employer-rule-data")));
+  assert(thirdStop > f.calls.indexOf(sqlCalls[1]) && thirdInit > thirdStop && f.calls.indexOf(sqlCalls[2]) > thirdInit);
+  const fourthInit = f.calls.findIndex(({ args }) => args.includes("/usr/lib/postgresql/17/bin/initdb") && args.includes("/tmp/applypack-retention/owner-notice-data"));
+  assert(lastFastStop > f.calls.indexOf(sqlCalls[2]) && fourthInit > lastFastStop && f.calls.indexOf(sqlCalls[3]) > fourthInit);
+  assert(f.calls.some(({ args }) => args.includes("immediate") && args.includes("/tmp/applypack-retention/owner-notice-data")));
 });
 
 test("employer rule serial contract must complete before either later race cluster", () => {
@@ -209,4 +220,17 @@ test("source-run105 contract is mandatory before the two later race clusters", (
   assert.throws(() => f.run(), /RETENTION_FIXTURE_MARKER_MISSING:RETENTION_PG17_FIXTURE_27_COMPLETE/u);
   assert(f.deleted());
   assert.equal(f.calls.filter(({ args }) => args.includes("/usr/lib/postgresql/17/bin/psql")).length, 1);
+});
+
+for (const marker of [28, 29]) test(`owner notice fixture ${marker} is mandatory`, () => {
+  const f = fixture({ missingMarker: marker });
+  assert.throws(() => f.run(), new RegExp(`RETENTION_FIXTURE_MARKER_MISSING:RETENTION_PG17_FIXTURE_${marker}_COMPLETE`, "u"));
+  assert(f.deleted());
+  assert.equal(f.calls.filter(({ args }) => args.includes("/usr/lib/postgresql/17/bin/psql")).length, marker === 28 ? 1 : 4);
+});
+test("owner notice race failure stops and removes its fourth owned cluster", () => {
+  const f = fixture({ failOwnerNotice: true });
+  assert.throws(() => f.run(), /owner notice fixture failed/u);
+  assert(f.deleted());
+  assert(f.calls.some(({ args }) => args.includes("immediate") && args.includes("/tmp/applypack-retention/owner-notice-data")));
 });

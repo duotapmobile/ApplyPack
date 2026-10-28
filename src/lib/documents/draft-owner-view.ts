@@ -20,6 +20,7 @@ import { getEmployerSource } from "@/lib/jobs/source-registry";
 import { buildDraftOwnerEditModel, type DraftOwnerEditModel } from "./draft-owner-edit";
 import type { DraftChangePort } from "./draft-change-port";
 import { loadDraftChangeForVersion } from "./draft-change-loader";
+import { ownerDraftNoticeStatus, type OwnerDraftNoticeStatus } from "@/lib/commerce/owner-draft-notification";
 
 const uuid = z.uuid(), hash = z.string().regex(/^[a-f0-9]{64}$/), time = z.iso.datetime({ offset: true });
 const states = ["EVIDENCE_PENDING", "PREPARING", "READY", "DRAFTING", "SOURCE_READY", "RENDERING", "REVIEW_READY", "APPROVED", "RELEASED", "RESULT_UNKNOWN", "OWNER_EXCEPTION", "SUPERSEDED", "CANCELED"] as const;
@@ -60,6 +61,8 @@ export type DraftOwnerDetail = {
   referenceFilenameInstruction?: string | null;
   editing?: DraftOwnerEditModel;
   canRequestChanges?: boolean;
+  // Older cached responses omit this field; the workspace treats omission as unavailable.
+  ownerNotices?: OwnerDraftNoticeStatus;
   revisionRequest?: { instructions: string; priorVersionId: string; priorSourceSha256: string };
   questions: { status: string; verification: string; issues: string[]; items: { id: string; prompt: string; required: boolean | null; wordLimit: number | null; characterLimit: number | null; sourceUrl: string | null; observedAt: string; eligible: boolean }[] };
   requiredFileTypes: string[]; files: { type: string; filename: string; fileVersionId: string; checksumSha256: string; previewUrl: string | null }[];
@@ -104,6 +107,27 @@ export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedRev
   const version = async (id: string, signal: AbortSignal) => {
     const row = parse(versionSchema, await data(admin.from("ap_material_draft_versions").select(versionColumns).eq("id", id).abortSignal(signal).single(), signal)); ensure(row.id === id); return row;
   };
+  async function noticeStatus(current: z.infer<typeof jobSchema>, versionId: string, external: AbortSignal): Promise<OwnerDraftNoticeStatus> {
+    const controller = new AbortController(), abort = () => controller.abort();
+    external.addEventListener("abort", abort, { once: true }); if (external.aborted) abort();
+    let onAbort: () => void = () => undefined;
+    const interrupted = new Promise<never>((_, reject) => { onAbort = () => reject(new Error("notice_read_unavailable"));
+      controller.signal.addEventListener("abort", onAbort, { once: true }); if (controller.signal.aborted) onAbort(); });
+    const timer = setTimeout(abort, 2500);
+    try {
+      return await Promise.race([interrupted, (async () => {
+        const rows = await data(admin.from("ap_material_draft_owner_notices")
+          .select("message_id,job_id,draft_version_id,phase,suppression_reason,suppressed_at")
+          .eq("job_id", current.id).eq("draft_version_id", versionId).limit(3).abortSignal(controller.signal), controller.signal);
+        const ids = z.array(z.object({ message_id: uuid })).max(2).parse(rows).map(row => row.message_id);
+        const messages = ids.length ? await data(admin.from("ap_outbox_messages")
+          .select("id,customer_id,message_kind,recipient_ref,state,provider_message_id,reconciliation_state")
+          .in("id", ids).limit(3).abortSignal(controller.signal), controller.signal) : [];
+        return ownerDraftNoticeStatus(rows, messages, { jobId: current.id, versionId, customerId: current.customer_id });
+      })()]);
+    } catch { return { status: "UNAVAILABLE" }; }
+    finally { clearTimeout(timer); external.removeEventListener("abort", abort); controller.signal.removeEventListener("abort", onAbort); controller.abort(); }
+  }
   async function readPayload(current: z.infer<typeof jobSchema>, payloadId: string, digest: string, purpose: "MATERIAL_DRAFT_PACKET" | "MATERIAL_DRAFT_SOURCE", signal: AbortSignal) {
     let bytes: Buffer | undefined;
     try {
@@ -307,6 +331,7 @@ export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedRev
           const font = supportedDocumentFontFamily(artifact.generator_version);
           files.push({ type: member.artifact_type, filename: file.safe_filename, fileVersionId: file.id, checksumSha256: file.checksum_sha256, previewUrl: quality.automated_passed_at && !quality.invalidated_at && font && quality.document_font_resolved && quality.document_font_family === font && quality.render_preview_bucket === "operator-render-previews" ? `/api/admin/material-files/${file.id}/render-preview` : null });
         }
+        const ownerNotices = await noticeStatus(current, v.id, child);
         const after = await job(jobId, child), afterVersion = await version(v.id, child);
         ensure(JSON.stringify(after) === JSON.stringify(current) && JSON.stringify(afterVersion) === JSON.stringify(v) && await data(admin.rpc("ap_material_draft_context_sha256", { p_job_id: jobId }).abortSignal(child), child) === context && Date.parse(packet.validUntil) > now().getTime(), "REFRESH_REQUIRED");
         const expectedTypes = packet.binding.referencePermissions.length ? ["RESUME", "COVER_LETTER", "REFERENCE_SHEET"] : ["RESUME", "COVER_LETTER"];
@@ -314,6 +339,7 @@ export function createDraftOwnerView(admin: SupabaseClient<Database>, trustedRev
         return { status: "AVAILABLE", jobId, state: current.state, versionId: v.id, version: v.version, lineId: current.material_line_id, revisionId: revision.id, packetSha256: v.packet_sha256, sourceSha256: v.source_sha256,
           ruleSha256: packet.binding.ruleSha256, memberSetSha256: v.member_set_sha256, approvalSha256: v.approval_sha256, dueAt: revision.due_at, validUntil: packet.validUntil, kind,
           canRequestChanges: Boolean(options.changePort) && kind === "RENDER_SOURCE" && ["SOURCE_READY", "REVIEW_READY", "APPROVED"].includes(current.state),
+          ownerNotices,
           ...(change ? { revisionRequest: { instructions: change.ownerInstructions, priorVersionId: change.lineage.priorVersionId, priorSourceSha256: change.lineage.priorSourceSha256 } } : {}),
           company: packet.ownerEvidence.targetJob.company, title: packet.ownerEvidence.targetJob.exactTitle, applicationUrl: safeUrl(packet.ownerEvidence.targetJob.canonicalApplicationUrl), documents, claims, facts,
           ...(references.length ? { references, referenceFilenameInstruction: packet.ownerEvidence.referenceFilenameInstruction ?? null } : {}),

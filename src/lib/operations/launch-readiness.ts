@@ -15,6 +15,7 @@ import { manualLaunchFixedTotalIsSafe } from "@/lib/commerce/fixed-total";
 import { AWS_TEMPORARY_CLEANUP_MAX_OVERDUE_MS } from "@/lib/files/aws-temporary-cleanup";
 import { SANDBOX_ACTIVATION_CONTRACT_VERSION, sandboxValidationMatchesRelease } from "@/lib/operations/sandbox-validation";
 import { readProtectedRecoveryReadiness } from "@/lib/operations/protected-recovery-readiness";
+import { ownerDraftNotificationReady } from "@/lib/commerce/owner-draft-notification";
 
 type AdminClient = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
 type LaunchCapacityResource = "SEARCH" | "MATERIALS";
@@ -88,6 +89,7 @@ export async function evaluateLaunchInfrastructure(adminClient?: AdminClient) {
     supabase: supabaseConfigured,
     commerceConfigured,
     email: emailReady(),
+    ownerNoticeDestination: ownerDraftNotificationReady(),
     publicOrigin: publicOriginReady(),
     fileSafety,
     encryption: process.env.APP_KMS_PROVIDER === "aws" && encryption,

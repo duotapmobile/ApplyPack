@@ -32,6 +32,29 @@ const checked = (container: HTMLElement) => within(container).getAllByRole("chec
 describe("readable owner document workspace", () => {
   beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+  it("labels provider acceptance separately from inbox arrival and document approval", () => {
+    render(<DraftOwnerWorkspace {...props(detail({ ownerNotices: { status: "AVAILABLE", versionId: id(2), notices: [
+      { phase: "SOURCE_READY", state: "PROVIDER_ACCEPTED", reason: null },
+      { phase: "REVIEW_READY", state: "SUPPRESSED", reason: "VERSION_SUPERSEDED" },
+    ] } }))} />);
+    const region = screen.getByRole("region", { name: "Owner review notifications" });
+    expect(within(region).getByText(/Inbox arrival has not been verified/)).toBeInTheDocument();
+    expect(within(region).getByText(/Not submitted because/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Record wording review" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send approved pair" })).not.toBeInTheDocument();
+  });
+  it.each([undefined, { status: "UNAVAILABLE" as const }, { status: "AVAILABLE" as const, versionId: id(99), notices: [] }])("never labels missing, failed or old-version status as an empty notification queue", ownerNotices => {
+    render(<DraftOwnerWorkspace {...props(detail({ ownerNotices }))} />);
+    expect(screen.getByText(/Notification status could not be verified/)).toBeInTheDocument();
+    expect(screen.getAllByText("Organized event schedules.").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Record wording review" })).toBeInTheDocument();
+    expect(screen.queryByText(/No owner notification is recorded/)).not.toBeInTheDocument();
+  });
+  it.each(["QUEUED", "SENDING", "RETRY", "NEEDS_RECONCILIATION"] as const)("keeps manual review available with %s notification state", state => {
+    render(<DraftOwnerWorkspace {...props(detail({ ownerNotices: { status: "AVAILABLE", versionId: id(2), notices: [{ phase: "SOURCE_READY", state, reason: null }] } }))} />);
+    expect(screen.getByRole("region", { name: "Owner review notifications" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Record wording review" })).toBeInTheDocument();
+  });
   it("distinguishes queue load failure, verified empty, and stale draft without action controls", () => {
     const view = render(<DraftOwnerWorkspace queue={{ status: "UNAVAILABLE", jobs: [], nextCursor: null }} detail={null} loadedAt="1" />);
     expect(screen.getByRole("alert")).toHaveTextContent("does not mean there are no paid orders");

@@ -138,6 +138,18 @@ function DraftReview({ detail }: { detail: Available }) {
       {!questionContextComplete ? <p role="alert">A passage references employer-question context that is missing, ambiguous or quarantined. Reload the current evidence before recording review, approval or Send.</p> : null}
       <button type="button" onClick={() => router.refresh()}>Reload current version</button><p role="status" aria-live="polite">{message}</p>
     </header>
+    <section className={styles.section} aria-labelledby="draft-owner-notices"><h3 id="draft-owner-notices">Owner review notifications</h3>
+      <p>Notification status is separate from wording review, approval and sending documents. You can continue reviewing this version here.</p>
+      {detail.ownerNotices?.status !== "AVAILABLE" || detail.ownerNotices.versionId !== detail.versionId
+        ? <p>Notification status could not be verified. Reload to check again; the draft remains available for review.</p>
+        : !detail.ownerNotices.notices.length ? <p>No owner notification is recorded for this version. Owner-created revisions do not generate a new proposal notice.</p>
+          : <ul>{detail.ownerNotices.notices.map(notice => <li key={notice.phase}>
+            <strong>{notice.phase === "SOURCE_READY" ? "Proposal review" : "Rendered file review"}:</strong>{" "}
+            {{ QUEUED: "Queued for sending.", SENDING: "Sending; provider acceptance is not yet confirmed.",
+              RETRY: "Retry pending; delivery is not yet confirmed.", PROVIDER_ACCEPTED: "Accepted by the email provider. Inbox arrival has not been verified.",
+              SUPPRESSED: "Not submitted because this review notification became obsolete.", NEEDS_RECONCILIATION: "Needs reconciliation. Check the operations queue before resending." }[notice.state]}
+          </li>)}</ul>}
+    </section>
     <section className={styles.section} aria-labelledby="draft-documents"><h3 id="draft-documents">Saved document text</h3>
       {detail.documents.map((document) => <section className={styles.document} key={document.title} aria-label={document.title}><h4>{document.title}</h4>{document.sections.map((section, index) => <section key={`${section.heading}:${index}`}><h5>{section.heading}</h5>{section.lines.map((line, item) => line.bullet ? <ul key={item}><li>{line.text}</li></ul> : <p key={item}>{line.text}</p>)}</section>)}</section>)}
       {detail.canPromote ? <fieldset disabled={disabled}><legend>Prepare the complete review version</legend><label><input type="checkbox" checked={promote} onChange={(event) => setPromote(event.target.checked)} />I reviewed the proposal and want to add the exact confirmed contact details and factual headings for a complete wording review.</label><button type="button" disabled={!promote || disabled} onClick={() => void action({ action: "PROMOTE_SOURCE", expectedVersionId: detail.versionId, expectedSourceSha256: detail.sourceSha256 })}>Prepare complete review version</button><p>This does not approve or send the documents.</p></fieldset> : null}
