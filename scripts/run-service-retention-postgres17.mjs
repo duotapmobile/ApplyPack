@@ -22,6 +22,9 @@ const paymentFixture = "verified-intake-payment.sql";
 const secondClusterFixtures = Object.freeze([paymentFixture, isolatedFixture]);
 const employerRuleFixture = "employer-rule-review-concurrency.sql";
 const ownerNoticeFixture = "owner-draft-notices-races.sql";
+// The serial positive archive fence needs a fresh database: the main cluster
+// intentionally retains an unreconciled provider event from archive races.
+const ownerNoticeFixtures = Object.freeze(["owner-draft-notices.sql", ownerNoticeFixture]);
 
 export function loadRetentionPostgresInputs() {
   const root = new URL("../", import.meta.url);
@@ -65,11 +68,12 @@ export function loadRetentionPostgresInputs() {
     end $$;\n`;
   // Committed fixtures use fixed identities. Separate fresh clusters preserve
   // each suite without deleting paid history or rewriting its assertions.
-  const sql = header + inputs.filter(item => ![...secondClusterFixtures, employerRuleFixture, ownerNoticeFixture].includes(item.name)).map(statement).join("\n") + "\n";
+  const sql = header + inputs.filter(item => ![...secondClusterFixtures, employerRuleFixture, ...ownerNoticeFixtures].includes(item.name)).map(statement).join("\n") + "\n";
   const isolatedSql = header + [...inputs.filter(item => item.kind !== "fixture"),
     ...secondClusterFixtures.map(name => inputs.find(item => item.kind === "fixture" && item.name === name))].map(statement).join("\n") + "\n";
   const employerRuleSql = header + inputs.filter(item => item.kind !== "fixture" || item.name === employerRuleFixture).map(statement).join("\n") + "\n";
-  const ownerNoticeSql = header + inputs.filter(item => item.kind !== "fixture" || item.name === ownerNoticeFixture).map(statement).join("\n") + "\n";
+  const ownerNoticeSql = header + [...inputs.filter(item => item.kind !== "fixture"),
+    ...ownerNoticeFixtures.map(name => inputs.find(item => item.kind === "fixture" && item.name === name))].map(statement).join("\n") + "\n";
   assert([sql, isolatedSql, employerRuleSql, ownerNoticeSql].every(value => Buffer.byteLength(value) < 16 * 1024 * 1024), "RETENTION_FIXTURE_BATCH_BOUND");
   return { sql, isolatedSql, employerRuleSql, ownerNoticeSql, hashes: [...inputs.map(({ kind, name, sha256, executedSha256 }) => ({ kind, name, sha256, executedSha256 })), ...helpers], migrationCount: migrations.length };
 }
@@ -142,7 +146,7 @@ export function runRetentionPostgres17(args = [], { execute = execFileSync, envi
       `-h 127.0.0.1 -p 5432 -k ${directory} -c max_connections=12 -c shared_buffers=16MB -c unix_socket_permissions=0700`], undefined, 45000);
     started = true;
     const output = executeLocal(`${bin}psql`, ["-X", "-q", "-h", "127.0.0.1", "-p", "5432", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1"], sql, 600000);
-    for (const marker of fixtureMarkers.filter((_, index) => ![...secondClusterFixtures, employerRuleFixture, ownerNoticeFixture].includes(fixtureNames[index]))) assert(output.split(/\r?\n/u).some((line) => line.trim() === marker), `RETENTION_FIXTURE_MARKER_MISSING:${marker}`);
+    for (const marker of fixtureMarkers.filter((_, index) => ![...secondClusterFixtures, employerRuleFixture, ...ownerNoticeFixtures].includes(fixtureNames[index]))) assert(output.split(/\r?\n/u).some((line) => line.trim() === marker), `RETENTION_FIXTURE_MARKER_MISSING:${marker}`);
     executeLocal(`${bin}pg_ctl`, ["-D", clusterData, "-w", "-t", "30", "-m", "fast", "stop"], undefined, 45000);
     started = false; clusterData = `${directory}/case-data`;
     executeLocal(`${bin}initdb`, ["-D", clusterData, "-U", "postgres", "--auth-local=trust", "--auth-host=trust", "--encoding=UTF8", "--no-locale"]);
@@ -170,8 +174,10 @@ export function runRetentionPostgres17(args = [], { execute = execFileSync, envi
       `-h 127.0.0.1 -p 5432 -k ${directory} -c max_connections=12 -c shared_buffers=16MB -c unix_socket_permissions=0700`], undefined, 45000);
     started = true;
     const ownerNoticeOutput = executeLocal(`${bin}psql`, ["-X", "-q", "-h", "127.0.0.1", "-p", "5432", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1"], ownerNoticeSql, 600000);
-    const ownerNoticeMarker = fixtureMarkers[fixtureNames.indexOf(ownerNoticeFixture)];
-    assert(ownerNoticeOutput.split(/\r?\n/u).some(line => line.trim() === ownerNoticeMarker), `RETENTION_FIXTURE_MARKER_MISSING:${ownerNoticeMarker}`);
+    for (const fixture of ownerNoticeFixtures) {
+      const marker = fixtureMarkers[fixtureNames.indexOf(fixture)];
+      assert(ownerNoticeOutput.split(/\r?\n/u).some(line => line.trim() === marker), `RETENTION_FIXTURE_MARKER_MISSING:${marker}`);
+    }
     result = { status: "PASS", scope: "fictional-postgres17-retention-concurrency", postgresVersion: version, schemaVersion: schema,
       imageId: metadata.Id, imageDigest: RETENTION_POSTGRES_IMAGE.split("@")[1], migrationCount, fixtureCount: fixtureNames.length,
       inputHashes: hashes, sqlSha256: sha256(sql), isolatedSqlSha256: sha256(isolatedSql), employerRuleSqlSha256: sha256(employerRuleSql), ownerNoticeSqlSha256: sha256(ownerNoticeSql), freshClusterCount: 4, actualIndependentConnections: true, networkMode: "none", publishedPorts: 0,

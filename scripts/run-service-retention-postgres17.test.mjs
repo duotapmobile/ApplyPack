@@ -32,7 +32,7 @@ function fixture({ failAt, alterState, missingMarker, ambiguousCreate, invalidIm
       if (isolated && failIsolated) throw new Error("isolated fixture failed");
       if (employerRule && failEmployerRule) throw new Error("employer rule fixture failed");
       if (ownerNotice && failOwnerNotice) throw new Error("owner notice fixture failed");
-      return (isolated ? [24, 21] : employerRule ? [26] : ownerNotice ? [29] : [...Array.from({ length: 20 }, (_, index) => index + 1), 22, 23, 25, 27, 28])
+      return (isolated ? [24, 21] : employerRule ? [26] : ownerNotice ? [28, 29] : [...Array.from({ length: 20 }, (_, index) => index + 1), 22, 23, 25, 27])
         .filter(index => index !== missingMarker).map(index => ` RETENTION_PG17_FIXTURE_${index}_COMPLETE \n`).join("");
     }
     return "";
@@ -71,10 +71,15 @@ test("builds all current migrations with exact source hashes and unchanged indep
   assert.doesNotMatch(inputs.employerRuleSql, /RETENTION_PG17_FIXTURE_27_COMPLETE/u);
   assert.doesNotMatch(inputs.employerRuleSql, /RETENTION_PG17_FIXTURE_(?:2[0-5])_COMPLETE/u);
   assert.match(inputs.employerRuleSql, /dblink_send_query/u);
-  assert.match(inputs.sql, /RETENTION_PG17_FIXTURE_28_COMPLETE/u);
+  assert.doesNotMatch(inputs.sql, /RETENTION_PG17_FIXTURE_28_COMPLETE/u);
+  assert.match(inputs.ownerNoticeSql, /RETENTION_PG17_FIXTURE_28_COMPLETE/u);
   assert.doesNotMatch(inputs.sql, /RETENTION_PG17_FIXTURE_29_COMPLETE/u);
   assert.match(inputs.ownerNoticeSql, /RETENTION_PG17_FIXTURE_29_COMPLETE/u);
-  assert.doesNotMatch(inputs.ownerNoticeSql, /RETENTION_PG17_FIXTURE_(?:2[0-8])_COMPLETE/u);
+  assert.doesNotMatch(inputs.ownerNoticeSql, /RETENTION_PG17_FIXTURE_(?:2[0-7])_COMPLETE/u);
+  assert.equal((inputs.ownerNoticeSql.match(/select 'RETENTION_PG17_FIXTURE_\d+_COMPLETE';/gu) || []).join("\n"), "select 'RETENTION_PG17_FIXTURE_28_COMPLETE';\nselect 'RETENTION_PG17_FIXTURE_29_COMPLETE';");
+  assert(inputs.ownerNoticeSql.indexOf("OWNER_DRAFT_READY_NOTICES_CONTRACT_OK") < inputs.ownerNoticeSql.indexOf("owner_notice_loopback_fixture_required"));
+  assert.match(inputs.sql, /evt_archive_corrected_pending/u);
+  assert.doesNotMatch(inputs.ownerNoticeSql, /evt_archive_corrected_pending/u);
   assert.match(inputs.ownerNoticeSql, /dblink_send_query/u);
   assert.match(inputs.ownerNoticeSql, /'202610280106','owner_draft_ready_notices'/u);
   assert.match(inputs.employerRuleSql, /'202610270104','employer_rule_review_confirmation'/u);
@@ -226,7 +231,7 @@ for (const marker of [28, 29]) test(`owner notice fixture ${marker} is mandatory
   const f = fixture({ missingMarker: marker });
   assert.throws(() => f.run(), new RegExp(`RETENTION_FIXTURE_MARKER_MISSING:RETENTION_PG17_FIXTURE_${marker}_COMPLETE`, "u"));
   assert(f.deleted());
-  assert.equal(f.calls.filter(({ args }) => args.includes("/usr/lib/postgresql/17/bin/psql")).length, marker === 28 ? 1 : 4);
+  assert.equal(f.calls.filter(({ args }) => args.includes("/usr/lib/postgresql/17/bin/psql")).length, 4);
 });
 test("owner notice race failure stops and removes its fourth owned cluster", () => {
   const f = fixture({ failOwnerNotice: true });
