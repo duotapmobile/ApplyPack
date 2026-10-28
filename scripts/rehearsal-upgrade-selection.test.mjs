@@ -94,26 +94,32 @@ test("the actual research journey is isolated from generic integration and remai
   assert.match(generic, /exclude:\s*\[\s*\/\/[^\n]*\n\s*"tests\/integration\/research-preparation-journey\.test\.ts",/u);
   for (const path of ["../vitest.research-container.config.mjs", "../vitest.research-native.config.mts"]) {
     const isolated = read(path).replace(/\s+/gu, "").replaceAll('"', "'");
-    assert(isolated.includes("include:[process.env.AP_RESEARCH_JOURNEY_STAGE==='PACK_PACKET'?'tests/integration/employer-question-pack-native-journey.test.ts':process.env.AP_RESEARCH_JOURNEY_STAGE==='EMPLOYER_RULE'?'tests/integration/employer-rule-owner-native-journey.test.ts':process.env.AP_RESEARCH_JOURNEY_STAGE==='PAID_SEARCH'?'tests/integration/verified-paid-search-native-journey.test.ts':process.env.AP_RESEARCH_JOURNEY_STAGE==='NOTIFICATION'?'tests/integration/intake-notification-native-journey.test.ts':process.env.AP_RESEARCH_JOURNEY_STAGE==='CLARIFICATION'?'tests/integration/material-clarification-route-journey.test.ts':'tests/integration/research-preparation-journey.test.ts']"), path);
-    assert(isolated.includes("testTimeout:240_000") || isolated.includes("testTimeout:240000"));
+    const native = path.includes('research-native');
+    const localPrefix = native ? "process.env.AP_RESEARCH_JOURNEY_STAGE==='PACK_LOCAL_DOC'?'tests/integration/employer-question-local-doc-native-journey.test.ts':" : '';
+    assert(isolated.includes(`include:[${localPrefix}process.env.AP_RESEARCH_JOURNEY_STAGE==='PACK_SOURCE'?'tests/integration/employer-question-source-native-journey.test.ts':process.env.AP_RESEARCH_JOURNEY_STAGE==='PACK_PACKET'?'tests/integration/employer-question-pack-native-journey.test.ts':process.env.AP_RESEARCH_JOURNEY_STAGE==='EMPLOYER_RULE'?'tests/integration/employer-rule-owner-native-journey.test.ts':process.env.AP_RESEARCH_JOURNEY_STAGE==='PAID_SEARCH'?'tests/integration/verified-paid-search-native-journey.test.ts':process.env.AP_RESEARCH_JOURNEY_STAGE==='NOTIFICATION'?'tests/integration/intake-notification-native-journey.test.ts':process.env.AP_RESEARCH_JOURNEY_STAGE==='CLARIFICATION'?'tests/integration/material-clarification-route-journey.test.ts':'tests/integration/research-preparation-journey.test.ts']`), path);
+    assert(isolated.includes(`testTimeout:${native ? "process.env.AP_RESEARCH_JOURNEY_STAGE==='PACK_LOCAL_DOC'?600_000:" : ''}process.env.AP_RESEARCH_JOURNEY_STAGE==='PACK_SOURCE'?420_000:240_000`));
+    if (!native) assert(!isolated.includes('PACK_LOCAL_DOC'));
   }
-  for (const fixture of ["material-clarification-route-journey.test.ts", "intake-notification-native-journey.test.ts", "verified-paid-search-native-journey.test.ts", "employer-rule-owner-native-journey.test.ts", "employer-question-pack-native-journey.test.ts"])
+  for (const fixture of ["material-clarification-route-journey.test.ts", "intake-notification-native-journey.test.ts", "verified-paid-search-native-journey.test.ts", "employer-rule-owner-native-journey.test.ts", "employer-question-pack-native-journey.test.ts", "employer-question-source-native-journey.test.ts", "employer-question-local-doc-native-journey.test.ts"])
     assert(generic.includes(`"tests/integration/${fixture}"`));
   const stages = read("./run-research-native-journey.mjs");
   assert(stages.includes("scenario === 'LIMITED' ? ['RESEARCH', 'CLARIFICATION', 'NOTIFICATION'] : ['RESEARCH']"));
   assert(stages.includes("scenario === 'PAID_SEARCH' ? ['PAID_SEARCH']"));
   assert(stages.includes("scenario === 'EMPLOYER_RULE' ? ['EMPLOYER_RULE']"));
   assert(stages.includes("scenario === 'PACK_PACKET' ? ['PACK_PACKET']"));
+  assert(stages.includes("scenario === 'PACK_SOURCE' ? ['PACK_SOURCE']"));
+  assert(stages.includes("timeout: localDoc ? 660_000 : packSource ? 480_000 : 300_000"));
+  for (const marker of ['PAID_PACK_SOURCE_READY_PROPOSAL_RECEIPT', 'EMPLOYER_QUESTION_SOURCE_NATIVE_JOURNEY_OK']) assert(stages.includes(marker));
   assert(stages.includes("if (result.error || result.status !== 0) return 1;"));
   assert(stages.includes("if (scenario === 'LIMITED') log('RESEARCH_CLARIFICATION_NOTIFICATION_JOURNEYS_OK')"));
   assert(stages.includes('EMPLOYER_RULE_OWNER_NATIVE_JOURNEY_OK'));
   for (const marker of ['EMPLOYER_QUESTION_PACK_NATIVE_JOURNEY_OK', 'PAID_PACK_ROUTE_DELIVERY_OBLIGATION_RECEIPT', 'PAID_PACK_PREPARE_PACKET_RECEIPT']) assert(stages.includes(marker));
-  assert(read('./test-database-native.ps1').includes("[ValidateSet('LIMITED','QUALIFIED','PAID_SEARCH','EMPLOYER_RULE','PACK_PACKET')]"));
+  assert(read('./test-database-native.ps1').includes("[ValidateSet('LIMITED','QUALIFIED','PAID_SEARCH','EMPLOYER_RULE','PACK_PACKET','PACK_SOURCE','PACK_LOCAL_DOC')]"));
   const research = job("research-route-journey");
   assert(research.includes("node scripts/run-research-postgres17.mjs"));
   assert(!research.includes("continue-on-error") && !/^    if:/mu.test(research));
   const runner = read("./run-research-postgres17.mjs");
-  assert(runner.includes("for(const scenario of ['QUALIFIED','LIMITED','PAID_SEARCH','EMPLOYER_RULE','PACK_PACKET'])"));
+  assert(runner.includes("for(const scenario of ['QUALIFIED','LIMITED','PAID_SEARCH','EMPLOYER_RULE','PACK_PACKET','PACK_SOURCE'])"));
 });
 
 test("selection stays outside upgrade assertions and all local cleanup and concurrency checks remain", () => {

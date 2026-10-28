@@ -16,7 +16,8 @@ const tables = new Set(["profiles", "ap_intake_snapshots", "ap_candidate_facts",
   "ap_checkout_attempts", "ap_quotes", "webhook_events", "orders", "search_candidates", "workflow_tasks",
   "ap_employer_submission_rules", "ap_fact_review_history", "ap_material_checkout_intents", "ap_material_checkout_items",
   "ap_material_checkout_references", "ap_material_draft_jobs", "ap_material_draft_versions", "ap_material_line_revisions",
-  "ap_material_listing_checks", "ap_material_purchases", "ap_payment_attempts"]);
+  "ap_material_listing_checks", "ap_material_purchases", "ap_payment_attempts",
+  "ap_material_draft_runtime", "ap_material_draft_policies", "ap_material_draft_attempts", "ap_material_draft_members"]);
 const rpcNames = new Set(["ap_claim_research_preparation", "ap_prepare_automatic_research", "ap_bind_prepared_research_run", "ap_finish_research_preparation_check",
   "ap_research_snapshot_current", "ap_promote_prepared_research_observation", "ap_complete_prepared_research_review", "ap_research_preparation_ready",
   "ap_enqueue_due_job_source_syncs", "ap_claim_job_source_syncs", "ap_renew_job_source_sync_lease", "ap_archive_source_attempt", "ap_finalize_job_source_run",
@@ -38,7 +39,10 @@ for (const name of ["ap_owned_intake_draft_context", "ap_owned_intake_drafts", "
   "ap_customer_retention_access", "ap_begin_authorized_material_checkout", "ap_apply_verified_material_payment",
   "ap_record_material_draft_listing_check", "ap_claim_material_draft_stage", "ap_customer_owns_snapshot",
   "ap_material_draft_context_sha256", "ap_material_draft_rule_evidence", "ap_renew_material_draft_lease",
-  "ap_attach_material_draft_packet"]) rpcNames.add(name);
+  "ap_attach_material_draft_packet", "ap_begin_material_draft_request", "ap_assert_material_draft_dispatch_current",
+  "ap_observe_material_draft_response", "ap_record_material_draft_result", "ap_fail_material_draft_job",
+  "ap_material_draft_change_evidence", "ap_require_material_reviewer",
+  "ap_revise_material_draft_source", "ap_record_material_draft_claim_review"]) rpcNames.add(name);
 const ident = (value: string) => { if (!/^[a-z_][a-z0-9_]*$/u.test(value)) throw new Error("local_identifier_rejected"); return `"${value}"`; };
 const literal = (value: unknown): string => value === null ? "null" : `'${String(value).replaceAll("'", "''")}'`;
 const json = (value: unknown) => `${literal(JSON.stringify(value))}::jsonb`;
